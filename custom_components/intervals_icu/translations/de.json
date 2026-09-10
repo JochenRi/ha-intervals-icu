@@ -1,0 +1,137 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Mit Intervals.icu verbinden",
+        "description": "API-Key auf intervals.icu unter Einstellungen → Developer Settings erzeugen. Die Athlete-ID ist optional — sie wird automatisch ermittelt.",
+        "data": {
+          "api_key": "API-Key",
+          "athlete_id": "Athlete-ID (optional, z. B. i12345)"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Intervals.icu neu anmelden",
+        "description": "Der gespeicherte API-Key wird nicht mehr akzeptiert. Erzeuge einen neuen und trage ihn hier ein.",
+        "data": {
+          "api_key": "API-Key"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "API-Key abgelehnt. Prüfe, ob der Key aktuell ist und zu diesem Athleten gehört.",
+      "cannot_connect": "intervals.icu ist nicht erreichbar."
+    },
+    "abort": {
+      "already_configured": "Dieser Athlet ist bereits eingerichtet.",
+      "reauth_successful": "Neuanmeldung erfolgreich."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "fitness": {
+        "name": "Fitness (CTL)"
+      },
+      "fatigue": {
+        "name": "Ermüdung (ATL)"
+      },
+      "form": {
+        "name": "Form (TSB)"
+      },
+      "ramp_rate": {
+        "name": "Steigerungsrate"
+      },
+      "load": {
+        "name": "Trainingsbelastung"
+      },
+      "resting_hr": {
+        "name": "Ruhepuls"
+      },
+      "hrv": {
+        "name": "HRV"
+      },
+      "hrv_sdnn": {
+        "name": "HRV SDNN"
+      },
+      "sleeping_hr": {
+        "name": "Schlafpuls"
+      },
+      "spo2": {
+        "name": "SpO2"
+      },
+      "respiration": {
+        "name": "Atemfrequenz"
+      },
+      "vo2max": {
+        "name": "VO2max"
+      },
+      "blood_glucose": {
+        "name": "Blutzucker"
+      },
+      "systolic": {
+        "name": "Blutdruck systolisch"
+      },
+      "diastolic": {
+        "name": "Blutdruck diastolisch"
+      },
+      "sleep_time": {
+        "name": "Schlafdauer"
+      },
+      "sleep_score": {
+        "name": "Schlafscore"
+      },
+      "sleep_quality": {
+        "name": "Schlafqualität"
+      },
+      "readiness": {
+        "name": "Bereitschaft"
+      },
+      "weight": {
+        "name": "Gewicht"
+      },
+      "body_fat": {
+        "name": "Körperfett"
+      },
+      "steps": {
+        "name": "Schritte"
+      },
+      "calories_consumed": {
+        "name": "Kalorien aufgenommen"
+      },
+      "hydration": {
+        "name": "Flüssigkeit"
+      },
+      "stress": {
+        "name": "Stress"
+      },
+      "mood": {
+        "name": "Stimmung"
+      },
+      "motivation": {
+        "name": "Motivation"
+      },
+      "soreness": {
+        "name": "Muskelkater"
+      },
+      "subjective_fatigue": {
+        "name": "Müdigkeit (subjektiv)"
+      },
+      "next_workout": {
+        "name": "Nächstes Workout"
+      },
+      "next_workout_date": {
+        "name": "Nächstes Workout Datum"
+      },
+      "next_workout_load": {
+        "name": "Nächstes Workout Last"
+      },
+      "archive": {
+        "name": "Archiv"
+      }
+    },
+    "calendar": {
+      "planned": {
+        "name": "Geplante Workouts"
+      }
+    }
+  }
+}
