@@ -12,7 +12,7 @@ import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 
-from . import analytics, coach as coach_module, derive, importer, workouts as workout_lib
+from . import analytics, coach as coach_module, derive, importer, plan as plan_lib, workouts as workout_lib
 from .api import IntervalsError
 from .const import DOMAIN
 
@@ -67,6 +67,8 @@ def async_register(hass: HomeAssistant) -> None:
         websocket_plan_workout,
         websocket_night,
         websocket_context,
+        websocket_goal,
+        websocket_set_goal,
         websocket_thresholds,
         websocket_calendar,
         websocket_status,
@@ -510,3 +512,72 @@ def websocket_context(hass, connection, msg) -> None:
         msg["id"],
         coach_module.session_context(coordinator.archive.data, str(msg["activity_id"])),
     )
+
+
+def _state_for_plan(data: dict[str, Any]) -> dict[str, Any]:
+    """What the archive knows that the plan should take into account."""
+    longest = 0.0
+    for activity in (data.get("activities") or {}).values():
+        hours = (activity.get("moving_time") or 0) / 3600
+        longest = max(longest, hours)
+    wellness = data.get("wellness") or {}
+    recent = [wellness[d] for d in sorted(wellness)[-28:]]
+    loads = [float(row.get("load") or 0) for row in recent]
+    return {
+        "longest_ride_hours": round(longest, 1),
+        "weekly_load": round(sum(loads) / 4) if loads else None,
+    }
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "intervals_icu/goal",
+        vol.Optional("athlete_id"): str,
+    }
+)
+@callback
+def websocket_goal(hass, connection, msg) -> None:
+    """Return the stored goal profile, the plan it produces, and the options."""
+    if (coordinator := _require(hass, connection, msg)) is None:
+        return
+    data = coordinator.archive.data
+    profile = data.get("goal") or plan_lib.default_goal()
+    state = _state_for_plan(data)
+    connection.send_result(msg["id"], {
+        "profile": profile,
+        "state": state,
+        "goals": {key: {k: v for k, v in entry.items() if k != "mix"}
+                  for key, entry in plan_lib.GOALS.items()},
+        "plan": plan_lib.plan(profile, state),
+    })
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "intervals_icu/set_goal",
+        vol.Required("profile"): dict,
+        vol.Optional("athlete_id"): str,
+    }
+)
+@websocket_api.async_response
+async def websocket_set_goal(hass, connection, msg) -> None:
+    """Store the goal profile in the archive.
+
+    A local write only - nothing here is sent to intervals.icu.
+    """
+    coordinator = _pick(hass, msg.get("athlete_id"))
+    if coordinator is None:
+        connection.send_error(msg["id"], "not_found", "no Intervals.icu athlete loaded")
+        return
+    profile = plan_lib.default_goal()
+    incoming = msg["profile"] or {}
+    for key in profile:
+        if key in incoming:
+            profile[key] = incoming[key]
+    coordinator.archive.data["goal"] = profile
+    await coordinator.archive.async_save_now()
+    state = _state_for_plan(coordinator.archive.data)
+    connection.send_result(msg["id"], {
+        "profile": profile, "state": state,
+        "plan": plan_lib.plan(profile, state),
+    })

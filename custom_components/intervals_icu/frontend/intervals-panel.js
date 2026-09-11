@@ -475,6 +475,10 @@ const VERDICT = {
   red: "rot — heute leicht trainieren oder pausieren.",
   unknown: "noch zu wenige Daten für eine Einschätzung.",
 };
+const FIELD_LABEL = {
+  goal: "das Ziel", days_per_week: "Tage pro Woche", hours_per_week: "Stunden pro Woche",
+  target_hours: "die Zieldauer",
+};
 const STATE_WORD = {
   slump: "Einbruch", recovering: "noch im Einbruch", rebound: "Erholung nach Einbruch",
   strained: "beansprucht", ready: "Normalbereich", unknown: "keine Daten",
@@ -500,6 +504,9 @@ class IntervalsIcuPanel extends HTMLElement {
     this._woOpen = null;
     this._cmpFocus = null;
     this._night = {};
+    this._goal = null;
+    this._goalEdit = false;
+    this._goalDraft = null;
     this._ctx = {};
     this._booted = false;
   }
@@ -539,6 +546,7 @@ class IntervalsIcuPanel extends HTMLElement {
     try {
       if (what === "coach" && !this._coach) this._coach = await this._ws("coach");
       if (what === "workouts" && !this._workouts) this._workouts = await this._ws("workouts");
+      if (what === "goal" && !this._goal) this._goal = await this._ws("goal");
       if (what === "signals" && !this._signals) {
         this._signals = await this._ws("signals", { days: this._sigDays });
       }
@@ -553,7 +561,9 @@ class IntervalsIcuPanel extends HTMLElement {
 
   async _setTab(t) {
     this._tab = t;
-    if (t === "trainer") { await this._need("coach"); await this._need("workouts"); }
+    if (t === "trainer") {
+      await this._need("coach"); await this._need("workouts"); await this._need("goal");
+    }
     if (t === "signale") await this._need("signals");
     if (t === "fitness") await this._need("pmc");
     if (t === "akt") await this._need("akt");
@@ -612,7 +622,9 @@ class IntervalsIcuPanel extends HTMLElement {
     let html = "";
     if (this._err && !this._rd) {
       html = `<div class="card pad err">Daten konnten nicht geladen werden: ${esc(this._err)}</div>`;
-    } else if (this._tab === "trainer") html = this.rTrainer(this._coach, this._rd);
+    } else if (this._tab === "trainer") {
+      html = this.rGoal(this._goal) + this.rTrainer(this._coach, this._rd);
+    }
     else if (this._tab === "signale") html = this.rSignale(this._signals);
     else if (this._tab === "heute") html = this.rHeute(this._rd, this._days, this._load);
     else if (this._tab === "kalender") html = this.rKalender(this._days);
@@ -666,6 +678,42 @@ class IntervalsIcuPanel extends HTMLElement {
       else if (act === "wodetail") {
         this._woOpen = (this._woOpen === id ? null : id); this._render();
       }
+      else if (act === "goaledit") {
+        this._goalDraft = { ...(this._goal && this._goal.profile || {}) };
+        this._goalEdit = true; this._render();
+      }
+      else if (act === "goalcancel") { this._goalEdit = false; this._render(); }
+      else if (act === "goalpick") {
+        this._goalDraft = { ...(this._goalDraft || {}), goal: id }; this._render();
+      }
+      else if (act === "goalsave") {
+        const root = this._view;
+        const draft = { ...(this._goalDraft || {}) };
+        const num = (name) => {
+          const field = root.querySelector(`[data-field="${name}"]`);
+          const value = field && field.value !== "" ? Number(field.value) : null;
+          return Number.isFinite(value) ? value : null;
+        };
+        const text = (name) => {
+          const field = root.querySelector(`[data-field="${name}"]`);
+          return field && field.value ? field.value : null;
+        };
+        draft.days_per_week = num("days_per_week");
+        draft.hours_per_week = num("hours_per_week");
+        draft.longest_day_hours = num("longest_day_hours");
+        draft.target_hours = num("target_hours");
+        draft.target_date = text("target_date");
+        draft.long_day = text("long_day");
+        draft.notes = text("notes") || "";
+        const box = root.querySelector('[data-field="indoor_only"]');
+        draft.indoor_only = !!(box && box.checked);
+        draft.hard_days = [...root.querySelectorAll('[data-hard]:checked')].map((e) => e.dataset.hard);
+        el.disabled = true; el.textContent = "wird gespeichert …";
+        this._ws("set_goal", { profile: draft })
+          .then((r) => { this._goal = { ...(this._goal || {}), ...r }; this._goalEdit = false; this._render(); })
+          .catch((e) => { el.disabled = false; this._toast(`Speichern fehlgeschlagen: ${String(e && e.message || e)}`); });
+      }
+      else if (act === "planweeks") { this._planOpen = (this._planOpen === id ? null : id); this._render(); }
       else if (act === "cmpzoom") {
         this._cmpFocus = (this._cmpFocus === id ? null : id); this._render();
       }
@@ -813,6 +861,141 @@ class IntervalsIcuPanel extends HTMLElement {
       <p class="note">Ein Klick legt die Einheit als geplantes Workout in deinen
       Intervals-Kalender — mit allen Schritten, direkt auf die Uhr übertragbar. Das ist der
       einzige Schreibzugriff dieser Integration, er passiert nur auf diesen Knopf.</p>`;
+  }
+
+  /* Goal, constraints, and the weeks that follow from them.
+
+     The coach was paused because it recommended sessions without knowing what
+     they were for. This asks, once: what do you want to be able to do, how
+     many days do you have, how many hours, and what cannot move. Everything
+     below follows from those answers and from what the archive already knows.
+
+     The honest parts are built in: a weekly budget that cannot carry the
+     target ride says so instead of printing a number it will not deliver,
+     and the fact that block periodization is NOT better than traditional -
+     load-matched, twelve weeks, no difference - is stated where someone might
+     otherwise assume blocks are the secret. */
+  rGoal(g) {
+    if (!g) return `<div class="card pad">Ziel wird geladen …</div>`;
+    const profile = g.profile || {};
+    const state = g.state || {};
+    if (this._goalEdit || !profile.goal) return this._goalForm(g);
+
+    const plan = g.plan || {};
+    const goalInfo = (g.goals || {})[profile.goal] || {};
+    if (!plan.ready) {
+      return `<div class="card pad">
+        <h3 class="secname">Dein Ziel</h3>
+        <p>Es fehlen noch Angaben: ${(plan.missing || []).map((m) => esc(FIELD_LABEL[m] || m)).join(", ")}.</p>
+        <button class="planbtn" data-act="goaledit">Angaben ergänzen</button></div>`;
+    }
+
+    const note = plan.budget_note;
+    const weeks = (plan.weeks || []).map((w) => {
+      const open = this._planOpen === String(w.index);
+      return `<div class="pweek ${w.kind}" data-act="planweeks" data-id="${w.index}">
+        <div class="pwhead">
+          <span class="pwno">W${w.index}</span>
+          <span class="pwphase">${esc(w.phase_label)}${w.kind === "recovery" ? " · Entlastung" : ""}</span>
+          <span class="pwh tn">${fmt(w.hours, 1)} h</span>
+          ${w.long_day_hours ? `<span class="pwlong tn">langer Tag ${fmt(w.long_day_hours, 1)} h${
+            w.long_day_capped ? " <em>(vom Wochenbudget gedeckelt)</em>" : ""}</span>` : ""}
+        </div>
+        ${open ? `<div class="pwbody">
+          <p class="hint">${esc(w.phase_note)}</p>
+          ${(w.sessions || []).map((s) => `<div class="psess ${s.role}">
+            <b>${esc(s.title)}</b>
+            <p>${esc(s.detail)}</p>
+            <p class="src">${esc(s.why)}</p>
+            ${s.fuel ? `<p class="src"><b>Verpflegung:</b> ${esc(s.fuel)}</p>` : ""}
+          </div>`).join("")}
+        </div>` : `<div class="pwsess">${(w.sessions || []).map((s) =>
+          `<span class="ptag ${s.role}">${esc(s.title)}</span>`).join("")}</div>`}
+      </div>`;
+    }).join("");
+
+    return `
+      <div class="card pad">
+        <div class="goalhead">
+          <div>
+            <div class="mut">DEIN ZIEL</div>
+            <h2 class="goaltitle">${esc(goalInfo.label || plan.goal_label)}</h2>
+            <p class="goalsub">${esc(goalInfo.detail || "")} — trainiert wird
+              <b>${esc(plan.target)}</b>.</p>
+          </div>
+          <button class="chipbtn" data-act="goaledit">ändern</button>
+        </div>
+        <div class="goalgrid">
+          <div class="gcell"><small>Woche</small><b>${fmt(profile.days_per_week)} Tage · ${fmt(profile.hours_per_week, 1)} h</b></div>
+          ${plan.target_hours ? `<div class="gcell"><small>Zielfahrt</small><b>${fmt(plan.target_hours, 1)} h</b></div>` : ""}
+          ${plan.longest_now ? `<div class="gcell"><small>Bisher am längsten</small><b>${fmt(plan.longest_now, 1)} h</b></div>` : ""}
+          ${plan.gap_hours != null ? `<div class="gcell"><small>Fehlt noch</small><b>${fmt(plan.gap_hours, 1)} h</b></div>` : ""}
+          ${plan.weeks_left != null ? `<div class="gcell"><small>Wochen bis zum Ziel</small><b>${plan.weeks_left}</b></div>` : ""}
+        </div>
+        <details class="more"><summary>Warum das die richtige Zielgröße ist</summary>
+          <p class="src">${esc(plan.why)}</p></details>
+      </div>
+
+      ${note ? `<div class="cmpverdict worse">${ico("warn", C.amber, 18)}
+        <div><b>Das Zeitbudget trägt dieses Ziel nicht.</b><span>${esc(note.text)}</span></div></div>` : ""}
+
+      <h3 class="secname">Die nächsten Wochen
+        <span class="hint">— Muster ${esc(plan.pattern)}, Klick öffnet die Woche</span></h3>
+      <div class="pweeks">${weeks}</div>
+      <div class="card pad">
+        <details class="more"><summary>Warum dieses Wochenmuster — und was es nicht kann</summary>
+          <p class="src">${esc(plan.pattern_note)}</p>
+          <p class="src">${esc(plan.caveat)}</p></details>
+      </div>`;
+  }
+
+  _goalForm(g) {
+    const d = this._goalDraft || (g.profile && g.profile.goal ? { ...g.profile } : {});
+    const goals = g.goals || {};
+    const state = g.state || {};
+    const picked = d.goal;
+    const field = (name, label, attrs, hint) => `<label class="gfield">
+      <span>${esc(label)}</span>
+      <input data-field="${name}" ${attrs} value="${d[name] != null ? esc(String(d[name])) : ""}">
+      ${hint ? `<em>${esc(hint)}</em>` : ""}</label>`;
+
+    return `<div class="card pad">
+      <h3 class="secname" style="margin-top:0">Was willst du erreichen?</h3>
+      <p class="hint">Ohne diese Angaben kann ein Plan nur raten. Sie lassen sich jederzeit ändern.</p>
+      <div class="goalpick">
+        ${Object.entries(goals).map(([key, info]) => `<button
+          class="gopt ${picked === key ? "on" : ""}" data-act="goalpick" data-id="${key}">
+          <b>${esc(info.label)}</b><span>${esc(info.detail)}</span></button>`).join("")}
+      </div>
+      ${picked ? `
+        <div class="gfields">
+          ${field("days_per_week", "Tage pro Woche", 'type="number" min="1" max="7" step="1"',
+                  "An wie vielen Tagen kannst du verlässlich fahren?")}
+          ${field("hours_per_week", "Stunden pro Woche", 'type="number" min="2" max="30" step="0.5"',
+                  "Realistisch, nicht im besten Fall.")}
+          ${field("longest_day_hours", "Längster Tag, den du schaffst", 'type="number" min="1" max="12" step="0.5"',
+                  state.longest_ride_hours ? `Im Archiv steht ${state.longest_ride_hours} h.` : "")}
+          ${picked === "long_ride"
+            ? field("target_hours", "Zielfahrt in Stunden", 'type="number" min="2" max="24" step="0.5"',
+                    "Wie lang soll die Fahrt am Ende sein?") : ""}
+          ${field("target_date", "Zieldatum (optional)", 'type="date"',
+                  "Wenn du eines hast, wird rückwärts geplant.")}
+          ${field("long_day", "Welcher Tag ist der lange? (optional)", 'type="text" placeholder="z. B. Samstag"', "")}
+          ${field("notes", "Was ich sonst wissen sollte", 'type="text" placeholder="Schichtdienst, Knie, keine Rolle im Sommer …"',
+                  "Steht im Plan als Hinweis und wird nicht automatisch verrechnet.")}
+        </div>
+        <label class="gcheck"><input type="checkbox" data-field="indoor_only" ${d.indoor_only ? "checked" : ""}>
+          <span>nur drinnen auf der Rolle</span></label>
+        <div class="gdays"><span>Tage, an denen nichts Hartes geht:</span>
+          ${["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map((day) => `<label class="gday">
+            <input type="checkbox" data-hard="${day}" ${(d.hard_days || []).includes(day) ? "checked" : ""}>
+            <span>${day}</span></label>`).join("")}
+        </div>
+        <div class="worow">
+          <button class="planbtn" data-act="goalsave">Ziel speichern</button>
+          ${g.profile && g.profile.goal ? `<button class="chipbtn" data-act="goalcancel">abbrechen</button>` : ""}
+        </div>` : ""}
+    </div>`;
   }
 
   /* ---------------- Signale ----------------
@@ -2497,6 +2680,53 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
   .lrow{grid-template-columns:30px 1fr 70px 74px;}
   .lrow>*:nth-child(5),.lrow>*:nth-child(6),.lrow>*:nth-child(7),.lrow>*:nth-child(8){display:none}
 }
+/* Ziel und Plan */
+.goalhead{display:flex;justify-content:space-between;align-items:flex-start;gap:14px}
+.goaltitle{font-size:24px;margin:2px 0 4px;font-weight:700}
+.goalsub{color:${C.tx2};font-size:14px;margin:0 0 10px}
+.goalgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:10px 0}
+.gcell{background:${C.card2};border-radius:9px;padding:9px 12px}
+.gcell small{display:block;color:${C.tx3};font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+.gcell b{font-size:17px}
+.goalpick{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;margin:12px 0}
+.gopt{text-align:left;background:${C.card2};border:1px solid ${C.line};border-radius:10px;
+  padding:11px 13px;color:${C.tx};font:inherit;cursor:pointer}
+.gopt:hover{border-color:${ROLE.series}66}
+.gopt.on{border-color:${ROLE.series};background:${ROLE.series}18}
+.gopt b{display:block;font-size:15px;margin-bottom:2px}
+.gopt span{color:${C.tx2};font-size:12.5px}
+.gfields{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px;margin:14px 0}
+.gfield{display:block}
+.gfield span{display:block;font-size:13.5px;margin-bottom:4px}
+.gfield input{width:100%;box-sizing:border-box;background:${C.card2};border:1px solid ${C.line};
+  border-radius:8px;padding:8px 10px;color:${C.tx};font:inherit;font-size:14px}
+.gfield input:focus{outline:none;border-color:${ROLE.series}}
+.gfield em{font-style:normal;display:block;color:${C.tx3};font-size:11.5px;margin-top:3px}
+.gcheck{display:flex;align-items:center;gap:8px;font-size:13.5px;margin:4px 0 10px}
+.gdays{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13.5px;margin-bottom:12px}
+.gdays>span{color:${C.tx2}}
+.gday{display:flex;align-items:center;gap:4px;color:${C.tx2}}
+.pweeks{display:grid;gap:8px}
+.pweek{background:${C.card};border:1px solid ${C.line};border-radius:10px;padding:10px 13px;cursor:pointer}
+.pweek:hover{border-color:${ROLE.series}55}
+.pweek.recovery{background:${C.card2};border-style:dashed}
+.pwhead{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.pwno{color:${C.tx3};font-size:12.5px;font-weight:700;min-width:26px}
+.pwphase{font-size:14.5px;font-weight:650}
+.pwh{color:${C.tx2};font-size:13.5px}
+.pwlong{color:${ROLE.series};font-size:13.5px}
+.pwlong em{font-style:normal;color:${C.tx3};font-size:11.5px}
+.pwsess{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}
+.ptag{font-size:11.5px;padding:2px 8px;border-radius:999px;background:${C.card2};color:${C.tx2}}
+.ptag.long{background:${ROLE.series}22;color:${C.tx}}
+.ptag.quality{background:${C.violet}22;color:${C.tx}}
+.pwbody{margin-top:10px;border-top:1px solid ${C.line};padding-top:10px;display:grid;gap:10px}
+.psess{background:${C.card2};border-radius:9px;padding:10px 12px}
+.psess.long{border-left:3px solid ${ROLE.series}}
+.psess.quality{border-left:3px solid ${C.violet}}
+.psess b{font-size:14.5px}
+.psess p{margin:4px 0 0;font-size:13.5px;color:${C.tx2}}
+
 /* Wie diese Einheit dasteht */
 .ctxbox{background:${C.card2};border-radius:10px;padding:10px 14px}
 .ctxscale{display:grid;grid-template-columns:1fr 92px minmax(160px,1.4fr) minmax(190px,1fr);gap:12px;

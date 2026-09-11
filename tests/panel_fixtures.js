@@ -276,6 +276,62 @@ function steadyStream(kind) {
 
 /* the night after a session, as intervals_icu/night returns it */
 /* how this session sits among comparable ones, as intervals_icu/context returns it */
+/* goal profile and the plan it produces, as intervals_icu/goal returns it */
+function goal(kind) {
+  const goals = {
+    long_ride: { label: "Lange Fahrten durchstehen", detail: "Sechs Stunden und mehr, ohne im letzten Drittel einzubrechen.", target: "Durability — Ermüdungswiderstand", why: "Maunder definiert sie als Zeitpunkt und Ausmaß der Verschlechterung physiologischer Merkmale während langer Belastung.", key_session: "der lange Tag" },
+    ftp: { label: "Schwellenleistung heben", detail: "Mehr Watt über eine Stunde.", target: "FTP", why: "Schwellenarbeit plus SweetSpot.", key_session: "die Schwelleneinheit" },
+    vo2max: { label: "Spitzenleistung heben", detail: "Die Pyramide oben breiter machen.", target: "VO2max", why: "Rønnestads 30/15.", key_session: "die VO2max-Einheit" },
+    health: { label: "Fit bleiben", detail: "Form halten.", target: "Erhalt", why: "Gleichmäßige Grundlage.", key_session: "die Grundlageneinheit" },
+  };
+  const state = { longest_ride_hours: 3.5, weekly_load: 181 };
+  if (kind === "neu") {
+    return { profile: { goal: null, hard_days: [] }, state, goals, plan: { ready: false, missing: ["goal"] } };
+  }
+  const week = (index, kindOf, hours, long, capped, phase) => ({
+    index, start: "2026-09-" + (12 + 7 * (index - 1)), kind: kindOf,
+    phase: phase || "base", phase_label: phase === "specific" ? "Spezifisch" : "Grundlage",
+    phase_note: "Umfang und aerobe Basis.", weeks_left: 30 - index,
+    hours, long_day_hours: long, long_day_capped: !!capped,
+    sessions: [
+      { role: "long", title: `Langer Tag — ${long} h`, workout: "z2_90",
+        detail: phase === "specific" ? "Die letzten 30–40 Minuten mit 2×10 min zügig." : "Noch ohne harte Anteile.",
+        why: "Lange Einheiten nahe unter der aeroben Schwelle bauen Fettoxidation.",
+        fuel: "Durchgehend essen und trinken.", hours: long },
+      { role: "quality", title: "SweetSpot 2×20", workout: "sweetspot_2x20",
+        detail: "Die harte Einheit der Woche.", why: "Hält die Schwelle oben.", hours: 1.2 },
+      { role: "endurance", title: "Grundlage — 1.4 h", workout: "z2_60",
+        detail: "Gleichmäßig, DFA über 0,75.", why: "75–80 % der Einheiten.", hours: 1.4 },
+    ],
+  });
+  const base = {
+    profile: { goal: "long_ride", target_hours: 6.5, target_date: "2027-05-01",
+      days_per_week: 4, hours_per_week: 11, longest_day_hours: 3.5, hard_days: ["Mo"],
+      long_day: "Samstag", indoor_only: false, notes: "Schichtdienst" },
+    state, goals,
+    plan: {
+      ready: true, goal: "long_ride", goal_label: "Lange Fahrten durchstehen",
+      target: "Durability — Ermüdungswiderstand",
+      why: "Maunder: Zeitpunkt und Ausmaß der Verschlechterung während langer Belastung.",
+      key_session: "der lange Tag", pattern: "3:1",
+      pattern_note: "Lastgleich verglichen fanden zwölf Wochen keinen Unterschied zwischen Block und traditionell.",
+      longest_now: 3.5, target_hours: 6.5, gap_hours: 3.0, weeks_left: 33,
+      budget_note: null,
+      weeks: [week(1, "load", 11, 3.9), week(2, "load", 11, 4.4),
+              week(3, "load", 11, 4.9, false, "specific"), week(4, "recovery", 7.2, 3.4)],
+      caveat: "Der Zuwachs von rund 12 % je Belastungswoche ist eine Konvention, kein Studienergebnis. Ein Einbruch schlägt jeden Plan.",
+    },
+  };
+  if (kind === "knapp") {
+    return { ...base, plan: { ...base.plan,
+      budget_note: { kind: "too_little_time", needed_hours: 11, have_hours: 8,
+        reachable_long_day: 4.8,
+        text: "Mit 8 Stunden pro Woche ist eine 6.5-Stunden-Fahrt nicht aufzubauen." },
+      weeks: [week(1, "load", 8, 4.8, true), week(2, "load", 8, 4.8, true)] } };
+  }
+  return base;
+}
+
 function context(kind) {
   if (kind === "leer") return { available: false };
   const full = {
@@ -525,4 +581,4 @@ function workouts(kind) {
   };
 }
 
-module.exports = { TODAY, days, load, readiness, activities, streams, thresholds, calendar, pmc, laps, lapsWithBounds, steadyStream, night, context, coach, signals, workouts };
+module.exports = { TODAY, days, load, readiness, activities, streams, thresholds, calendar, pmc, laps, lapsWithBounds, steadyStream, night, context, goal, coach, signals, workouts };

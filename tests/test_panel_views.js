@@ -142,6 +142,73 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   p._workouts = F.workouts();
 }
 
+/* ── Ziel und Plan ─────────────────────────────────────────────────────── */
+{
+  // no goal yet: the form, not an empty plan
+  p._goal = F.goal("neu");
+  const fresh = p.rGoal(p._goal);
+  clean(fresh, "ziel neu");
+  contains(fresh, "Was willst du erreichen", "ziel: keine Frage gestellt");
+  for (const needle of ["Lange Fahrten durchstehen", "Schwellenleistung heben",
+                        "Spitzenleistung heben", "Fit bleiben"]) {
+    contains(fresh, needle, "ziel: Auswahl unvollständig");
+  }
+  // the fields only appear once a goal is picked - one question at a time
+  ok(!fresh.includes('data-field="hours_per_week"'), "ziel: Felder vor der Zielwahl");
+  p._goalDraft = { goal: "long_ride" };
+  const picked = p.rGoal(p._goal);
+  clean(picked, "ziel gewählt");
+  for (const field of ["days_per_week", "hours_per_week", "longest_day_hours",
+                       "target_hours", "target_date", "notes"]) {
+    ok(picked.includes(`data-field="${field}"`), `ziel: Feld ${field} fehlt`);
+  }
+  ok((picked.match(/data-hard=/g) || []).length === 7, "ziel: Wochentage unvollständig");
+  contains(picked, "Im Archiv steht 3.5 h", "ziel: bekannter Bestwert nicht angeboten");
+  // target duration is asked ONLY where it means something
+  p._goalDraft = { goal: "vo2max" };
+  ok(!p.rGoal(p._goal).includes('data-field="target_hours"'),
+     "ziel: Zieldauer auch ohne Langfahrt-Ziel abgefragt");
+  p._goalDraft = null;
+
+  // a stored goal: the plan
+  p._goal = F.goal();
+  p._goalEdit = false;
+  const html = p.rGoal(p._goal);
+  clean(html, "ziel gesetzt");
+  contains(html, "Lange Fahrten durchstehen", "plan: Ziel nicht genannt");
+  contains(html, "Durability", "plan: Zielgröße nicht genannt");
+  contains(html, "4 Tage", "plan: Wochenstruktur fehlt");
+  contains(html, "Fehlt noch", "plan: Lücke zum Ziel fehlt");
+  ok((html.match(/class="pweek /g) || []).length === 4, "plan: nicht alle Wochen");
+  contains(html, "Entlastung", "plan: Entlastungswoche nicht markiert");
+  contains(html, "langer Tag", "plan: langer Tag fehlt");
+  // the sources travel with it, folded
+  contains(html, "Maunder", "plan: Quelle der Zielgröße fehlt");
+  contains(html, "keinen Unterschied", "plan: Blockperiodisierung falsch dargestellt");
+  contains(html, "Konvention, kein Studienergebnis", "plan: Wachstumsregel nicht eingeordnet");
+  contains(html, "Einbruch schlägt jeden Plan", "plan: Vorrang des Zustands fehlt");
+
+  // opening a week shows the sessions with their reasons
+  ok(!html.includes("Durchgehend essen"), "plan: Details ungefragt ausgebreitet");
+  p._planOpen = "1";
+  const open = p.rGoal(p._goal);
+  clean(open, "plan Woche offen");
+  contains(open, "Durchgehend essen", "plan: Verpflegungshinweis fehlt");
+  contains(open, "Fettoxidation", "plan: Begründung der langen Einheit fehlt");
+  p._planOpen = null;
+
+  // a weekly budget that cannot carry the goal must SAY so
+  p._goal = F.goal("knapp");
+  const tight = p.rGoal(p._goal);
+  clean(tight, "plan knapp");
+  contains(tight, "Das Zeitbudget trägt dieses Ziel nicht", "plan: Warnung fehlt");
+  contains(tight, "nicht aufzubauen", "plan: Rechnung nicht genannt");
+  contains(tight, "vom Wochenbudget gedeckelt", "plan: Deckelung nicht markiert");
+  ok(/class="cmpverdict worse/.test(tight), "plan: Warnung nicht als Warnung gezeigt");
+  p._goal = null;
+  clean(p.rGoal(null), "ziel ohne Daten");
+}
+
 /* ── Signale ───────────────────────────────────────────────────────────── */
 {
   const html = p.rSignale(F.signals());

@@ -87,6 +87,8 @@ def empty_data(athlete_id: str) -> dict[str, Any]:
         "activities": {},
         "dfa": {},
         "unavailable": [],
+        # the athlete's goal profile - written by the panel, never by the API
+        "goal": None,
         "last_import": None,
         "full_import_done": False,
         "dfa_version": DFA_ALGO_VERSION,

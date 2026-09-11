@@ -1,6 +1,6 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 11.09.2026 · **Version:** 0.19.0 · **Status:** produktiv auf HEIMDALL,
+**Stand:** 11.09.2026 · **Version:** 0.20.0 · **Status:** produktiv auf HEIMDALL,
 Auslieferung über HACS aus `github.com/JochenRi/ha-intervals-icu`
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lokal
@@ -133,6 +133,38 @@ Einzelwert verschweigt.
 
 Ein Test fährt vier Fahrten mit unterschiedlicher Drift durch (1,1 % / 4,0 % / 5,3 % /
 14,5 %) und verlangt für jede die richtige Einstufung.
+
+### Ziel und Plan (0.20.0) — der Trainer ist entpausiert
+
+Der Trainer schlug Einheiten vor, ohne zu wissen, wofür. Jetzt fragt er einmal: **Was
+willst du können, wie viele Tage hast du, wie viele Stunden, was kann nicht verschoben
+werden** — und leitet daraus Wochen ab. Das Profil liegt lokal im Archiv, nichts davon
+geht an intervals.icu.
+
+**Für das Ziel „lange Fahrten" ist die Zielgröße nicht FTP, sondern Durability.** Maunder
+definiert sie als *Zeitpunkt und Ausmaß der Verschlechterung physiologischer Merkmale
+während langer Belastung*. Sie ist eine eigene Eigenschaft: Profifahrer schlagen ihre
+Konkurrenz nicht über die frische Leistung, sondern darüber, wie viel davon nach Stunden
+übrig ist. Trainiert wird sie über lange Einheiten knapp unter der aeroben Schwelle — und
+ab etwa sechs bis acht Wochen vor dem Ziel über **Qualität am Ende** der langen Fahrt, nicht
+am Anfang. Dazu der Hinweis, der am häufigsten falsch gemacht wird: **durchgehend
+verpflegen** — der Reiz soll aus der Belastung kommen, nicht aus leeren Speichern.
+
+**Was der Planer bewusst NICHT behauptet:** dass Blockperiodisierung besser sei. Zwölf
+Wochen, trainierte Radfahrer, lastgleich verglichen — **kein Unterschied** in der
+Zeitfahrleistung. Ihr echter Vorteil ist praktisch: ein Reiz je Block vereinfacht die
+Planung und lässt sie sich an die Wochen anpassen, die das Leben übrig lässt. Das steht so
+im Panel.
+
+**Belastungsmuster** 3:1 (ab vier Tagen) oder 2:1, Entlastungswoche bei rund zwei Dritteln
+des Umfangs. Der lange Tag wächst etwa 12 % je Belastungswoche — **als Konvention
+ausgewiesen, nicht als Studienergebnis**.
+
+**Die ehrlichste Zeile im ganzen Planer** ist die Rechnung, die sagt, dass es nicht geht:
+Bei 8 Wochenstunden ist eine 6,5-Stunden-Fahrt nicht aufzubauen — sie wäre 81 % der
+Wochenzeit. Statt eine Zahl zu drucken und sie dann still zu kappen, steht da, wie viele
+Wochenstunden das Ziel braucht (rund 11) und was aus der jetzigen Woche erreichbar ist
+(4,8 h). Ein Test erzwingt, dass der angezeigte lange Tag nie über dem Wochenbudget liegt.
 
 ### Wie diese Einheit dasteht (0.19.0)
 
@@ -338,11 +370,6 @@ der Test fehlschlägt.
 ---
 
 ## 9. Offen
-
-**Der Trainer pausiert — aus gutem Grund.** Er schlägt belegte Einheiten vor, **kennt aber
-das Ziel nicht**: kein Saisonziel, keine verfügbare Zeit pro Woche, keine Präferenz
-zwischen Ausdauer und Spitzenleistung. Ohne das ist jede Reihenfolge geraten, auch wenn
-jede einzelne Einheit belegt ist. Erst klären, dann weiterbauen.
 
 **Als Nächstes:**
 - Signal-Ansicht: deutlicher zeigen, *warum* gerade was passiert — Ereignisse annotieren
