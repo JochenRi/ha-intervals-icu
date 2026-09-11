@@ -1,6 +1,6 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 11.09.2026 · **Version:** 0.16.0 · **Status:** produktiv auf HEIMDALL,
+**Stand:** 11.09.2026 · **Version:** 0.17.0 · **Status:** produktiv auf HEIMDALL,
 Auslieferung über HACS aus `github.com/JochenRi/ha-intervals-icu`
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lokal
@@ -98,52 +98,41 @@ Alles am eigenen Konto geprüft, nicht aus Dokumentation übernommen.
 | **DFA** | Schwellenverlauf mit rollierendem Median, Leistung als eigenes Feld |
 | **Plan** | Geplante Workouts nach Tagen |
 
-### Blockvergleich (0.14.0, ersetzt die Rundenkurven aus 0.13.0)
+### Segmentanalyse (0.17.0) — dieselbe Tabelle für Intervalle und Grundlage
 
-**0.13.0 war ein Fehlschlag, und zwar ein lehrreicher.** Jede Runde bekam eine eigene
-Zeile mit gemeinsamer Skala. Die Skala machte die Zeilen vergleichbar — und jede einzelne
-Kurve zu einem waagerechten Strich. Neun Zeilen, deren einzige Information die Höhe war.
-Der Test hat das sogar als Erfolg gewertet („Amplitude 1 px").
+**Zwei verworfene Entwürfe stehen davor, beide lehrreich:**
 
-Gleicher (*Considerations for Visualizing Comparison*) benennt den Konstruktionsfehler:
-**Juxtaposition lädt die Arbeit mit den Beziehungen beim Betrachter ab**, während
-**Superposition** verlangt, dass die Objekte einander ähnlich genug sind, um denselben
-Raum zu teilen. Vier Arbeitsblöcke gleicher Dauer sind genau solche Objekte.
+1. *0.13.0 — eine Zeile je Runde, gemeinsame Skala.* Machte die Zeilen vergleichbar und jede
+   einzelne Kurve zum Strich.
+2. *0.14.0–0.16.0 — die Blöcke übereinandergelegt.* Theoretisch richtig (Gleicher:
+   Superposition, wenn die Objekte ähnlich genug sind), praktisch ein Knäuel: bei
+   verrauschten Sekundendaten gilt der Befund von Javed et al., dass mehr Linien die
+   Korrektheit senken und die Elemente ihre Unterscheidbarkeit verlieren. Direktbeschriftung
+   und Aufzoomen haben das gemildert, nicht behoben.
 
-Daraus die neue Ansicht:
+**Was bleibt, ist die Tabelle** — und sie ist jetzt ein allgemeines Werkzeug (`_devTable`),
+das auf jede geordnete Liste von Abschnitten passt:
 
-- **Superposition:** die Arbeitsblöcke übereinandergelegt auf einer gemeinsamen Achse
-  „Sekunden im Block", eine Linie je Block, **Helligkeit trägt die Reihenfolge** (blass =
-  früh, kräftig = spät). Vier Linien bleiben klar unter der Grenze, ab der Liniendiagramme
-  ihre Unterscheidbarkeit verlieren.
-- **Explizite Kodierung als Abweichungsbalken (0.15.0):** der erste Versuch war ein
-  Steigungsdiagramm — dort trägt der **Winkel** die Information, und Positionsurteile sind
-  1,4–2,5 mal genauer als Längen- und rund doppelt so genau wie Winkelurteile
-  (Cleveland & McGill). Bei zwei Blöcken zerfiel es zu vier geraden Linien ohne Aussage.
-  Jetzt: Abweichung gegenüber dem ersten Block, Balken an gemeinsamer Grundlinie —
-  „*wenn der Leser die Basislinie kennt, zeigt man die Abweichung statt des Absolutwerts*".
-  **Die Balkenlänge ist normiert** (damit die Zeilen vergleichbar bleiben), **die Zahl steht
-  in ihrer eigenen Einheit** (−10 W, +11 bpm) — dieselbe Regel wie bei der Ableseleiste.
-  Richtung wird mitkodiert: bei „höher ist besser" und „niedriger ist besser" bedeutet
-  dasselbe Vorzeichen Gegenteiliges.
-- **Jede Linie trägt ihren Namen am Ende (0.16.0).** Eine Legende zwingt den Blick, zwischen
-  zwei Orten zu pendeln und die Zuordnung im Kopf zu halten; Beschriftung an der Linie
-  entfernt diese Suche. Die Helligkeit bleibt als zweiter Kanal (blass = früh).
-- **Puls-Erholung als fünfte Kennzahl (0.16.0):** wie weit der Puls in den ersten 60
-  Sekunden der Pause nach jedem Block zurückkommt. Ein eigenständiges Ermüdungsmaß, das
-  aus den Rundenmittelwerten nicht ablesbar ist — es wird aus dem Stream gerechnet.
-- **Spaltenköpfe über den Abweichungsbalken (0.16.0):** vorher hatte ein Balken keine
-  Adresse; jetzt steht über jeder Spalte, zu welchem Block sie gehört, und die Zahl sitzt
-  am Ende ihres eigenen Balkens statt darunter.
-- **Felder sind anklickbar:** ein Klick zieht ein Kanalfeld auf volle Breite und mehr als
-  doppelte Höhe, ein zweiter klappt es zurück.
-- **Ein Urteil in Worten** darüber: „Die Serie hat abgebaut. Vom 2. zum 8. Block: Leistung
-  −3,9 %, Puls +8, DFA −0,26."
-- **Aufwärmen, Pausen und Ausfahren werden nicht überlagert** — andere Aufgabe, sie wären
-  nur Unruhe. Sie stehen aufklappbar als Tabelle darunter.
+| Fall | Abschnitte |
+|---|---|
+| Intervalleinheit | die gleichartigen Arbeitsblöcke |
+| Gleichmäßige Fahrt | vier gleich lange Viertel, Aufwärmphase ausgenommen |
 
-Ein Test misst die **Kurvenamplitude**: wird ein Feld wieder zum Strich, schlägt er mit
-genau dieser Meldung fehl.
+Zeilen sind Kennzahlen (Leistung, Puls, DFA, Watt/Herzschlag, Puls-Erholung), Spalten sind
+Abschnitte, jeder Balken die Abweichung vom ersten — **Länge an gemeinsamer Grundlinie**,
+die am genauesten gelesene Kodierung, mit der Zahl in ihrer eigenen Einheit daneben und dem
+Bezugswert in der Zeilenbeschriftung.
+
+**Der Grundlagen-Fall ist der Entkopplungstest, sichtbar gemacht.** Kardiale Drift — der
+Puls steigt bei konstanter Leistung — ist das *Was*; ob Watt pro Herzschlag zusammenhält,
+das *Na und*. Die Einordnung folgt den veröffentlichten Richtwerten: unter 3 % halten
+trainierte Fahrer, 5 % ist Friels Richtwert, 5–10 % ist der Freizeitbereich, über 10 % lag
+die Einheit wahrscheinlich über der aeroben Schwelle. **Vier Viertel statt zwei Hälften**,
+weil der Zeitpunkt der Veränderung selbst eine Information ist, die der übliche
+Einzelwert verschweigt.
+
+Ein Test fährt vier Fahrten mit unterschiedlicher Drift durch (1,1 % / 4,0 % / 5,3 % /
+14,5 %) und verlangt für jede die richtige Einstufung.
 
 ### Gestaltungsregeln, jede mit Grund
 
@@ -283,6 +272,7 @@ der Test fehlschlägt.
 | 0.9.4 | Runden-Urteil verglich Aufwärmen mit Ausfahren („34 % Abfall") | ein Serienurteil darf nur Gleichartiges vergleichen — in der Simulation gefunden |
 | 0.11.0 | Zustandsbänder widersprachen dem Trainerurteil | Bänder nutzten den Tageswert, der Trainer das 3-Tage-Mittel |
 | 0.12.0 | `VO2max 4×8` behauptete 75 min, Blöcke ergaben 67 | Dauer und Last im Kalender wären falsch gewesen |
+| 0.16.0 | Überlagerte Blockkurven blieben unlesbar | die Konstruktion war theoriegerecht, die Daten aber zu verrauscht: vier Linien wurden zum Knäuel. Direktbeschriftung und Zoom milderten, behoben hat es erst das Weglassen — die Tabelle allein trägt die Aussage |
 | 0.14.0 | Steigungsdiagramm „Alles auf einer Achse" war unlesbar | die Information lag im Winkel — der schlechteste der drei Kanäle; bei zwei Blöcken vier gerade Linien ohne Aussage. Ersetzt durch Abweichungsbalken an gemeinsamer Grundlinie |
 | 0.13.0 | Rundenkurven waren unlesbar: gemeinsame Skala über alle Zeilen machte jede einzelne Kurve zum Strich | Vergleichbarkeit und Lesbarkeit gegeneinander eingetauscht. Der Test maß nur das eine Ziel und meldete Erfolg. Ersetzt durch Superposition + Indexierung; der neue Test misst die Kurvenamplitude |
 | 0.13.0 | Rundenkurven zogen den ersten Messpunkt der nächsten Runde mit | das Ende einer Runde ist der erste Messpunkt der nächsten — bei einer Pause vor einem 259-W-Block ein Sprung von 91 auf 259 W mitten in der Erholungskurve. Vom Geometrie-Test gefunden, nicht vom Auge |

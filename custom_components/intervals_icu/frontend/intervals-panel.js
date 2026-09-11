@@ -1682,191 +1682,191 @@ class IntervalsIcuPanel extends HTMLElement {
 
      Recoveries are not overlaid: their job is a different one, and they get
      their own number - how far the heart rate came back down. */
-  _lapCompare(a) {
-    const data = this._laps[a.id], st = this._streams[a.id];
-    if (!data || data.error || !st || st.error || !st.points) return "";
-    const laps = (data.laps || []).filter((l) => l.start_s != null && l.end_s != null);
-    if (laps.length < 2) {
-      return laps.length === 1
-        ? `<p class="hint pad">Eine einzige Runde — hier gibt es nichts zu vergleichen.
-           Der Verlauf der ganzen Einheit steht unten.</p>` : "";
-    }
+  /* The deviation table, as a general tool.
 
-    // comparable efforts only: similar power, similar duration
-    const powered = laps.filter((l) => (l.avg_watts || 0) > 0 && (l.moving_time || 0) >= 60);
-    const peak = Math.max(0, ...powered.map((l) => l.avg_watts || 0));
-    let work = powered.filter((l) => (l.avg_watts || 0) >= peak * 0.85);
-    const medDur = median(work.map((l) => l.moving_time || 0)) || 0;
-    work = work.filter((l) => medDur > 0 && Math.abs((l.moving_time || 0) - medDur) <= medDur * 0.35);
-    const rests = laps.filter((l) => !work.includes(l) && (l.moving_time || 0) >= 60);
+     It works on any ordered list of segments: the work blocks of an interval
+     session, or the quarters of a steady ride. Rows are measures, columns are
+     segments, and every bar is the deviation from the FIRST segment - length
+     on a common baseline, which is the most accurately read encoding there
+     is, with the number in its own unit next to it.
 
-    if (work.length < 2) {
-      return `<h3 class="secname">Blockvergleich</h3>
-        <p class="hint pad">Weniger als zwei gleichartige Blöcke — ein Vergleich wäre geraten.
-        Die Runden stehen in der Tabelle darüber.</p>`;
-    }
-
-    const ch = st.channels || {}, time = ch.time || [];
-    const at = (sec) => {
-      if (!time.length) return null;
-      let lo = 0, hi = time.length - 1;
-      while (lo < hi) { const mid = (lo + hi) >> 1; if (time[mid] < sec) lo = mid + 1; else hi = mid; }
-      return lo;
-    };
-    const cut = (lap, key, zeroGap) => {
-      const i0 = at(lap.start_s), i1 = at(lap.end_s);
-      if (i0 == null || i1 == null || i1 - i0 < 2) return [];
-      return (ch[key] || []).slice(i0, i1)
-        .map((v) => (v == null || (zeroGap && v <= 0)) ? null : v);
-    };
-
-    const DEFS = [
-      { k: "watts", l: "Leistung", u: "W", c: ROLE.pow },
-      { k: "heartrate", l: "Herzfrequenz", u: "bpm", c: ROLE.hr },
-      { k: "dfa_a1", l: "DFA alpha-1", u: "", c: ROLE.dfa, dec: 2, dfa: true },
-    ].filter((d) => (ch[d.k] || []).some((v) => v != null && v > 0));
-
-    // superposition: one line per block on a common elapsed-time axis
-    const panels = DEFS.map((d) => {
-      const cuts = work.map((l) => cut(l, d.k, true));
-      const n = Math.max(...cuts.map((c) => c.length), 2);
-      const all = cuts.flat().filter((v) => v != null);
-      if (!all.length) return "";
-      let [y0, y1] = [Math.min(...all), Math.max(...all)];
-      if (d.dfa) { y0 = Math.min(y0, 0.45); y1 = Math.max(y1, 1.0); }
-      else { const pad = (y1 - y0) * 0.12 || 1; y0 -= pad; y1 += pad; }
-      const series = cuts.map((vals, index) => ({
-        t: "line",
-        v: vals.concat(new Array(Math.max(0, n - vals.length)).fill(null)),
-        c: d.c, w: index === cuts.length - 1 ? 2.4 : 1.6,
-        // lightness carries the order: pale first block, solid last
-        lop: 0.34 + 0.66 * (index / Math.max(1, cuts.length - 1)),
-      }));
-      // one label per line, at its own end - no legend to look up
-      const tags = cuts.map((vals, index) => {
-        let last = vals.length - 1;
-        while (last > 0 && vals[last] == null) last--;
-        if (last < 1) return null;
-        const spread = (y1 - y0) || 1;
-        return { i: last, v: vals[last], t: "Block " + work[index].n, c: d.c,
-                 dy: -6 - (index % 2) * 10 };
-      }).filter(Boolean);
-      const ticks = [];
-      const secs = Math.round(medDur);
-      for (let k = 0; k <= 4; k++) {
-        ticks.push({ i: Math.round((k / 4) * (n - 1)), t: hhmm(Math.round((k / 4) * secs)) });
-      }
-      const big = this._cmpFocus === d.k;
-      return `<div class="cmppanel ${big ? "big" : ""}" data-act="cmpzoom" data-id="${d.k}"
-          title="${big ? "kleiner" : "größer anzeigen"}">
-        <div class="cmplab" style="color:${d.c}">${d.l}${d.u ? ` <span class="sfu">${d.u}</span>` : ""}
-          <span class="zoomhint">${big ? "▾ kleiner" : "▸ größer"}</span></div>
-        ${chart({ h: big ? 340 : 150, n, y0, y1, xt: ticks, padL: big ? 54 : 46,
-          yf: (v) => fmt(v, d.dec || 0),
-          bands: d.dfa ? [{ a: 0.5, b: 0.75, c: C.amber, op: 0.09 },
-                          { a: y0, b: 0.5, c: C.red, op: 0.09 }] : [],
-          hl: d.dfa ? [{ y: 0.75, c: C.green, d: 1, t: "0,75" }] : [],
-          s: series, tags })}
-      </div>`;
-    }).join("");
-
-    // Explicit encoding, second attempt. The first was a slope graph, where
-    // the information rides on the ANGLE of a line - and position judgements
-    // are 1.4-2.5x more accurate than length and about 2x more accurate than
-    // angle (Cleveland & McGill). With two blocks it degenerates into four
-    // straight lines saying nothing at all.
-    //
-    // So: deviation bars against a common baseline. The reader already knows
-    // the reference - it is the first block - so the absolute value is not
-    // what is wanted; the deviation is. Bars sit adjacent per measure,
-    // because adjacent bars are compared more accurately than separated ones.
-    const base = work[0];
-    // The BAR is normalised so the rows can be compared; the NUMBER is in the
-    // unit the rider thinks in. "+11 bpm" means something, "+6,5 %" does not.
-    // Heart rate recovery after each block: how far the pulse drops in the
-    // first 60 seconds of the following rest. It falls as a series wears on
-    // and is a fatigue marker in its own right - measured from the stream,
-    // because a lap average cannot show it.
-    const hrr = new Map();
-    if ((ch.heartrate || []).length) {
-      for (const lap of work) {
-        const iEnd = at(lap.end_s), i60 = at(lap.end_s + 60);
-        if (iEnd == null || i60 == null || i60 <= iEnd) continue;
-        const tail = ch.heartrate.slice(Math.max(0, iEnd - 4), iEnd + 1).filter((v) => v > 0);
-        const after = ch.heartrate[Math.min(i60, ch.heartrate.length - 1)];
-        if (tail.length && after > 0) hrr.set(lap.n, Math.max(...tail) - after);
-      }
-    }
-
-    const measures = [
-      { l: "Leistung", u: " W", dec: 0, c: ROLE.pow, get: (l) => l.avg_watts, good: "up" },
-      { l: "Herzfrequenz", u: " bpm", dec: 0, c: ROLE.hr, get: (l) => l.avg_hr, good: "down" },
-      { l: "DFA alpha-1", u: "", dec: 2, c: ROLE.dfa, get: (l) => l.dfa_a1, good: "up" },
-      { l: "Watt pro Herzschlag", u: "", dec: 2, c: C.blue, get: (l) => l.ef, good: "up" },
-      { l: "Puls-Erholung", u: " bpm", dec: 0, c: C.magenta, get: (l) => hrr.get(l.n),
-        good: "up", hint: "Abfall in den ersten 60 s der Pause danach" },
-    ].filter((m) => m.get(base) != null && work.some((l) => m.get(l) != null));
-
-    const devs = measures.map((m) => work.slice(1).map((l) => {
-      const v = m.get(l), b = m.get(base);
-      return (v == null || !b) ? null : (v - b) / b * 100;
+     This replaces the overlaid curves. Four noisy lines in one field is
+     exactly the clutter that makes line charts lose their discriminability;
+     aggregating into segments keeps the comparison and drops the knot. */
+  _devTable(segments, measures, opts) {
+    opts = opts || {};
+    if (segments.length < 2) return "";
+    const base = segments[0];
+    const rest = segments.slice(1);
+    const devs = measures.map((m) => rest.map((s) => {
+      const v = m.get(s), b = m.get(base);
+      return (v == null || b == null || !b) ? null : (v - b) / b * 100;
     }));
-    const span = Math.max(6, ...devs.flat().filter((v) => v != null).map((v) => Math.abs(v))) * 1.15;
+    const flat = devs.flat().filter((v) => v != null);
+    if (!flat.length) return "";
+    const span = Math.max(6, ...flat.map((v) => Math.abs(v))) * 1.15;
 
-    const devRows = measures.map((m, k) => {
-      const bars = work.slice(1).map((l, i) => {
+    const head = `<div class="devrow devhead2"><span></span><span class="devbars">
+      ${rest.map((s) => `<span class="devcell colhead">${esc(s.label)}</span>`).join("")}
+      </span></div>`;
+
+    const rows = measures.map((m, k) => {
+      const bars = rest.map((s, i) => {
         const v = devs[k][i];
         if (v == null) return `<span class="devcell"><i class="devbar"></i></span>`;
         const better = m.good === "up" ? v > 0 : v < 0;
         const col = Math.abs(v) < 1.5 ? C.tx3 : (better ? C.green : C.amber);
         const w = Math.min(46, Math.abs(v) / span * 46);
         const left = v < 0 ? 50 - w : 50;
-        const absDelta = m.get(l) - m.get(base);
-        // the number sits at the end of its own bar, on the side it points to
         const side = v < 0 ? `right:${(50 + w + 2).toFixed(1)}%` : `left:${(50 + w + 2).toFixed(1)}%`;
-        return `<span class="devcell" title="Block ${l.n}: ${sign(Math.round(v * 10) / 10, 1)} % gegenüber Block ${base.n}">
+        const absDelta = m.get(s) - m.get(base);
+        return `<span class="devcell" title="${esc(s.label)}: ${sign(Math.round(v * 10) / 10, 1)} % gegenüber ${esc(base.label)}">
           <i class="devbar"><s style="left:${left}%;width:${w}%;background:${col}"></s>
             <b class="tn" style="${side};color:${col}">${sign(absDelta, m.dec)}${m.u}</b></i></span>`;
       }).join("");
+      const values = segments.map((s) => m.get(s)).filter((v) => v != null);
       return `<div class="devrow">
         <span class="devlab"><i class="sw" style="background:${m.c}"></i>
           <span><b>${esc(m.l)}</b><em>${m.good === "up" ? "höher ist besser" : "niedriger ist besser"}${
-            m.hint ? " · " + esc(m.hint) : ""}</em></span></span>
+            m.hint ? " · " + esc(m.hint) : ""}</em>
+          ${values.length ? `<u class="devbase">${esc(base.label)}: ${fmt(m.get(base), m.dec)}${m.u}</u>` : ""}</span></span>
         <span class="devbars">${bars}</span></div>`;
     }).join("");
 
-    const devHead = `<div class="devrow devhead2"><span></span><span class="devbars">
-      ${work.slice(1).map((l) => `<span class="devcell colhead">Block ${l.n}</span>`).join("")}
-      </span></div>`;
+    return `<div class="devbox">
+      <div class="devhead">Abweichung gegenüber <b>${esc(base.label)}</b>
+        <span class="hint">— ${esc(opts.note || "die Zahl in ihrer eigenen Einheit, die Balkenlänge normiert, damit die Zeilen vergleichbar bleiben. Rechts heißt mehr, links weniger; grün günstig, gelb ungünstig.")}</span></div>
+      ${head}${rows}</div>`;
+  }
 
-    const deviation = `<div class="devbox">
-      <div class="devhead">Abweichung gegenüber <b>Block ${base.n}</b>
-        <span class="hint">— die Zahl in ihrer eigenen Einheit, die Balkenlänge normiert, damit
-        die Zeilen vergleichbar bleiben. Rechts heißt mehr, links weniger; grün günstig,
-        gelb ungünstig.</span></div>
-      ${devHead}${devRows}</div>`;
+  /* Segment analysis for one activity.
 
-    // the verdict, in numbers that need no chart
-    const last = work[work.length - 1];
-    const dw = base.avg_watts ? (last.avg_watts - base.avg_watts) / base.avg_watts * 100 : null;
-    const dh = base.avg_hr != null ? last.avg_hr - base.avg_hr : null;
-    const dd = base.dfa_a1 != null && last.dfa_a1 != null ? last.dfa_a1 - base.dfa_a1 : null;
-    const def = base.ef ? (last.ef - base.ef) / base.ef * 100 : null;
-    const faded = (def != null && def < -3) || (dh != null && dh > 4) || (dd != null && dd < -0.15);
-    const verdict = `<div class="cmpverdict ${faded ? "worse" : "held"}">
-      ${ico(faded ? "warn" : "ok", faded ? C.amber : C.green, 18)}
-      <div><b>${faded ? "Die Serie hat abgebaut." : "Die Serie hat gehalten."}</b>
-      <span>Vom ${base.n}. zum ${last.n}. Block:
-      ${dw != null ? `Leistung ${sign(Math.round(dw * 10) / 10, 1)} %` : ""}${
-        dh != null ? ` · Puls ${sign(dh)} Schläge` : ""}${
-        dd != null ? ` · DFA ${sign(dd, 2)}` : ""}${
-        def != null ? ` · Watt pro Herzschlag ${sign(Math.round(def * 10) / 10, 1)} %` : ""}.
-      ${faded ? "Mehr Puls für weniger Leistung bei gleicher Vorgabe — das ist Ermüdung über die Serie."
-              : "Leistung je Herzschlag praktisch unverändert — die Serie war verkraftbar."}</span></div></div>`;
+     Two cases, one mechanism:
+       - interval session: the work blocks are the segments
+       - steady ride: the ride itself is cut into equal quarters
 
-    // recoveries get their own number instead of a curve
+     The second case is the classic decoupling test made visible. Cardiac
+     drift - heart rate rising at constant power - is the WHAT; whether watts
+     per heartbeat held together is the SO WHAT. Friel's 5% is the working
+     benchmark, trained riders often hold under 3%, recreational riders land
+     at 5-10%. Cutting into quarters instead of halves adds the one thing the
+     single number cannot say: WHEN it started. */
+  _lapCompare(a) {
+    const data = this._laps[a.id], st = this._streams[a.id];
+    if (!st || st.error || !st.points) return "";
+    const ch = st.channels || {}, time = ch.time || [];
+    if (!time.length) return "";
+    const at = (sec) => {
+      let lo = 0, hi = time.length - 1;
+      while (lo < hi) { const mid = (lo + hi) >> 1; if (time[mid] < sec) lo = mid + 1; else hi = mid; }
+      return lo;
+    };
+    const stat = (key, i0, i1, zeroGap) => {
+      const vals = (ch[key] || []).slice(i0, i1).filter((v) => v != null && (!zeroGap || v > 0));
+      return vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : null;
+    };
+    const hrrAfter = (endSec) => {
+      const iEnd = at(endSec), i60 = at(endSec + 60);
+      if (!(ch.heartrate || []).length || i60 <= iEnd) return null;
+      const tail = ch.heartrate.slice(Math.max(0, iEnd - 4), iEnd + 1).filter((v) => v > 0);
+      const after = ch.heartrate[Math.min(i60, ch.heartrate.length - 1)];
+      return (tail.length && after > 0) ? Math.max(...tail) - after : null;
+    };
+
+    const laps = ((data && data.laps) || []).filter((l) => l.start_s != null && l.end_s != null);
+    const powered = laps.filter((l) => (l.avg_watts || 0) > 0 && (l.moving_time || 0) >= 60);
+    const peak = Math.max(0, ...powered.map((l) => l.avg_watts || 0));
+    let work = powered.filter((l) => (l.avg_watts || 0) >= peak * 0.85);
+    const medDur = median(work.map((l) => l.moving_time || 0)) || 0;
+    work = work.filter((l) => medDur > 0 && Math.abs((l.moving_time || 0) - medDur) <= medDur * 0.35);
+    const isInterval = work.length >= 2 && work.length < laps.length;
+
+    let segments, title, note, intro;
+    if (isInterval) {
+      segments = work.map((l) => ({
+        label: "Block " + l.n,
+        watts: l.avg_watts, hr: l.avg_hr, dfa: l.dfa_a1, ef: l.ef,
+        hrr: hrrAfter(l.end_s),
+      }));
+      title = "Blockvergleich";
+      intro = `${work.length} gleichartige Blöcke, jeder gegen den ersten gestellt`;
+      note = "die Zahl in ihrer eigenen Einheit, die Balkenlänge normiert; grün günstig, gelb ungünstig.";
+    } else {
+      // steady ride: quarters of the moving time, warm-up minutes excluded
+      const total = time[time.length - 1] - time[0];
+      if (total < 20 * 60) return "";
+      const startAt = time[0] + Math.min(600, total * 0.12);
+      const usable = time[time.length - 1] - startAt;
+      const parts = 4;
+      segments = [];
+      for (let k = 0; k < parts; k++) {
+        const s0 = startAt + (k / parts) * usable, s1 = startAt + ((k + 1) / parts) * usable;
+        const i0 = at(s0), i1 = at(s1);
+        if (i1 - i0 < 3) continue;
+        const w = stat("watts", i0, i1, true), hr = stat("heartrate", i0, i1, true);
+        segments.push({
+          label: `${k + 1}. Viertel`,
+          watts: w, hr, dfa: stat("dfa_a1", i0, i1, true),
+          ef: (w && hr) ? w / hr : null, hrr: null,
+        });
+      }
+      title = "Wie sich die Fahrt entwickelt hat";
+      intro = "die Fahrt in vier gleich lange Abschnitte geteilt, jeder gegen den ersten gestellt";
+      note = "so wird sichtbar, WANN sich etwas ändert — die übliche Entkopplung vergleicht nur zwei Hälften und verschweigt den Zeitpunkt.";
+    }
+    if (segments.length < 2) return "";
+
+    const measures = [
+      { l: "Leistung", u: " W", dec: 0, c: ROLE.pow, get: (s) => s.watts, good: "up" },
+      { l: "Herzfrequenz", u: " bpm", dec: 0, c: ROLE.hr, get: (s) => s.hr, good: "down" },
+      { l: "DFA alpha-1", u: "", dec: 2, c: ROLE.dfa, get: (s) => s.dfa, good: "up" },
+      { l: "Watt pro Herzschlag", u: "", dec: 2, c: C.blue, get: (s) => s.ef, good: "up" },
+      { l: "Puls-Erholung", u: " bpm", dec: 0, c: C.magenta, get: (s) => s.hrr, good: "up",
+        hint: "Abfall in den ersten 60 s der Pause danach" },
+    ].filter((m) => m.get(segments[0]) != null && segments.some((s) => m.get(s) != null));
+    if (!measures.length) return "";
+
+    const base = segments[0], last = segments[segments.length - 1];
+    const def = base.ef && last.ef ? (last.ef - base.ef) / base.ef * 100 : null;
+    const dh = base.hr != null && last.hr != null ? last.hr - base.hr : null;
+    const dd = base.dfa != null && last.dfa != null ? last.dfa - base.dfa : null;
+    const dw = base.watts && last.watts ? (last.watts - base.watts) / base.watts * 100 : null;
+
+    // the verdict, graded against the published benchmarks
+    let head, body, tone;
+    const drop = def == null ? null : -def;
+    if (drop == null) {
+      tone = "held"; head = "Kein Urteil möglich.";
+      body = "Für Watt pro Herzschlag fehlen die Daten.";
+    } else if (isInterval) {
+      tone = drop > 3 ? "worse" : "held";
+      head = drop > 3 ? "Die Serie hat abgebaut." : "Die Serie hat gehalten.";
+      body = `Vom ersten zum letzten Block: ${dw != null ? `Leistung ${sign(Math.round(dw * 10) / 10, 1)} %` : ""}${
+        dh != null ? ` · Puls ${sign(dh)} Schläge` : ""}${dd != null ? ` · DFA ${sign(dd, 2)}` : ""}${
+        ` · Watt pro Herzschlag ${sign(Math.round(def * 10) / 10, 1)} %`}. ${
+        drop > 3 ? "Mehr Puls für weniger Leistung bei gleicher Vorgabe — das ist Ermüdung über die Serie."
+                 : "Leistung je Herzschlag praktisch unverändert — die Serie war verkraftbar."}`;
+    } else {
+      tone = drop > 5 ? "worse" : "held";
+      const grade = drop <= 3 ? "unter 3 % — das ist das Niveau, das trainierte Fahrer halten"
+        : drop <= 5 ? "unter 5 % — Friels Richtwert für eine tragende Grundlage"
+        : drop <= 10 ? "zwischen 5 und 10 % — der Bereich, in dem Freizeitfahrer typischerweise liegen"
+        : "über 10 % — die Einheit lag wahrscheinlich über der aeroben Schwelle, oder die Grundlage trägt diese Dauer noch nicht";
+      head = `Entkopplung über die Fahrt: ${fmt(drop, 1)} %`;
+      body = `${grade}. ${dh != null ? `Der Puls stieg um ${sign(dh)} Schläge` : ""}${
+        dw != null ? ` bei ${sign(Math.round(dw * 10) / 10, 1)} % Leistung` : ""}. ` +
+        "Ein steigender Puls bei gleicher Leistung ist die kardiale Drift — normal und bei " +
+        "trainierten Fahrern schwächer ausgeprägt. Die Frage ist nicht, ob der Puls steigt, " +
+        "sondern ob die Leistung je Herzschlag zusammenhält.";
+    }
+
+    const verdict = `<div class="cmpverdict ${tone}">
+      ${ico(tone === "worse" ? "warn" : "ok", tone === "worse" ? C.amber : C.green, 18)}
+      <div><b>${esc(head)}</b><span>${esc(body)}</span></div></div>`;
+
+    const rests = laps.filter((l) => !work.includes(l) && (l.moving_time || 0) >= 60);
     let restBlock = "";
-    if (rests.length) {
+    if (isInterval && rests.length) {
       const rows = rests.map((r) => `<div class="restrow">
         <b>${r.n}</b><span>${esc(r.label || "Pause")}</span>
         <span class="tn">${dur(r.moving_time)}</span>
@@ -1876,25 +1876,12 @@ class IntervalsIcuPanel extends HTMLElement {
       </div>`).join("");
       restBlock = `<details class="more"><summary>Übrige Abschnitte (${rests.length}) — Aufwärmen, Pausen, Ausfahren</summary>
         <div class="restgrid"><div class="restrow head"><b>#</b><span>Abschnitt</span>
-          <span>Dauer</span><span>Ø HF</span><span>Ø Watt</span><span>DFA</span></div>${rows}</div>
-        <p class="src">Diese Abschnitte werden bewusst nicht mit den Blöcken überlagert:
-        Aufwärmen, Pause und Ausfahren haben andere Aufgaben und wären als vierte, fünfte,
-        sechste Linie nur Unruhe. Interessant ist hier vor allem, wie weit der Puls in den
-        Pausen zurückkommt — je später in der Serie, desto weniger gelingt das meist.</p></details>`;
+          <span>Dauer</span><span>Ø HF</span><span>Ø Watt</span><span>DFA</span></div>${rows}</div></details>`;
     }
 
-    return `<h3 class="secname">Blockvergleich
-      <span class="hint">— ${work.length} gleichartige Blöcke übereinandergelegt</span></h3>
+    return `<h3 class="secname">${title} <span class="hint">— ${esc(intro)}</span></h3>
       ${verdict}
-      <div class="cmpgrid">${panels}</div>
-      <div class="cmplegend"><span class="hint">Jede Linie trägt ihren Namen am Ende.
-        Zusätzlich gilt: je blasser, desto früher in der Serie —
-        ${work.map((l) => "Block " + l.n).join(" → ")}.</span></div>
-      <h4 class="subname">Was sich von Block zu Block geändert hat
-        <span class="hint">— Abweichung statt Absolutwert: die Bezugsgröße kennst du bereits,
-        und Länge an gemeinsamer Grundlinie liest sich nachweislich genauer als der Winkel
-        einer Linie</span></h4>
-      ${deviation}
+      ${this._devTable(segments, measures, { note })}
       ${restBlock}`;
   }
 

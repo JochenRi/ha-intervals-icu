@@ -255,6 +255,25 @@ function lapsWithBounds(kind) {
                      channels: { time, watts, heartrate: hr, dfa_a1: dfa, cadence: cad } } };
 }
 
+/* a steady ride with textbook cardiac drift: power flat, heart rate climbing */
+function steadyStream(kind) {
+  const secs = 4;
+  const total = kind === "kurz" ? 12 * 60 : 75 * 60;
+  const time = [], watts = [], hr = [], dfa = [], cad = [];
+  // how far the heart rate climbs decides the decoupling grade
+  const climb = kind === "stabil" ? 2 : kind === "hart" ? 38 : kind === "mittel" ? 12 : 9;
+  for (let s = 0; s <= total; s += secs) {
+    const frac = s / total;
+    time.push(s);
+    watts.push(158 + ((s / secs) % 5) - 2);
+    hr.push(Math.round(139 + frac * climb + ((s / secs) % 3) - 1));
+    dfa.push(0.82 - frac * 0.12 + (((s / secs) % 7) - 3) / 100);
+    cad.push(84);
+  }
+  return { points: time.length, sample_secs: secs,
+           channels: { time, watts, heartrate: hr, dfa_a1: dfa, cadence: cad } };
+}
+
 function laps(kind) {
   if (kind === "empty") return { laps: [], seen_keys: [], source: null };
   if (kind === "error") return { error: "HTTP 500" };
@@ -446,4 +465,4 @@ function workouts(kind) {
   };
 }
 
-module.exports = { TODAY, days, load, readiness, activities, streams, thresholds, calendar, pmc, laps, lapsWithBounds, coach, signals, workouts };
+module.exports = { TODAY, days, load, readiness, activities, streams, thresholds, calendar, pmc, laps, lapsWithBounds, steadyStream, coach, signals, workouts };

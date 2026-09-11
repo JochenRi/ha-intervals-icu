@@ -285,7 +285,7 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   contains(steady, "verkraftbar", "runden stabil");
   p._laps = {};
 
-  // --- Blockvergleich ----------------------------------------------------
+  // --- Blockvergleich (Intervalleinheit) ---------------------------------
   {
     const set = F.lapsWithBounds();
     p._laps[acts[0].id] = { laps: set.laps, seen_keys: set.seen_keys, source: set.source };
@@ -293,88 +293,39 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
     const html = p.rAkt(acts, acts[0]);
     clean(html, "blockvergleich");
     contains(html, "Blockvergleich", "blockvergleich");
-    contains(html, "4 gleichartige Blöcke übereinandergelegt", "blockvergleich: Anzahl fehlt");
+    contains(html, "4 gleichartige Blöcke", "blockvergleich: Anzahl fehlt");
 
-    // superposition: ONE panel per channel, all blocks inside it
-    ok((html.match(/class="cmppanel /g) || []).length === 3,
-       "blockvergleich: nicht drei Kanal-Felder");
-    const powerPanel = html.split('class="cmppanel').slice(1)[0];
-    const lines = (powerPanel.match(/<path d="M[^"]+" fill="none"/g) || []).length;
-    ok(lines === 4, `blockvergleich: ${lines} Linien im Leistungsfeld statt vier Blöcke`);
+    // the overlaid curves are gone - four noisy lines in one field were the
+    // clutter that makes line charts lose discriminability
+    ok(!html.includes('class="cmppanel'),
+       "blockvergleich: überlagerte Kurven noch da");
+    ok(!html.includes("Jede Linie trägt ihren Namen"),
+       "blockvergleich: Hinweis auf die entfernte Überlagerung noch da");
 
-    // lightness carries the order - the last block must be the most solid
-    const ops = [...powerPanel.matchAll(/opacity="([\d.]+)" stroke-linejoin/g)].map((m) => +m[1]);
-    ok(ops.length >= 4, "blockvergleich: keine Abstufung der Linien");
-    ok(ops[0] < ops[ops.length - 1],
-       `blockvergleich: der letzte Block ist nicht kräftiger gezeichnet (${ops})`);
-
-    // and unlike the old rows, the curves must actually USE their panel:
-    // a block scaled to the overlay of its peers has visible amplitude
-    const path = /<path d="(M[^"]+)"/.exec(powerPanel);
-    const yy = [...path[1].matchAll(/[ML][\d.]+ ([\d.]+)/g)].map((m) => parseFloat(m[1]));
-    const amp = Math.max(...yy) - Math.min(...yy);
-    ok(amp > 8, `blockvergleich: Kurve ist ein Strich (${amp.toFixed(1)} px) - das Feld zeigt nichts`);
-
-    // zoom: a click makes one panel full width instead of opening a window
-    ok((html.match(/data-act="cmpzoom"/g) || []).length === 3,
-       "blockvergleich: Felder nicht anklickbar");
-    p._cmpFocus = "watts";
-    const zoomed = p.rAkt(acts, acts[0]);
-    clean(zoomed, "blockvergleich vergrößert");
-    ok(/class="cmppanel big"/.test(zoomed), "blockvergleich: Vergrößern wirkt nicht");
-    ok((zoomed.match(/class="cmppanel big"/g) || []).length === 1,
-       "blockvergleich: mehr als ein Feld vergrößert");
-    const bigPanel = zoomed.split('class="cmppanel big')[1];
-    ok(/viewBox="0 0 \d+ 340"/.test(bigPanel),
-       "blockvergleich: vergrößertes Feld ist nicht höher gezeichnet");
-    p._cmpFocus = null;
-
-    // explicit encoding: deviation bars against a common baseline, NOT a slope graph
-    contains(html, "Abweichung gegenüber", "blockvergleich: Abweichungsdarstellung fehlt");
-    contains(html, "höher ist besser", "blockvergleich: Richtung nicht benannt");
-    contains(html, "niedriger ist besser", "blockvergleich: Richtung des Pulses nicht benannt");
+    // the table carries it all: five measures, three comparison columns
     ok((html.match(/class="devrow"/g) || []).length === 5,
-       "blockvergleich: nicht alle fünf Kennzahlen als Abweichung");
-    ok((html.match(/class="devcell"/g) || []).length === 15,
-       "blockvergleich: nicht je Block und Kennzahl ein Balken");
-    // column heads name the blocks, so a bar has an address
+       "blockvergleich: nicht fünf Kennzahlen");
+    ok((html.match(/class="devrow devhead2"/g) || []).length === 1,
+       "blockvergleich: keine Kopfzeile mit den Blocknamen");
     ok((html.match(/class="devcell colhead"/g) || []).length === 3,
-       "blockvergleich: keine Blockspalten - man weiß nicht, welcher Balken welcher Block ist");
-    // heart rate recovery: a fatigue marker the lap averages cannot show
+       "blockvergleich: keine Blockspalten");
+    contains(html, "Block 4", "blockvergleich: Spalte fehlt");
     contains(html, "Puls-Erholung", "blockvergleich: Puls-Erholung fehlt");
-    contains(html, "ersten 60 s der Pause", "blockvergleich: Puls-Erholung nicht erklärt");
-    // direct labels on the lines instead of a legend to look up
-    ok((html.match(/class="tag"/g) || []).length >= 12,
-       "blockvergleich: Linien tragen ihren Namen nicht");
-    contains(html, "Jede Linie trägt ihren Namen am Ende", "blockvergleich: Hinweis fehlt");
-    ok(!html.includes("Block 2 = 100 %"), "blockvergleich: Steigungsdiagramm noch da");
-    // the direction must be encoded, not just the amount - and checked INSIDE
-    // the deviation block, where green appears nowhere else
+    // the reference value itself must be visible, not only the deviation
+    ok((html.match(/class="devbase"/g) || []).length >= 4,
+       "blockvergleich: Bezugswert des ersten Blocks fehlt");
+    contains(html, "-10 W", "blockvergleich: Leistungsabweichung nicht in Watt");
+    contains(html, "+11 bpm", "blockvergleich: Pulsabweichung nicht in Schlägen");
+
+    // direction encoded by colour, and the two directions must differ
     const devBox = html.slice(html.indexOf('class="devbox"'));
-    const devColours = new Set([...devBox.matchAll(/background:(#[0-9a-f]{6})"/g)].map((m) => m[1]));
-    ok(devColours.size >= 2,
-       `blockvergleich: alle Abweichungen in derselben Farbe (${[...devColours]}) - günstig und ungünstig nicht unterschieden`);
-    // falling power (unfavourable) and rising heart rate (unfavourable) must
-    // BOTH read as the warning colour, while the same sign means the opposite
-    // for the two measures - that is the whole point of "good: up/down"
     const powerRow = devBox.slice(devBox.indexOf("Leistung"), devBox.indexOf("Herzfrequenz"));
     const hrRow = devBox.slice(devBox.indexOf("Herzfrequenz"), devBox.indexOf("DFA"));
     ok(/#fbbf24/.test(powerRow), "blockvergleich: fallende Leistung nicht als ungünstig markiert");
     ok(/#fbbf24/.test(hrRow), "blockvergleich: steigender Puls nicht als ungünstig markiert");
-    // numbers in their own unit, percentages only as the small print
-    ok(/-10 W/.test(powerRow), 'blockvergleich: Leistungsabweichung nicht in Watt');
-    ok(/\+11 bpm/.test(hrRow), 'blockvergleich: Pulsabweichung nicht in Schlägen');
-    ok(/%/.test(hrRow), 'blockvergleich: normierter Prozentwert fehlt ganz');
 
-    // the verdict must name the direction and the numbers
     contains(html, "Die Serie hat abgebaut", "blockvergleich: fallende Serie nicht benannt");
-    contains(html, "Puls +", "blockvergleich: Pulsanstieg fehlt");
-    contains(html, "das ist Ermüdung über die Serie", "blockvergleich: keine Deutung");
-
-    // recoveries: own table, never overlaid
     contains(html, "Übrige Abschnitte (5)", "blockvergleich: übrige Abschnitte fehlen");
-    ok((html.match(/class="restrow"/g) || []).length === 5,
-       "blockvergleich: Aufwärmen und Ausfahren fehlen in der Aufstellung");
 
     // a session that held must NOT be called fatigue
     const steady = JSON.parse(JSON.stringify(set));
@@ -383,31 +334,55 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
     const held = p.rAkt(acts, acts[0]);
     clean(held, "blockvergleich stabil");
     contains(held, "Die Serie hat gehalten", "blockvergleich: stabile Serie als Abbau gemeldet");
-    ok(!held.includes("Die Serie hat abgebaut"), "blockvergleich: beide Urteile gleichzeitig");
+  }
 
-    // one lap, two laps, no boundaries, no streams
-    const one = F.lapsWithBounds("einerunde");
-    p._laps[acts[0].id] = { laps: one.laps, source: "icu_intervals" };
-    p._streams[acts[0].id] = one.stream;
-    const single = p.rAkt(acts, acts[0]);
-    clean(single, "blockvergleich eine runde");
-    contains(single, "nichts zu vergleichen", "blockvergleich: eine Runde wird verglichen");
-
-    const nob = F.lapsWithBounds("ohnegrenzen");
-    p._laps[acts[0].id] = { laps: nob.laps, source: "laps" };
-    p._streams[acts[0].id] = nob.stream;
-    clean(p.rAkt(acts, acts[0]), "blockvergleich ohne Grenzen");
-
-    const hronly = F.lapsWithBounds("nurhf");
-    p._laps[acts[0].id] = { laps: hronly.laps, source: "icu_intervals" };
-    p._streams[acts[0].id] = hronly.stream;
-    const onlyhr = p.rAkt(acts, acts[0]);
-    clean(onlyhr, "blockvergleich nur HF");
-    ok((onlyhr.match(/class="cmppanel /g) || []).length === 1,
-       "blockvergleich: leere Felder für fehlende Kanäle");
-
-    p._streams[acts[0].id] = { error: "HTTP 500" };
-    clean(p.rAkt(acts, acts[0]), "blockvergleich ohne Streams");
+  // --- Dieselbe Tabelle für eine Fahrt OHNE Intervalle --------------------
+  {
+    const steadyRide = F.steadyStream();
+    p._laps[acts[0].id] = { laps: [], source: "none" };
+    p._streams[acts[0].id] = steadyRide;
+    const html = p.rAkt(acts, acts[0]);
+    clean(html, "grundlagenfahrt");
+    contains(html, "Wie sich die Fahrt entwickelt hat", "grundlage: keine Segmentanalyse");
+    contains(html, "vier gleich lange Abschnitte", "grundlage: Einteilung nicht erklärt");
+    ok((html.match(/class="devcell colhead"/g) || []).length === 3,
+       "grundlage: nicht drei Vergleichsspalten");
+    contains(html, "2. Viertel", "grundlage: Abschnitte nicht benannt");
+    contains(html, "Entkopplung über die Fahrt", "grundlage: kein Entkopplungsurteil");
+    // The verdict must GRADE against the published benchmarks, and grade
+    // differently for different rides - otherwise it is a number with a
+    // sentence glued to it. Trained riders hold under 3%, Friel's benchmark
+    // is 5%, recreational riders sit at 5-10%, above that the effort was
+    // likely over threshold.
+    const grades = [
+      ["stabil", /unter 3 %/, "eine fast driftfreie Fahrt"],
+      ["", /unter 5 %/, "eine Fahrt im Richtwert"],
+      ["mittel", /zwischen 5 und 10 %/, "eine Fahrt im Freizeitbereich"],
+      ["hart", /über 10 %/, "eine Fahrt über der Schwelle"],
+    ];
+    for (const [kind, pattern, label] of grades) {
+      p._streams[acts[0].id] = F.steadyStream(kind);
+      const graded = p.rAkt(acts, acts[0]);
+      clean(graded, "grundlage " + (kind || "normal"));
+      ok(pattern.test(graded), `grundlage: ${label} wird falsch eingeordnet`);
+    }
+    // the worst case must also read as a warning, not as a neutral note
+    p._streams[acts[0].id] = F.steadyStream("hart");
+    ok(/class="cmpverdict worse/.test(p.rAkt(acts, acts[0])),
+       "grundlage: starke Entkopplung nicht als Warnung gezeigt");
+    p._streams[acts[0].id] = F.steadyStream("stabil");
+    ok(/class="cmpverdict held/.test(p.rAkt(acts, acts[0])),
+       "grundlage: driftfreie Fahrt als Warnung gezeigt");
+    p._streams[acts[0].id] = steadyRide;
+    contains(html, "kardiale Drift", "grundlage: Drift nicht erklärt");
+    // heart rate recovery makes no sense without rests - it must be absent
+    ok(!html.includes("Puls-Erholung"), "grundlage: Puls-Erholung ohne Pausen behauptet");
+    // and a short ride must not be cut into quarters at all
+    p._streams[acts[0].id] = F.steadyStream("kurz");
+    const short = p.rAkt(acts, acts[0]);
+    clean(short, "grundlage kurz");
+    ok(!short.includes("Wie sich die Fahrt entwickelt hat"),
+       "grundlage: zu kurze Fahrt trotzdem geviertelt");
     p._laps = {}; p._streams = {};
   }
 
