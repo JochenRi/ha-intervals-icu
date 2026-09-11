@@ -811,14 +811,26 @@ class IntervalsIcuPanel extends HTMLElement {
     const today = new Date();
     const iso = (d) => new Date(today.getTime() + d * 86400000).toISOString().slice(0, 10);
 
+    // One logic, not two. The list IS the recommendation: the first card that
+    // fits today carries the mark, instead of a second block above computing
+    // its own answer that could quietly disagree with this one.
+    const pick = list.findIndex((e) => e.fit === "ok");
     const cards = list.map((entry, index) => {
       const open = this._woOpen === entry.key;
       const FIT = { ok: ["green", "passt heute"], maybe: ["amber", "möglich, kostet aber"],
                     no: ["red", "heute nicht"] };
-      const [fitTone, fitWord] = FIT[entry.fit] || FIT.maybe;
+      let [fitTone, fitWord] = FIT[entry.fit] || FIT.maybe;
+      // the budget is part of the same verdict, not a second one next to it
+      if (entry.fit === "ok" && entry.fits_budget === false) {
+        fitTone = "amber";
+        fitWord = `über dem Budget (${fmt(w.budget)})`;
+      }
       const fit = badge(fitTone, fitWord);
       const hrw = entry.hr_window;
-      return `<div class="wocard ${index === 0 ? "first" : ""}">
+      const recommended = index === pick;
+      return `<div class="wocard ${recommended ? "first" : ""}">
+        ${recommended ? `<div class="recflag">${ico("ok", C.green, 14)}
+          Empfehlung für heute — aus Zustand, letzten Tagen und Ziel</div>` : ""}
         <div class="wohead">
           <div>
             <div class="wofam">${esc(entry.family_label || "")}</div>
@@ -835,8 +847,7 @@ class IntervalsIcuPanel extends HTMLElement {
         <p class="evi"><b>Beleg:</b> ${esc(entry.evidence)}</p>
         ${entry.fit_reason ? `<p class="fitwhy">${ico(entry.fit === "no" ? "warn" : "info",
           entry.fit === "no" ? C.red : C.amber, 14)} ${esc(entry.fit_reason)}</p>` : ""}
-        ${entry.fits_budget === false ? `<p class="fitwhy">${ico("info", C.tx2, 14)}
-          Über dem Lastbudget für heute (${fmt(w.budget)}).</p>` : ""}
+
         <div class="worow">
           <button class="planbtn" data-act="plan" data-id="${esc(entry.key)}" data-when="${iso(0)}">
             ${ico("cal", null, 15)} heute in den Kalender</button>
@@ -1244,23 +1255,6 @@ class IntervalsIcuPanel extends HTMLElement {
         ${st.since ? `<p class="hint">Einbruch erkannt am ${dMed(st.since)} — solange er im
           7-Tage-Fenster steckt, zieht er das Mittel nach unten, auch wenn die letzten Tage
           längst wieder darüber liegen.</p>` : ""}
-      </section>
-
-      <section class="card rec" style="border-left:3px solid ${look.c}">
-        <div class="kicker">EMPFEHLUNG FÜR HEUTE — aus Zustand, letzten Tagen und Ziel</div>
-        <div class="rectitle">${esc(r.title || "–")} ${fitBadge}</div>
-        <div class="recgrid">
-          ${r.minutes ? `<div class="kv"><small>Dauer</small><b>${r.minutes[0]}–${r.minutes[1]} min</b></div>` : ""}
-          ${hrw ? `<div class="kv"><small>Zielpuls</small><b class="tn">${hrw[0]}–${hrw[1]} bpm</b></div>` : ""}
-          ${pw ? `<div class="kv"><small>Zielleistung</small><b class="tn">${pw[0]}–${pw[1]} W</b></div>` : ""}
-          ${r.expected_dfa ? `<div class="kv"><small>Erwartetes DFA alpha-1</small><b>${esc(r.expected_dfa)}</b></div>` : ""}
-          ${r.estimated_load != null ? `<div class="kv"><small>Geschätzte Last</small><b class="tn">${fmt(r.estimated_load)}</b></div>` : ""}
-        </div>
-        <p class="effect"><b>Was das bewirkt:</b> ${esc(r.effect || "")}</p>
-        ${warns}
-        <details class="more"><summary>Warum diese Einheit?</summary>
-          <ul class="reasons">${reasons}</ul>
-        </details>
       </section>
 
       ${this.rWorkouts(this._workouts)}
@@ -2937,6 +2931,8 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
 .wogrid{display:grid;gap:12px}
 .wocard{background:${C.card};border:1px solid ${C.line};border-radius:12px;padding:14px}
 .wocard.first{border-color:${ROLE.series}66;box-shadow:0 0 0 1px ${ROLE.series}22}
+.recflag{display:flex;align-items:center;gap:6px;color:${C.green};font-size:12px;
+  font-weight:650;margin:-2px 0 6px}
 .wofam{color:${C.tx3};font-size:11px;text-transform:uppercase;letter-spacing:.06em}
 .fitwhy{display:flex;gap:7px;align-items:flex-start;font-size:13px;color:${C.tx2};
   margin:6px 0 0;line-height:1.45}

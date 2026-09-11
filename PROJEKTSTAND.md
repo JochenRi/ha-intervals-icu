@@ -1,6 +1,6 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 11.09.2026 · **Version:** 0.26.0 · **Status:** produktiv auf HEIMDALL,
+**Stand:** 11.09.2026 · **Version:** 0.27.0 · **Status:** produktiv auf HEIMDALL,
 Auslieferung über HACS aus `github.com/JochenRi/ha-intervals-icu`
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lokal
@@ -171,6 +171,22 @@ Werte liegt in der Anpassung der heutigen Einheit, nicht in der Planung der Woch
 
 Beim Umbau haben die alten Tests drei echte Regressionen gefangen: die Ampelfarbe ohne
 Wort (WCAG), der verschwundene Bullet-Graph und der fehlende Stand je Wert.
+
+### Eine Logik statt zweier (0.27.0)
+
+Der Trainer hatte **zwei Antworten auf dieselbe Frage**: oben einen Empfehlungsblock aus
+`coach.recommend`, unten die Einheitenliste aus `workouts.suggest`. Sie widersprachen sich
+nicht, aber sie konnten es jederzeit — zwei Rechenwege auf dieselbe Frage sind ein Fehler,
+der nur auf seinen Tag wartet.
+
+**Jetzt ist die Liste die Empfehlung.** Die erste Karte, die heute passt, trägt die Marke
+*„Empfehlung für heute — aus Zustand, letzten Tagen und Ziel"*. Ist die erste Einheit
+abgeraten, wandert die Marke nach unten statt zu verschwinden; ein Test erzwingt das und
+schlägt fehl, sobald wieder blind Index 0 markiert wird.
+
+**Das Lastbudget stand doppelt** — einmal als Ampel, einmal als Zusatzzeile. Es ist Teil
+desselben Urteils: passt eine Einheit zum Zustand, überschreitet aber das Budget, sagt das
+Abzeichen jetzt *„über dem Budget (95)"* statt zweimal dasselbe an zwei Stellen.
 
 ### Die Trainer-Seite, durchgesehen (0.26.0)
 

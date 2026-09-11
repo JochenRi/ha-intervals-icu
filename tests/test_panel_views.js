@@ -139,8 +139,9 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   ok(!/nächsten sieben Tage/.test(html), "trainer: Wochenvorschau wieder da");
   ok(!/Einheitenkatalog/.test(html), "trainer: Katalog wieder da");
   ok(!/Nächste Einheit/.test(html), "trainer: spricht von einer gewählten Einheit");
-  contains(html, "EMPFEHLUNG FÜR HEUTE", "trainer: keine Empfehlung");
-  contains(html, "aus Zustand, letzten Tagen und Ziel", "trainer: Herkunft der Empfehlung fehlt");
+  // ONE logic: the list is the recommendation. A second block above with its
+  // own answer could quietly disagree with the cards below it.
+  ok(!/class="card rec"/.test(html), "trainer: zweiter Empfehlungsblock wieder da");
   contains(html, "Worauf diese Empfehlung beruht", "trainer: Herleitung fehlt");
   contains(html, "alles außerhalb des Trainings", "trainer: Grenze der Empfehlung fehlt");
 
@@ -174,6 +175,37 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   ok((html.match(/class="wofam"/g) || []).length === 6, "einheiten: nicht sechs Arten");
   ok((html.match(/class="wocard/g) || []).length === 6, "einheiten: nicht sechs Karten");
   contains(html, "passt heute", "einheiten: kein Tagesurteil");
+  // exactly one card carries the recommendation, and it is a fitting one
+  ok((html.match(/class="recflag"/g) || []).length === 1,
+     "einheiten: nicht genau eine Empfehlung markiert");
+  contains(html, "Empfehlung für heute — aus Zustand, letzten Tagen und Ziel",
+           "einheiten: Herkunft der Empfehlung fehlt");
+  // the marked card must be one that fits - never one that is advised against
+  const flaggedCard = html.slice(html.indexOf("recflag")).split('class="wocard')[0];
+  ok(!/heute nicht/.test(flaggedCard), "einheiten: abgeratene Einheit als Empfehlung markiert");
+  ok(/passt heute/.test(html.slice(0, html.indexOf("recflag") + 1800)),
+     "einheiten: Empfehlung ohne passendes Urteil");
+  // the decisive case: when the FIRST card is advised against, the mark has to
+  // move down the list - taking index 0 would recommend exactly what the state
+  // forbids
+  const flipped = F.workouts();
+  flipped.workouts[0] = { ...flipped.workouts[0], fit: "no",
+                          fit_reason: "Heute nicht, der Einbruch ist akut." };
+  p._workouts = flipped;
+  const moved = p.rTrainer(F.coach("ready"), F.readiness());
+  const firstCard = moved.slice(moved.indexOf('class="wocard')).split('class="wocard').slice(0, 2).join("");
+  ok(!/recflag/.test(firstCard),
+     "einheiten: abgeratene erste Einheit trägt die Empfehlung");
+  ok((moved.match(/class="recflag"/g) || []).length === 1,
+     "einheiten: Empfehlung verschwunden statt verschoben");
+  p._workouts = F.workouts();
+
+  // in a rebound the recommendation must move to a session that fits
+  const rb = p.rTrainer(F.coach("rebound"), F.readiness());
+  ok((rb.match(/class="recflag"/g) || []).length === 1,
+     "einheiten rebound: Empfehlung fehlt oder mehrfach");
+  ok(!/class="recflag"[\s\S]{0,400}heute nicht/.test(rb),
+     "einheiten rebound: abgeratene Einheit als Empfehlung markiert");
   contains(html, "Was du machst, entscheidest du", "einheiten: Entscheidung nicht beim Athleten");
   contains(html, "215 W", "einheiten: FTP nicht genannt");
   contains(html, "237 W", "einheiten: Wattzahlen der Blöcke fehlen");   // 110 % von 215
