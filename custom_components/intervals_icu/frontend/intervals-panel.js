@@ -363,6 +363,17 @@ function spark(vals, o) {
   return `<svg class="spk" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">${g}</svg>`;
 }
 
+/* Fixed readout strip above a chart group. A floating box next to the cursor
+ * went wrong twice - first clamped against a fixed width, then against the
+ * wrong frame - and it covers the very data it describes. A fixed strip has
+ * no frame to get wrong: it sits in the card, updates in place, and holds
+ * still while the eye moves. intervals.icu itself reads out the same way. */
+function readout(group) {
+  return `<div class="rdo" data-rdo="${group}">
+    <span class="rdox">—</span><span class="rdov"></span>
+  </div>`;
+}
+
 /* moving average that ignores nulls, window win */
 function movAvg(vals, win) {
   if (win <= 1) return vals.slice();
@@ -541,7 +552,6 @@ class IntervalsIcuPanel extends HTMLElement {
       </header>
       <nav id="tabs"></nav>
       <div id="view"><div class="card pad">Lade Daten …</div></div>
-      <div id="xhbox" class="xhbox" hidden></div>
     </div>`;
   }
 
@@ -567,6 +577,9 @@ class IntervalsIcuPanel extends HTMLElement {
     else if (this._tab === "dfa") html = this.rDfa(this._thr, this._dfaSport);
     else if (this._tab === "plan") html = this.rPlan(this._cal, this._rd);
     this._view.innerHTML = html;
+    // the strip must carry the newest values before anyone moves a mouse -
+    // and on a touch screen nobody ever does
+    for (const name of Object.keys(this._grp)) this._fillReadout(name, null);
   }
 
   /* ---------------- events ---------------- */
@@ -596,11 +609,32 @@ class IntervalsIcuPanel extends HTMLElement {
   }
 
   _xhHide() {
-    if (this._xhOn) {
-      this._xhOn = false;
-      this.shadowRoot.querySelectorAll(".xh").forEach((l) => l.setAttribute("opacity", "0"));
-      const box = this.shadowRoot.getElementById("xhbox");
-      if (box) box.hidden = true;
+    if (!this._xhOn) return;
+    this._xhOn = false;
+    this.shadowRoot.querySelectorAll(".xh").forEach((l) => l.setAttribute("opacity", "0"));
+    // fall back to the newest value, so the strip is never empty
+    for (const name of Object.keys(this._grp || {})) this._fillReadout(name, null);
+  }
+
+  /* Write one group's values into its strip. idx null means "latest". */
+  _fillReadout(name, idx) {
+    const meta = this._grp[name];
+    const strip = this.shadowRoot.querySelector(`[data-rdo="${name}"]`);
+    if (!meta || !strip) return;
+    let i = idx;
+    if (i == null) {
+      i = meta.n - 1;
+      const first = meta.rows[0];
+      if (first) while (i > 0 && first.vals[i] == null) i--;
+    }
+    const xs = strip.querySelector(".rdox"), vs = strip.querySelector(".rdov");
+    if (xs) xs.textContent = meta.xl(i) + (idx == null ? " (zuletzt)" : "");
+    if (vs) {
+      vs.innerHTML = meta.rows.map((r) => {
+        const v = r.vals[i];
+        return `<span class="rv"><i style="background:${r.c}"></i>${esc(r.l)}
+          <b class="tn">${v == null ? "–" : fmt(r.mul ? v * r.mul : v, r.dec || 0)}${r.u ? " " + r.u : ""}</b></span>`;
+      }).join("");
     }
   }
 
@@ -619,28 +653,8 @@ class IntervalsIcuPanel extends HTMLElement {
     g.querySelectorAll(".xh").forEach((l) => {
       l.setAttribute("x1", px); l.setAttribute("x2", px); l.setAttribute("opacity", "0.9");
     });
-    const box = this.shadowRoot.getElementById("xhbox");
-    const rows = meta.rows.map((r) => {
-      const v = r.vals[idx];
-      return `<div class="xr"><i style="background:${r.c}"></i><span>${r.l}</span><b class="tn">${v == null ? "–" : fmt(r.mul ? v * r.mul : v, r.dec || 0)}${r.u ? " " + r.u : ""}</b></div>`;
-    }).join("");
-    box.innerHTML = `<div class="xt">${meta.xl(idx)}</div>${rows}`;
-    box.hidden = false;
+    this._fillReadout(name, idx);
     this._xhOn = true;
-    // The box is positioned inside #app, which is capped at 1240px and
-    // centred - so its box is NOT the panel's box on a wide screen. Clamping
-    // against the wrong one let the readout slide off the right edge.
-    const app = this.shadowRoot.getElementById("app");
-    const frame = (app && app.getBoundingClientRect)
-      ? app.getBoundingClientRect() : this.getBoundingClientRect();
-    // Measure after filling: the box grows with its content, and a fixed
-    // guess of 230px cut the numbers off.
-    const bw = box.offsetWidth || 210, bh = box.offsetHeight || 90;
-    let bx = e.clientX - frame.left + 18, by = e.clientY - frame.top + 14;
-    if (bx + bw > frame.width - 8) bx = e.clientX - frame.left - bw - 18;
-    bx = Math.max(8, Math.min(bx, Math.max(8, frame.width - bw - 8)));
-    by = Math.max(8, Math.min(by, Math.max(8, frame.height - bh - 8)));
-    box.style.left = bx + "px"; box.style.top = by + "px";
   }
 
   /* ---------------- Heute ---------------- */
@@ -961,7 +975,7 @@ class IntervalsIcuPanel extends HTMLElement {
         </div>
         <div class="chips">${ranges.map(([d, l]) => `<button class="chipbtn ${this._range === d ? "on" : ""}" data-act="range" data-id="${d}">${l}</button>`).join("")}</div>
       </div>
-      <div class="card pad0" data-grp="pmc">${main}${bars}${formCh}</div>
+      <div class="card pad0" data-grp="pmc">${readout("pmc")}${main}${bars}${formCh}</div>
       <p class="hint pad">Mit der Maus über die Kurven fahren: alle drei Felder teilen sich eine Zeitachse und einen Ablese-Cursor.</p>`;
   }
 
@@ -1115,7 +1129,7 @@ class IntervalsIcuPanel extends HTMLElement {
       });
     }).join("");
     this._grp.str = { n, xl: (i) => hhmm(tAt(i)) + " h", rows: rowsMeta };
-    return `<div class="card2 pad0" data-grp="str">${panels}</div>`;
+    return `<div class="card2 pad0" data-grp="str">${readout("str")}${panels}</div>`;
   }
 
   _dfaBlock(s) {
@@ -1390,7 +1404,7 @@ class IntervalsIcuPanel extends HTMLElement {
           <div class="stat"><small>Messungen</small><b class="tn small2">${solid.length}</b><span class="mut">belastbar · ${rows.length - solid.length} dünn</span></div>
         </div>
       </div>
-      <div class="card pad0" data-grp="dfa">${mainCh}${powCh}</div>
+      <div class="card pad0" data-grp="dfa">${readout("dfa")}${mainCh}${powCh}</div>
       <div class="card pad0"><div class="thead"><span>Datum</span><span>Sport</span><span>Schwelle</span><span>Leistung</span><span>Güte</span></div>${tableRows}</div>`;
   }
 
@@ -1479,12 +1493,13 @@ details.more summary:hover,details.calc summary:hover{color:${C.tx}}
 svg.ch{display:block;width:100%;height:auto}
 .ax{font:11.5px ui-sans-serif,system-ui,sans-serif;fill:${C.tx3}}
 .pl{font:12px ui-sans-serif,system-ui,sans-serif;font-weight:600}
-.xhbox{position:absolute;z-index:9;background:${C.card2}f2;border:1px solid ${C.line};border-radius:9px;
-  padding:8px 11px;min-width:190px;pointer-events:none;box-shadow:0 6px 20px #0007}
-.xhbox .xt{font-size:12.5px;color:${C.tx3};margin-bottom:5px}
-.xr{display:flex;align-items:center;gap:7px;font-size:13px;padding:1.5px 0}
-.xr i{width:9px;height:9px;border-radius:3px}
-.xr span{color:${C.tx2};flex:1}
+.rdo{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:7px 10px 8px;
+  margin:2px 4px 6px;border-bottom:1px solid ${C.line};min-height:34px}
+.rdox{color:${C.tx3};font-size:12.5px;min-width:132px;font-variant-numeric:tabular-nums}
+.rdov{display:flex;gap:16px;flex-wrap:wrap;align-items:center}
+.rv{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:${C.tx2}}
+.rv i{width:9px;height:9px;border-radius:3px;display:inline-block}
+.rv b{color:${C.tx};font-size:14.5px}
 /* Heute */
 .hero{border-width:1.5px;padding:20px}
 .herowrap{display:flex;gap:28px;align-items:center;flex-wrap:wrap;justify-content:center}

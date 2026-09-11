@@ -1,6 +1,6 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 11.09.2026 · **Version:** 0.9.2 · **Status:** läuft produktiv auf HEIMDALL, Auslieferung über HACS
+**Stand:** 11.09.2026 · **Version:** 0.9.3 · **Status:** läuft produktiv auf HEIMDALL, Auslieferung über HACS
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu
 lokal archiviert, auswertet und in einem eigenen Seitenleisten-Panel darstellt.
@@ -224,6 +224,7 @@ Ausführen: `python3 tests/<datei>.py` bzw. `node tests/<datei>.js`.
 | 0.9.1 | Archiv-Abgleich lief nur beim Start, nie im Takt | Timer-Aktion war ein Lambda statt einer Coroutine-Funktion: HA führt sie im Executor-Thread aus, die erzeugte Aufgabe wird nie abgewartet. HA protokolliert genau das |
 | 0.9.1 | Ablesekasten ragte bei Mauszeiger außerhalb des Fensters hinaus | Klemmung nur in eine Richtung — in der neuen Simulation gefunden |
 | 0.9.2 | Ablesekasten rutschte auf breitem Monitor weiter aus dem Bild | gegen das Panel-Element geklemmt statt gegen `#app` (max. 1240 px, **zentriert**). Beide Rahmen waren im Test gleich groß gestubbt — der Test war grün, die Realität nicht. Die Testumgebung hält jetzt zwei verschiedene Rahmen |
+| 0.9.3 | Ablesekasten **zum dritten Mal** am falschen Fleck | zweimal an der Positionsrechnung repariert, zweimal falsch. Statt eines dritten Versuchs wurde die Fehlerklasse entfernt: die Werte stehen jetzt in einer **festen Leiste** im Kartenkopf, es gibt kein positioniertes Element mehr. Kein Rahmen, den man verwechseln kann |
 | 0.9.2 | DFA-Achse von 0 bis 160, echte Schwelle als Strich | eine Null-Schwelle und eine Gehen-Messung aus einem einzigen Messpunkt bestimmten die Achse — dieselbe Artefaktklasse wie in den Strömen, nur in der Schwellenreihe |
 
 ---

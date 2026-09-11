@@ -106,36 +106,40 @@ const acts = F.activities(), thr = F.thresholds();
   ok(new Set(axLabels).size === axLabels.length, `5 achse: DFA-Achse doppelt (${axLabels.join(",")})`);
 }
 
-/* ── 6  the readout box stays inside its own frame ─────────────────────
-   Twice wrong now: first clamped against a fixed 230px guess, then against
-   the panel element instead of #app - which is capped at 1240px and centred,
-   so on a 2560px monitor the two frames are 660px apart and the box slid off
-   the screen. The stub therefore uses two DIFFERENT rectangles. */
+/* ── 6  the readout cannot leave the screen, because it no longer floats ──
+   Twice wrong as a floating box: clamped against a fixed width, then against
+   the wrong frame. The class of defect is removed rather than patched again -
+   the values now live in a fixed strip inside the card. These checks fail if
+   anyone reintroduces a positioned element. */
 {
-  const wide = { left: 0, top: 0, width: 2560, height: 1300 };        // browser window
-  const app = { left: 660, top: 0, width: 1240, height: 1300 };       // centred #app
-  global.__HOST_RECT__ = wide; global.__APP_RECT__ = app;
-  const M2 = H.load();
-  const q = new M2.Panel();
-  q._grp.pmc = { n: 100, xl: (i) => "Tag " + i,
-                 rows: [{ l: "Fitness", c: M2.ROLE.ctl, vals: Array.from({ length: 100 }, (_, i) => i) }] };
-  const box = q.shadowRoot._box;
-  box.offsetWidth = 236; box.offsetHeight = 96;
-  const svg = { dataset: { w: "880", padl: "48", padr: "14" },
-                getBoundingClientRect: () => ({ left: app.left + 20, top: 300, width: 1200, height: 230 }) };
-  const g = { dataset: { grp: "pmc" }, querySelector: () => svg, querySelectorAll: () => q.shadowRoot._lines };
+  const html = p.rFitness(F.pmc(days), 182) + p.rDfa(thr, "all");
+  ok(!/id="xhbox"/.test(html), "6 ableseleiste: schwebender Kasten wieder da");
+  ok(!/style\.left/.test(html), "6 ableseleiste: Positionsrechnung im Markup");
+  ok((html.match(/data-rdo="/g) || []).length === 2, "6 ableseleiste: nicht jede Diagrammgruppe hat eine Leiste");
 
-  for (const cx of [app.left + 20, app.left + 600, app.left + 1200, 2500, 0]) {
-    q._xhMove(g, { clientX: cx, clientY: 700 });
-    const bx = parseFloat(box.style.left), by = parseFloat(box.style.top);
-    ok(bx >= 0 && bx + box.offsetWidth <= app.width,
-       `6 ablesekasten: bei x=${cx} außerhalb von #app (links ${bx}, breit ${box.offsetWidth}, Rahmen ${app.width})`);
-    ok(by >= 0 && by + box.offsetHeight <= app.height, `6 ablesekasten: bei x=${cx} unten heraus`);
-  }
-  // and the numbers themselves have to be in there
-  q._xhMove(g, { clientX: app.left + 600, clientY: 700 });
-  ok(/<b class="tn">/.test(box.innerHTML), "6 ablesekasten: Werte fehlen im Kasten");
-  global.__HOST_RECT__ = null; global.__APP_RECT__ = null;
+  // the strip carries the newest values before any pointer moves
+  p._grp.pmc = { n: 100, xl: (i) => "Tag " + i,
+    rows: [{ l: "Fitness", c: M.ROLE.ctl, u: "", vals: Array.from({ length: 100 }, (_, i) => (i > 95 ? null : 30 + i)) },
+           { l: "Form", c: M.ROLE.form, u: "", vals: Array.from({ length: 100 }, (_, i) => (i % 9 ? 2 - i * 0.05 : null)) }] };
+  p._fillReadout("pmc", null);
+  const strip = p.shadowRoot._strips.pmc;
+  ok(/zuletzt/.test(strip._x.textContent), "6 ableseleiste: Ruhezustand nicht als solcher erkennbar");
+  ok(/Tag 95/.test(strip._x.textContent), `6 ableseleiste: greift nicht den neuesten Wert (${strip._x.textContent})`);
+  ok(/Fitness/.test(strip._v.innerHTML) && /125/.test(strip._v.innerHTML),
+     "6 ableseleiste: Werte fehlen im Ruhezustand");
+
+  // moving the pointer writes the value under the cursor, gaps read as "–"
+  const svg = { dataset: { w: "880", padl: "48", padr: "14" },
+                getBoundingClientRect: () => ({ left: 100, top: 50, width: 880, height: 230 }) };
+  const g = { dataset: { grp: "pmc" }, querySelector: () => svg, querySelectorAll: () => p.shadowRoot._lines };
+  p._xhMove(g, { clientX: 100 + 48 + (880 - 48 - 14) * 0.5, clientY: 120 });
+  ok(!/zuletzt/.test(strip._x.textContent), "6 ableseleiste: bleibt im Ruhezustand stehen");
+  ok(/Tag (49|50|51)/.test(strip._x.textContent), `6 ableseleiste: falscher Index (${strip._x.textContent})`);
+  p._xhMove(g, { clientX: 100 + 48, clientY: 120 });      // index 0: Form is null
+  ok(/–/.test(strip._v.innerHTML), "6 ableseleiste: Lücke wird nicht als solche gezeigt");
+  ok(!/NaN/.test(strip._v.innerHTML), "6 ableseleiste: NaN in der Leiste");
+  p._xhHide();
+  ok(/zuletzt/.test(strip._x.textContent), "6 ableseleiste: kehrt nicht in den Ruhezustand zurück");
 }
 
 /* ── 7  one unit per tile ──────────────────────────────────────────────── */

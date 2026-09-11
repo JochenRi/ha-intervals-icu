@@ -25,30 +25,28 @@ const acts = F.activities();
       { l: "Form", c: M.ROLE.form, vals: Array.from({ length: 100 }, (_, i) => (i % 9 ? 2 - i * 0.05 : null)) },
     ],
   };
-  const box = p.shadowRoot._box;
-  box.offsetWidth = 214; box.offsetHeight = 88;
   const svg = { dataset: { w: "880", padl: "48", padr: "14" },
                 getBoundingClientRect: () => ({ left: 100, top: 50, width: 880, height: 230 }) };
   const lines = p.shadowRoot._lines;
   const g = { dataset: { grp: "pmc" }, querySelector: () => svg, querySelectorAll: () => lines };
+  p._fillReadout("pmc", null);
+  const strip = p.shadowRoot._strips.pmc;
 
   p._xhMove(g, { clientX: 100 + 48 + (880 - 48 - 14) * 0.5, clientY: 120 });
-  ok(!box.hidden, "cursor: Ablesekasten bleibt versteckt");
-  ok(/Tag (49|50|51)/.test(box.innerHTML), "cursor: Index falsch zugeordnet");
-  contains(box.innerHTML, "Fitness", "cursor");
+  ok(/Tag (49|50|51)/.test(strip._x.textContent), "cursor: Index falsch zugeordnet");
+  contains(strip._v.innerHTML, "Fitness", "cursor");
   ok(lines[0]._a.opacity === "0.9", "cursor: Linie nicht sichtbar");
 
   p._xhMove(g, { clientX: 0, clientY: 120 });
-  contains(box.innerHTML, "Tag 0", "cursor links geklemmt");
+  contains(strip._x.textContent, "Tag 0", "cursor links geklemmt");
   p._xhMove(g, { clientX: 5000, clientY: 120 });
-  contains(box.innerHTML, "Tag 99", "cursor rechts geklemmt");
+  contains(strip._x.textContent, "Tag 99", "cursor rechts geklemmt");
 
-  p._xhMove(g, { clientX: 100 + 48, clientY: 120 });   // index 0: Form is null there
-  ok(!box.innerHTML.includes("NaN"), "cursor: NaN im Ablesekasten");
-  contains(box.innerHTML, "–", "cursor zeigt Lücke");
+  p._xhMove(g, { clientX: 100 + 48, clientY: 120 });
+  ok(!strip._v.innerHTML.includes("NaN"), "cursor: NaN in der Leiste");
+  contains(strip._v.innerHTML, "–", "cursor zeigt Lücke");
 
   p._xhHide();
-  ok(box.hidden, "cursor: Kasten bleibt nach dem Verlassen stehen");
   ok(lines[0]._a.opacity === "0", "cursor: Linie bleibt stehen");
   // an unknown group must not throw
   p._xhMove({ dataset: { grp: "gibtsnicht" }, querySelector: () => svg, querySelectorAll: () => lines },

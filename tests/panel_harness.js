@@ -19,6 +19,12 @@ function stubElement(appRect) {
     getBoundingClientRect: () => appRect || { left: 0, top: 0, width: 1200, height: 800 },
   };
   const box = { innerHTML: "", hidden: true, style: {}, offsetWidth: 0, offsetHeight: 0 };
+  // readout strips, one per chart group, addressed by [data-rdo="<group>"]
+  const strips = {};
+  const mkStrip = () => {
+    const x = { textContent: "" }, v = { innerHTML: "" };
+    return { _x: x, _v: v, querySelector: (s) => (s === ".rdox" ? x : (s === ".rdov" ? v : null)) };
+  };
   const lines = [];
   const mkLine = () => { const a = {}; return { setAttribute: (k, v) => { a[k] = v; }, _a: a }; };
   for (let i = 0; i < 3; i++) lines.push(mkLine());
@@ -26,7 +32,13 @@ function stubElement(appRect) {
     innerHTML: "", _listeners: {}, _box: box, _lines: lines,
     getElementById: (id) => (id === "xhbox" ? box : (id === "app" ? app : { innerHTML: "", hidden: true, style: {} })),
     querySelectorAll: (sel) => (sel === ".xh" ? lines : []),
-    querySelector: () => null,
+    querySelector: (sel) => {
+      const m = /^\[data-rdo="([^"]+)"\]$/.exec(sel || "");
+      if (!m) return null;
+      if (!strips[m[1]]) strips[m[1]] = mkStrip();
+      return strips[m[1]];
+    },
+    _strips: strips,
     addEventListener(type, fn) { this._listeners[type] = fn; },
   };
 }
