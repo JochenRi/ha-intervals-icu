@@ -167,19 +167,21 @@ const acts = F.activities(), thr = F.thresholds();
 
 /* ── 9  every number says which day it belongs to ──────────────────────── */
 {
-  const html = p.rHeute(rd, days, load);
-  clean(html, "9 datum");
-  contains(html, "Freitag, 11.09.2026", "9 datum: Kopfzeile ohne Datum");
-  // HRV and resting HR have no row for today in the fixture - the cards must
-  // say so instead of presenting yesterday's value as today's
-  ok(html.includes("Stand 10.09.2026"), "9 datum: veralteter Wert wird nicht als solcher ausgewiesen");
-  ok(html.includes('class="stamp old"'), "9 datum: keine Hervorhebung für veraltete Werte");
-  const stamps = (html.match(/class="stamp/g) || []).length;
-  ok(stamps >= 5, `9 datum: nur ${stamps} von sieben Karten tragen einen Stand`);
-  ok(p._stampOf({ v: [1, null, 3, null], d: ["a", "b", "c", "d"] }) === "c",
-     "9 datum: falscher Stand bei Lücke am Ende");
-  ok(p._stampOf({ v: [null, null], d: ["a", "b"] }) === null, "9 datum: leere Reihe liefert kein null");
-  ok(p._stampOf(null) === null, "9 datum: fehlende Reihe stürzt");
+  // 0.9.1: values could be a day old with nothing saying so. The rule survived
+  // the redesign: the page dates itself, every signal dates itself, and a value
+  // that is not from today is marked - a wellness record fills up over the day.
+  const fresh = p.rHeute({ ...F.today(), date: new Date().toISOString().slice(0, 10) });
+  clean(fresh, "9 datum");
+  ok((fresh.match(/class="tsigdate/g) || []).length === 3,
+     "9 datum: nicht jedes Signal trägt einen Stand");
+  ok(!/staleflag/.test(fresh), "9 datum: heutige Werte als veraltet markiert");
+
+  const old = p.rHeute({ ...F.today(), date: "2026-09-09" });
+  clean(old, "9 datum alt");
+  contains(old, "Werte von", "9 datum: veralteter Wert wird nicht als solcher ausgewiesen");
+  ok(/class="staleflag"/.test(old), "9 datum: keine Hervorhebung für veraltete Werte");
+  ok(/tsigdate stale/.test(old), "9 datum: veralteter Stand an den Signalen nicht markiert");
+  contains(old, "füllt sich über den Tag", "9 datum: Grund nicht genannt");
 }
 
 /* ── 10  artefacts must not set the DFA axis ───────────────────────────

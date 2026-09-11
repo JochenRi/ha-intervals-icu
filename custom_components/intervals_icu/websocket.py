@@ -67,6 +67,7 @@ def async_register(hass: HomeAssistant) -> None:
         websocket_plan_workout,
         websocket_night,
         websocket_context,
+        websocket_today,
         websocket_goal,
         websocket_set_goal,
         websocket_thresholds,
@@ -581,3 +582,19 @@ async def websocket_set_goal(hass, connection, msg) -> None:
         "profile": profile, "state": state,
         "plan": plan_lib.plan(profile, state),
     })
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "intervals_icu/today",
+        vol.Optional("athlete_id"): str,
+    }
+)
+@callback
+def websocket_today(hass, connection, msg) -> None:
+    """Everything that bears on what is possible today - and nothing beyond."""
+    if (coordinator := _require(hass, connection, msg)) is None:
+        return
+    data = coordinator.archive.data
+    ready = analytics.readiness(data) or {}
+    connection.send_result(msg["id"], coach_module.today(data, ready.get("budget")))

@@ -277,6 +277,65 @@ function steadyStream(kind) {
 /* the night after a session, as intervals_icu/night returns it */
 /* how this session sits among comparable ones, as intervals_icu/context returns it */
 /* goal profile and the plan it produces, as intervals_icu/goal returns it */
+/* everything the Heute page needs, as intervals_icu/today returns it */
+function today(kind) {
+  if (kind === "leer") return { available: false };
+  const sig = (key, label, unit, value, baseline, z, system, limit) =>
+    ({ key, label, unit, value, baseline, z, system, limit,
+       moved: Math.abs(z) >= 0.5,
+       direction: z >= 0.5 ? "günstig" : z <= -0.5 ? "ungünstig" : "unauffällig" });
+  const base = {
+    available: true, date: "2026-09-11",
+    capacity: "Alles möglich", capacity_text: "Nichts spricht gegen einen harten Reiz.",
+    ceiling: 95, state: "ready", state_label: "Normalbereich",
+    state_text: "Die Werte liegen im gewohnten Band.",
+    tension: null,
+    signals: [
+      sig("hrv", "Herzratenvariabilität", "ms", 52, 49.2, 0.8, "Autonomes Nervensystem",
+          "Nachtmessung der Uhr, nicht die validierte Morgenmessung im Liegen"),
+      sig("rhr", "Ruhepuls", "bpm", 54, 56.4, 0.9, "Autonomes Nervensystem",
+          "reagiert träger als die HRV, dafür stabiler"),
+      sig("sleep", "Schlafdauer", "h", 7.6, 7.4, 0.2, "Verhalten",
+          "Dauer aus der Uhr geschätzt; kein autonomer Messwert"),
+    ],
+    recent: [
+      { date: "2026-09-05", load: 0, state: "slump" },
+      { date: "2026-09-06", load: 0, state: "slump" },
+      { date: "2026-09-07", load: 0, state: "recovering" },
+      { date: "2026-09-08", load: 0, state: "recovering" },
+      { date: "2026-09-09", load: 9, state: "rebound" },
+      { date: "2026-09-10", load: 0, state: "rebound" },
+      { date: "2026-09-11", load: 38, state: "ready" },
+    ],
+    week_load: 47, rest_days: 5,
+    night: { available: true, headline: "Die Nacht sah aus wie sonst nach solchen Einheiten.",
+             detail: "Verglichen mit 13 früheren Einheiten ähnlicher Last." },
+    anchors: { aerobic_hr: 157, aerobic_watts: 158 },
+    horizon: "Nur für heute. Was morgen geht, hängt an der Belastung außerhalb des Trainings, und die steht in keinen Daten.",
+    method: "Bewusst KEIN Punktwert. Von vierzehn Bereitschaftswerten aus zehn Wearable-Häusern legt kein einziger seine Formel offen.",
+  };
+  if (kind === "einbruch") {
+    return { ...base, capacity: "Ruhetag", capacity_text: "Heute nichts. Der Einbruch ist akut.",
+      ceiling: 0, state: "slump", state_label: "Einbruch",
+      signals: [
+        sig("hrv", "Herzratenvariabilität", "ms", 30, 49.2, -2.7, "Autonomes Nervensystem", "Nachtmessung der Uhr"),
+        sig("rhr", "Ruhepuls", "bpm", 66, 56.4, -3.7, "Autonomes Nervensystem", "reagiert träger"),
+        sig("sleep", "Schlafdauer", "h", 6.1, 7.4, -1.4, "Verhalten", "Dauer geschätzt"),
+      ] };
+  }
+  if (kind === "spannung") {
+    return { ...base,
+      tension: "Herzratenvariabilität liegt heute unter deiner Basislinie — aber weder weit genug noch lange genug für einen Einbruch. Die Regel entscheidet über das Mittel der letzten drei Tage.",
+      signals: [
+        sig("hrv", "Herzratenvariabilität", "ms", 42, 49.2, -1.4, "Autonomes Nervensystem", "Nachtmessung der Uhr"),
+        sig("rhr", "Ruhepuls", "bpm", 56, 56.4, 0.1, "Autonomes Nervensystem", "reagiert träger"),
+        sig("sleep", "Schlafdauer", "h", 7.5, 7.4, 0.1, "Verhalten", "Dauer geschätzt"),
+      ] };
+  }
+  if (kind === "ohnenacht") return { ...base, night: { available: false } };
+  return base;
+}
+
 function goal(kind) {
   const goals = {
     long_ride: { label: "Lange Fahrten durchstehen", detail: "Sechs Stunden und mehr, ohne im letzten Drittel einzubrechen.", target: "Durability — Ermüdungswiderstand", why: "Maunder definiert sie als Zeitpunkt und Ausmaß der Verschlechterung physiologischer Merkmale während langer Belastung.", key_session: "der lange Tag" },
@@ -581,4 +640,4 @@ function workouts(kind) {
   };
 }
 
-module.exports = { TODAY, days, load, readiness, activities, streams, thresholds, calendar, pmc, laps, lapsWithBounds, steadyStream, night, context, goal, coach, signals, workouts };
+module.exports = { TODAY, days, load, readiness, activities, streams, thresholds, calendar, pmc, laps, lapsWithBounds, steadyStream, night, context, goal, today, coach, signals, workouts };

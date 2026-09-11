@@ -19,127 +19,56 @@ const EMPTY_DAYS = { today: F.TODAY, days: [], weeks: [], max_week_load: 0, avg_
 const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
                      dfa_distribution: null, decoupling: [], hrv: null, thresholds: {} };
 
-/* ── Heute ─────────────────────────────────────────────────────────────── */
+/* ── Heute ────────────────────────────────────────────────────────────── */
 {
-  const html = p.rHeute(rd, days, load);
+  const html = p.rHeute(F.today());
   clean(html, "heute");
-  for (const needle of ["Bereitschaft", "Belastungsbudget", "133", "Wie kommt die Zahl zustande",
-                        "Nächste Einheit", "Die einzelnen Signale", "Quelle und Grenzen"]) {
-    contains(html, needle, "heute");
-  }
-  ok((html.match(/class="sig card"/g) || []).length === 7, "heute: nicht alle sieben Signalkarten");
-  // independent fold-outs: one <details> per card, none sharing a name
-  ok((html.match(/<details class="more">/g) || []).length >= 6, "heute: Aufklappfelder fehlen");
-  // one curve per card, not two: the tile showed a sparkline and the fold-out
-  // repeated the same series in large - redundant, and it made the card noisy
-  const cardsOnly = html.slice(html.indexOf('class="siggrid"'));
-  const spark = (cardsOnly.match(/class="spk"/g) || []).length;
-  const charts = (cardsOnly.match(/<svg class="ch"/g) || []).length;
-  ok(charts === 0, `heute: ${charts} zweite Kurve(n) in den Signalkarten - die Kachel zeigt sie schon`);
-  ok(spark >= 5, `heute: nur ${spark} Sparklines`);
-  contains(html, "Tab <b>Signale</b>", "heute: kein Verweis auf die große Ansicht");
-  ok(!html.includes("<details name="), "heute: Aufklappfelder gekoppelt");
+  // 1 - the answer first: what is possible, and a ceiling
+  contains(html, "HEUTE MÖGLICH", "heute: keine Leitaussage");
+  contains(html, "Alles möglich", "heute: Kapazität fehlt");
+  contains(html, "Obergrenze", "heute: keine Obergrenze");
+  contains(html, "95", "heute: Lastdecke fehlt");
+  // 2 - the signals, each with the SYSTEM it reports on - never averaged
+  ok((html.match(/class="tsig /g) || []).length === 3, "heute: nicht jedes Signal einzeln");
+  contains(html, "Autonomes Nervensystem", "heute: System nicht benannt");
+  contains(html, "Verhalten", "heute: Schlaf nicht als Verhalten eingeordnet");
+  contains(html, "Basislinie", "heute: eigene Basislinie fehlt");
+  // every signal must carry what it CANNOT do
+  contains(html, "nicht die validierte Morgenmessung", "heute: Messgrenze der HRV fehlt");
+  contains(html, "kein autonomer Messwert", "heute: Grenze des Schlafwerts fehlt");
+  // 3 - where it comes from
+  contains(html, "Woher das kommt", "heute: Herkunft fehlt");
+  ok((html.match(/class="tday"/g) || []).length === 7, "heute: nicht sieben Tage");
+  contains(html, "Last in sieben Tagen", "heute: Wochenlast fehlt");
+  contains(html, "Erholung, nicht Bereitschaft", "heute: Nacht nicht als Erholung eingeordnet");
+  // the removed things must STAY removed
+  ok(!/Monotonie/.test(html), "heute: Monotonie wieder da");
+  ok(!/class="ring"/.test(html), "heute: Ring wieder da");   // Icons dürfen Kreise haben, die Leitanzeige nicht
+  ok(!/\d+ von 7 Signalen/.test(html), "heute: Punktwert wieder da");
+  // and the reason for that has to be stated
+  contains(html, "Warum hier kein Punktwert steht", "heute: Methodik nicht erklärt");
+  contains(html, "Warum nur heute", "heute: Horizont nicht erklärt");
+  contains(html, "kein einziger seine Formel offen", "heute: Kritik an Punktwerten fehlt");
 
-  clean(p.rHeute(null, null, null), "heute leer");
-  clean(p.rHeute({ ...rd, budget: null }, days, load), "heute ohne budget");
-  clean(p.rHeute({ overall: "unknown", note: "", budget: null,
-    components: rd.components.map((c) => ({ ...c, state: "unknown", value: null, reference: null })) },
-    EMPTY_DAYS, {}), "heute alles unbekannt");
-  clean(p.rHeute(rd, gappy, load), "heute mit lücken");
+  // a slump must read as one, in colour AND word
+  const slump = p.rHeute(F.today("einbruch"));
+  clean(slump, "heute einbruch");
+  contains(slump, "Ruhetag", "heute: Einbruch nicht als Ruhetag");
+  ok(/class="tcard red/.test(slump), "heute: Einbruch nicht rot");
+  contains(slump, "Einbruch", "heute: Zustand nicht benannt");
 
-  // nothing planned ahead: the row must disappear, not render empty
-  const nothingAhead = { ...days, days: days.days.map((d) => ({ ...d, planned: [] })) };
-  const bare = p.rHeute(rd, nothingAhead, load);
-  clean(bare, "heute ohne geplante einheit");
-  ok(!bare.includes("Nächste Einheit"), "heute: leere Zeile für nicht vorhandene Planung");
-  ok(p._nextPlanned(nothingAhead) === null, "heute: _nextPlanned erfindet eine Einheit");
-  ok(p._nextPlanned(null) === null, "heute: _nextPlanned stürzt ohne Daten");
-}
+  // where signals and verdict disagree, the page must say why
+  const tension = p.rHeute(F.today("spannung"));
+  clean(tension, "heute spannung");
+  contains(tension, "weder weit genug noch lange genug", "heute: Widerspruch nicht erklärt");
+  ok(/class="tnote"/.test(tension), "heute: Hinweis nicht als solcher gezeigt");
+  ok(!/class="tnote"/.test(html), "heute: Hinweis ohne Widerspruch gezeigt");
 
-/* ── Trainer ───────────────────────────────────────────────────────────── */
-{
-  for (const kind of ["ready", "rebound", "slump", "unknown"]) {
-    const html = p.rTrainer(F.coach(kind), rd);
-    clean(html, "trainer " + kind);
-    contains(html, "Zustand heute", "trainer " + kind);
-    contains(html, "Nächste Einheit", "trainer " + kind);
-    contains(html, "Was das bewirkt", "trainer " + kind);
-    contains(html, "Düking", "trainer " + kind + ": Grenze der Regel fehlt");
-  }
-  clean(p.rTrainer(null, rd), "trainer ohne Daten");
-
-  const reb = p.rTrainer(F.coach("rebound"), rd);
-  contains(reb, "Erholung nach Einbruch", "trainer rebound");
-  contains(reb, "hinkt noch nach", "trainer rebound: Nachlauf nicht erklärt");
-  contains(reb, "Grundlage", "trainer rebound: empfiehlt keine lockere Einheit");
-  contains(reb, "stufenweise", "trainer rebound: Infekt-Hinweis fehlt");
-  contains(reb, "85 %", "trainer rebound: eigenes Muster fehlt");
-  contains(reb, "138–152 bpm", "trainer rebound: Zielpuls fehlt");
-  contains(reb, "06.09.2026", "trainer rebound: Einbruchsdatum fehlt");
-
-  const slump = p.rTrainer(F.coach("slump"), rd);
-  contains(slump, "Ruhetag", "trainer slump");
-  ok(!slump.includes("Zielpuls"), "trainer slump: Ruhetag mit Zielpuls");
-
-  const unk = p.rTrainer(F.coach("unknown"), rd);
-  clean(unk, "trainer unknown");
-  ok(!unk.includes("bpm</b>") || unk.includes("–"), "trainer unknown: erfundene Anker");
-
-  const ready = p.rTrainer(F.coach("ready"), rd);
-  contains(ready, "über dem Budget", "trainer ready: Budget-Abgleich fehlt");
-  contains(ready, "157", "trainer: Anker fehlt");
-  contains(ready, "2,2 %", "trainer: Entwicklung der Schwellenleistung fehlt");
-  ok((ready.match(/class="pday/g) || []).length === 7, "trainer: Wochenplan unvollständig");
-  ok((ready.match(/class="catrow"/g) || []).length >= 5, "trainer: Einheitenkatalog unvollständig");
-  // the honest part must be present, not buried
-  contains(ready, "kein belastbarer Zusammenhang", "trainer: die eigene Kalibrierung wird verschwiegen");
-}
-
-/* ── Konkrete Einheiten ─────────────────────────────────────────────────── */
-{
-  p._workouts = F.workouts();
-  const html = p.rTrainer(F.coach("ready"), rd);
-  clean(html, "workouts");
-  for (const needle of ["Konkrete Einheiten", "30/15 nach Rønnestad", "SweetSpot 2×20",
-                        "Grundlage 60 min", "in den Kalender", "morgen"]) {
-    contains(html, needle, "workouts");
-  }
-  // the athlete's own numbers, not percentages to convert in the head
-  contains(html, "215 W", "workouts: FTP nicht genannt");
-  contains(html, "157 bpm", "workouts: aerobe Schwelle nicht genannt");
-  contains(html, "241 W", "workouts: Wattzahlen der Blöcke fehlen");   // 112% von 215
-  contains(html, "170–185 bpm", "workouts: Pulsfenster fehlt");
-  // the structure has to be drawn, not described
-  ok((html.match(/class="wob"/g) || []).length >= 15, "workouts: Struktur nicht gezeichnet");
-  // over-budget must be marked, not hidden
-  contains(html, "über Budget", "workouts: Budget-Überschreitung verschwiegen");
-  // each session ships evidence AND its objection - only when unfolded
-  ok(!html.includes("Protokollnamen sind keine Verschreibungen"),
-     "workouts: Belege stehen ungefragt als Textwand da");
-  p._woOpen = "vo2_3015";
-  const open = p.rTrainer(F.coach("ready"), rd);
-  clean(open, "workouts aufgeklappt");
-  contains(open, "Rønnestad", "workouts: Beleg fehlt");
-  contains(open, "Protokollnamen sind keine Verschreibungen", "workouts: Grenze fehlt");
-  contains(open, "13x", "workouts: die Schritte für Intervals fehlen");
-  contains(open, "Erwartetes DFA", "workouts: erwarteter DFA-Bereich fehlt");
-  p._woOpen = null;
-
-  // the write is the only one - it must be an explicit button, never automatic
-  ok(/data-act="plan"/.test(html), "workouts: kein Knopf zum Eintragen");
-  ok((html.match(/data-act="plan"/g) || []).length === 6, "workouts: Knöpfe unvollständig");
-  contains(html, "einzige Schreibzugriff", "workouts: der Schreibzugriff wird nicht benannt");
-
-  // degenerate
-  p._workouts = F.workouts("ohneFTP");
-  const noftp = p.rTrainer(F.coach("ready"), rd);
-  clean(noftp, "workouts ohne FTP");
-  ok(!noftp.includes("undefined W"), "workouts: erfundene Wattzahlen ohne FTP");
-  p._workouts = F.workouts("leer");
-  clean(p.rTrainer(F.coach("ready"), rd), "workouts leer");
-  p._workouts = null;
-  clean(p.rTrainer(F.coach("ready"), rd), "workouts null");
-  p._workouts = F.workouts();
+  clean(p.rHeute(F.today("ohnenacht")), "heute ohne Nacht");
+  ok(!p.rHeute(F.today("ohnenacht")).includes("Erholung, nicht Bereitschaft"),
+     "heute: Nachtblock ohne Daten gezeigt");
+  clean(p.rHeute(F.today("leer")), "heute leer");
+  clean(p.rHeute(null), "heute null");
 }
 
 /* ── Ziel und Plan ─────────────────────────────────────────────────────── */

@@ -1,6 +1,6 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 11.09.2026 · **Version:** 0.20.0 · **Status:** produktiv auf HEIMDALL,
+**Stand:** 11.09.2026 · **Version:** 0.21.0 · **Status:** produktiv auf HEIMDALL,
 Auslieferung über HACS aus `github.com/JochenRi/ha-intervals-icu`
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lokal
@@ -133,6 +133,44 @@ Einzelwert verschweigt.
 
 Ein Test fährt vier Fahrten mit unterschiedlicher Drift durch (1,1 % / 4,0 % / 5,3 % /
 14,5 %) und verlangt für jede die richtige Einstufung.
+
+### Heute, neu gebaut (0.21.0) — gegen die Kritik an Bereitschaftswerten
+
+Ring, Punktwert („5 von 7 Signalen") und Monotonie sind raus. Zwei Befunde haben die
+Ansicht neu geformt:
+
+**Bereitschaft ist nicht Erholung.** *Erholung beschreibt, was als Reaktion auf vergangenen
+Stress passiert ist; Bereitschaft, was im gegenwärtigen Moment vertragen wird.* Eine Zahl
+presst beides zusammen — und ein niedriger Wert aus einer kurzen Nacht sieht aus wie einer
+aus einem beginnenden Infekt, verlangt aber das Gegenteil.
+
+**Von vierzehn Bereitschaftswerten aus zehn Wearable-Häusern** (Garmin, Whoop, Oura, Polar,
+Fitbit …) legt **kein einziger seine Formel offen**, und kaum einer hat eine Validierung
+vorzuweisen. Die Zutaten sind überall dieselben — HRV 86 %, Ruhepuls 79 %, Schlaf 71 % —,
+die Gewichtung bleibt Betriebsgeheimnis.
+
+**Die empfohlene Alternative steht in derselben Quelle** und ist jetzt die Gliederung der
+Seite: solche Daten nicht als Urteil behandeln, sondern als Anstoß zur Nachfrage —
+*was hat sich geändert, welches System treibt es, wie passt das zum jüngsten Training.*
+
+1. **Was heute möglich ist** — ein Satz, dazu eine Obergrenze als Bullet-Graph mit dem
+   heute schon Gefahrenen.
+2. **Was sich bewegt hat** — jedes Signal einzeln, **mit dem System, über das es etwas
+   aussagt** (autonomes Nervensystem vs. Verhalten) und mit dem, was es nicht kann.
+   Nie gemittelt.
+3. **Woher das kommt** — sieben Tage Last, nach Zustand eingefärbt, und die Nacht nach der
+   letzten Einheit, ausdrücklich als *Erholung, nicht Bereitschaft* beschriftet.
+
+**Wo Signale und Urteil auseinanderlaufen, sagt die Seite warum** statt es zu verstecken:
+„Herzratenvariabilität liegt unter deiner Basislinie — aber weder weit genug noch lange
+genug für einen Einbruch. Die Regel entscheidet über das Mittel der letzten drei Tage."
+
+**Und sie reicht nicht über heute hinaus.** Was morgen geht, hängt an der Belastung
+außerhalb des Trainings, und die steht in keinen Daten — *der wirksamste Einsatz solcher
+Werte liegt in der Anpassung der heutigen Einheit, nicht in der Planung der Woche.*
+
+Beim Umbau haben die alten Tests drei echte Regressionen gefangen: die Ampelfarbe ohne
+Wort (WCAG), der verschwundene Bullet-Graph und der fehlende Stand je Wert.
 
 ### Ziel und Plan (0.20.0) — der Trainer ist entpausiert
 

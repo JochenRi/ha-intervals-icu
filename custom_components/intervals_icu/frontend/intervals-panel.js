@@ -505,6 +505,7 @@ class IntervalsIcuPanel extends HTMLElement {
     this._cmpFocus = null;
     this._night = {};
     this._goal = null;
+    this._today = null;
     this._goalEdit = false;
     this._goalDraft = null;
     this._ctx = {};
@@ -547,6 +548,7 @@ class IntervalsIcuPanel extends HTMLElement {
       if (what === "coach" && !this._coach) this._coach = await this._ws("coach");
       if (what === "workouts" && !this._workouts) this._workouts = await this._ws("workouts");
       if (what === "goal" && !this._goal) this._goal = await this._ws("goal");
+      if (what === "today" && !this._today) this._today = await this._ws("today");
       if (what === "signals" && !this._signals) {
         this._signals = await this._ws("signals", { days: this._sigDays });
       }
@@ -564,6 +566,7 @@ class IntervalsIcuPanel extends HTMLElement {
     if (t === "trainer") {
       await this._need("coach"); await this._need("workouts"); await this._need("goal");
     }
+    if (t === "heute") await this._need("today");
     if (t === "signale") await this._need("signals");
     if (t === "fitness") await this._need("pmc");
     if (t === "akt") await this._need("akt");
@@ -626,7 +629,7 @@ class IntervalsIcuPanel extends HTMLElement {
       html = this.rGoal(this._goal) + this.rTrainer(this._coach, this._rd);
     }
     else if (this._tab === "signale") html = this.rSignale(this._signals);
-    else if (this._tab === "heute") html = this.rHeute(this._rd, this._days, this._load);
+    else if (this._tab === "heute") html = this.rHeute(this._today);
     else if (this._tab === "kalender") html = this.rKalender(this._days);
     else if (this._tab === "fitness") html = this.rFitness(this._pmc, this._range);
     else if (this._tab === "akt") html = this.rAkt(this._acts, this._sel);
@@ -1377,89 +1380,126 @@ class IntervalsIcuPanel extends HTMLElement {
     return null;
   }
 
-  rHeute(rd, days, load) {
-    if (!rd) return `<div class="card pad">Noch keine Bereitschafts-Daten — der erste Import läuft vermutlich noch.</div>`;
-    const m = ST[rd.overall] || ST.unknown;
-    const b = rd.budget;
-    const next = this._nextPlanned(days);
-    let nextRow = "";
-    if (next) {
-      const sp = sportOf(next.group || next.type);
-      let fit = "";
-      if (b && next.load != null) {
-        fit = next.load <= b.recommended
-          ? badge("green", "passt ins Budget")
-          : (next.load <= b.corridor_top ? badge("amber", "über Budget") : badge("red", "deutlich über Budget"));
-      }
-      nextRow = `<div class="nextrow">${ico("cal", C.tx2, 16)}<span>Nächste Einheit</span>
-        <b>${dShort(next.day)}</b><span class="sep">·</span>
-        <span class="sp" style="color:${sp.c}">${ico(sp.ic, sp.c, 16)}${esc(next.name || sp.l)}</span>
-        ${next.load != null ? `<span class="sep">·</span><span>Last <b class="tn">${fmt(next.load)}</b></span>` : ""}
-        ${fit}</div>`;
-    }
-    let budgetHtml = "";
-    if (b) {
-      budgetHtml = `
-        <div class="budhead">Belastungsbudget heute:
-          <b class="tn" style="color:${m.c}">${fmt(b.recommended)} Punkte</b></div>
-        ${bullet(b)}
-        <details class="calc">
-          <summary>Wie kommt die Zahl zustande?</summary>
-          <p>Aus der ACWR-Definition nach heute aufgelöst:
-          <span class="tn">7 × ${fmt(b.chronic, 1)}</span> (chronische Tageslast, 28-Tage-Mittel)
-          <span class="tn">× ${fmt(b.target_ratio, 1)}</span> (Ziel-Verhältnis bei <b style="color:${m.c}">${m.word}</b>)
-          <span class="tn">− ${fmt(b.last_six_days, 1)}</span> (Last der letzten sechs Tage)
-          <span class="tn">= ${fmt(b.recommended)}</span>.
-          Die Zielwahl je Ampelfarbe ist eine Setzung, kein Befund; der ACWR-Korridor selbst ist umstritten.</p>
-        </details>`;
-    }
-    const cards = (rd.components || []).map((cItem) => {
-      const stm = ST[cItem.state] || ST.unknown;
-      const sp = this._sparkFor(cItem.id, days, load);
-      const dec = SIG_DEC[cItem.id] != null ? SIG_DEC[cItem.id] : 1;
-      const stamp = this._stampOf(sp);
-      const today = (days && days.today) || new Date().toISOString().slice(0, 10);
-      const stale = stamp && !sp.week && stamp < today;
-      const stampHtml = stamp
-        ? `<span class="stamp ${stale ? "old" : ""}">${sp.week ? "KW " + String(stamp).split("-W")[1] : (stale ? "Stand " + dMed(stamp) : "heute")}</span>`
-        : `<span class="stamp old">kein Wert</span>`;
-      const sparkHtml = sp && sp.v && sp.v.some((v) => v != null)
-        ? spark(sp.v, { c: C.blue, last: stm.c, band: sp.band, hline: sp.hline, bars: sp.bars, zero: sp.zero }) +
-          `<div class="spklbl">${sp.t}</div>`
-        : `<div class="nospark">kein Verlauf verfügbar</div>`;
-      return `<div class="sig card" style="border-left-color:${stm.c}">
-        <div class="sighead">
-          <span class="sigic" style="color:${stm.c}">${ico(SIG_ICON[cItem.id] || "dot", stm.c, 20)}</span>
-          <span class="sigl">${esc(cItem.label)}</span>
-          ${badge(cItem.state)}
-        </div>
-        <div class="sigval tn">${cItem.value != null ? fmt(cItem.value, dec) : "–"}
-          <span class="unit">${SIG_UNIT[cItem.id] || ""}</span>
-          ${stampHtml}
-        </div>
-        ${cItem.reference != null ? `<div class="sigref">Referenz ${fmt(cItem.reference, dec)} ${SIG_UNIT[cItem.id] || ""}</div>` : ""}
-        <div class="sigsub">${esc(cItem.detail || "")}</div>
-        ${sparkHtml}
-        ${cItem.source ? `<details class="more"><summary>Quelle und Grenzen</summary><p class="src">${esc(cItem.source || "")}</p>
-          <p class="src">Den vollen Verlauf mit Zustandsbändern und allen Signalen nebeneinander
-          zeigt der Tab <b>Signale</b> — dort ist die Kurve groß und mit Ableseleiste.</p></details>` : ""}
+  /* What is possible today.
+
+     Rebuilt against the criticism of readiness scores rather than around one.
+     Two findings drive the shape:
+
+     - READINESS IS NOT RECOVERY. Recovery describes what happened in response
+       to past stress; readiness is what can be tolerated right now. A single
+       number collapses them, and a low score from a short night looks exactly
+       like a low score from a starting infection while demanding the opposite
+       response. Of fourteen commercial scores across ten manufacturers, none
+       publishes its formula and few offer any validation.
+     - THE USEFUL MOVE IS TO TREAT SUCH DATA AS A PROMPT, NOT A VERDICT: what
+       changed, which system is driving it, how does that fit recent training.
+
+     So: one sentence about today and a ceiling, then the signals kept apart
+     and labelled by the system they report on - and where the signals and the
+     verdict disagree, the page says why instead of hiding it. Nothing reaches
+     past today, because the load outside training is in no data. */
+  rHeute(t) {
+    if (!t) return `<div class="card pad">Wird geladen …</div>`;
+    const stale = !!(t.available && t.date && t.date !== new Date().toISOString().slice(0, 10));
+    if (!t.available) return `<div class="card pad">Noch keine Wellness-Daten.</div>`;
+
+    const TONE = { slump: "red", recovering: "amber", rebound: "blue",
+                   strained: "amber", ready: "green", elevated: "amber", unknown: "grey" };
+    const tone = TONE[t.state] || "grey";
+    const col = { red: C.red, amber: C.amber, blue: C.blue, green: C.green, grey: C.tx3 }[tone];
+
+    // Colour never alone: the traffic-light word and its own icon shape ride
+    // along, because roughly 8% of men cannot separate red from green.
+    const WORD = { red: "rot", amber: "gelb", blue: "blau", green: "grün", grey: "keine Daten" };
+    const head = `<div class="tcard ${tone}">
+      <div class="tmain">
+        <div class="tlabel">HEUTE MÖGLICH ${badge(tone, WORD[tone])}</div>
+        <div class="tbig" style="color:${col}">${esc(t.capacity)}</div>
+        <p class="tsay">${esc(t.capacity_text)}</p>
+        ${t.ceiling != null ? (() => {
+          // Bullet graph, not a gauge: actual against a target range is what it
+          // was designed for, and it reads on position rather than on an angle.
+          const doneToday = (t.recent || []).slice(-1)[0];
+          const done = doneToday ? doneToday.load : 0;
+          const scale = Math.max(t.ceiling * 1.4, done * 1.1, 10);
+          return `<div class="tceil">
+            <span>Obergrenze</span><b class="tn">${fmt(t.ceiling)} Last</b>
+            <div class="bullet"><i class="bband" style="width:${(t.ceiling / scale * 100).toFixed(1)}%"></i>
+              <i class="bval" style="width:${(done / scale * 100).toFixed(1)}%"></i>
+              <i class="bmark" style="left:${(t.ceiling / scale * 100).toFixed(1)}%"></i></div>
+            <em>heute gefahren: ${fmt(done)} · darüber wird es ein Reiz, den du heute nicht
+            verdaust. Die Zielwahl je Ampelfarbe ist eine Setzung, kein Befund.</em></div>`;
+        })() : ""}
+      </div>
+      <div class="tstate">
+        <div class="tlabel">ZUSTAND</div>
+        <div class="tstateword" style="color:${col}">${esc(t.state_label || STATE_WORD[t.state] || t.state)}</div>
+        <p class="hint">${esc(t.state_text || "")}</p>
+      </div>
+    </div>`;
+
+    const signals = (t.signals || []).map((s) => {
+      const scol = s.direction === "günstig" ? C.green
+        : s.direction === "ungünstig" ? C.amber : C.tx3;
+      const width = Math.min(50, Math.abs(s.z) / 3 * 50);
+      const left = s.z < 0 ? 50 - width : 50;
+      const dec = s.unit === "h" ? 1 : 0;
+      return `<div class="tsig ${s.moved ? "moved" : ""}">
+        <div class="tsighead"><b>${esc(s.label)}</b>
+          <span class="tsigsys">${esc(s.system)}</span></div>
+        <div class="tsignum"><b class="tn" style="color:${scol}">${fmt(s.value, dec)}</b>
+          <small>${esc(s.unit)}</small>
+          <span class="tsigbase">Basislinie ${fmt(s.baseline, dec)}</span></div>
+        <div class="tsigdate ${stale ? "stale" : ""}">Stand ${esc(dMed(t.date))}${
+          stale ? " — nicht von heute; ein Wellness-Datensatz füllt sich über den Tag" : ""}</div>
+        <div class="tsigbar"><i class="tsigband"></i>
+          <i class="tsigfill" style="left:${left.toFixed(1)}%;width:${Math.max(1, width).toFixed(1)}%;background:${scol}"></i></div>
+        <div class="tsigfoot"><span style="color:${scol}">${sign(s.z, 1)} SD · ${esc(s.direction)}</span>
+          <em>${esc(s.limit)}</em></div>
       </div>`;
     }).join("");
+
+    const maxLoad = Math.max(1, ...(t.recent || []).map((d) => d.load));
+    const bars = (t.recent || []).map((d) => {
+      const height = d.load ? Math.max(6, (d.load / maxLoad) * 46) : 2;
+      const dcol = { slump: C.red, recovering: C.amber, rebound: C.blue,
+                     strained: C.amber }[d.state] || C.slate;
+      return `<div class="tday" title="${esc(d.date)}: Last ${d.load}">
+        <i style="height:${height.toFixed(0)}px;background:${dcol}"></i>
+        <span>${esc(dShort(d.date))}</span>
+        <b class="tn">${d.load || "–"}</b></div>`;
+    }).join("");
+
+    const night = t.night && t.night.available ? `<div class="tnight">
+      <div class="tlabel">DIE NACHT NACH DER LETZTEN EINHEIT — Erholung, nicht Bereitschaft</div>
+      <p class="tnhead">${esc(t.night.headline)}</p>
+      <p class="hint">${esc(t.night.detail)}</p></div>` : "";
+
     return `
-      <section class="hero card" style="border-color:${m.c}55">
-        <div class="herowrap">
-          <div class="ringbox">${ring(rd.components || [], rd.overall)}</div>
-          <div class="heromain">
-            <div class="kicker">Bereitschaft <span class="dstamp">${days && days.today ? dLong(days.today) : ""}</span></div>
-            <div class="verdict">${badge(rd.overall)}<span>${VERDICT[rd.overall] || VERDICT.unknown}</span></div>
-            ${budgetHtml}
-            ${nextRow}
-          </div>
-        </div>
-      </section>
-      <h3 class="secname">Die einzelnen Signale <span class="hint">— jedes gegen deine eigenen Werte, nicht gegen eine Norm. Der Ring oben zeigt sie in gleicher Reihenfolge.</span></h3>
-      <div class="siggrid">${cards}</div>
-      <p class="note">${esc(rd.note || "")}</p>`;
+      <div class="thead">${esc(dLong(t.date))}${
+        stale ? ` <span class="staleflag">Werte von ${esc(dMed(t.date))}</span>` : ""}</div>
+      ${head}
+      ${t.tension ? `<div class="tnote">${ico("info", C.tx2, 16)}<span>${esc(t.tension)}</span></div>` : ""}
+
+      <h3 class="secname">Was sich bewegt hat
+        <span class="hint">— jedes Signal einzeln, mit dem System, über das es etwas aussagt</span></h3>
+      <div class="tsigs">${signals}</div>
+
+      <h3 class="secname">Woher das kommt
+        <span class="hint">— die letzten sieben Tage und die Nacht nach der letzten Einheit</span></h3>
+      <div class="card pad">
+        <div class="tweek">${bars}</div>
+        <div class="tweeksum">${fmt(t.week_load)} Last in sieben Tagen · ${t.rest_days}
+          ${t.rest_days === 1 ? "Tag" : "Tage"} ohne Training</div>
+        ${night}
+      </div>
+
+      <div class="card pad">
+        <details class="more"><summary>Warum hier kein Punktwert steht</summary>
+          <p class="src">${esc(t.method)}</p></details>
+        <details class="more"><summary>Warum nur heute und nicht die Woche</summary>
+          <p class="src">${esc(t.horizon)}</p></details>
+      </div>`;
   }
 
   _nextPlanned(days) {
@@ -2680,6 +2720,62 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
   .lrow{grid-template-columns:30px 1fr 70px 74px;}
   .lrow>*:nth-child(5),.lrow>*:nth-child(6),.lrow>*:nth-child(7),.lrow>*:nth-child(8){display:none}
 }
+/* Heute */
+.thead{font-size:14px;color:${C.tx2};margin:0 2px 8px}
+.staleflag{color:${C.amber};font-size:12.5px;margin-left:6px}
+.tsigdate{color:${C.tx3};font-size:11px;margin-bottom:6px}
+.tsigdate.stale{color:${C.amber}}
+.bullet{position:relative;height:14px;background:#0006;border-radius:3px;flex-basis:100%;margin:6px 0 2px}
+.bband{position:absolute;left:0;top:0;bottom:0;background:${C.slate};opacity:.45;border-radius:3px}
+.bval{position:absolute;left:0;top:4px;bottom:4px;background:${C.tx};border-radius:2px}
+.bmark{position:absolute;top:-2px;bottom:-2px;width:2px;background:${C.tx2}}
+.tcard{display:grid;grid-template-columns:1.4fr 1fr;gap:18px;background:${C.card};
+  border:1px solid ${C.line};border-left-width:4px;border-radius:12px;padding:18px 20px;margin-bottom:12px}
+.tcard.red{border-left-color:${C.red}}
+.tcard.amber{border-left-color:${C.amber}}
+.tcard.blue{border-left-color:${C.blue}}
+.tcard.green{border-left-color:${C.green}}
+.tcard.grey{border-left-color:${C.tx3}}
+.tlabel{color:${C.tx3};font-size:11px;text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px}
+.tbig{font-size:34px;font-weight:700;line-height:1.1}
+.tsay{font-size:15px;color:${C.tx2};margin:6px 0 0}
+.tceil{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;margin-top:12px;
+  background:${C.card2};border-radius:9px;padding:8px 12px}
+.tceil span{color:${C.tx3};font-size:12px}
+.tceil b{font-size:19px}
+.tceil em{font-style:normal;color:${C.tx3};font-size:11.5px;flex-basis:100%}
+.tstate{border-left:1px solid ${C.line};padding-left:18px}
+.tstateword{font-size:19px;font-weight:650;margin-bottom:4px}
+.tnote{display:flex;gap:9px;align-items:flex-start;background:${C.card2};border-radius:10px;
+  padding:11px 14px;font-size:13.5px;color:${C.tx2};margin-bottom:4px;line-height:1.5}
+.tsigs{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px}
+.tsig{background:${C.card};border:1px solid ${C.line};border-radius:11px;padding:12px 14px;opacity:.72}
+.tsig.moved{opacity:1;border-color:${C.line}}
+.tsighead{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.tsighead b{font-size:14.5px}
+.tsigsys{color:${C.tx3};font-size:11px;text-align:right}
+.tsignum{display:flex;align-items:baseline;gap:5px;margin:6px 0 8px;flex-wrap:wrap}
+.tsignum b{font-size:26px}
+.tsignum small{color:${C.tx3};font-size:12.5px}
+.tsigbase{color:${C.tx3};font-size:11.5px;margin-left:auto}
+.tsigbar{position:relative;height:12px;background:#0006;border-radius:3px}
+.tsigband{position:absolute;left:41.7%;width:16.6%;top:0;bottom:0;background:${C.tx3};opacity:.22;border-radius:2px}
+.tsigfill{position:absolute;top:2px;bottom:2px;border-radius:2px}
+.tsigfoot{display:flex;justify-content:space-between;gap:10px;margin-top:6px;font-size:12px}
+.tsigfoot em{font-style:normal;color:${C.tx3};font-size:11px;text-align:right;max-width:60%}
+.tweek{display:flex;gap:10px;align-items:flex-end;height:78px}
+.tday{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;justify-content:flex-end}
+.tday i{width:100%;max-width:46px;border-radius:3px 3px 0 0;display:block;opacity:.85}
+.tday span{color:${C.tx3};font-size:11px}
+.tday b{font-size:12.5px;color:${C.tx2}}
+.tweeksum{color:${C.tx2};font-size:13px;margin-top:10px;padding-top:10px;border-top:1px solid ${C.line}}
+.tnight{margin-top:12px;padding-top:12px;border-top:1px solid ${C.line}}
+.tnhead{font-size:15px;font-weight:600;margin:2px 0 2px}
+@media(max-width:820px){
+  .tcard{grid-template-columns:1fr}
+  .tstate{border-left:none;border-top:1px solid ${C.line};padding:12px 0 0}
+}
+
 /* Ziel und Plan */
 .goalhead{display:flex;justify-content:space-between;align-items:flex-start;gap:14px}
 .goaltitle{font-size:24px;margin:2px 0 4px;font-weight:700}

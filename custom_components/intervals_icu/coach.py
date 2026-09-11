@@ -52,6 +52,7 @@ LAYOFF_DAYS = 4            # MUJIKA: below this, nothing measurable is lost
 DFA_AEROBIC = 0.75         # ROGERS
 DFA_ANAEROBIC = 0.5        # ROGERS
 DECOUPLING_GOOD = 5.0      # FRIEL
+SWC_SD = 0.5               # PLEWS/ALTINI: smallest worthwhile change
 
 
 def _f(value: Any) -> float | None:
@@ -1040,5 +1041,154 @@ def session_context(data: dict[str, Any], activity_id: str) -> dict[str, Any]:
             "45-Minuten-Intervalleinheit, und der Vergleich wäre Rauschen. Der "
             "Prozentrang sagt, wie viele der Vergleichseinheiten schlechter lagen — "
             "50 heißt genau im Mittelfeld."
+        ),
+    }
+
+
+# --- what is possible today ---------------------------------------------------
+# Built against the criticism of composite readiness scores, not in spite of it.
+#
+# The distinction that most dashboards lose: RECOVERY describes what happened
+# in response to past stress; READINESS describes what can be tolerated right
+# now. A single number collapses the two, and worse - a low score from a short
+# night and a low score from a starting infection are not the same state, but
+# they look identical. Of fourteen commercial scores across ten manufacturers,
+# not one publishes its formula and few offer any validation.
+#
+# So this page answers three questions in order, which is exactly what the
+# review recommends doing with such data instead of treating it as a verdict:
+#   1. WHAT IS POSSIBLE TODAY - one sentence and a load ceiling
+#   2. WHAT CHANGED, AND WHICH SYSTEM - the signals that actually moved, named
+#      by the system they belong to, never averaged into a score
+#   3. WHERE IT COMES FROM - the last days of training and the night after
+# And only today. Beyond that the load outside training is unknown, so the
+# page does not pretend to reach further.
+def today(data: dict[str, Any], budget: dict[str, Any] | None = None) -> dict[str, Any]:
+    wellness = data.get("wellness") or {}
+    if not wellness:
+        return {"available": False}
+    days = sorted(wellness)
+    current = days[-1]
+
+    condition = state(data)
+    anchors_now = anchors(data)
+    series = {row["date"]: row["state"] for row in state_series(data)}
+
+    # the signals, each kept separate and named by the system it reports on
+    signals: list[dict[str, Any]] = []
+    z_now = _night_z(data, current)
+    SYSTEM = {
+        "hrv": ("Autonomes Nervensystem", "Nachtmessung der Uhr, nicht die validierte "
+                                          "Morgenmessung im Liegen"),
+        "rhr": ("Autonomes Nervensystem", "reagiert träger als die HRV, dafür stabiler"),
+        "sleep": ("Verhalten", "Dauer aus der Uhr geschätzt; kein autonomer Messwert"),
+    }
+    for key, entry in z_now.items():
+        system, limit = SYSTEM.get(key, ("", ""))
+        z = entry["z"]
+        signals.append({
+            "key": key, "label": entry["label"], "unit": entry["unit"],
+            "value": entry["value"], "baseline": entry["baseline"], "z": z,
+            "system": system, "limit": limit,
+            "moved": abs(z) >= SWC_SD,
+            "direction": "günstig" if z >= SWC_SD else "ungünstig" if z <= -SWC_SD else "unauffällig",
+        })
+
+    # recent training - the other half of "how does this fit what you did"
+    recent = []
+    for day_key in days[-7:]:
+        row = wellness.get(day_key) or {}
+        recent.append({
+            "date": day_key,
+            "load": round(_f(row.get("load")) or 0),
+            "state": series.get(day_key, "unknown"),
+        })
+    week_load = sum(row["load"] for row in recent)
+    rest_days = sum(1 for row in recent if row["load"] == 0)
+
+    # the night after the last session - recovery, explicitly labelled as such
+    last_activity = None
+    for key, activity in (data.get("activities") or {}).items():
+        day_key = str(activity.get("start_date_local") or "")[:10]
+        if not day_key:
+            continue
+        if last_activity is None or day_key > last_activity[1]:
+            last_activity = (key, day_key)
+    night = night_after(data, last_activity[0]) if last_activity else {"available": False}
+
+    # the ceiling for today
+    ceiling = None
+    if budget and budget.get("recommended") is not None:
+        ceiling = round(budget["recommended"])
+
+    CAPACITY = {
+        "slump": ("Ruhetag", "Heute nichts. Der Einbruch ist akut.", 0),
+        "recovering": ("Locker oder frei", "Wenn überhaupt, dann ganz locker und kurz.", 30),
+        "rebound": ("Ruhig fahren", "Die Erholung läuft. Ruhig fahren geht, hart noch nicht.", 60),
+        "strained": ("Grundlage", "Beansprucht — Umfang ja, Intensität nein.", 75),
+        "ready": ("Alles möglich", "Nichts spricht gegen einen harten Reiz.", None),
+        "elevated": ("Grundlage", "Auffällig hohe Werte — heute ruhig halten.", 70),
+        "unknown": ("Nach Gefühl", "Zu wenige Daten für eine Aussage.", None),
+    }
+    capacity, capacity_text, cap_load = CAPACITY.get(
+        condition["state"], CAPACITY["unknown"])
+    if cap_load is not None:
+        ceiling = cap_load if ceiling is None else min(ceiling, cap_load)
+
+    # Where the signals and the verdict disagree, SAY so. A page that prints
+    # "nothing speaks against a hard session" above two signals sitting below
+    # baseline looks broken - and the reason it is not broken is worth one
+    # sentence: a single day below the line is noise, the rule runs on the
+    # three-day mean and on a threshold twice this size.
+    tension = None
+    unfavourable = [s for s in signals if s["direction"] == "ungünstig"]
+    favourable = [s for s in signals if s["direction"] == "günstig"]
+    if unfavourable and condition["state"] in ("ready", "elevated"):
+        names = " und ".join(s["label"] for s in unfavourable)
+        tension = (
+            f"{names} liegt heute unter deiner Basislinie — aber weder weit genug noch "
+            f"lange genug für einen Einbruch. Die Regel entscheidet über das Mittel der "
+            f"letzten drei Tage und ab {HRV_DROP_SD:.0f} Standardabweichungen; ein "
+            "einzelner Tag darunter ist Rauschen. Wenn es morgen wieder so aussieht, "
+            "ist es keins mehr."
+        )
+    elif favourable and condition["state"] in ("slump", "recovering"):
+        tension = (
+            "Einzelne Werte sehen heute gut aus, der Zustand bleibt trotzdem gedämpft: "
+            "nach einem Einbruch zählt, ob die letzten Tage zusammen wieder über der "
+            "Basislinie liegen, nicht ein guter Morgen."
+        )
+
+    return {
+        "available": True,
+        "date": current,
+        "tension": tension,
+        "capacity": capacity,
+        "capacity_text": capacity_text,
+        "ceiling": ceiling,
+        "state": condition["state"],
+        "state_label": condition.get("label"),
+        "state_text": condition.get("text"),
+        "signals": signals,
+        "moved": [s for s in signals if s["moved"]],
+        "recent": recent,
+        "week_load": round(week_load),
+        "rest_days": rest_days,
+        "night": night,
+        "anchors": anchors_now,
+        "horizon": (
+            "Nur für heute. Was morgen geht, hängt an der Belastung außerhalb des "
+            "Trainings — Arbeit, Schlaf, Stress —, und die steht in keinen Daten. "
+            "Der wirksamste Einsatz solcher Werte liegt in der Anpassung der heutigen "
+            "Einheit, nicht in der Planung der Woche."
+        ),
+        "method": (
+            "Bewusst KEIN Punktwert. Von vierzehn Bereitschaftswerten aus zehn "
+            "Wearable-Häusern legt kein einziger seine Formel offen, und kaum einer "
+            "hat eine Validierung vorzuweisen. Vor allem aber: eine niedrige Zahl "
+            "aus einer kurzen Nacht und eine niedrige Zahl aus einem beginnenden "
+            "Infekt sehen gleich aus und verlangen Gegenteiliges. Deshalb stehen die "
+            "Signale hier einzeln, mit dem System, über das sie etwas aussagen, und "
+            "mit dem, was sie nicht können."
         ),
     }
