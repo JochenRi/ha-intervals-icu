@@ -1,6 +1,6 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 11.09.2026 · **Version:** 0.13.0 · **Status:** produktiv auf HEIMDALL,
+**Stand:** 11.09.2026 · **Version:** 0.14.0 · **Status:** produktiv auf HEIMDALL,
 Auslieferung über HACS aus `github.com/JochenRi/ha-intervals-icu`
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lokal
@@ -98,19 +98,36 @@ Alles am eigenen Konto geprüft, nicht aus Dokumentation übernommen.
 | **DFA** | Schwellenverlauf mit rollierendem Median, Leistung als eigenes Feld |
 | **Plan** | Geplante Workouts nach Tagen |
 
-### Rundenkurven (0.13.0)
+### Blockvergleich (0.14.0, ersetzt die Rundenkurven aus 0.13.0)
 
-Je Runde eine Zeile, darin Leistung, Herzfrequenz und DFA nebeneinander — **mit
-derselben y-Skala in jeder Zeile**. Das ist der ganze Punkt: skaliert sich jede Zeile
-selbst, sehen vier abbauende Blöcke identisch aus und der Abfall verschwindet. Ein Test
-beweist das über die Geometrie (die Pausenzeile muss flach und tief liegen, die vier
-Arbeitsblöcke als Treppe); dreht man die gemeinsame Skala zurück, liegen alle vier auf
-46,8 px — exakt der Fehler, den die Ansicht verhindern soll.
+**0.13.0 war ein Fehlschlag, und zwar ein lehrreicher.** Jede Runde bekam eine eigene
+Zeile mit gemeinsamer Skala. Die Skala machte die Zeilen vergleichbar — und jede einzelne
+Kurve zu einem waagerechten Strich. Neun Zeilen, deren einzige Information die Höhe war.
+Der Test hat das sogar als Erfolg gewertet („Amplitude 1 px").
 
-Darunter je Block der Vergleich zum ersten gleichartigen Block in Worten: „Watt −3,9 %,
-Puls +11, DFA −0,29". Verglichen wird nur Gleichartiges (ähnliche Leistung, ähnliche
-Dauer); bei weniger als drei vergleichbaren Blöcken steht da, dass ein Serienurteil
-geraten wäre.
+Gleicher (*Considerations for Visualizing Comparison*) benennt den Konstruktionsfehler:
+**Juxtaposition lädt die Arbeit mit den Beziehungen beim Betrachter ab**, während
+**Superposition** verlangt, dass die Objekte einander ähnlich genug sind, um denselben
+Raum zu teilen. Vier Arbeitsblöcke gleicher Dauer sind genau solche Objekte.
+
+Daraus die neue Ansicht:
+
+- **Superposition:** die Arbeitsblöcke übereinandergelegt auf einer gemeinsamen Achse
+  „Sekunden im Block", eine Linie je Block, **Helligkeit trägt die Reihenfolge** (blass =
+  früh, kräftig = spät). Vier Linien bleiben klar unter der Grenze, ab der Liniendiagramme
+  ihre Unterscheidbarkeit verlieren.
+- **Explizite Kodierung durch Indexierung (Bertin):** jeder Wert als Prozent des ersten
+  Blocks — Leistung, Puls, DFA und Watt/Herzschlag, drei Einheiten auf einer Achse, alle
+  bei 100 % startend. In einer kontrollierten Untersuchung erzeugte Indexierung
+  **signifikant weniger Ablesefehler** als lineare Skala mit Juxtaposition oder
+  logarithmische Superimposition.
+- **Ein Urteil in Worten** darüber: „Die Serie hat abgebaut. Vom 2. zum 8. Block: Leistung
+  −3,9 %, Puls +8, DFA −0,26."
+- **Aufwärmen, Pausen und Ausfahren werden nicht überlagert** — andere Aufgabe, sie wären
+  nur Unruhe. Sie stehen aufklappbar als Tabelle darunter.
+
+Ein Test misst die **Kurvenamplitude**: wird ein Feld wieder zum Strich, schlägt er mit
+genau dieser Meldung fehl.
 
 ### Gestaltungsregeln, jede mit Grund
 
@@ -250,6 +267,7 @@ der Test fehlschlägt.
 | 0.9.4 | Runden-Urteil verglich Aufwärmen mit Ausfahren („34 % Abfall") | ein Serienurteil darf nur Gleichartiges vergleichen — in der Simulation gefunden |
 | 0.11.0 | Zustandsbänder widersprachen dem Trainerurteil | Bänder nutzten den Tageswert, der Trainer das 3-Tage-Mittel |
 | 0.12.0 | `VO2max 4×8` behauptete 75 min, Blöcke ergaben 67 | Dauer und Last im Kalender wären falsch gewesen |
+| 0.13.0 | Rundenkurven waren unlesbar: gemeinsame Skala über alle Zeilen machte jede einzelne Kurve zum Strich | Vergleichbarkeit und Lesbarkeit gegeneinander eingetauscht. Der Test maß nur das eine Ziel und meldete Erfolg. Ersetzt durch Superposition + Indexierung; der neue Test misst die Kurvenamplitude |
 | 0.13.0 | Rundenkurven zogen den ersten Messpunkt der nächsten Runde mit | das Ende einer Runde ist der erste Messpunkt der nächsten — bei einer Pause vor einem 259-W-Block ein Sprung von 91 auf 259 W mitten in der Erholungskurve. Vom Geometrie-Test gefunden, nicht vom Auge |
 
 ---

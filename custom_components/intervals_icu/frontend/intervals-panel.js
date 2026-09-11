@@ -1510,7 +1510,7 @@ class IntervalsIcuPanel extends HTMLElement {
       </div>
       <div class="kvgrid">${stats}</div>
       ${this._lapBlock(a)}
-      ${this._lapCurves(a)}
+      ${this._lapCompare(a)}
       <h3 class="secname">Verlauf <span class="hint">— gestapelte Felder, eine Zeitachse, ein Cursor: so siehst du, wie sich HF und DFA zur Leistung verhalten.</span></h3>
       ${streamsHtml}
       ${this._dfaBlock(a.dfa)}
@@ -1646,132 +1646,180 @@ class IntervalsIcuPanel extends HTMLElement {
       </div>`;
   }
 
-  /* Per-lap curves.
+  /* Comparing the blocks of an interval session.
 
-     The table above says WHAT changed across a series. This says HOW: one row
-     per lap, three small charts side by side, and - the point of the whole
-     thing - THE SAME Y SCALE ON EVERY ROW. Without that the rows look alike
-     and the fade disappears; with it, a series that is giving out reads as a
-     staircase at a glance.
+     The first attempt put every lap in its own row. That is juxtaposition,
+     and Gleicher's review names its weakness precisely: it leaves the work of
+     relating the objects to the viewer. Worse, a scale shared across rows
+     turns each individual curve into a flat line - comparable, and unreadable.
 
-     Segmentation goes by TIME, not by index: the lap indices count in the
-     original 1 Hz recording while the panel holds a thinned stream, so an
-     index used directly would cut the wrong pieces out. */
-  _lapCurves(a) {
+     So this uses the other two strategies instead, which is what the
+     literature recommends when the objects ARE similar enough to share a
+     space - four work blocks of equal length are exactly that:
+
+     1. SUPERPOSITION: the work blocks laid over each other on a common
+        "seconds into the block" axis, one line each, lightness encoding the
+        order. Four lines stay well under the clutter limit where line charts
+        start losing discriminability.
+     2. EXPLICIT ENCODING via INDEXING (Bertin): every measure as a percentage
+        of the first block, so power, heart rate and DFA - three units - fit
+        one axis and all start at 100. In a controlled comparison indexing
+        produced significantly fewer errors than either juxtaposition on a
+        linear scale or superimposition on a log scale.
+
+     Recoveries are not overlaid: their job is a different one, and they get
+     their own number - how far the heart rate came back down. */
+  _lapCompare(a) {
     const data = this._laps[a.id], st = this._streams[a.id];
     if (!data || data.error || !st || st.error || !st.points) return "";
     const laps = (data.laps || []).filter((l) => l.start_s != null && l.end_s != null);
     if (laps.length < 2) {
       return laps.length === 1
         ? `<p class="hint pad">Eine einzige Runde — hier gibt es nichts zu vergleichen.
-           Die Kurven der ganzen Einheit stehen unten im Verlauf.</p>`
-        : "";
+           Der Verlauf der ganzen Einheit steht unten.</p>` : "";
     }
-    const ch = st.channels || {};
-    const time = ch.time || [];
+
+    // comparable efforts only: similar power, similar duration
+    const powered = laps.filter((l) => (l.avg_watts || 0) > 0 && (l.moving_time || 0) >= 60);
+    const peak = Math.max(0, ...powered.map((l) => l.avg_watts || 0));
+    let work = powered.filter((l) => (l.avg_watts || 0) >= peak * 0.85);
+    const medDur = median(work.map((l) => l.moving_time || 0)) || 0;
+    work = work.filter((l) => medDur > 0 && Math.abs((l.moving_time || 0) - medDur) <= medDur * 0.35);
+    const rests = laps.filter((l) => !work.includes(l) && (l.moving_time || 0) >= 60);
+
+    if (work.length < 2) {
+      return `<h3 class="secname">Blockvergleich</h3>
+        <p class="hint pad">Weniger als zwei gleichartige Blöcke — ein Vergleich wäre geraten.
+        Die Runden stehen in der Tabelle darüber.</p>`;
+    }
+
+    const ch = st.channels || {}, time = ch.time || [];
     const at = (sec) => {
-      // nearest sample to a second mark, works on any thinning
       if (!time.length) return null;
       let lo = 0, hi = time.length - 1;
-      while (lo < hi) {
-        const mid = (lo + hi) >> 1;
-        if (time[mid] < sec) lo = mid + 1; else hi = mid;
-      }
+      while (lo < hi) { const mid = (lo + hi) >> 1; if (time[mid] < sec) lo = mid + 1; else hi = mid; }
       return lo;
+    };
+    const cut = (lap, key, zeroGap) => {
+      const i0 = at(lap.start_s), i1 = at(lap.end_s);
+      if (i0 == null || i1 == null || i1 - i0 < 2) return [];
+      return (ch[key] || []).slice(i0, i1)
+        .map((v) => (v == null || (zeroGap && v <= 0)) ? null : v);
     };
 
     const DEFS = [
-      { k: "watts", l: "Leistung", u: "W", c: ROLE.pow, zeroGap: true },
-      { k: "heartrate", l: "Herzfrequenz", u: "bpm", c: ROLE.hr, zeroGap: true },
-      { k: "dfa_a1", l: "DFA α1", u: "", c: ROLE.dfa, dec: 2, zeroGap: true, dfa: true },
+      { k: "watts", l: "Leistung", u: "W", c: ROLE.pow },
+      { k: "heartrate", l: "Herzfrequenz", u: "bpm", c: ROLE.hr },
+      { k: "dfa_a1", l: "DFA alpha-1", u: "", c: ROLE.dfa, dec: 2, dfa: true },
     ].filter((d) => (ch[d.k] || []).some((v) => v != null && v > 0));
-    if (!DEFS.length) return "";
 
-    // one scale per channel across ALL laps - that is what makes them comparable
-    const scale = {};
-    for (const d of DEFS) {
-      const vals = (ch[d.k] || []).filter((v) => v != null && (!d.zeroGap || v > 0));
-      if (!vals.length) continue;
-      let lo = Math.min(...vals), hi = Math.max(...vals);
-      if (d.dfa) { lo = Math.min(lo, 0.4); hi = Math.max(hi, 1.3); }
-      else { lo = d.k === "watts" ? 0 : lo * 0.96; hi = hi * 1.04; }
-      scale[d.k] = [lo, hi];
-    }
-
-    // the comparison only runs over like efforts - same rule as the verdict
-    const powered = laps.filter((l) => (l.avg_watts || 0) > 0 && (l.moving_time || 0) >= 60);
-    const peak = Math.max(0, ...powered.map((l) => l.avg_watts || 0));
-    const work = powered.filter((l) => (l.avg_watts || 0) >= peak * 0.85);
-    const medDur = median(work.map((l) => l.moving_time || 0)) || 0;
-    const series = work.filter((l) => medDur > 0 && Math.abs((l.moving_time || 0) - medDur) <= medDur * 0.35);
-    const firstOfSeries = series[0];
-
-    const rows = laps.map((lap) => {
-      // end is EXCLUSIVE: a lap's end second is the next lap's first sample,
-      // and taking it along drags a 259 W spike into the recovery curve.
-      const i0 = at(lap.start_s), i1 = at(lap.end_s);
-      if (i0 == null || i1 == null || i1 - i0 < 2) return "";
-      const inSeries = series.includes(lap);
-      const rest = !inSeries && (lap.avg_watts || 0) < peak * 0.85;
-
-      const charts = DEFS.map((d) => {
-        const raw = (ch[d.k] || []).slice(i0, i1)
-          .map((v) => (v == null || (d.zeroGap && v <= 0)) ? null : v);
-        if (!raw.some((v) => v != null)) {
-          return `<div class="lcell"><div class="lcl">${d.l}</div><div class="nospark">–</div></div>`;
-        }
-        const [y0, y1] = scale[d.k] || domainOf([{ v: raw }]);
-        const mean = meanOf(raw);
-        return `<div class="lcell">
-          <div class="lcl" style="color:${d.c}">${d.l}
-            <b class="tn">${fmt(mean, d.dec || 0)}${d.u ? " " + d.u : ""}</b></div>
-          ${chart({ h: 54, n: Math.max(2, raw.length), y0, y1, padL: 6, padR: 4, padT: 4, padB: 4,
-            yticks: [], ym: 0,
-            bands: d.dfa ? [{ a: 0.5, b: 0.75, c: C.amber, op: 0.10 },
-                            { a: y0, b: 0.5, c: C.red, op: 0.10 }] : [],
-            hl: d.dfa ? [{ y: 0.75, c: C.green, d: 1 }] : [],
-            s: [{ t: "line", v: raw, c: d.c, w: 1.6 }] })}
-        </div>`;
-      }).join("");
-
-      // what changed against the first comparable effort, in words
-      let delta = "";
-      if (inSeries && firstOfSeries && lap !== firstOfSeries) {
-        const dw = lap.avg_watts != null && firstOfSeries.avg_watts
-          ? (lap.avg_watts - firstOfSeries.avg_watts) / firstOfSeries.avg_watts * 100 : null;
-        const dh = lap.avg_hr != null && firstOfSeries.avg_hr != null
-          ? lap.avg_hr - firstOfSeries.avg_hr : null;
-        const dd = lap.dfa_a1 != null && firstOfSeries.dfa_a1 != null
-          ? lap.dfa_a1 - firstOfSeries.dfa_a1 : null;
-        const worse = (dw != null && dw < -2) || (dh != null && dh > 3) || (dd != null && dd < -0.1);
-        const parts = [];
-        if (dw != null) parts.push(`Watt ${sign(Math.round(dw * 10) / 10, 1)} %`);
-        if (dh != null) parts.push(`Puls ${sign(dh)}`);
-        if (dd != null) parts.push(`DFA ${sign(dd, 2)}`);
-        delta = `<div class="ldelta ${worse ? "worse" : "held"}">
-          ${ico(worse ? "warn" : "ok", worse ? C.amber : C.green, 14)}
-          <span>gegen Block ${firstOfSeries.n}: ${parts.join(" · ")}</span></div>`;
+    // superposition: one line per block on a common elapsed-time axis
+    const panels = DEFS.map((d) => {
+      const cuts = work.map((l) => cut(l, d.k, true));
+      const n = Math.max(...cuts.map((c) => c.length), 2);
+      const all = cuts.flat().filter((v) => v != null);
+      if (!all.length) return "";
+      let [y0, y1] = [Math.min(...all), Math.max(...all)];
+      if (d.dfa) { y0 = Math.min(y0, 0.45); y1 = Math.max(y1, 1.0); }
+      else { const pad = (y1 - y0) * 0.12 || 1; y0 -= pad; y1 += pad; }
+      const series = cuts.map((vals, index) => ({
+        t: "line",
+        v: vals.concat(new Array(Math.max(0, n - vals.length)).fill(null)),
+        c: d.c, w: index === cuts.length - 1 ? 2.4 : 1.6,
+        // lightness carries the order: pale first block, solid last
+        lop: 0.34 + 0.66 * (index / Math.max(1, cuts.length - 1)),
+      }));
+      const ticks = [];
+      const secs = Math.round(medDur);
+      for (let k = 0; k <= 4; k++) {
+        ticks.push({ i: Math.round((k / 4) * (n - 1)), t: hhmm(Math.round((k / 4) * secs)) });
       }
-
-      return `<div class="lrowc ${rest ? "rest" : ""} ${inSeries ? "series" : ""}">
-        <div class="lrowhead">
-          <span class="tn ln">${lap.n}</span>
-          <b>${esc(lap.label || (rest ? "Pause" : "Abschnitt"))}</b>
-          <small>${dur(lap.moving_time)}${lap.zone ? ` · Z${esc(String(lap.zone))}` : ""}</small>
-          ${delta}
-        </div>
-        <div class="lcells">${charts}</div>
+      return `<div class="cmppanel">
+        <div class="cmplab" style="color:${d.c}">${d.l}${d.u ? ` <span class="sfu">${d.u}</span>` : ""}</div>
+        ${chart({ h: 150, n, y0, y1, xt: ticks, padL: 46,
+          yf: (v) => fmt(v, d.dec || 0),
+          bands: d.dfa ? [{ a: 0.5, b: 0.75, c: C.amber, op: 0.09 },
+                          { a: y0, b: 0.5, c: C.red, op: 0.09 }] : [],
+          hl: d.dfa ? [{ y: 0.75, c: C.green, d: 1, t: "0,75" }] : [],
+          s: series })}
       </div>`;
     }).join("");
 
-    const note = series.length >= 3
-      ? `<p class="hint pad">${series.length} vergleichbare Blöcke, gleiche Skala in jeder Zeile —
-         ein Abfall über die Serie ist dadurch als Treppe sichtbar, nicht als Rechenaufgabe.</p>`
-      : `<p class="hint pad">Weniger als drei gleichartige Blöcke — die Kurven stehen da,
-         ein Serienurteil wäre geraten.</p>`;
-    return `<h3 class="secname">Runden im Verlauf
-      <span class="hint">— je Runde eine Zeile, gleiche Skala über alle Runden</span></h3>
-      ${note}<div class="lcurves">${rows}</div>`;
+    // explicit encoding: every measure indexed to the first block
+    const base = work[0];
+    const idxRows = [
+      { l: "Leistung", c: ROLE.pow, get: (l) => l.avg_watts },
+      { l: "Herzfrequenz", c: ROLE.hr, get: (l) => l.avg_hr },
+      { l: "DFA alpha-1", c: ROLE.dfa, get: (l) => l.dfa_a1 },
+      { l: "Watt pro Herzschlag", c: C.blue, get: (l) => l.ef },
+    ].filter((r) => r.get(base) != null && work.every((l) => r.get(l) != null));
+    const idx = idxRows.map((r) => work.map((l) => r.get(l) / r.get(base) * 100));
+    const flatIdx = idx.flat();
+    const lo = Math.min(90, Math.floor(Math.min(...flatIdx) - 2));
+    const hi = Math.max(110, Math.ceil(Math.max(...flatIdx) + 2));
+    const slope = chart({
+      h: 190, n: work.length, y0: lo, y1: hi, padL: 52,
+      yf: (v) => fmt(v, 0) + " %",
+      hl: [{ y: 100, c: C.tx3, d: 1, t: "Block " + base.n + " = 100 %" }],
+      xt: work.map((l, i) => ({ i, t: "Block " + l.n })),
+      s: idxRows.flatMap((r, k) => [
+        { t: "line", v: idx[k], c: r.c, w: 2.2 },
+        { t: "dots", p: idx[k].map((v, i) => ({ i, v, c: r.c, r: 4 })), c: r.c },
+      ]),
+    });
+
+    // the verdict, in numbers that need no chart
+    const last = work[work.length - 1];
+    const dw = base.avg_watts ? (last.avg_watts - base.avg_watts) / base.avg_watts * 100 : null;
+    const dh = base.avg_hr != null ? last.avg_hr - base.avg_hr : null;
+    const dd = base.dfa_a1 != null && last.dfa_a1 != null ? last.dfa_a1 - base.dfa_a1 : null;
+    const def = base.ef ? (last.ef - base.ef) / base.ef * 100 : null;
+    const faded = (def != null && def < -3) || (dh != null && dh > 4) || (dd != null && dd < -0.15);
+    const verdict = `<div class="cmpverdict ${faded ? "worse" : "held"}">
+      ${ico(faded ? "warn" : "ok", faded ? C.amber : C.green, 18)}
+      <div><b>${faded ? "Die Serie hat abgebaut." : "Die Serie hat gehalten."}</b>
+      <span>Vom ${base.n}. zum ${last.n}. Block:
+      ${dw != null ? `Leistung ${sign(Math.round(dw * 10) / 10, 1)} %` : ""}${
+        dh != null ? ` · Puls ${sign(dh)} Schläge` : ""}${
+        dd != null ? ` · DFA ${sign(dd, 2)}` : ""}${
+        def != null ? ` · Watt pro Herzschlag ${sign(Math.round(def * 10) / 10, 1)} %` : ""}.
+      ${faded ? "Mehr Puls für weniger Leistung bei gleicher Vorgabe — das ist Ermüdung über die Serie."
+              : "Leistung je Herzschlag praktisch unverändert — die Serie war verkraftbar."}</span></div></div>`;
+
+    // recoveries get their own number instead of a curve
+    let restBlock = "";
+    if (rests.length) {
+      const rows = rests.map((r) => `<div class="restrow">
+        <b>${r.n}</b><span>${esc(r.label || "Pause")}</span>
+        <span class="tn">${dur(r.moving_time)}</span>
+        <span class="tn">${r.avg_hr != null ? fmt(r.avg_hr) + " bpm" : "–"}</span>
+        <span class="tn">${r.avg_watts != null ? fmt(r.avg_watts) + " W" : "–"}</span>
+        <span class="tn">${r.dfa_a1 != null ? fmt(r.dfa_a1, 2) : "–"}</span>
+      </div>`).join("");
+      restBlock = `<details class="more"><summary>Übrige Abschnitte (${rests.length}) — Aufwärmen, Pausen, Ausfahren</summary>
+        <div class="restgrid"><div class="restrow head"><b>#</b><span>Abschnitt</span>
+          <span>Dauer</span><span>Ø HF</span><span>Ø Watt</span><span>DFA</span></div>${rows}</div>
+        <p class="src">Diese Abschnitte werden bewusst nicht mit den Blöcken überlagert:
+        Aufwärmen, Pause und Ausfahren haben andere Aufgaben und wären als vierte, fünfte,
+        sechste Linie nur Unruhe. Interessant ist hier vor allem, wie weit der Puls in den
+        Pausen zurückkommt — je später in der Serie, desto weniger gelingt das meist.</p></details>`;
+    }
+
+    return `<h3 class="secname">Blockvergleich
+      <span class="hint">— ${work.length} gleichartige Blöcke übereinandergelegt</span></h3>
+      ${verdict}
+      <div class="cmpgrid">${panels}</div>
+      <div class="cmplegend">${work.map((l, i) =>
+        `<span class="lg"><i class="sw" style="background:${ROLE.pow};opacity:${(0.34 + 0.66 * (i / Math.max(1, work.length - 1))).toFixed(2)}"></i>Block ${l.n}</span>`).join("")}
+        <span class="hint">heller = früher in der Serie</span></div>
+      <h4 class="subname">Alles auf einer Achse
+        <span class="hint">— jeder Wert als Prozent des ${base.n}. Blocks (Indexierung nach Bertin:
+        drei Einheiten, eine Achse, deutlich weniger Ablesefehler)</span></h4>
+      <div class="card2 pad0">${slope}
+        <div class="cmplegend">${idxRows.map((r) =>
+          `<span class="lg"><i class="sw" style="background:${r.c}"></i>${esc(r.l)}</span>`).join("")}</div>
+      </div>
+      ${restBlock}`;
   }
 
   _dfaBlock(s) {
@@ -2261,26 +2309,29 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
   .lrow{grid-template-columns:30px 1fr 70px 74px;}
   .lrow>*:nth-child(5),.lrow>*:nth-child(6),.lrow>*:nth-child(7),.lrow>*:nth-child(8){display:none}
 }
-/* Runden im Verlauf */
-.lcurves{display:grid;gap:6px}
-.lrowc{display:grid;grid-template-columns:210px 1fr;gap:12px;align-items:center;
-  background:${C.card2};border-radius:10px;padding:8px 10px}
-.lrowc.rest{opacity:.5;background:none;border:1px dashed ${C.line}}
-.lrowc.series{border-left:3px solid ${ROLE.pow}}
-.lrowhead{display:flex;flex-direction:column;gap:1px}
-.lrowhead b{font-size:14px}
-.lrowhead small{color:${C.tx3};font-size:12px}
-.lrowhead .ln{color:${C.tx3};font-size:11.5px}
-.ldelta{display:flex;align-items:center;gap:5px;font-size:12px;margin-top:3px}
-.ldelta.worse{color:${C.amber}}
-.ldelta.held{color:${C.green}}
-.lcells{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-.lcell{min-width:0}
-.lcl{font-size:11px;color:${C.tx3};display:flex;justify-content:space-between;gap:6px;margin-bottom:1px}
-.lcl b{color:${C.tx}}
+/* Blockvergleich */
+.cmpverdict{display:flex;gap:11px;align-items:flex-start;border-radius:10px;padding:11px 13px;
+  margin:0 2px 12px;font-size:14px;line-height:1.5}
+.cmpverdict.worse{background:${C.amber}12;border:1px solid ${C.amber}44}
+.cmpverdict.held{background:${C.green}12;border:1px solid ${C.green}44}
+.cmpverdict b{display:block;margin-bottom:2px}
+.cmpverdict span{color:${C.tx2};font-size:13.5px}
+.cmpgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:12px}
+.cmppanel{background:${C.card2};border-radius:10px;padding:8px 6px 4px}
+.cmplab{font-size:13px;font-weight:650;margin:0 0 2px 10px}
+.cmplab .sfu{color:${C.tx3};font-weight:400;font-size:11.5px}
+.cmplegend{display:flex;gap:14px;flex-wrap:wrap;align-items:center;font-size:12.5px;
+  color:${C.tx2};padding:8px 10px}
+.subname{font-size:15px;margin:20px 4px 8px;font-weight:650}
+.restgrid{margin-top:6px}
+.restrow{display:grid;grid-template-columns:34px 1fr 76px 84px 84px 60px;gap:10px;
+  padding:5px 8px;font-size:13px;border-bottom:1px solid ${C.line}44}
+.restrow.head{color:${C.tx3};font-size:11.5px;font-weight:600}
+.restrow b{color:${C.tx3}}
 @media(max-width:980px){
-  .lrowc{grid-template-columns:1fr}
-  .lcells{grid-template-columns:1fr}
+  .cmpgrid{grid-template-columns:1fr}
+  .restrow{grid-template-columns:28px 1fr 64px 70px}
+  .restrow>*:nth-child(5),.restrow>*:nth-child(6){display:none}
 }
 
 /* Workouts */
