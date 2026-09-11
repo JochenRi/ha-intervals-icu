@@ -186,6 +186,36 @@ for state in ("unknown", "elevated", "quatsch"):
     check(all(e["fit"] != "ok" or e["fit_reason"] == "" for e in picks),
           f"9 {state}: Empfehlung mit Einschränkungstext")
 
+# --- 10  watts, not percentages ----------------------------------------------
+# A percentage only lands correctly if the FTP configured in Intervals matches
+# the one this plan was built from. If it does not, every target in the session
+# is silently wrong - and the rider has no way of noticing.
+with_ftp = W.scaled(W.BY_KEY["vo2_4x4"], 215.0, 157)
+check("text_w" in with_ftp, "10 Watt: kein Wattext erzeugt")
+check("%" not in with_ftp["text_w"], f"10 Watt: Prozente geblieben ({with_ftp['text_w']})")
+check("w" in with_ftp["text_w"], "10 Watt: keine Wattangaben")
+check("228-236w" in with_ftp["text_w"] or "237w" in with_ftp["text_w"],
+      f"10 Watt: falsch gerechnet ({with_ftp['text_w']})")
+# the cadence markers must survive the rewrite
+check("95rpm" in with_ftp["text_w"], "10 Watt: Trittfrequenz verlorengegangen")
+check("4m" in with_ftp["text_w"] and "4x" in with_ftp["text_w"], "10 Watt: Struktur zerstört")
+
+event = W.to_event(with_ftp, "2026-09-13")
+check("%" not in event["description"], "10 Watt: Kalendereintrag trägt Prozente")
+check("w" in event["description"], "10 Watt: Kalendereintrag ohne Wattwerte")
+
+# without an FTP nothing is invented - percentages stay, and that is honest
+bare = W.to_event(W.BY_KEY["vo2_4x4"], "2026-09-13")
+check("%" in bare["description"], "10 Watt: Wattzahlen ohne FTP erfunden")
+
+# every scaled entry in the library must convert cleanly
+for entry in W.LIBRARY:
+    converted = W.scaled(entry, 215.0, 157)
+    check("%" not in converted["text_w"], f"10 Watt: {entry['key']} behält Prozente")
+    for line in converted["text_w"].splitlines():
+        if line.startswith("- "):
+            check("w" in line, f"10 Watt: {entry['key']} Zeile ohne Wattwert: {line!r}")
+
 print(f"test_workouts: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

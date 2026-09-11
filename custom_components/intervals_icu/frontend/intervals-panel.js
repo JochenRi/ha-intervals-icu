@@ -1207,9 +1207,31 @@ class IntervalsIcuPanel extends HTMLElement {
             <div class="tslabel" style="color:${look.c}">${esc(st.label || "–")}</div>
           </div>
           <div class="tsz">
-            ${zbar("7-Tage-Mittel HRV", st.week_z, "SD")}
-            ${zbar("letzte 3 Tage HRV", st.recent_hrv_z, "SD")}
-            ${zbar("letzte 3 Tage Ruhepuls", st.recent_rhr_z, "SD")}
+            ${(() => {
+              // One axis, three dots - not three separate bars. Position on a
+              // COMMON scale is the most accurately read encoding there is;
+              // three bars with their own tracks force a comparison across
+              // separate scales, which is exactly what it should not be.
+              const pts = [
+                ["7-Tage-Mittel HRV", st.week_z, C.blue],
+                ["letzte 3 Tage HRV", st.recent_hrv_z, ROLE.series],
+                ["letzte 3 Tage Ruhepuls", st.recent_rhr_z, ROLE.hr],
+              ].filter(([, v]) => v != null);
+              if (!pts.length) return "";
+              const pos = (z) => ((Math.max(-3, Math.min(3, z)) + 3) / 6 * 100).toFixed(1);
+              return `<div class="zplot">
+                <div class="zaxis">
+                  <i class="zband"></i>
+                  <i class="zzero"></i>
+                  ${pts.map(([label, z, col], i) => `<i class="zdot" style="left:${pos(z)}%;
+                    background:${col};top:${6 + i * 15}px" title="${esc(label)}: ${sign(z, 2)} SD"></i>`).join("")}
+                </div>
+                <div class="zscale"><span>−3 SD</span><span>deine Basislinie</span><span>+3 SD</span></div>
+                <div class="zlegend">${pts.map(([label, z, col]) =>
+                  `<span class="zleg"><i style="background:${col}"></i>${esc(label)}
+                    <b class="tn" style="color:${col}">${sign(z, 2)}</b></span>`).join("")}</div>
+              </div>`;
+            })()}
           </div>
         </div>
         <p class="tdetail">${esc(st.detail || "")}</p>
@@ -1219,7 +1241,7 @@ class IntervalsIcuPanel extends HTMLElement {
       </section>
 
       <section class="card rec" style="border-left:3px solid ${look.c}">
-        <div class="kicker">Nächste Einheit</div>
+        <div class="kicker">EMPFEHLUNG FÜR HEUTE — aus Zustand, letzten Tagen und Ziel</div>
         <div class="rectitle">${esc(r.title || "–")} ${fitBadge}</div>
         <div class="recgrid">
           ${r.minutes ? `<div class="kv"><small>Dauer</small><b>${r.minutes[0]}–${r.minutes[1]} min</b></div>` : ""}
@@ -1265,32 +1287,13 @@ class IntervalsIcuPanel extends HTMLElement {
         <details class="more"><summary>Quelle und Grenzen</summary><p class="src">${esc(dur.source)} — Entkopplung ist nur auf gleichmäßigen Einheiten aussagekräftig; Intervalle sind hier ausgeschlossen.</p></details>
       </div>` : ""}
 
-      <h3 class="secname">Die nächsten sieben Tage <span class="hint">— Vorschlag, kein Plan in Stein</span></h3>
-      <div class="planrow">${plan}</div>
-
-      ${lay.note ? `<div class="card"><div class="sechead">${ico("clock", C.tx2, 18)}<h3>Seit ${lay.days} Tagen keine Einheit</h3></div>
-        <p class="src">${esc(lay.note)}</p></div>` : ""}
-
-      <details class="more card"><summary>Worauf diese Empfehlung beruht — und was sie nicht kann</summary>
-        <p class="src"><b>Die Regel:</b> ${esc((c.evidence || {}).rule || "")}</p>
-        <p class="src"><b>Die Grenze:</b> ${esc((c.evidence || {}).limit || "")}</p>
-        <p class="src"><b>Deine Werte:</b> ${esc((c.evidence || {}).own_data || "")}</p>
-        <p class="src"><b>Und der ehrlichste Teil:</b> an deinen eigenen Daten ließ sich
-        bisher kein belastbarer Zusammenhang zwischen Morgenwerten und Tagesform nachweisen
-        (rund 2 % erklärte Streuung bei knapp 100 Wertepaaren, statistisch nicht von Zufall
-        zu trennen). Die Regel oben stammt aus kontrollierten Studien, nicht aus deinem Konto.
-        Was bei dir nachweislich funktioniert hat, steht unter „Anker": mehr Leistung bei
-        gleicher Herzfrequenz.</p>
-      </details>
-
-      <h3 class="secname">Der Einheitenkatalog <span class="hint">— was welcher Reiz bewirkt</span></h3>
-      <div class="card pad0">
-        ${Object.entries(c.sessions || {}).map(([key, s]) => `<div class="catrow">
-          <b>${esc(s.title)}</b>
-          <span class="tn">${s.hr_window ? s.hr_window[0] + "–" + s.hr_window[1] + " bpm" : "–"}</span>
-          <span class="mut">${s.dfa ? "DFA " + esc(s.dfa) : ""}</span>
-          <span class="src">${esc(s.effect)}</span>
-        </div>`).join("")}
+      <div class="card pad">
+        <details class="more"><summary>Worauf diese Empfehlung beruht — und was sie nicht kann</summary>
+          <p class="src">Zustand aus HRV und Ruhepuls gegen deine eigene Basislinie, Last der
+          letzten sieben Tage, gemessene Anker aus deinen DFA-Einheiten, dazu dein Ziel.
+          Was sie nicht kennt: alles außerhalb des Trainings — Arbeit, Schlafqualität,
+          Stress. Deshalb ist sie ein Vorschlag für heute und keine Vorschrift.</p>
+        </details>
       </div>`;
   }
 
@@ -2560,6 +2563,18 @@ svg.ch{display:block;width:100%;height:auto}
 .rv{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:${C.tx2}}
 .rv i{width:9px;height:9px;border-radius:3px;display:inline-block}
 .rv b{color:${C.tx};font-size:14.5px}
+/* Zustand: ein Punktdiagramm statt dreier Balken */
+.zplot{min-width:280px}
+.zaxis{position:relative;height:58px;background:#0006;border-radius:6px}
+.zband{position:absolute;left:41.7%;width:16.6%;top:0;bottom:0;background:${C.tx3};opacity:.18;border-radius:4px}
+.zzero{position:absolute;left:50%;top:0;bottom:0;width:1.5px;background:${C.tx3};opacity:.6}
+.zdot{position:absolute;width:11px;height:11px;border-radius:3px;margin-left:-5px}
+.zscale{display:flex;justify-content:space-between;color:${C.tx3};font-size:10.5px;margin-top:3px}
+.zlegend{display:grid;gap:2px;margin-top:7px}
+.zleg{display:flex;align-items:center;gap:7px;font-size:12.5px;color:${C.tx2}}
+.zleg i{width:10px;height:10px;border-radius:3px;display:inline-block}
+.zleg b{margin-left:auto}
+
 /* Heute */
 .hero{border-width:1.5px;padding:20px}
 .herowrap{display:flex;gap:28px;align-items:center;flex-wrap:wrap;justify-content:center}
@@ -2679,6 +2694,18 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
   .lrow{grid-template-columns:30px 1fr 70px 74px;}
   .lrow>*:nth-child(5),.lrow>*:nth-child(6),.lrow>*:nth-child(7),.lrow>*:nth-child(8){display:none}
 }
+/* Zustand: ein Punktdiagramm statt dreier Balken */
+.zplot{min-width:280px}
+.zaxis{position:relative;height:58px;background:#0006;border-radius:6px}
+.zband{position:absolute;left:41.7%;width:16.6%;top:0;bottom:0;background:${C.tx3};opacity:.18;border-radius:4px}
+.zzero{position:absolute;left:50%;top:0;bottom:0;width:1.5px;background:${C.tx3};opacity:.6}
+.zdot{position:absolute;width:11px;height:11px;border-radius:3px;margin-left:-5px}
+.zscale{display:flex;justify-content:space-between;color:${C.tx3};font-size:10.5px;margin-top:3px}
+.zlegend{display:grid;gap:2px;margin-top:7px}
+.zleg{display:flex;align-items:center;gap:7px;font-size:12.5px;color:${C.tx2}}
+.zleg i{width:10px;height:10px;border-radius:3px;display:inline-block}
+.zleg b{margin-left:auto}
+
 /* Heute */
 .thead{font-size:14px;color:${C.tx2};margin:0 2px 8px}
 .staleflag{color:${C.amber};font-size:12.5px;margin-left:6px}

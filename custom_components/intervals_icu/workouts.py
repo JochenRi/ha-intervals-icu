@@ -34,6 +34,7 @@ What the sources actually say, in short:
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 # Each entry: what it is, how it is built, what it should feel like in the
@@ -313,6 +314,18 @@ PRIORITY: dict[str, list[str]] = {
 }
 
 
+def _text_in_watts(entry: dict[str, Any], ftp: float) -> str:
+    """Rewrite the Intervals steps from percentages into absolute watts."""
+    def swap(match: "re.Match[str]") -> str:
+        low, high = match.group(1), match.group(3)
+        if high:
+            return f"{round(ftp * int(low) / 100)}-{round(ftp * int(high) / 100)}w"
+        return f"{round(ftp * int(low) / 100)}w"
+
+    import re as _re
+    return _re.sub(r"(\d+)(-(\d+))?%", swap, entry["text"])
+
+
 def scaled(entry: dict[str, Any], ftp: float | None, aerobic_hr: int | None) -> dict[str, Any]:
     """Fill in the athlete's own numbers: watts from FTP, heart rate from the
     measured aerobic threshold. Without those the shape still stands."""
@@ -320,6 +333,7 @@ def scaled(entry: dict[str, Any], ftp: float | None, aerobic_hr: int | None) -> 
     if ftp:
         out["blocks_w"] = [(minutes, round(ftp * pct / 100), label)
                            for minutes, pct, label in entry["blocks"]]
+        out["text_w"] = _text_in_watts(entry, ftp)
     if aerobic_hr and entry.get("hr_hint"):
         low, high = entry["hr_hint"]
         out["hr_window"] = (round(aerobic_hr * low), round(aerobic_hr * high))
@@ -458,7 +472,11 @@ def to_event(entry: dict[str, Any], day: str, sport: str = "Ride",
     that appears in someone's calendar should say who put it there. Pass
     note=None to leave it out.
     """
-    description = entry["text"]
+    # Watts, not percentages. A percentage only lands correctly if the FTP set
+    # in Intervals matches the one this plan was built from - and if it does
+    # not, every target in the session is silently wrong. Absolute watts carry
+    # the intent no matter what the other side is configured to.
+    description = entry.get("text_w") or entry["text"]
     if note:
         description = f"{note}\n\n{description}"
     return {

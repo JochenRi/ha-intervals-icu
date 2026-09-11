@@ -1,6 +1,6 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 11.09.2026 · **Version:** 0.24.0 · **Status:** produktiv auf HEIMDALL,
+**Stand:** 11.09.2026 · **Version:** 0.25.0 · **Status:** produktiv auf HEIMDALL,
 Auslieferung über HACS aus `github.com/JochenRi/ha-intervals-icu`
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lokal
@@ -171,6 +171,27 @@ Werte liegt in der Anpassung der heutigen Einheit, nicht in der Planung der Woch
 
 Beim Umbau haben die alten Tests drei echte Regressionen gefangen: die Ampelfarbe ohne
 Wort (WCAG), der verschwundene Bullet-Graph und der fehlende Stand je Wert.
+
+### Watt statt Prozent, und der Trainer auf das Nötige gekürzt (0.25.0)
+
+**Die Kalendereinträge tragen jetzt absolute Wattwerte** statt Prozentangaben:
+`- 4m 228-236w 95rpm` statt `- 4m 106-110%`. Grund: eine Prozentangabe landet nur dann
+richtig, wenn die in Intervals hinterlegte FTP mit der übereinstimmt, aus der die Einheit
+gerechnet wurde — stimmt sie nicht, ist **jedes Ziel der Einheit still verschoben**, und
+der Fahrer merkt es nicht. Ohne bekannte FTP bleiben Prozente stehen, statt Zahlen zu
+erfinden.
+
+**Gestrichen:** die Sieben-Tage-Vorschau und der Einheitenkatalog. Beides beantwortete
+nicht die Frage des Tages.
+
+**Umbenannt, weil es falsch hieß:** aus „Nächste Einheit" wurde **„Empfehlung für heute —
+aus Zustand, letzten Tagen und Ziel"**. Es war nie eine gewählte Einheit, sondern immer
+eine Empfehlung; der Name behauptete etwas anderes.
+
+**Der Zustand wird anders gezeichnet:** aus drei getrennten Balken wurde **eine Achse mit
+drei Punkten**. Drei Balken zwingen zum Vergleich über getrennte Skalen; Position auf einer
+gemeinsamen Achse ist die am genauesten gelesene Kodierung. Das Normalband (±0,5 SD) liegt
+hinterlegt, die Basislinie ist markiert, die Werte stehen beziffert darunter.
 
 ### Bewerten statt filtern (0.24.0)
 

@@ -129,6 +129,31 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   clean(p.rGoal(null), "ziel ohne Daten");
 }
 
+/* ── Trainer: Kopf, Empfehlung, Zustand ───────────────────────────────── */
+{
+  p._workouts = F.workouts();
+  const html = p.rTrainer(F.coach("ready"), F.readiness());
+  clean(html, "trainer");
+  // the page answers TODAY - no week preview, no catalogue, no "next session"
+  // that was never chosen
+  ok(!/nächsten sieben Tage/.test(html), "trainer: Wochenvorschau wieder da");
+  ok(!/Einheitenkatalog/.test(html), "trainer: Katalog wieder da");
+  ok(!/Nächste Einheit/.test(html), "trainer: spricht von einer gewählten Einheit");
+  contains(html, "EMPFEHLUNG FÜR HEUTE", "trainer: keine Empfehlung");
+  contains(html, "aus Zustand, letzten Tagen und Ziel", "trainer: Herkunft der Empfehlung fehlt");
+  contains(html, "Worauf diese Empfehlung beruht", "trainer: Herleitung fehlt");
+  contains(html, "alles außerhalb des Trainings", "trainer: Grenze der Empfehlung fehlt");
+
+  // the three separate bars became one axis with three dots: position on a
+  // COMMON scale rather than three tracks that cannot be compared
+  ok(!/class="zbar/.test(html), "trainer: getrennte Balken wieder da");
+  ok((html.match(/class="zdot"/g) || []).length === 3, "trainer: nicht drei Punkte auf einer Achse");
+  ok(/class="zband"/.test(html), "trainer: Normalband fehlt");
+  ok(/class="zzero"/.test(html), "trainer: Basislinie nicht markiert");
+  contains(html, "deine Basislinie", "trainer: Achse nicht beschriftet");
+  ok((html.match(/class="zleg"/g) || []).length === 3, "trainer: Werte nicht beziffert");
+}
+
 /* ── Einheiten für heute ──────────────────────────────────────────────── */
 {
   const rdFix = F.readiness();
