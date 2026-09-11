@@ -1495,17 +1495,26 @@ class IntervalsIcuPanel extends HTMLElement {
 
     const maxLoad = Math.max(1, ...(t.recent || []).map((d) => d.load));
     const bars = (t.recent || []).map((d) => {
-      const height = d.load ? Math.max(6, (d.load / maxLoad) * 46) : 2;
+      const height = d.load ? Math.max(8, (d.load / maxLoad) * 100) : 3;
       const dcol = { slump: C.red, recovering: C.amber, rebound: C.blue,
                      strained: C.amber }[d.state] || C.slate;
+      // A fixed grid, not a flex row: every bar grows from THE SAME baseline,
+      // and the rows below it line up across all seven days. Cells of differing
+      // height pushed the bars upwards, which is exactly what destroys a length
+      // comparison on a common baseline.
       const names = (d.sessions || []).map((s) => s.name || s.type).filter(Boolean);
-      return `<div class="tday" title="${esc(d.date)}: Last ${d.load}${
-        names.length ? " · " + esc(names.join(", ")) : " · kein Training"}">
-        <i style="height:${height.toFixed(0)}px;background:${dcol}"></i>
-        <span>${esc(dShort(d.date))}</span>
-        <b class="tn">${d.load || "–"}</b>
-        ${names.length ? `<em class="tdayn">${esc(names[0].slice(0, 10))}${
-          names.length > 1 ? " +" + (names.length - 1) : ""}</em>` : ""}</div>`;
+      const isToday = d.date === new Date().toISOString().slice(0, 10);
+      const state = STATE_WORD[d.state] || "";
+      return `<div class="tday ${isToday ? "now" : ""}"
+          title="${esc(dMed(d.date))}: Last ${d.load}${
+            names.length ? " · " + esc(names.join(", ")) : " · kein Training"}${
+            state ? " · " + esc(state) : ""}">
+        <span class="tbarbox"><i style="height:${height.toFixed(0)}%;background:${dcol}"></i></span>
+        <span class="tdate">${esc(dShort(d.date))}</span>
+        <b class="tload tn">${d.load || "–"}</b>
+        <em class="tdayn">${names.length ? esc(names[0].slice(0, 12)) + (
+          names.length > 1 ? " +" + (names.length - 1) : "") : "frei"}</em>
+      </div>`;
     }).join("");
 
     const night = t.night && t.night.available ? `<div class="tnight">
@@ -2840,11 +2849,16 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
 .tsigfill{position:absolute;top:2px;bottom:2px;border-radius:2px}
 .tsigfoot{display:flex;justify-content:space-between;gap:10px;margin-top:6px;font-size:12px}
 .tsigfoot em{font-style:normal;color:${C.tx3};font-size:11px;text-align:right;max-width:60%}
-.tweek{display:flex;gap:10px;align-items:flex-end;height:78px}
-.tday{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;justify-content:flex-end}
-.tday i{width:100%;max-width:46px;border-radius:3px 3px 0 0;display:block;opacity:.85}
-.tday span{color:${C.tx3};font-size:11px}
-.tday b{font-size:12.5px;color:${C.tx2}}
+.tweek{display:grid;grid-template-columns:repeat(7,1fr);gap:8px}
+.tday{display:grid;grid-template-rows:64px auto auto auto;justify-items:center;gap:2px;
+  padding:4px 2px 5px;border-radius:8px}
+.tday.now{background:${C.card2};outline:1px solid ${C.line}}
+.tbarbox{display:flex;align-items:flex-end;justify-content:center;width:100%;height:64px;
+  border-bottom:1px solid ${C.line}}
+.tbarbox i{width:78%;max-width:44px;border-radius:3px 3px 0 0;display:block;opacity:.9}
+.tdate{color:${C.tx3};font-size:11px}
+.tload{font-size:14px;color:${C.tx}}
+.tdayn{font-style:normal;color:${C.tx3};font-size:10px;text-align:center;line-height:1.2}
 .tweeksum{color:${C.tx2};font-size:13px;margin-top:10px;padding-top:10px;border-top:1px solid ${C.line}}
 .tnight{margin-top:12px;padding-top:12px;border-top:1px solid ${C.line}}
 .tnhead{font-size:15px;font-weight:600;margin:2px 0 2px}

@@ -1,6 +1,6 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 11.09.2026 · **Version:** 0.30.0 · **Status:** produktiv auf HEIMDALL,
+**Stand:** 11.09.2026 · **Version:** 0.30.1 · **Status:** produktiv auf HEIMDALL,
 Auslieferung über HACS aus `github.com/JochenRi/ha-intervals-icu`
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lokal
@@ -133,6 +133,18 @@ Einzelwert verschweigt.
 
 Ein Test fährt vier Fahrten mit unterschiedlicher Drift durch (1,1 % / 4,0 % / 5,3 % /
 14,5 %) und verlangt für jede die richtige Einstufung.
+
+### Die Wochenleiste, richtig ausgerichtet (0.30.1)
+
+Die sieben Tage lagen in einer Flex-Zeile, unten ausgerichtet — Tage mit Einheitennamen
+wurden dadurch höher als Tage ohne, und die Balken rutschten nach oben. **Damit war die
+Länge nicht mehr vergleichbar**, und genau darauf beruht die Darstellung.
+
+Jetzt ein Raster mit vier festen Zeilen je Tag: Balkenfeld · Datum · Last · Einheit. Alle
+Balken wachsen aus **derselben Grundlinie**, die Beschriftungen fluchten über alle sieben
+Tage, die Höhe ist ein Prozentsatz des Feldes statt einer Pixelzahl. Ruhetage stehen als
+„frei" da statt leer, der heutige Tag ist hinterlegt. Ein Test verbietet Pixelhöhen und
+verlangt, dass der höchste Balken sein Feld ausfüllt.
 
 ### Bereiche aus den eigenen Daten (0.30.0)
 

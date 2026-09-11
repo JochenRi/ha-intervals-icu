@@ -38,13 +38,25 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   contains(html, "kein autonomer Messwert", "heute: Grenze des Schlafwerts fehlt");
   // 3 - where it comes from
   contains(html, "Woher das kommt", "heute: Herkunft fehlt");
-  ok((html.match(/class="tday"/g) || []).length === 7, "heute: nicht sieben Tage");
+  ok((html.match(/class="tday /g) || []).length === 7, "heute: nicht sieben Tage");
   contains(html, "Last in sieben Tagen", "heute: Wochenlast fehlt");
   // the days must show what was actually ridden - reading the load from the
   // wellness row reported "0 load in seven days" on a week with a ride and a walk
   contains(html, "volumen", "heute: Einheit des Tages fehlt im Wochenbalken");
   contains(html, "Rehburg-Lo", "heute: zweite Einheit fehlt");
-  ok((html.match(/class="tdayn"/g) || []).length === 2, "heute: nicht jede Einheit benannt");
+  // every day gets the same four rows, so the bars share one baseline and the
+  // labels line up. Cells of differing height pushed the bars upwards before.
+  ok((html.match(/class="tdayn"/g) || []).length === 7, "heute: nicht jeder Tag beschriftet");
+  ok((html.match(/class="tbarbox"/g) || []).length === 7, "heute: Balken ohne gemeinsame Grundlinie");
+  ok((html.match(/class="tdate"/g) || []).length === 7, "heute: Datumszeile unvollständig");
+  ok((html.match(/class="tload/g) || []).length === 7, "heute: Lastzeile unvollständig");
+  contains(html, "frei", "heute: Ruhetage nicht als solche benannt");
+  ok(/class="tday now"/.test(html) || !/2026-09-11/.test(new Date().toISOString()),
+     "heute: heutiger Tag nicht hervorgehoben");
+  // bar heights are percentages of the box, never pixels - a pixel height in a
+  // flex row is what let them drift off the baseline
+  ok(!/height:\d+px;background/.test(html), "heute: Balkenhöhe wieder in Pixeln");
+  ok(/height:100(\.\d+)?%;background/.test(html), "heute: höchster Balken füllt die Box nicht");
 
   // a signal card opens into a full-width view with its curve and its meaning
   ok((html.match(/data-act="sigopen"/g) || []).length === 3, "heute: Karten nicht anklickbar");
