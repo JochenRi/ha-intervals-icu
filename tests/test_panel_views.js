@@ -178,8 +178,15 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   // exactly one card carries the recommendation, and it is a fitting one
   ok((html.match(/class="recflag"/g) || []).length === 1,
      "einheiten: nicht genau eine Empfehlung markiert");
-  contains(html, "Empfehlung für heute — aus Zustand, letzten Tagen und Ziel",
+  // the recommendation must be VISIBLE as a lead, not a line on a card
+  contains(html, "HEUTE EMPFOHLEN", "einheiten: keine sichtbare Empfehlung");
+  contains(html, "aus deinem Zustand, den letzten Tagen und deinem Ziel",
            "einheiten: Herkunft der Empfehlung fehlt");
+  ok((html.match(/class="leadrec"/g) || []).length === 1, "einheiten: nicht genau eine Leitempfehlung");
+  const leadBox = html.slice(html.indexOf('class="leadrec"'), html.indexOf('class="secname"'));
+  ok(/data-act="plan"/.test(leadBox), "einheiten: Empfehlung ohne Kalenderknopf");
+  ok(/\d+ W/.test(leadBox) || /\d+ bpm/.test(leadBox), "einheiten: Empfehlung ohne Zielwerte");
+  contains(html, "das ist die Empfehlung von oben", "einheiten: Karte nicht mit der Leitaussage verknüpft");
   // the marked card must be one that fits - never one that is advised against
   const flaggedCard = html.slice(html.indexOf("recflag")).split('class="wocard')[0];
   ok(!/heute nicht/.test(flaggedCard), "einheiten: abgeratene Einheit als Empfehlung markiert");
@@ -211,7 +218,8 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   contains(html, "237 W", "einheiten: Wattzahlen der Blöcke fehlen");   // 110 % von 215
   contains(html, "166–180 bpm", "einheiten: Pulsfenster fehlt");
   ok((html.match(/class="wob"/g) || []).length >= 20, "einheiten: Struktur nicht gezeichnet");
-  ok((html.match(/data-act="plan"/g) || []).length === 12, "einheiten: Kalenderknöpfe unvollständig");
+  ok((html.match(/data-act="plan"/g) || []).length === 14,
+     "einheiten: Kalenderknöpfe unvollständig");   // 6 Karten + Leitempfehlung, je heute/morgen
 
   // In a rebound the hard kinds must stay VISIBLE, marked and explained.
   // Filtering them away leaves three base rides and no decision to make -
@@ -233,6 +241,13 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   clean(open, "einheiten aufgeklappt");
   contains(open, "Protokollnamen sind keine Verschreibungen", "einheiten: Grenze fehlt");
   contains(open, "Erwartetes DFA", "einheiten: erwarteter DFA-Bereich fehlt");
+  // the steps shown must be the ones that go to Intervals - in WATTS. This is
+  // where the percentages survived three releases: the panel printed
+  // entry.text while the backend had already computed entry.text_w.
+  const steps = open.slice(open.indexOf("Schritte, wie sie in Intervals landen"));
+  const block = steps.slice(0, steps.indexOf("</pre>"));
+  ok(!/%/.test(block), `einheiten: Schritte tragen Prozente statt Watt (${block.slice(-90)})`);
+  ok(/\d+w/.test(block), "einheiten: Schritte ohne Wattwerte");
   p._woOpen = null;
 
   p._workouts = F.workouts("ohneFTP");

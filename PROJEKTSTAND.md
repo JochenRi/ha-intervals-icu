@@ -1,6 +1,6 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 11.09.2026 · **Version:** 0.27.0 · **Status:** produktiv auf HEIMDALL,
+**Stand:** 11.09.2026 · **Version:** 0.28.0 · **Status:** produktiv auf HEIMDALL,
 Auslieferung über HACS aus `github.com/JochenRi/ha-intervals-icu`
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lokal
@@ -171,6 +171,23 @@ Werte liegt in der Anpassung der heutigen Einheit, nicht in der Planung der Woch
 
 Beim Umbau haben die alten Tests drei echte Regressionen gefangen: die Ampelfarbe ohne
 Wort (WCAG), der verschwundene Bullet-Graph und der fehlende Stand je Wert.
+
+### Die Empfehlung sichtbar, die Prozente endlich weg (0.28.0)
+
+**Ein Fehler, der drei Versionen überlebt hat:** das Aufklappfeld „Schritte, wie sie in
+Intervals landen" zeigte `entry.text` — den Prozent-Text — obwohl das Backend längst
+`entry.text_w` mit Wattwerten berechnete. Die Umstellung auf Watt war im Kalender richtig
+angekommen, in der Anzeige nie. Gefunden erst, als jemand hinsah, der die Seite benutzt.
+**Ein Test prüft jetzt den Inhalt dieses Feldes** und schlägt fehl, sobald dort wieder ein
+Prozentzeichen auftaucht.
+
+**Die Empfehlung war zu einer Textzeile geschrumpft.** In 0.27.0 wurde der doppelte
+Empfehlungsblock entfernt und die Marke auf eine Karte gesetzt — richtig gegen die doppelte
+Logik, falsch fürs Auge: die wichtigste Aussage der Seite stand als kleinste Zeile darin.
+Jetzt eine eigene Leitkarte: **„HEUTE EMPFOHLEN — aus deinem Zustand, den letzten Tagen und
+deinem Ziel"**, mit Titel, Dauer, Last, Pulsfenster, Wattbereich, Wirkung und Kalender-Knopf.
+**Aus derselben Logik wie die Liste** — die Karte unten trägt den Verweis „das ist die
+Empfehlung von oben", damit erkennbar bleibt, dass nicht zweimal gerechnet wird.
 
 ### Eine Logik statt zweier (0.27.0)
 

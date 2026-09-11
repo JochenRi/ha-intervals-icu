@@ -830,7 +830,7 @@ class IntervalsIcuPanel extends HTMLElement {
       const recommended = index === pick;
       return `<div class="wocard ${recommended ? "first" : ""}">
         ${recommended ? `<div class="recflag">${ico("ok", C.green, 14)}
-          Empfehlung für heute — aus Zustand, letzten Tagen und Ziel</div>` : ""}
+          das ist die Empfehlung von oben</div>` : ""}
         <div class="wohead">
           <div>
             <div class="wofam">${esc(entry.family_label || "")}</div>
@@ -858,7 +858,9 @@ class IntervalsIcuPanel extends HTMLElement {
         </div>
         ${open ? `<div class="wodetail">
           <div class="kv2"><small>Schritte, wie sie in Intervals landen</small>
-            <pre>${esc(entry.text)}</pre></div>
+            <pre>${esc(entry.text_w || entry.text)}</pre>
+            ${entry.text_w ? "" : `<p class="src">Ohne hinterlegte FTP bleiben Prozente stehen —
+              erfundene Wattzahlen wären schlimmer als ehrliche Prozente.</p>`}</div>
           <div class="kv2"><small>Erwartetes DFA alpha-1</small><p>${esc(entry.dfa)}</p></div>
           <div class="kv2"><small>Beleg</small><p class="src">${esc(entry.evidence)}</p></div>
           <div class="kv2"><small>Grenze</small><p class="src">${esc(entry.limit)}</p></div>
@@ -866,7 +868,27 @@ class IntervalsIcuPanel extends HTMLElement {
       </div>`;
     }).join("");
 
-    return `<h3 class="secname">Einheiten für heute
+    const lead = pick >= 0 ? list[pick] : null;
+    const leadCard = lead ? `<div class="leadrec">
+      <div class="leadhead">${ico("ok", C.green, 16)}
+        <span>HEUTE EMPFOHLEN — aus deinem Zustand, den letzten Tagen und deinem Ziel</span></div>
+      <div class="leadtitle">${esc(lead.title)}</div>
+      <div class="leadmeta">${esc(lead.family_label)} · ${lead.minutes} min · Last ${fmt(lead.load)}${
+        lead.hr_window ? ` · ${lead.hr_window[0]}–${lead.hr_window[1]} bpm` : ""}${
+        lead.blocks_w ? ` · ${Math.min(...lead.blocks_w.map((b) => b[1]))}–${
+          Math.max(...lead.blocks_w.map((b) => b[1]))} W` : ""}</div>
+      <p class="leadwhy">${esc(lead.effect)}</p>
+      <div class="worow">
+        <button class="planbtn" data-act="plan" data-id="${esc(lead.key)}" data-when="${iso(0)}">
+          ${ico("cal", null, 15)} heute in den Kalender</button>
+        <button class="planbtn ghost" data-act="plan" data-id="${esc(lead.key)}" data-when="${iso(1)}">morgen</button>
+      </div>
+      <p class="src">Warum diese: von allen Arten unten ist sie die erste, die zu deinem
+      heutigen Zustand passt. Die anderen stehen darunter — mit dem, was sie heute kosten
+      würden. Entscheiden tust du.</p>
+    </div>` : "";
+
+    return `${leadCard}<h3 class="secname">Alle Einheiten für heute
       <span class="hint">— eine je Art, jede für heute bewertet. Watt aus deiner
       FTP${w.ftp ? ` (${fmt(w.ftp)} W)` : ""}, Puls aus deiner gemessenen aeroben
       Schwelle${w.aerobic_hr ? ` (${w.aerobic_hr} bpm)` : ""}. Was du machst, entscheidest du —
@@ -2931,6 +2953,13 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
 .wogrid{display:grid;gap:12px}
 .wocard{background:${C.card};border:1px solid ${C.line};border-radius:12px;padding:14px}
 .wocard.first{border-color:${ROLE.series}66;box-shadow:0 0 0 1px ${ROLE.series}22}
+.leadrec{background:${C.card};border:1px solid ${C.green}55;border-left:4px solid ${C.green};
+  border-radius:12px;padding:16px 18px;margin-bottom:14px}
+.leadhead{display:flex;align-items:center;gap:8px;color:${C.green};font-size:11.5px;
+  font-weight:650;letter-spacing:.05em;margin-bottom:6px}
+.leadtitle{font-size:26px;font-weight:700;line-height:1.15}
+.leadmeta{color:${C.tx2};font-size:13.5px;margin:3px 0 8px}
+.leadwhy{font-size:14px;color:${C.tx};margin:0 0 10px}
 .recflag{display:flex;align-items:center;gap:6px;color:${C.green};font-size:12px;
   font-weight:650;margin:-2px 0 6px}
 .wofam{color:${C.tx3};font-size:11px;text-transform:uppercase;letter-spacing:.06em}
