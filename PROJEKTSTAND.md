@@ -1,15 +1,20 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 10.09.2026 · **Version:** 0.9.0 · **Status:** läuft produktiv auf HEIMDALL
+**Stand:** 11.09.2026 · **Version:** 0.9.1 · **Status:** läuft produktiv auf HEIMDALL, Auslieferung über HACS
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu
 lokal archiviert, auswertet und in einem eigenen Seitenleisten-Panel darstellt.
 Später als kostenloses HACS-Repository für andere gedacht.
 
-**Was 0.9.0 gegenüber 0.8.0 ändert:** das Panel ist vollständig neu gebaut —
-größere Schrift, mittige Hauptanzeige, Verlaufskurven je Aktivität, einzeln
-aufklappbare Karten. Dazu ein neuer WebSocket-Befehl, der die Rohdaten einer
-Einheit live holt. Das Backend ist bis auf diesen Zusatz unverändert.
+**Was 0.9.1 gegenüber 0.9.0 ändert:** die acht im Livebetrieb gefundenen
+Anzeigefehler sind behoben, dazu ein echter Fehler im Backend — der
+Archiv-Abgleich lief nur beim Start, nie im Sechs-Stunden-Takt. Jeder Wert
+trägt jetzt sichtbar sein Datum. Der Prüfstand ist wieder vollständig: vier
+neue Frontend-Tests ersetzen die vier veralteten.
+
+**Auslieferung seit 0.9.1 über HACS** — Repository `JochenRi/ha-intervals-icu`,
+eingetragen als benutzerdefiniertes Repository, Kategorie Integration. Dateien
+werden nicht mehr von Hand kopiert.
 
 ---
 
@@ -44,10 +49,22 @@ custom_components/intervals_icu/
 ├── calendar.py       Kalender-Entität mit geplanten Workouts
 ├── websocket.py      11 Kommandos für das Panel (322 Zeilen)
 └── frontend/
-    └── intervals-panel.js   Panel, eine einzige Datei ohne Abhängigkeiten (1.482 Zeilen)
+    └── intervals-panel.js   Panel, eine einzige Datei ohne Abhängigkeiten (1.619 Zeilen)
 ```
 
-**Rund 5.100 Zeilen Code, davon ~1.500 Frontend.**
+**Rund 5.200 Zeilen Code, davon ~1.600 Frontend.**
+
+### Die Palette, seit 0.9.1 in zwei Registern
+
+Dreimal in Folge (0.7.0, 0.8.0, 0.9.0) ist dieselbe Fehlerklasse durchgerutscht:
+zwei Töne für dieselbe Rolle. Deshalb liegt die Farbgebung jetzt strukturell fest:
+
+- **Zustandsregister** (grün, gelb, rot, grau) bedeutet ein Urteil — sonst nichts.
+  Keine Sportart, keine Datenreihe trägt je einen dieser Töne.
+- **Datenregister** (blau, violett, cyan, magenta, schiefer, dunkelgrau) trägt
+  Kategorien und Kanäle. Innerhalb einer Ansicht kommt jeder Ton höchstens einmal vor.
+
+`tests/test_panel_fixes.js` prüft beide Regeln bei jedem Lauf.
 
 ### Warum so und nicht anders
 
@@ -170,30 +187,26 @@ Tabellenziffern, 15 px Grundgröße. Grund: Lesbarkeit auf Distanz und am Handy.
 
 ## 6. Prüfstand
 
-**Achtung — der Prüfstand ist seit 0.9.0 nur noch zur Hälfte gültig.**
+**Acht Testläufe, 553 Einzelprüfungen, alle grün.** Kein Test braucht eine
+laufende HA-Instanz oder einen Browser.
 
-| Datei | prüft | Stand |
-|---|---|---|
-| `test_derive.py` | Parselogik gegen echte Payloads | gültig |
-| `test_dfa.py` | DFA-Auswertung, Bandgrenzen, Artefakte, Aussetzer | gültig |
-| `test_import.py` | vollständiger Import gegen einen Nachbau des Kontos | gültig |
-| `test_analytics.py` | Trainingsmetriken gegen bekannte Ergebnisse | gültig |
-| `test_setup_simulation.py` | Entity-Aufbau, Übersetzungen, unique_ids | gültig |
-| `test_panel_utils.mjs` | Formatierung und Zeichenlogik | **veraltet** — prüft das alte Panel |
-| `test_panel.mjs` | Panel im simulierten DOM | **veraltet** |
-| `test_panel_load.mjs` | Ladekette wie im Browser | **veraltet** |
-| `test_design.mjs` | Gestaltungsregeln: Rangfolge, Farbe+Wort, Palette | **veraltet** |
+| Datei | prüft |
+|---|---|
+| `test_derive.py` | Parselogik gegen echte Payloads |
+| `test_dfa.py` | DFA-Auswertung, Bandgrenzen, Artefakte, Aussetzer |
+| `test_import.py` | vollständiger Import gegen einen Nachbau des Kontos |
+| `test_analytics.py` | Trainingsmetriken gegen bekannte Ergebnisse |
+| `test_setup_simulation.py` | Entity-Aufbau, Übersetzungen, unique_ids |
+| `test_panel_views.js` | alle sieben Ansichten gegen volle, leere, löchrige und entartete Daten (283) |
+| `test_panel_fixes.js` | je ein Nachweis pro behobenem Fehler aus 0.9.0 (113) |
+| `test_panel_design.js` | Cursor-Geometrie und die Gestaltungsregeln als Zusicherung (44) |
 
-Der Neubau wurde vor der Auslieferung gegen zwei eigene Simulationsläufe
-geprüft (alle sieben Ansichten mit vollen, leeren, löchrigen und degenerierten
-Daten; Cursor-Geometrie, Randklemmung, Extremwerte, Zahlenformatierung).
-**Diese Läufe liegen bislang nicht im Repository** — sie gehören als Ersatz für
-die vier veralteten Dateien eingecheckt. Bis dahin gilt: das Frontend hat keinen
-laufenden Regressionsschutz.
+Die drei Frontend-Tests laden `intervals-panel.js` ohne Browser und rendern
+jede Ansicht gegen erfundene, aber formgleiche Payloads. `panel_harness.js`
+stellt die Umgebung, `panel_fixtures.js` die Daten — darunter bewusst
+Aussetzer, Nullwerte, ein ACWR-Ausreißer und ein Morgen ohne Wellness-Zeile.
 
-Ausführen: `python3 tests/<datei>.py` bzw. `node tests/<datei>.mjs`.
-
----
+Ausführen: `python3 tests/<datei>.py` bzw. `node tests/<datei>.js`.
 
 ## 7. Fehler, die der Prüfstand gefunden hat
 
@@ -208,36 +221,39 @@ Ausführen: `python3 tests/<datei>.py` bzw. `node tests/<datei>.mjs`.
 | 0.7.0 | zwei verschiedene Gelbtöne | Palettendisziplin |
 | 0.8.0 | zweites Blau | dieselbe Fehlerklasse |
 | 0.9.0 | einzelne Messpunkte zwischen Datenlücken unsichtbar | Pfad nur mit `M`, ohne `L` — in der Simulation gefunden und behoben |
+| 0.9.1 | Archiv-Abgleich lief nur beim Start, nie im Takt | Timer-Aktion war ein Lambda statt einer Coroutine-Funktion: HA führt sie im Executor-Thread aus, die erzeugte Aufgabe wird nie abgewartet. HA protokolliert genau das |
+| 0.9.1 | Ablesekasten ragte bei Mauszeiger außerhalb des Fensters hinaus | Klemmung nur in eine Richtung — in der neuen Simulation gefunden |
 
 ---
 
 ## 8. Offen
 
-**Bekannte Fehler in 0.9.0** (im Livebetrieb gefunden, noch nicht behoben):
+**In 0.9.1 behoben** (alle im Livebetrieb gefunden, jeder mit eigenem Regressionstest):
 
-| # | Fehler | Regel, gegen die er verstößt |
+| # | war | jetzt |
 |---|---|---|
-| 1 | zwei Blautöne (Tempo neben Blau) und zwei Rottöne (Herzfrequenz neben Rot) | Abschnitt 7, Fehlerklasse 0.7.0/0.8.0 — dritter Rückfall |
-| 2 | Nullwerte in HF-, Watt- und DFA-Strömen roh gezeichnet | Abschnitt 3: Nullen sind Aussetzer, keine Messwerte; `dfa_summary` filtert sie, das Detail-Chart nicht |
-| 3 | DFA-Sportfilter zeigt „Rad" doppelt (`Ride` und `VirtualRide`) | Filter muss nach Sportgruppe zusammenfassen |
-| 4 | ACWR-Diagramm von einem Ausreißer gequetscht, Beschriftungen überlappen | Achse kappen, Labels entzerren |
-| 5 | x-Achse zeigt Monate doppelt | Tickabstand rechnet in Punkten statt in Kalendermonaten |
-| 6 | Ablese-Kasten am rechten Rand abgeschnitten | Umklappen rechnet mit fester statt echter Kastenbreite |
-| 7 | HRV-Karte mischt Einheiten (Großwert `ln rMSSD`, Kurve „in ms") | eine Einheit je Kachel |
-| 8 | DFA-Tab zeigt vier gleich große Zahlen | „eine Leitzahl je Ansicht" |
+| 1 | zwei Blau- und zwei Rottöne | Palette in Zustands- und Datenregister getrennt, Test erzwingt es |
+| 2 | Nullwerte in HF-, Watt- und DFA-Strömen roh gezeichnet | Null gilt dort als Aussetzer und wird zur Lücke; bei Kadenz und Tempo bleibt sie ein Messwert (Stillstand) |
+| 3 | DFA-Sportfilter zeigte „Rad" doppelt | Filter gruppiert nach Sportgruppe, `Ride` und `VirtualRide` fallen zusammen |
+| 4 | ACWR-Diagramm von einem Ausreißer gequetscht | Achse bei 2,2 gekappt, Ausreißer geklemmt und mit Höchstwert ausgewiesen; Beschriftungen weichen nach links aus |
+| 5 | x-Achse zeigte Monate doppelt | Ticks sitzen auf Kalendermonaten statt auf Punktabständen |
+| 6 | Ablesekasten am Rand abgeschnitten | Umklappen rechnet mit der gemessenen Kastenbreite, beidseitig geklemmt |
+| 7 | HRV-Karte mischte Einheiten | Kurve zeigt ln(rMSSD) mit Basislinienband, dieselbe Größe wie der Großwert |
+| 8 | DFA-Tab zeigte vier gleich große Zahlen | eine Leitzahl, drei Nebenwerte |
+| 9 | kein Datum sichtbar | Kopfzeile mit vollem Datum, jede Signalkarte mit „heute" oder „Stand TT.MM.JJJJ" in Warnfarbe |
 
-**Danach:**
-- Frontend-Tests neu schreiben, die beiden Simulationsläufe ins Repository
-- einfacherer Weg, Änderungen einzuspielen (bislang: Dateien von Hand kopieren)
+**Als Nächstes:**
 - Webhooks statt Polling — Intervals bietet sie für Uploads und Kalenderänderungen
 - Schreibseite: Workouts aus HA heraus planen
 - Historien-Import in die HA-Langzeitstatistik (`async_import_statistics`),
   damit HEIMDALL auf Trainingsdaten automatisieren kann
+- Brand-Icon 256×256 an `home-assistant/brands` (PR) — solange es fehlt, bleibt
+  die HACS-Prüfung im CI rot; für die Installation als benutzerdefiniertes
+  Repository ist das ohne Belang
 
 **Für die Veröffentlichung:**
-- Repository bei GitHub anlegen, MIT-Lizenz liegt bei
-- CI läuft bereits mit: `hacs/action` + `home-assistant/actions/hassfest`
-- Brand-Icon 256×256 an `home-assistant/brands` (PR)
+- Repository liegt öffentlich: `github.com/JochenRi/ha-intervals-icu`, MIT-Lizenz
+- CI läuft: `hacs/action` + `home-assistant/actions/hassfest` (hassfest grün)
 - Aufnahme in den HACS-Standardkatalog beantragen — dauert erfahrungsgemäß Monate,
   bis dahin Installation über „Custom repository"
 
@@ -252,8 +268,10 @@ Ausführen: `python3 tests/<datei>.py` bzw. `node tests/<datei>.mjs`.
 
 ## 9. Betrieb
 
-**Installation/Update:** Ordner `custom_components/intervals_icu` komplett
-ersetzen, HA neu starten, Browser hart neu laden (Strg+Shift+R).
+**Installation/Update:** über HACS — Repository ist als benutzerdefiniertes
+Repository eingetragen (Kategorie Integration). Neue Version erscheint dort,
+herunterladen, HA neu starten, Browser hart neu laden (Strg+Shift+R).
+Von Hand geht es weiterhin: Ordner `custom_components/intervals_icu` ersetzen.
 
 **Wichtig:** Die Unterordner `frontend/` und `translations/` müssen mitkopiert
 werden. Fehlt `frontend/`, schreibt die Integration eine klare Fehlermeldung ins

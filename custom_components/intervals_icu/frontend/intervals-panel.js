@@ -19,14 +19,37 @@
 /* ------------------------------------------------------------------ */
 /* palette + iconography                                               */
 /* ------------------------------------------------------------------ */
+/* Palette — two registers that never mix.
+ *
+ * STATE (green/amber/red/grey) means a verdict and nothing else. It is never
+ * used for a category or a data series.
+ * DATA (blue/violet/cyan/magenta/slate/deep) carries categories and channels.
+ * Inside any single view every data tone appears at most once; tests/design
+ * checks both rules, because the same class of slip cost 0.7.0, 0.8.0 and
+ * 0.9.0 a release each (two yellows, two blues, two reds).
+ */
 const C = {
   bg: "#0f151c", card: "#171f29", card2: "#1d2733", line: "#2a3644",
   tx: "#e8eef5", tx2: "#a6b4c4", tx3: "#6e8093",
-  green: "#34d399", amber: "#fbbf24", red: "#f87171", blue: "#60a5fa",
-  ride: "#60a5fa", run: "#fb923c", walk: "#34d399", swim: "#22d3ee",
-  gym: "#c084fc", other: "#94a3b8",
-  pow: "#c084fc", hr: "#fb7185", dfa: "#22d3ee", cad: "#e879f9",
-  vel: "#38bdf8", alt: "#64748b", loadbar: "#3e5a78",
+
+  // state register
+  green: "#34d399", amber: "#fbbf24", red: "#f87171", grey: "#6e8093",
+
+  // data register
+  blue: "#60a5fa", violet: "#a78bfa", cyan: "#22d3ee",
+  magenta: "#e879f9", slate: "#94a3b8", deep: "#64748b",
+};
+
+/* Role assignments. Each maps to a data-register tone above — never to a
+ * state tone. Within one view the assignments used must be distinct. */
+const ROLE = {
+  // fitness view
+  ctl: C.blue, atl: C.violet, form: C.cyan, dayload: C.slate,
+  // activity detail channels
+  pow: C.violet, hr: C.magenta, dfa: C.cyan,
+  cad: C.slate, vel: C.blue, alt: C.deep,
+  // load + dfa views
+  series: C.blue, second: C.violet,
 };
 
 const IC = {
@@ -67,7 +90,7 @@ const ST = {
   green:   { word: "grün",       ic: "ok",   c: C.green },
   amber:   { word: "gelb",       ic: "warn", c: C.amber },
   red:     { word: "rot",        ic: "stop", c: C.red },
-  unknown: { word: "keine Daten", ic: "na",  c: C.tx3 },
+  unknown: { word: "keine Daten", ic: "na",  c: C.grey },
 };
 function badge(state, word) {
   const m = ST[state] || ST.unknown;
@@ -75,13 +98,22 @@ function badge(state, word) {
 }
 
 const SPORT = {
-  ride:  { c: C.ride,  ic: "bike", l: "Rad" },
-  run:   { c: C.run,   ic: "run",  l: "Lauf" },
-  walk:  { c: C.walk,  ic: "walk", l: "Gehen" },
-  swim:  { c: C.swim,  ic: "swim", l: "Schwimmen" },
-  gym:   { c: C.gym,   ic: "gym",  l: "Kraft" },
-  other: { c: C.other, ic: "dot",  l: "Sonstiges" },
+  ride:  { c: C.blue,    ic: "bike", l: "Rad" },
+  run:   { c: C.violet,  ic: "run",  l: "Lauf" },
+  walk:  { c: C.cyan,    ic: "walk", l: "Gehen" },
+  swim:  { c: C.magenta, ic: "swim", l: "Schwimmen" },
+  gym:   { c: C.slate,   ic: "gym",  l: "Kraft" },
+  other: { c: C.deep,    ic: "dot",  l: "Sonstiges" },
 };
+function groupKey(type) {
+  const t = String(type || "");
+  if (/Ride/.test(t)) return "ride";
+  if (/Run/.test(t)) return "run";
+  if (/Walk|Hike/.test(t)) return "walk";
+  if (/Swim/.test(t)) return "swim";
+  if (/Weight|Workout/.test(t)) return "gym";
+  return "other";
+}
 function sportOf(groupOrType) {
   if (SPORT[groupOrType]) return SPORT[groupOrType];
   const t = String(groupOrType || "");
@@ -122,6 +154,12 @@ function hhmm(secs) {
   return `${Math.floor(s / 3600)}:${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}`;
 }
 const WD = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+const WDL = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"];
+function dLong(iso) {
+  if (!iso) return "";
+  const d = new Date(iso + "T00:00:00");
+  return `${WDL[(d.getDay() + 6) % 7]}, ${dMed(iso)}`;
+}
 function dShort(iso) {
   const d = new Date(iso + "T00:00:00");
   return `${WD[(d.getDay() + 6) % 7]} ${String(d.getDate()).padStart(2, "0")}.`;
@@ -157,6 +195,24 @@ function tickVals(a, b, m) {
   }
   return out;
 }
+/* x ticks on calendar month boundaries. Spacing by point index put two ticks
+ * inside the same month whenever the series was denser there - the axis then
+ * read "05.2026  05.2026". Returns at most `max` labels, thinned evenly. */
+function monthTicks(dates, max) {
+  const out = [];
+  let last = null;
+  for (let i = 0; i < dates.length; i++) {
+    const d = String(dates[i] || "").slice(0, 7);
+    if (!d || d === last) continue;
+    last = d;
+    out.push({ i, t: d.slice(5) + "." + d.slice(2, 4) });
+  }
+  const cap = max || 7;
+  if (out.length <= cap) return out;
+  const step = Math.ceil(out.length / cap);
+  return out.filter((_, k) => k % step === 0);
+}
+
 function domainOf(seriesList, pad) {
   let lo = Infinity, hi = -Infinity;
   for (const s of seriesList) {
@@ -207,7 +263,12 @@ function chart(o) {
   for (const l of (o.hl || [])) {
     if (l.y < o.y0 || l.y > o.y1) continue;
     g += `<line x1="${padL}" x2="${w - padR}" y1="${Y(l.y)}" y2="${Y(l.y)}" stroke="${l.c}" stroke-width="1.2" ${l.d ? 'stroke-dasharray="5 4"' : ""} opacity="0.8"/>`;
-    if (l.t) g += `<text x="${w - padR - 3}" y="${Y(l.y) - 4}" text-anchor="end" class="ax" fill="${l.c}">${l.t}</text>`;
+    if (l.t) {
+      // Two labels on nearby lines used to sit on top of each other; each line
+      // can now claim the left or the right end of its own row.
+      const left = l.side === "left";
+      g += `<text x="${left ? padL + 3 : w - padR - 3}" y="${Y(l.y) - 4}" text-anchor="${left ? "start" : "end"}" class="ax" fill="${l.c}">${l.t}</text>`;
+    }
   }
   for (const s of (o.s || [])) {
     if (s.t === "bars") {
@@ -567,24 +628,57 @@ class IntervalsIcuPanel extends HTMLElement {
     box.hidden = false;
     this._xhOn = true;
     const host = this.getBoundingClientRect();
+    // Measure after filling: the box grows with its content, and a fixed
+    // guess of 230px cut the numbers off at the right edge.
+    const bw = box.offsetWidth || 210, bh = box.offsetHeight || 90;
     let bx = e.clientX - host.left + 18, by = e.clientY - host.top + 14;
-    if (bx + 230 > host.width) bx = e.clientX - host.left - 245;
+    if (bx + bw > host.width - 8) bx = e.clientX - host.left - bw - 18;
+    bx = Math.max(8, Math.min(bx, host.width - bw - 8));
+    if (by + bh > host.height - 8) by = Math.max(8, host.height - bh - 8);
     box.style.left = bx + "px"; box.style.top = by + "px";
   }
 
   /* ---------------- Heute ---------------- */
   _sparkFor(id, days, load) {
-    const past = (days && days.days || []).filter((d) => !d.future);
-    const pick = (k) => past.slice(-42).map((d) => d[k] == null ? null : +d[k]);
-    if (id === "hrv") return { v: pick("hrv"), t: "HRV in ms · 6 Wochen" };
-    if (id === "rhr") return { v: pick("resting_hr"), t: "Ruhepuls in bpm · 6 Wochen" };
-    if (id === "sleep") return { v: pick("sleep_hours"), t: "Schlaf in h · 6 Wochen" };
-    if (id === "form") return { v: pick("form"), t: "Form · 6 Wochen", zero: true };
+    const past = (days && days.days || []).filter((d) => !d.future).slice(-42);
+    const dts = past.map((d) => d.date);
+    const pick = (k) => past.map((d) => d[k] == null ? null : +d[k]);
+    if (id === "hrv") {
+      // The card's headline value is ln(rMSSD) against its baseline, so the
+      // curve has to be that same quantity - it used to plot raw ms below a
+      // logarithmic headline, two units in one tile.
+      const ser = (load && load.hrv && load.hrv.series || []).slice(-42);
+      if (ser.length > 2) {
+        const band = load.hrv.baseline != null && load.hrv.swc != null
+          ? { a: load.hrv.baseline - load.hrv.swc, b: load.hrv.baseline + load.hrv.swc } : null;
+        return { v: ser.map((x) => x.ln_rmssd_7d), d: ser.map((x) => x.date), unit: "ln rMSSD",
+                 t: "ln rMSSD, 7-Tage-Mittel · 6 Wochen (Band: Basislinie ± SWC)", band };
+      }
+      return { v: pick("hrv"), d: dts, unit: "ms", t: "HRV in ms · 6 Wochen" };
+    }
+    if (id === "rhr") return { v: pick("resting_hr"), d: dts, unit: "bpm", t: "Ruhepuls in bpm · 6 Wochen" };
+    if (id === "sleep") return { v: pick("sleep_hours"), d: dts, unit: "h", t: "Schlaf in h · 6 Wochen" };
+    if (id === "form") return { v: pick("form"), d: dts, unit: "%", t: "Form · 6 Wochen", zero: true };
     if (id === "acwr" && load) {
-      return { v: (load.acwr || []).slice(-42).map((x) => x.ratio), t: "Akut : chronisch · 6 Wochen", band: { a: 0.8, b: 1.3 } };
+      const a = (load.acwr || []).slice(-42);
+      return { v: a.map((x) => x.ratio), d: a.map((x) => x.date), unit: "",
+               t: "Akut : chronisch · 6 Wochen", band: { a: 0.8, b: 1.3 } };
     }
     if (id === "monotony" && load) {
-      return { v: (load.weeks || []).slice(-12).map((x) => x.monotony), t: "Monotonie je Woche · 12 Wochen", bars: true, hline: 2 };
+      const w = (load.weeks || []).slice(-12);
+      return { v: w.map((x) => x.monotony), d: w.map((x) => x.week), unit: "", week: true,
+               t: "Monotonie je Woche · 12 Wochen", bars: true, hline: 2 };
+    }
+    return null;
+  }
+
+  /* date of the newest actual value in a series - a wellness row fills up
+     over the day, so a card's number is often yesterday's. Saying which day
+     it belongs to is the difference between a reading and a guess. */
+  _stampOf(sp) {
+    if (!sp || !sp.v || !sp.d) return null;
+    for (let i = sp.v.length - 1; i >= 0; i--) {
+      if (sp.v[i] != null) return sp.d[i] || null;
     }
     return null;
   }
@@ -629,6 +723,12 @@ class IntervalsIcuPanel extends HTMLElement {
       const stm = ST[cItem.state] || ST.unknown;
       const sp = this._sparkFor(cItem.id, days, load);
       const dec = SIG_DEC[cItem.id] != null ? SIG_DEC[cItem.id] : 1;
+      const stamp = this._stampOf(sp);
+      const today = (days && days.today) || new Date().toISOString().slice(0, 10);
+      const stale = stamp && !sp.week && stamp < today;
+      const stampHtml = stamp
+        ? `<span class="stamp ${stale ? "old" : ""}">${sp.week ? "KW " + String(stamp).split("-W")[1] : (stale ? "Stand " + dMed(stamp) : "heute")}</span>`
+        : `<span class="stamp old">kein Wert</span>`;
       const sparkHtml = sp && sp.v && sp.v.some((v) => v != null)
         ? spark(sp.v, { c: C.blue, last: stm.c, band: sp.band, hline: sp.hline, bars: sp.bars, zero: sp.zero }) +
           `<div class="spklbl">${sp.t}</div>`
@@ -643,8 +743,9 @@ class IntervalsIcuPanel extends HTMLElement {
         </div>
         <div class="sigval tn">${cItem.value != null ? fmt(cItem.value, dec) : "–"}
           <span class="unit">${SIG_UNIT[cItem.id] || ""}</span>
-          ${cItem.reference != null ? `<span class="ref">Referenz ${fmt(cItem.reference, dec)}</span>` : ""}
+          ${stampHtml}
         </div>
+        ${cItem.reference != null ? `<div class="sigref">Referenz ${fmt(cItem.reference, dec)} ${SIG_UNIT[cItem.id] || ""}</div>` : ""}
         <div class="sigsub">${esc(cItem.detail || "")}</div>
         ${sparkHtml}
         ${cItem.source || bigHtml ? `<details class="more"><summary>Verlauf &amp; Quelle</summary>${bigHtml}<p class="src">${esc(cItem.source || "")}</p></details>` : ""}
@@ -655,7 +756,7 @@ class IntervalsIcuPanel extends HTMLElement {
         <div class="herowrap">
           <div class="ringbox">${ring(rd.components || [], rd.overall)}</div>
           <div class="heromain">
-            <div class="kicker">Bereitschaft heute</div>
+            <div class="kicker">Bereitschaft <span class="dstamp">${days && days.today ? dLong(days.today) : ""}</span></div>
             <div class="verdict">${badge(rd.overall)}<span>${VERDICT[rd.overall] || VERDICT.unknown}</span></div>
             ${budgetHtml}
             ${nextRow}
@@ -805,20 +906,20 @@ class IntervalsIcuPanel extends HTMLElement {
     const ctl = rows.map((r) => r.ctl), atl = rows.map((r) => r.atl);
     const form = rows.map((r) => r.form), loadV = rows.map((r) => r.load || 0);
     const xt = [];
-    for (let i = 0; i < n; i += Math.max(1, Math.floor(n / 6))) xt.push({ i, t: dMed(rows[i].date).slice(0, 6) + dMed(rows[i].date).slice(8) });
+    for (const tick of monthTicks(rows.map((r) => r.date))) xt.push(tick);
     const [p0, p1] = domainOf([{ v: ctl }, { v: atl }]);
     const main = chart({
       h: 230, n, y0: Math.max(0, p0), y1: p1, grp: "pmc",
       s: [
-        { t: "area", v: ctl, c: C.blue, op: 0.12 },
-        { t: "line", v: ctl, c: C.blue, w: 2.4 },
-        { t: "line", v: atl, c: C.hr, w: 1.6 },
+        { t: "area", v: ctl, c: ROLE.ctl, op: 0.12 },
+        { t: "line", v: ctl, c: ROLE.ctl, w: 2.4 },
+        { t: "line", v: atl, c: ROLE.atl, w: 1.6 },
       ],
     });
     const loadMax = Math.max(1, ...loadV);
     const bars = chart({
       h: 86, n, y0: 0, y1: loadMax * 1.08, yticks: [Math.round(loadMax / 2), Math.round(loadMax)], grp: "pmc",
-      s: [{ t: "bars", v: loadV, c: C.loadbar }], label: "Tageslast", labelc: C.tx3,
+      s: [{ t: "bars", v: loadV, c: ROLE.dayload }], label: "Tageslast", labelc: C.tx3,
     });
     const [f0, f1] = domainOf([{ v: form }]);
     const fy0 = Math.min(f0, -32), fy1 = Math.max(f1, 22);
@@ -832,16 +933,16 @@ class IntervalsIcuPanel extends HTMLElement {
         { a: 20, b: fy1, c: C.amber, op: 0.12 },
       ],
       hl: [{ y: 0, c: C.tx3 }],
-      s: [{ t: "line", v: form, c: C.green, w: 2 }],
+      s: [{ t: "line", v: form, c: ROLE.form, w: 2 }],
       label: "Form (Friel-Zonen: rot Risiko · grün optimal · grau neutral · blau frisch · gelb Übergang)", labelc: C.tx3,
     });
     this._grp.pmc = {
       n, xl: (i) => dMed(rows[i].date),
       rows: [
-        { l: "Fitness (CTL)", c: C.blue, vals: ctl },
-        { l: "Ermüdung (ATL)", c: C.hr, vals: atl },
-        { l: "Form", c: C.green, vals: form },
-        { l: "Tageslast", c: C.loadbar, vals: loadV },
+        { l: "Fitness (CTL)", c: ROLE.ctl, vals: ctl },
+        { l: "Ermüdung (ATL)", c: ROLE.atl, vals: atl },
+        { l: "Form", c: ROLE.form, vals: form },
+        { l: "Tageslast", c: ROLE.dayload, vals: loadV },
       ],
     };
     const ranges = [[42, "42 T"], [91, "3 M"], [182, "6 M"], [365, "1 J"]];
@@ -849,9 +950,9 @@ class IntervalsIcuPanel extends HTMLElement {
     return `
       <div class="bar">
         <div class="legend">
-          <span class="lg" style="color:${C.blue}"><i class="sw" style="background:${C.blue}"></i>Fitness ${fmt(last.ctl)}</span>
-          <span class="lg" style="color:${C.hr}"><i class="sw" style="background:${C.hr}"></i>Ermüdung ${fmt(last.atl)}</span>
-          <span class="lg" style="color:${C.green}"><i class="sw" style="background:${C.green}"></i>Form ${sign(Math.round(last.form || 0))}</span>
+          <span class="lg" style="color:${ROLE.ctl}"><i class="sw" style="background:${ROLE.ctl}"></i>Fitness ${fmt(last.ctl)}</span>
+          <span class="lg" style="color:${ROLE.atl}"><i class="sw" style="background:${ROLE.atl}"></i>Ermüdung ${fmt(last.atl)}</span>
+          <span class="lg" style="color:${ROLE.form}"><i class="sw" style="background:${ROLE.form}"></i>Form ${sign(Math.round(last.form || 0))}</span>
         </div>
         <div class="chips">${ranges.map(([d, l]) => `<button class="chipbtn ${this._range === d ? "on" : ""}" data-act="range" data-id="${d}">${l}</button>`).join("")}</div>
       </div>
@@ -933,7 +1034,7 @@ class IntervalsIcuPanel extends HTMLElement {
     else streamsHtml = this._streamPanels(st);
     return `<section class="card det">
       <div class="dethead">
-        <span class="aic big" style="color:${sp.c}">${ico(sp.ic, sp.c, 26)}</span>
+        <span class="aic big" style="color:${C.tx2}">${ico(sp.ic, C.tx2, 26)}</span>
         <div><h2>${esc(a.name || sp.l)}</h2>
           <div class="detsub">${dMed(a.start_date_local)} · ${sp.l}${a.device_name ? " · " + esc(a.device_name) : ""}</div></div>
         <button class="chipbtn" data-act="close">Schließen</button>
@@ -949,20 +1050,29 @@ class IntervalsIcuPanel extends HTMLElement {
     const ch = st.channels, secs = st.sample_secs || 1, n = st.points;
     const timeArr = ch.time || null;
     const tAt = (i) => timeArr && timeArr[i] != null ? timeArr[i] : i * secs;
+    // A zero is a dropout in some channels and a real reading in others:
+    // heart rate and DFA never legitimately reach zero, and a zero in the
+    // power stream is a gap in the recording (the same zeros dfa_summary
+    // filters server-side). Cadence and speed DO hit zero when standing
+    // still, and altitude at sea level - those keep their zeros.
     const defs = [
-      { k: "watts", l: "Leistung", u: "W", c: C.pow, avg: 30 },
-      { k: "heartrate", l: "Herzfrequenz", u: "bpm", c: C.hr },
-      { k: "dfa_a1", l: "DFA alpha-1", u: "", c: C.dfa, dec: 2, dfa: true },
-      { k: "cadence", l: "Kadenz", u: "rpm", c: C.cad },
-      { k: "velocity_smooth", l: "Tempo", u: "km/h", c: C.vel, mul: 3.6, dec: 1 },
-      { k: "altitude", l: "Höhe", u: "m", c: C.alt, area: true },
-    ].filter((d) => ch[d.k] && ch[d.k].some((v) => v != null));
+      { k: "watts", l: "Leistung", u: "W", c: ROLE.pow, avg: 30, zeroIsGap: true },
+      { k: "heartrate", l: "Herzfrequenz", u: "bpm", c: ROLE.hr, zeroIsGap: true },
+      { k: "dfa_a1", l: "DFA alpha-1", u: "", c: ROLE.dfa, dec: 2, dfa: true, zeroIsGap: true },
+      { k: "cadence", l: "Kadenz", u: "rpm", c: ROLE.cad },
+      { k: "velocity_smooth", l: "Tempo", u: "km/h", c: ROLE.vel, mul: 3.6, dec: 1 },
+      { k: "altitude", l: "Höhe", u: "m", c: ROLE.alt, area: true },
+    ].filter((d) => ch[d.k] && ch[d.k].some((v) => d.zeroIsGap ? (v != null && v > 0) : v != null));
     if (!defs.length) return `<div class="mut pad">Keine darstellbaren Kanäle.</div>`;
     const xt = [];
     for (let i = 0; i < n; i += Math.max(1, Math.floor(n / 6))) xt.push({ i, t: hhmm(tAt(i)) });
     const rowsMeta = [];
     const panels = defs.map((d, idx) => {
-      let vals = ch[d.k].map((v) => v == null ? null : (d.mul ? v * d.mul : v));
+      let vals = ch[d.k].map((v) => {
+        if (v == null) return null;
+        if (d.zeroIsGap && v <= 0) return null;
+        return d.mul ? v * d.mul : v;
+      });
       const series = [];
       let y0, y1;
       if (d.dfa) {
@@ -1051,7 +1161,7 @@ class IntervalsIcuPanel extends HTMLElement {
       weeklyHtml = chart({
         h: 200, n: weeks.length, y0: 0, y1: maxL * 1.16, xt,
         hl: avg != null ? [{ y: avg, c: C.tx2, d: 1, t: "Mittel " + fmt(avg) }] : [],
-        s: [{ t: "bars", v: loads, c: C.blue, op: 0.8 }, { t: "dots", p: dots, c: C.amber }],
+        s: [{ t: "bars", v: loads, c: ROLE.series, op: 0.8 }, { t: "dots", p: dots, c: C.amber }],
       }) + `<p class="hint">${ico("warn", C.amber, 13)} Punkt über dem Balken = Monotonie ≥ 2 (Woche ohne echten Ruhetag).</p>`;
     }
 
@@ -1059,10 +1169,14 @@ class IntervalsIcuPanel extends HTMLElement {
     const acwr = load.acwr || [];
     let acwrHtml = `<p class="mut">Noch kein volles 28-Tage-Fenster.</p>`;
     if (acwr.some((x) => x.ratio != null)) {
-      const vals = acwr.map((x) => x.ratio);
-      const hi = Math.max(1.7, ...vals.filter((v) => v != null)) * 1.06;
-      const xt = [];
-      for (let i = 0; i < acwr.length; i += Math.max(1, Math.floor(acwr.length / 6))) xt.push({ i, t: dMed(acwr[i].date).slice(3) });
+      const raw = acwr.map((x) => x.ratio);
+      // A single spike used to stretch the axis to 4.0 and squash the whole
+      // corridor into the bottom sliver. Cap the axis just above the corridor,
+      // clamp what sticks out and mark it, so the readable range stays readable.
+      const hi = 2.2;
+      const vals = raw.map((v) => v == null ? null : Math.min(v, hi));
+      const over = raw.map((v, i) => (v != null && v > hi) ? { i, v: hi, c: C.red, r: 4.4 } : null).filter(Boolean);
+      const xt = monthTicks(acwr.map((x) => x.date));
       const la = load.acwr_latest;
       const laState = la ? (la.ratio > 1.5 ? "red" : la.ratio > 1.3 ? "amber" : "green") : "unknown";
       acwrHtml = `<div class="statrow">
@@ -1075,9 +1189,16 @@ class IntervalsIcuPanel extends HTMLElement {
           { a: 1.3, b: 1.5, c: C.amber, op: 0.12 },
           { a: 1.5, b: hi, c: C.red, op: 0.12 },
         ],
-        hl: [{ y: 0.8, c: C.green, d: 1 }, { y: 1.3, c: C.green, d: 1, t: "Korridor 0,8–1,3" }, { y: 1.5, c: C.red, d: 1, t: "erhöht ab 1,5" }],
-        s: [{ t: "line", v: vals, c: C.blue, w: 2.2 }],
-      });
+        hl: [
+          { y: 0.8, c: C.green, d: 1, t: "Korridor ab 0,8", side: "left" },
+          { y: 1.3, c: C.green, d: 1, t: "Korridor bis 1,3" },
+          { y: 1.5, c: C.red, d: 1, t: "erhöht ab 1,5", side: "left" },
+        ],
+        s: [
+          { t: "line", v: vals, c: ROLE.series, w: 2.2 },
+          { t: "dots", p: over, c: C.red },
+        ],
+      }) + (over.length ? `<p class="hint">${ico("warn", C.amber, 13)} ${over.length} Tag(e) über ${fmt(hi, 1)} — für die Lesbarkeit an der Achse geklemmt, Höchstwert ${fmt(Math.max(...raw.filter((v) => v != null)), 2)}.</p>` : "");
     }
 
     /* intensity */
@@ -1110,8 +1231,7 @@ class IntervalsIcuPanel extends HTMLElement {
       const seriesArr = hrv.series.slice(-120);
       const vals = seriesArr.map((x) => x.ln_rmssd_7d);
       const [h0, h1] = domainOf([{ v: vals }, { v: [hrv.baseline - hrv.swc * 1.4, hrv.baseline + hrv.swc * 1.4] }]);
-      const xt = [];
-      for (let i = 0; i < seriesArr.length; i += Math.max(1, Math.floor(seriesArr.length / 5))) xt.push({ i, t: dMed(seriesArr[i].date).slice(3) });
+      const xt = monthTicks(seriesArr.map((x) => x.date));
       const hst = hrv.state === "below" ? "amber" : "green";
       hrvHtml = `<div class="statrow"><b class="tn big2">${fmt(hrv.latest, 3)}</b>
           ${badge(hst, hrv.state === "below" ? "unter der Basislinie" : hrv.state === "above" ? "über der Basislinie" : "im Normalbereich")}
@@ -1120,7 +1240,7 @@ class IntervalsIcuPanel extends HTMLElement {
           h: 200, n: seriesArr.length, y0: h0, y1: h1, xt, yf: (v) => fmt(v, 2),
           bands: [{ a: hrv.baseline - hrv.swc, b: hrv.baseline + hrv.swc, c: C.blue, op: 0.14 }],
           hl: [{ y: hrv.baseline, c: C.tx2, d: 1, t: "Basislinie" }],
-          s: [{ t: "line", v: vals, c: C.dfa, w: 2.2 }],
+          s: [{ t: "line", v: vals, c: ROLE.series, w: 2.2 }],
         });
     }
 
@@ -1132,14 +1252,13 @@ class IntervalsIcuPanel extends HTMLElement {
       const [d0, d1] = domainOf([{ v: vals }, { v: [-2, 8] }]);
       const pts = dcp.map((x, i) => ({
         i, v: x.decoupling,
-        c: x.decoupling > 5 ? C.amber : x.decoupling <= 0 ? C.green : C.blue, r: 4,
+        c: x.decoupling > 5 ? C.amber : x.decoupling <= 0 ? C.green : ROLE.series, r: 4,
       }));
-      const xt = [];
-      for (let i = 0; i < dcp.length; i += Math.max(1, Math.floor(dcp.length / 6))) xt.push({ i, t: dMed(dcp[i].date).slice(3) });
+      const xt = monthTicks(dcp.map((x) => x.date));
       dcpHtml = chart({
         h: 190, n: dcp.length, y0: d0, y1: d1, xt, yf: (v) => fmt(v, 0) + " %",
         hl: [{ y: 5, c: C.amber, d: 1, t: "5 %-Marke" }, { y: 0, c: C.tx3 }],
-        s: [{ t: "dots", p: pts, c: C.blue }],
+        s: [{ t: "dots", p: pts, c: ROLE.series }],
       });
     }
 
@@ -1169,8 +1288,14 @@ class IntervalsIcuPanel extends HTMLElement {
   /* ---------------- DFA ---------------- */
   rDfa(thr, sportFilter) {
     if (!thr) return `<div class="card pad">DFA-Daten werden geladen …</div>`;
-    const types = [...new Set(thr.map((x) => x.type).filter(Boolean))];
-    const rows = thr.filter((x) => sportFilter === "all" || x.type === sportFilter);
+    // Ride and VirtualRide are both "Rad" - filtering on the raw type listed
+    // the same label twice and split the season in half.
+    const groups = [];
+    for (const x of thr) {
+      const g = groupKey(x.type);
+      if (g && !groups.includes(g)) groups.push(g);
+    }
+    const rows = thr.filter((x) => sportFilter === "all" || groupKey(x.type) === sportFilter);
     const solid = rows.filter((x) => (x.samples || 0) >= 5 && x.hr != null);
     if (!rows.length) return `<div class="card pad">Noch keine Schwellen-Messungen${sportFilter !== "all" ? " für diese Sportart" : ""}.</div>`;
     const n = rows.length;
@@ -1181,18 +1306,17 @@ class IntervalsIcuPanel extends HTMLElement {
     const curW = median(solid.slice(-5).map((x) => x.power).filter((v) => v != null));
     const avgAll = meanOf(solid.map((x) => x.hr));
     const [y0a, y1a] = domainOf([{ v: rows.map((x) => x.hr) }]);
-    const xt = [];
-    for (let i = 0; i < n; i += Math.max(1, Math.floor(n / 6))) xt.push({ i, t: dMed(rows[i].date).slice(3) });
+    const xt = monthTicks(rows.map((x) => x.date));
     const pts = rows.map((x, i) => ({
       i, v: x.hr,
-      c: (x.samples || 0) >= 5 ? C.blue : C.tx3,
+      c: (x.samples || 0) >= 5 ? ROLE.series : C.grey,
       f: (x.samples || 0) >= 5, r: (x.samples || 0) >= 5 ? 4 : 3, op: (x.samples || 0) >= 5 ? 1 : 0.6,
     }));
     const mainCh = chart({
       h: 260, n, y0: y0a, y1: y1a, xt, grp: "dfa",
       hl: avgAll != null ? [{ y: avgAll, c: C.tx3, d: 1, t: "Schnitt " + fmt(avgAll) }] : [],
-      s: [{ t: "dots", p: pts, c: C.blue }, { t: "line", v: roll, c: C.blue, w: 2.4 }],
-      label: "Schwellen-Herzfrequenz (bpm)", labelc: C.blue,
+      s: [{ t: "dots", p: pts, c: ROLE.series }, { t: "line", v: roll, c: ROLE.series, w: 2.4 }],
+      label: "Schwellen-Herzfrequenz (bpm)", labelc: ROLE.series,
     });
     const powRows = rows.map((x) => (x.samples || 0) >= 5 ? x.power : null);
     let powCh = "";
@@ -1201,17 +1325,17 @@ class IntervalsIcuPanel extends HTMLElement {
       powCh = chart({
         h: 130, n, y0: p0, y1: p1, grp: "dfa",
         s: [
-          { t: "dots", p: rows.map((x, i) => powRows[i] != null ? { i, v: powRows[i], c: C.pow, r: 3.4 } : null).filter(Boolean), c: C.pow },
-          { t: "line", v: rollMedian(powRows, 5), c: C.pow, w: 2 },
+          { t: "dots", p: rows.map((x, i) => powRows[i] != null ? { i, v: powRows[i], c: ROLE.pow, r: 3.4 } : null).filter(Boolean), c: ROLE.pow },
+          { t: "line", v: rollMedian(powRows, 5), c: ROLE.pow, w: 2 },
         ],
-        label: "Schwellen-Leistung (W) — eigenes Feld statt zweiter Achse", labelc: C.pow,
+        label: "Schwellen-Leistung (W) — eigenes Feld statt zweiter Achse", labelc: ROLE.pow,
       });
     }
     this._grp.dfa = {
       n, xl: (i) => dMed(rows[i].date),
       rows: [
         { l: "Schwelle", c: C.blue, vals: rows.map((x) => x.hr), u: "bpm" },
-        { l: "Leistung", c: C.pow, vals: rows.map((x) => x.power), u: "W" },
+        { l: "Leistung", c: ROLE.pow, vals: rows.map((x) => x.power), u: "W" },
         { l: "Messpunkte", c: C.tx2, vals: rows.map((x) => x.samples) },
       ],
     };
@@ -1236,14 +1360,18 @@ class IntervalsIcuPanel extends HTMLElement {
       <div class="bar">
         <div class="chips">
           <button class="chipbtn ${sportFilter === "all" ? "on" : ""}" data-act="dfasport" data-id="all">Alle Sportarten</button>
-          ${types.map((t) => `<button class="chipbtn ${sportFilter === t ? "on" : ""}" data-act="dfasport" data-id="${esc(t)}">${sportOf(t).l}</button>`).join("")}
+          ${groups.map((g) => `<button class="chipbtn ${sportFilter === g ? "on" : ""}" data-act="dfasport" data-id="${esc(g)}">${SPORT[g].l}</button>`).join("")}
         </div>
       </div>
-      <div class="statgrid card">
-        <div class="stat"><small>Aktuelle Schwelle</small><b class="tn big2" style="color:${C.blue}">${cur ? fmt(cur) : "–"} <span class="unit">bpm</span></b><span class="mut">Median der letzten 5 belastbaren Messungen</span></div>
-        <div class="stat"><small>bei Leistung</small><b class="tn big2" style="color:${C.pow}">${curW ? fmt(curW) : "–"} <span class="unit">W</span></b></div>
-        <div class="stat"><small>Veränderung im Zeitraum</small><b class="tn big2">${cur != null && first != null ? sign(Math.round(cur - first)) : "–"} <span class="unit">bpm</span></b></div>
-        <div class="stat"><small>Messungen</small><b class="tn big2">${solid.length}</b><span class="mut">belastbar · ${rows.length - solid.length} dünn</span></div>
+      <div class="statgrid card lead">
+        <div class="stat wide"><small>Aktuelle aerobe Schwelle</small>
+          <b class="tn lead1" style="color:${ROLE.series}">${cur ? fmt(cur) : "–"} <span class="unit">bpm</span></b>
+          <span class="mut">Median der letzten 5 belastbaren Messungen</span></div>
+        <div class="sidestats">
+          <div class="stat"><small>bei Leistung</small><b class="tn small2">${curW ? fmt(curW) : "–"} <span class="unit">W</span></b></div>
+          <div class="stat"><small>Veränderung</small><b class="tn small2">${cur != null && first != null ? sign(Math.round(cur - first)) : "–"} <span class="unit">bpm</span></b></div>
+          <div class="stat"><small>Messungen</small><b class="tn small2">${solid.length}</b><span class="mut">belastbar · ${rows.length - solid.length} dünn</span></div>
+        </div>
       </div>
       <div class="card pad0" data-grp="dfa">${mainCh}${powCh}</div>
       <div class="card pad0"><div class="thead"><span>Datum</span><span>Sport</span><span>Schwelle</span><span>Leistung</span><span>Güte</span></div>${tableRows}</div>`;
@@ -1364,7 +1492,15 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
 .sigl{font-weight:650;flex:1;font-size:15.5px}
 .sigval{font-size:27px;font-weight:700;line-height:1.15}
 .sigval .unit{font-size:13px;color:${C.tx3};font-weight:500}
-.sigval .ref{font-size:13px;color:${C.tx3};font-weight:500;margin-left:9px}
+.sigval .stamp{font-size:12px;color:${C.tx3};font-weight:500;margin-left:9px;
+  border:1px solid ${C.line};border-radius:999px;padding:2px 8px;vertical-align:3px}
+.sigval .stamp.old{color:${C.amber};border-color:${C.amber}55;background:${C.amber}12}
+.sigref{font-size:13px;color:${C.tx3};margin-top:1px}
+.dstamp{color:${C.tx2};letter-spacing:0;text-transform:none;font-weight:600}
+.statgrid.lead{display:grid;grid-template-columns:minmax(260px,1fr) 2fr;gap:22px;align-items:center}
+.stat.wide .lead1{font-size:46px;line-height:1.05;display:block}
+.sidestats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:16px}
+.small2{font-size:19px}
 .sigsub{color:${C.tx2};font-size:13.5px;margin:3px 0 9px;min-height:1.2em}
 .spk{display:block;width:100%;height:46px}
 .spklbl{color:${C.tx3};font-size:11.5px;margin-top:2px}

@@ -66,12 +66,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: IntervalsConfigEntry) ->
         name="intervals_icu_archive_sync",
     )
 
+    # The action must be a coroutine function. A plain lambda is treated as a
+    # sync callback and runs in an executor thread, where the task it creates
+    # is never awaited - the archive then only ever syncs once, at startup.
+    async def _sync_archive(_now) -> None:
+        await coordinator.async_sync_archive()
+
     entry.async_on_unload(
-        async_track_time_interval(
-            hass,
-            lambda _now: hass.async_create_task(coordinator.async_sync_archive()),
-            ARCHIVE_SYNC_INTERVAL,
-        )
+        async_track_time_interval(hass, _sync_archive, ARCHIVE_SYNC_INTERVAL)
     )
 
     return True

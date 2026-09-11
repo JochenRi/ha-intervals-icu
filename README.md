@@ -3,7 +3,7 @@
 Bring your [Intervals.icu](https://intervals.icu) training data into Home Assistant.
 Not affiliated with, endorsed by, or supported by Intervals.icu.
 
-> **Status: 0.9.0 — the panel, rebuilt.** Seven views, opening on today's
+> **Status: 0.9.1 — the panel, rebuilt.** Seven views, opening on today's
 > verdict: a readiness ring made of one segment per signal, the load budget as
 > a bullet graph with its arithmetic laid open, per-activity charts stacked on
 > a shared time axis, and every derived number carrying its source next to it.
@@ -141,7 +141,7 @@ Every derived number in the panel carries its origin and its limits:
 Holt deine Trainingsdaten von [Intervals.icu](https://intervals.icu) nach Home
 Assistant. Kein offizielles Projekt von Intervals.icu.
 
-> **Stand: 0.9.0 — das Panel, neu gebaut.** Sieben Ansichten, Startseite ist
+> **Stand: 0.9.1 — das Panel, neu gebaut.** Sieben Ansichten, Startseite ist
 > das Urteil für heute: ein Bereitschaftsring aus je einem Segment pro Signal,
 > das Lastbudget als Bullet-Graph mit offengelegtem Rechenweg, Verlaufskurven
 > je Einheit über einer gemeinsamen Zeitachse, jede Zahl mit ihrer Quelle.
