@@ -786,3 +786,149 @@ def _acwr_local(data: dict[str, Any]) -> list[dict[str, Any]]:
         out.append({"date": row["date"],
                     "ratio": (acute / chronic) if chronic > 0 else None})
     return out
+
+
+# --- what the night after an activity showed ----------------------------------
+# Sleep is the cleanest measurement condition there is: no external disruption,
+# and the night directly after a session is where the response shows. After a
+# hard effort, nocturnal heart rate rises and ln(rMSSD) falls; the return to
+# resting values takes minutes up to a full day, driven mainly by intensity.
+#
+# The catch, and the reason this is never read as "more damping = harder": the
+# relationship between load and HRV change is bell-shaped, not linear. A very
+# easy session and a very hard one can both leave the night looking ordinary,
+# for opposite reasons. So the reading is always RELATIVE TO THIS ATHLETE'S
+# OWN usual answer to sessions of the same size - not to a published norm.
+NIGHT_FIELDS = (
+    ("hrv", "hrv", True, 1, "Herzratenvariabilität", "ms"),
+    ("rhr", "restingHR", False, -1, "Ruhepuls", "bpm"),
+    ("sleep", "sleepSecs", False, 1, "Schlafdauer", "h"),
+)
+
+
+def _night_z(data: dict[str, Any], day: str) -> dict[str, Any]:
+    """Each wellness field of one night, as a z-score against the 60 days before."""
+    import math
+    wellness = data.get("wellness") or {}
+    days = sorted(d for d in wellness if d < day)[-60:]
+    out: dict[str, Any] = {}
+    for key, field, use_log, direction, label, unit in NIGHT_FIELDS:
+        raw = []
+        for d in days:
+            value = _f((wellness.get(d) or {}).get(field))
+            if value is None or value <= 0:
+                continue
+            raw.append(math.log(value) if use_log else value)
+        current = _f((wellness.get(day) or {}).get(field))
+        if current is None or current <= 0 or len(raw) < 20:
+            continue
+        base, spread = _band(raw)
+        if spread <= 0:
+            continue
+        value = math.log(current) if use_log else current
+        scale = 1 / 3600 if field == "sleepSecs" else 1
+        out[key] = {
+            "label": label, "unit": unit,
+            "value": round(current * scale, 2),
+            "baseline": round((math.exp(base) if use_log else base) * scale, 2),
+            "z": round(direction * (value - base) / spread, 2),
+        }
+    return out
+
+
+def night_after(data: dict[str, Any], activity_id: str) -> dict[str, Any]:
+    """The night after one session, read against this athlete's usual answer.
+
+    Returns the measured night, the reference built from comparable sessions in
+    their own history, and a verdict that says which of the two it resembles.
+    """
+    activities = data.get("activities") or {}
+    activity = activities.get(str(activity_id))
+    if not activity:
+        return {"available": False, "reason": "unknown_activity"}
+    day = str(activity.get("start_date_local") or "")[:10]
+    if not day:
+        return {"available": False, "reason": "no_date"}
+    night_day = (date.fromisoformat(day) + timedelta(days=1)).isoformat()
+    night = _night_z(data, night_day)
+    if not night:
+        return {"available": False, "reason": "no_wellness", "night_date": night_day}
+
+    load = _f(activity.get("icu_training_load")) or 0.0
+    intensity = _f(activity.get("icu_intensity")) or 0.0
+
+    # comparable sessions: similar load, and the same side of the hard/easy line
+    peers: list[dict[str, Any]] = []
+    for key, other in activities.items():
+        if key == str(activity_id):
+            continue
+        other_day = str(other.get("start_date_local") or "")[:10]
+        if not other_day or other_day >= day:
+            continue
+        other_load = _f(other.get("icu_training_load")) or 0.0
+        other_int = _f(other.get("icu_intensity")) or 0.0
+        if load > 0 and abs(other_load - load) > max(15.0, load * 0.3):
+            continue
+        if abs(other_int - intensity) > 12:
+            continue
+        peer_night = _night_z(
+            data, (date.fromisoformat(other_day) + timedelta(days=1)).isoformat()
+        )
+        if peer_night:
+            peers.append(peer_night)
+
+    reference: dict[str, Any] = {}
+    for key in night:
+        values = [p[key]["z"] for p in peers if key in p]
+        if len(values) >= 5:
+            mean_z, spread = _band(values)
+            reference[key] = {"mean": round(mean_z, 2), "sd": round(spread, 2), "n": len(values)}
+
+    # the verdict: how this night compares with the usual answer, where known
+    # Weighting, not a plain average. The studies that establish this reading
+    # measure nocturnal HEART RATE and HRV - those are the autonomic answer.
+    # Sleep duration is behaviour: useful context, but a short night after a
+    # late finish must not outvote what the heart did.
+    weights = {"hrv": 1.0, "rhr": 0.8, "sleep": 0.3}
+    marks: list[tuple[float, float]] = []
+    for key, entry in night.items():
+        ref = reference.get(key)
+        if not ref or ref["sd"] <= 0:
+            continue
+        marks.append(((entry["z"] - ref["mean"]) / ref["sd"], weights.get(key, 0.5)))
+    if marks:
+        total = sum(weight for _, weight in marks)
+        mean_mark = sum(value * weight for value, weight in marks) / total
+        if mean_mark <= -1.5:
+            state, headline = "hard", "Die Nacht fiel deutlich gedämpfter aus als sonst nach solchen Einheiten."
+        elif mean_mark <= -0.7:
+            state, headline = "costly", "Die Nacht fiel etwas gedämpfter aus als sonst nach solchen Einheiten."
+        elif mean_mark >= 1.0:
+            state, headline = "easy", "Die Nacht fiel besser aus als sonst nach solchen Einheiten."
+        else:
+            state, headline = "usual", "Die Nacht sah aus wie sonst nach solchen Einheiten."
+        detail = (f"Verglichen mit {min(r['n'] for r in reference.values())} früheren Einheiten "
+                  f"ähnlicher Last und Intensität.")
+    else:
+        state, headline = "unknown", "Kein Vergleich möglich."
+        detail = ("Es liegen noch zu wenige frühere Einheiten ähnlicher Last mit gemessener "
+                  "Folgenacht vor — mindestens fünf werden gebraucht.")
+
+    return {
+        "available": True,
+        "night_date": night_day,
+        "activity_date": day,
+        "load": round(load), "intensity": round(intensity),
+        "night": night,
+        "reference": reference,
+        "state": state, "headline": headline, "detail": detail,
+        "caveat": (
+            "Die Nacht direkt nach einer Einheit ist die sauberste Messbedingung, die es "
+            "gibt — kein Alltag stört. Gelesen wird sie hier gegen deine eigene übliche "
+            "Antwort auf gleich große Einheiten, nicht gegen einen Normwert: der "
+            "Zusammenhang zwischen Last und HRV-Änderung ist glockenförmig, nicht gerade. "
+            "Eine sehr lockere und eine sehr harte Einheit können beide eine unauffällige "
+            "Nacht hinterlassen — aus entgegengesetzten Gründen. Und es bleibt die "
+            "Nachtmessung der Uhr, nicht die validierte Morgenmessung im Liegen."
+        ),
+    }

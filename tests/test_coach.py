@@ -267,6 +267,83 @@ for label, payload in (("leer", {}), ("kurz", build(days=12)), ("kaputt", {"well
     check(isinstance(out["days"], list), f"17 {label}: keine Tagesliste")
     check(all(isinstance(r.get("z"), dict) for r in out["days"]), f"17 {label}: kaputte Zeile")
 
+# --- 18  the night after a session --------------------------------------------
+# The point of this reading: a night can look bad in absolute terms and be
+# entirely ordinary for THIS athlete after THIS kind of session. The relation
+# between load and HRV change is bell-shaped, so an absolute threshold would
+# raise a false alarm after every hard ride.
+import random as _random
+
+
+def night_history(damp=7.0, last_damp=None, days=200):
+    """A history where every hard session is followed by a damped night."""
+    _random.seed(11)
+    wellness, activities = {}, {}
+    for index in range(days):
+        iso = day(-(days - 1 - index))   # day() adds, so past days are negative
+        hard = index % 7 == 2
+        prev_hard = (index - 1) % 7 == 2
+        load = 120.0 if hard else (45.0 if index % 3 == 0 else 0.0)
+        fall = (last_damp if (last_damp is not None and index == days - 1) else damp)
+        wellness[iso] = {
+            "id": iso,
+            "hrv": round(49 + _random.gauss(0, 4) - (fall if prev_hard else 0), 1),
+            "restingHR": round(56 + _random.gauss(0, 1.6) + (4 if prev_hard else 0)),
+            "sleepSecs": int((7.4 + _random.gauss(0, 0.4)) * 3600),
+            "form": 0.0, "load": load,
+        }
+        if load:
+            activities[f"a{index}"] = {
+                "id": f"a{index}", "start_date_local": iso + "T09:00", "type": "Ride",
+                "icu_training_load": load, "icu_intensity": 88.0 if hard else 62.0,
+                "moving_time": 3600,
+            }
+    return {"wellness": wellness, "activities": activities, "dfa": {}}
+
+
+base_data = night_history()
+hard_keys = [k for k, v in base_data["activities"].items() if v["icu_training_load"] == 120]
+result = coach.night_after(base_data, hard_keys[-2])
+check(result["available"], "18 nacht: nicht auswertbar")
+check("hrv" in result["night"], "18 nacht: HRV fehlt")
+check(result["night"]["hrv"]["z"] < -0.8,
+      f"18 nacht: gedämpfte HRV nicht erkannt ({result['night']['hrv']})")
+# ... and yet the verdict must be "as usual", because it IS usual here
+eq(result["state"], "usual", "18 nacht: übliche Reaktion als auffällig gemeldet")
+check(result["reference"]["hrv"]["n"] >= 5, "18 nacht: zu wenige Vergleichsnächte genutzt")
+
+# a night that falls much further than usual must be flagged
+worse = coach.night_after(night_history(last_damp=20.0), hard_keys[-1])
+check(worse["state"] in ("hard", "costly"),
+      f"18 nacht: ungewöhnlich starke Dämpfung nicht erkannt ({worse['state']})")
+# ... and one that barely moves must read as easier than usual
+easier = coach.night_after(night_history(last_damp=-6.0), hard_keys[-1])
+check(easier["state"] == "easy",
+      f"18 nacht: auffällig gute Nacht nicht erkannt ({easier['state']})")
+
+# the sign convention: a LOWER resting heart rate must read as positive
+lowrhr = night_history()
+target = lowrhr["activities"][hard_keys[-1]]
+night_day = (date.fromisoformat(str(target["start_date_local"])[:10]) + timedelta(days=1)).isoformat()
+lowrhr["wellness"][night_day]["restingHR"] = 48
+flipped = coach.night_after(lowrhr, hard_keys[-1])
+check(flipped["night"]["rhr"]["z"] > 0,
+      f"18 nacht: niedriger Ruhepuls nicht als günstig gewertet ({flipped['night']['rhr']})")
+
+# --- 19  honest refusal where the data cannot carry it -------------------------
+thin = night_history(days=40)
+thin_keys = [k for k, v in thin["activities"].items() if v["icu_training_load"] == 120]
+sparse = coach.night_after(thin, thin_keys[-1])
+check(sparse["state"] == "unknown" or not sparse.get("reference"),
+      "19 nacht: Urteil trotz zu dünner Vergleichsbasis")
+check(coach.night_after(base_data, "gibtsnicht")["available"] is False,
+      "19 nacht: unbekannte Einheit wird ausgewertet")
+nowell = coach.night_after({"activities": base_data["activities"]}, hard_keys[-1])
+check(nowell["available"] is False, "19 nacht: Urteil ohne Wellness-Daten")
+# the caveat has to travel with the number, always
+check("glockenförmig" in result["caveat"], "19 nacht: Glockenform nicht genannt")
+check("Nachtmessung" in result["caveat"], "19 nacht: Messgrenze nicht genannt")
+
 print(f"test_coach: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

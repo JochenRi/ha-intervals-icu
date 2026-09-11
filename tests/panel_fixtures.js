@@ -274,6 +274,40 @@ function steadyStream(kind) {
            channels: { time, watts, heartrate: hr, dfa_a1: dfa, cadence: cad } };
 }
 
+/* the night after a session, as intervals_icu/night returns it */
+function night(kind) {
+  if (kind === "keine") return { available: false, reason: "no_wellness", night_date: "2026-09-02" };
+  if (kind === "unbekannt") return { available: false, reason: "unknown_activity" };
+  const base = {
+    available: true, night_date: "2026-09-02", activity_date: "2026-09-01",
+    load: 65, intensity: 91,
+    night: {
+      hrv: { label: "Herzratenvariabilität", unit: "ms", value: 38.5, baseline: 49.2, z: -1.54 },
+      rhr: { label: "Ruhepuls", unit: "bpm", value: 60, baseline: 56.4, z: -1.3 },
+      sleep: { label: "Schlafdauer", unit: "h", value: 7.2, baseline: 7.4, z: -0.46 },
+    },
+    reference: {
+      hrv: { mean: -1.49, sd: 1.08, n: 12 },
+      rhr: { mean: -1.26, sd: 0.86, n: 12 },
+      sleep: { mean: 0.23, sd: 1.13, n: 12 },
+    },
+    state: "usual",
+    headline: "Die Nacht sah aus wie sonst nach solchen Einheiten.",
+    detail: "Verglichen mit 12 früheren Einheiten ähnlicher Last und Intensität.",
+    caveat: "Die Nacht direkt nach einer Einheit ist die sauberste Messbedingung; der Zusammenhang zwischen Last und HRV-Änderung ist glockenförmig, nicht gerade. Und es bleibt die Nachtmessung der Uhr.",
+  };
+  if (kind === "hart") {
+    return { ...base, state: "hard",
+      headline: "Die Nacht fiel deutlich gedämpfter aus als sonst nach solchen Einheiten.",
+      night: { ...base.night, hrv: { ...base.night.hrv, value: 28.1, z: -3.2 } } };
+  }
+  if (kind === "ohnereferenz") {
+    return { ...base, reference: {}, state: "unknown", headline: "Kein Vergleich möglich.",
+      detail: "Es liegen noch zu wenige frühere Einheiten ähnlicher Last vor." };
+  }
+  return base;
+}
+
 function laps(kind) {
   if (kind === "empty") return { laps: [], seen_keys: [], source: null };
   if (kind === "error") return { error: "HTTP 500" };
@@ -465,4 +499,4 @@ function workouts(kind) {
   };
 }
 
-module.exports = { TODAY, days, load, readiness, activities, streams, thresholds, calendar, pmc, laps, lapsWithBounds, steadyStream, coach, signals, workouts };
+module.exports = { TODAY, days, load, readiness, activities, streams, thresholds, calendar, pmc, laps, lapsWithBounds, steadyStream, night, coach, signals, workouts };

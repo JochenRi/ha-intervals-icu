@@ -65,6 +65,7 @@ def async_register(hass: HomeAssistant) -> None:
         websocket_signals,
         websocket_workouts,
         websocket_plan_workout,
+        websocket_night,
         websocket_thresholds,
         websocket_calendar,
         websocket_status,
@@ -472,3 +473,21 @@ async def websocket_plan_workout(hass, connection, msg) -> None:
         "date": str(msg["date"]),
         "id": (created or {}).get("id") if isinstance(created, dict) else None,
     })
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "intervals_icu/night",
+        vol.Required("activity_id"): str,
+        vol.Optional("athlete_id"): str,
+    }
+)
+@callback
+def websocket_night(hass, connection, msg) -> None:
+    """What the night after one session showed, against this athlete's norm."""
+    if (coordinator := _require(hass, connection, msg)) is None:
+        return
+    connection.send_result(
+        msg["id"],
+        coach_module.night_after(coordinator.archive.data, str(msg["activity_id"])),
+    )

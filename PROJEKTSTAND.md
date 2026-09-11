@@ -1,6 +1,6 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 11.09.2026 · **Version:** 0.17.0 · **Status:** produktiv auf HEIMDALL,
+**Stand:** 11.09.2026 · **Version:** 0.18.0 · **Status:** produktiv auf HEIMDALL,
 Auslieferung über HACS aus `github.com/JochenRi/ha-intervals-icu`
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lokal
@@ -133,6 +133,28 @@ Einzelwert verschweigt.
 
 Ein Test fährt vier Fahrten mit unterschiedlicher Drift durch (1,1 % / 4,0 % / 5,3 % /
 14,5 %) und verlangt für jede die richtige Einstufung.
+
+### Die Nacht danach (0.18.0)
+
+Jede Einheit bekommt die Frage beantwortet: **was hat sie gekostet?** Dafür wird die Nacht
+direkt nach der Einheit ausgewertet — Schlaf ist die sauberste Messbedingung, die es gibt,
+und nach einem harten Reiz steigt die nächtliche Herzfrequenz, ln(rMSSD) fällt; die
+Rückkehr zu den Ruhewerten dauert Minuten bis einen ganzen Tag, getrieben vor allem von der
+Intensität.
+
+**Der entscheidende Kunstgriff: gelesen wird gegen die eigene übliche Antwort**, nicht
+gegen einen Normwert. Der Zusammenhang zwischen Last und HRV-Änderung ist **glockenförmig**
+— eine sehr lockere und eine sehr harte Einheit können beide eine unauffällige Nacht
+hinterlassen, aus entgegengesetzten Gründen. Ein absoluter Schwellenwert würde nach jeder
+harten Fahrt Fehlalarm schlagen. Stattdessen wird die Nacht mit den Folgenächten früherer
+Einheiten **ähnlicher Last und Intensität** verglichen (mindestens fünf, sonst kein Urteil).
+
+Beispiel aus der Simulation: HRV −1,54 SD unter der Basislinie — absolut ein Einbruch.
+Üblich nach Einheiten dieser Größe ist bei diesem Athleten −1,49 SD. Urteil: **unauffällig.**
+
+**Gewichtet statt gemittelt:** HRV 1,0 · Ruhepuls 0,8 · Schlafdauer 0,3. Die Studien messen
+nächtliche Herzfrequenz und HRV — das ist die autonome Antwort. Schlafdauer ist Verhalten
+und darf eine kurze Nacht nach spätem Feierabend nicht über das Herz stellen.
 
 ### Gestaltungsregeln, jede mit Grund
 

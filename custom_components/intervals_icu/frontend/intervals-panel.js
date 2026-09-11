@@ -499,6 +499,7 @@ class IntervalsIcuPanel extends HTMLElement {
     this._sigFocus = null;
     this._woOpen = null;
     this._cmpFocus = null;
+    this._night = {};
     this._booted = false;
   }
 
@@ -566,14 +567,17 @@ class IntervalsIcuPanel extends HTMLElement {
     this._sel = (this._acts || []).find((a) => String(a.id) === String(id)) || null;
     this._render();
     if (this._sel && !this._streams[id]) {
-      const [st, lp] = await Promise.allSettled([
+      const [st, lp, ni] = await Promise.allSettled([
         this._ws("streams", { activity_id: String(id) }),
         this._ws("laps", { activity_id: String(id) }),
+        this._ws("night", { activity_id: String(id) }),
       ]);
       this._streams[id] = st.status === "fulfilled"
         ? st.value : { error: String(st.reason && st.reason.message || st.reason) };
       this._laps[id] = lp.status === "fulfilled"
         ? lp.value : { error: String(lp.reason && lp.reason.message || lp.reason) };
+      this._night[id] = ni.status === "fulfilled"
+        ? ni.value : { available: false, reason: String(ni.reason && ni.reason.message || ni.reason) };
       if (this._sel && String(this._sel.id) === String(id)) this._render();
     }
   }
@@ -1524,6 +1528,7 @@ class IntervalsIcuPanel extends HTMLElement {
       <div class="kvgrid">${stats}</div>
       ${this._lapBlock(a)}
       ${this._lapCompare(a)}
+      ${this._nightBlock(a)}
       <h3 class="secname">Verlauf <span class="hint">— gestapelte Felder, eine Zeitachse, ein Cursor: so siehst du, wie sich HF und DFA zur Leistung verhalten.</span></h3>
       ${streamsHtml}
       ${this._dfaBlock(a.dfa)}
@@ -1883,6 +1888,56 @@ class IntervalsIcuPanel extends HTMLElement {
       ${verdict}
       ${this._devTable(segments, measures, { note })}
       ${restBlock}`;
+  }
+
+  /* The night after the session.
+
+     Sleep is the cleanest measurement condition available - no daily life in
+     the way - and the night directly after a session is where the response
+     shows: nocturnal heart rate up, ln(rMSSD) down, returning to resting
+     values over minutes up to a full day depending mainly on intensity.
+
+     Never read as "more damping means it was harder". The relation between
+     load and HRV change is bell-shaped, so the comparison is always against
+     THIS athlete's own usual answer to sessions of the same size. A night at
+     -1.5 SD can be perfectly ordinary if that is what this rider always does
+     after a session like this one. */
+  _nightBlock(a) {
+    const n = this._night[a.id];
+    if (!n) return "";
+    if (!n.available) {
+      const why = n.reason === "no_wellness"
+        ? "Für die Nacht danach liegen keine Wellness-Werte vor."
+        : "Die Nacht danach lässt sich für diese Einheit nicht auswerten.";
+      return `<h3 class="secname">Die Nacht danach</h3><p class="hint pad">${esc(why)}</p>`;
+    }
+    const TONE = { hard: "worse", costly: "worse", usual: "held", easy: "held", unknown: "held" };
+    const tone = TONE[n.state] || "held";
+    const rows = Object.entries(n.night || {}).map(([key, entry]) => {
+      const ref = (n.reference || {})[key];
+      const delta = ref && ref.sd > 0 ? (entry.z - ref.mean) / ref.sd : null;
+      const col = delta == null ? C.tx3 : delta <= -1 ? C.amber : delta >= 1 ? C.green : C.tx3;
+      const dec = entry.unit === "h" ? 1 : 0;
+      const usual = ref ? `üblich nach solchen Einheiten ${sign(ref.mean, 1)} SD`
+                        : "zu wenige Vergleichsnächte";
+      return `<div class="nrow">
+        <span class="nlab"><b>${esc(entry.label)}</b>
+          <em>deine Basislinie ${fmt(entry.baseline, dec)} ${esc(entry.unit)}</em></span>
+        <span class="nval tn">${fmt(entry.value, dec)}<small>${esc(entry.unit)}</small></span>
+        <span class="nz tn" style="color:${col}">${sign(entry.z, 1)} SD</span>
+        <span class="nref">${esc(usual)}${
+          delta != null ? ` · diese Nacht ${sign(Math.round(delta * 10) / 10, 1)} SD davon` : ""}</span>
+      </div>`;
+    }).join("");
+
+    return `<h3 class="secname">Die Nacht danach
+      <span class="hint">— ${esc(n.night_date || "")}, gegen deine eigene übliche Antwort auf Einheiten dieser Größe</span></h3>
+      <div class="cmpverdict ${tone}">
+        ${ico(tone === "worse" ? "warn" : "ok", tone === "worse" ? C.amber : C.green, 18)}
+        <div><b>${esc(n.headline || "")}</b><span>${esc(n.detail || "")}</span></div></div>
+      <div class="nightbox">${rows}
+        <details class="more"><summary>Wie das zu lesen ist</summary>
+          <p class="src">${esc(n.caveat || "")}</p></details></div>`;
   }
 
   _dfaBlock(s) {
@@ -2372,6 +2427,19 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
   .lrow{grid-template-columns:30px 1fr 70px 74px;}
   .lrow>*:nth-child(5),.lrow>*:nth-child(6),.lrow>*:nth-child(7),.lrow>*:nth-child(8){display:none}
 }
+/* Die Nacht danach */
+.nightbox{background:${C.card2};border-radius:10px;padding:6px 14px 10px}
+.nrow{display:grid;grid-template-columns:1fr 92px 78px minmax(200px,1.2fr);gap:12px;
+  align-items:baseline;padding:9px 0;border-bottom:1px solid ${C.line}44}
+.nrow:last-of-type{border-bottom:none}
+.nlab b{font-size:14px}
+.nlab em{font-style:normal;display:block;color:${C.tx3};font-size:11.5px}
+.nval{font-size:19px;text-align:right}
+.nval small{font-size:12px;color:${C.tx3};margin-left:3px}
+.nz{font-size:14.5px;text-align:right}
+.nref{color:${C.tx2};font-size:12.5px}
+@media(max-width:860px){.nrow{grid-template-columns:1fr 80px 70px}.nref{grid-column:1 / -1;margin-top:-4px}}
+
 /* Blockvergleich */
 .cmppanel{cursor:zoom-in}
 .cmppanel.big{grid-column:1 / -1;cursor:zoom-out}

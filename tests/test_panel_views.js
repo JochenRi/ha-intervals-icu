@@ -386,6 +386,55 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
     p._laps = {}; p._streams = {};
   }
 
+  // --- Die Nacht danach ---------------------------------------------------
+  {
+    p._laps[acts[0].id] = { laps: [], source: "none" };
+    p._streams[acts[0].id] = F.steadyStream();
+    p._night[acts[0].id] = F.night();
+    const html = p.rAkt(acts, acts[0]);
+    clean(html, "nacht");
+    contains(html, "Die Nacht danach", "nacht");
+    contains(html, "wie sonst nach solchen Einheiten", "nacht: Urteil fehlt");
+    // all three measured values with their own baseline
+    for (const needle of ["Herzratenvariabilität", "Ruhepuls", "Schlafdauer",
+                          "deine Basislinie", "49", "-1,5 SD"]) {
+      contains(html, needle, "nacht");
+    }
+    // the reference - what this athlete usually does after sessions like this
+    contains(html, "üblich nach solchen Einheiten", "nacht: eigene Referenz fehlt");
+    // a night at -1.5 SD that is NORMAL for this athlete must not be a warning.
+    // Checked INSIDE the night section - the segment analysis renders a verdict
+    // of its own further up and would mask the defect.
+    const nightPart = (page) => page.slice(page.indexOf("Die Nacht danach"));
+    ok(/class="cmpverdict held/.test(nightPart(html)),
+       "nacht: übliche Reaktion als Warnung gezeigt - genau der Fehlalarm, den die Referenz verhindert");
+    ok(!/class="cmpverdict worse/.test(nightPart(html)),
+       "nacht: Warnfarbe trotz üblicher Reaktion");
+    // the bell-shaped caveat must travel with it
+    contains(html, "glockenförmig", "nacht: Glockenform nicht genannt");
+
+    // an unusually damped night IS a warning
+    p._night[acts[0].id] = F.night("hart");
+    const hard = p.rAkt(acts, acts[0]);
+    clean(hard, "nacht hart");
+    ok(/class="cmpverdict worse/.test(nightPart(hard)), "nacht: starke Dämpfung nicht als Warnung");
+    contains(hard, "deutlich gedämpfter", "nacht: Urteil fehlt");
+
+    // without a reference, no verdict is invented
+    p._night[acts[0].id] = F.night("ohnereferenz");
+    const noref = p.rAkt(acts, acts[0]);
+    clean(noref, "nacht ohne Referenz");
+    contains(noref, "Kein Vergleich möglich", "nacht: Urteil trotz fehlender Referenz");
+    contains(noref, "zu wenige Vergleichsnächte", "nacht: fehlende Referenz nicht benannt");
+
+    // missing data says so instead of showing an empty block
+    p._night[acts[0].id] = F.night("keine");
+    const none = p.rAkt(acts, acts[0]);
+    clean(none, "nacht ohne Daten");
+    contains(none, "keine Wellness-Werte", "nacht: fehlende Daten nicht benannt");
+    p._night = {}; p._laps = {}; p._streams = {};
+  }
+
   clean(p.rAkt([], null), "aktivitäten leer");
   clean(p.rAkt(null, null), "aktivitäten null");
 }
