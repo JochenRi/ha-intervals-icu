@@ -907,53 +907,26 @@ class IntervalsIcuPanel extends HTMLElement {
     }).join("");
 
     return `
-      <div class="card pad">
-        <div class="goalhead">
-          <div>
-            <div class="mut">DEIN ZIEL</div>
-            <h2 class="goaltitle">${esc(goalInfo.label || plan.goal_label)}</h2>
-            <p class="goalsub">${esc(goalInfo.detail || "")} — trainiert wird
-              <b>${esc(plan.target)}</b>.</p>
-          </div>
-          <button class="chipbtn" data-act="goaledit">ändern</button>
-        </div>
-        <div class="goalgrid">
-          <div class="gcell"><small>Woche</small><b>${fmt(profile.days_per_week)} Tage · ${fmt(profile.hours_per_week, 1)} h</b></div>
-          ${plan.target_hours ? `<div class="gcell"><small>Zielfahrt</small><b>${fmt(plan.target_hours, 1)} h</b></div>` : ""}
-          ${plan.longest_now ? `<div class="gcell"><small>Bisher am längsten</small><b>${fmt(plan.longest_now, 1)} h</b></div>` : ""}
-          ${plan.gap_hours != null ? `<div class="gcell"><small>Fehlt noch</small><b>${fmt(plan.gap_hours, 1)} h</b></div>` : ""}
-          ${plan.weeks_left != null ? `<div class="gcell"><small>Wochen bis zum Ziel</small><b>${plan.weeks_left}</b></div>` : ""}
-        </div>
-        <details class="more"><summary>Warum das die richtige Zielgröße ist</summary>
-          <p class="src">${esc(plan.why)}</p></details>
+      <div class="goalbar">
+        <button class="gtile" data-act="goaledit">
+          <small>ZIEL</small><b>${esc(goalInfo.label || plan.goal_label)}</b>
+          <em>${esc(plan.target)}</em></button>
+        <button class="gtile" data-act="goaledit">
+          <small>ZEIT</small><b>${fmt(profile.days_per_week)} Tage pro Woche</b>
+          <em>${plan.hard_per_week} harte ${plan.hard_per_week === 1 ? "Einheit" : "Einheiten"} ·
+            ${fmt(plan.weeks && plan.weeks[0] ? plan.weeks[0].hours : 0, 1)} h ${esc(plan.hours_source || "")}</em></button>
       </div>
-
       ${note ? `<div class="cmpverdict worse">${ico("warn", C.amber, 18)}
         <div><b>Das Zeitbudget trägt dieses Ziel nicht.</b><span>${esc(note.text)}</span></div></div>` : ""}
-
-      <h3 class="secname">Die nächsten Wochen
-        <span class="hint">— Muster ${esc(plan.pattern)}, Klick öffnet die Woche</span></h3>
-      <div class="pweeks">${weeks}</div>
-      <div class="card pad">
-        <details class="more"><summary>Warum dieses Wochenmuster — und was es nicht kann</summary>
-          <p class="src">${esc(plan.pattern_note)}</p>
-          <p class="src">${esc(plan.caveat)}</p></details>
-      </div>`;
+      <details class="more planfold"><summary>Die nächsten Wochen — Muster ${esc(plan.pattern)}${
+        plan.gap_hours != null ? ` · noch ${fmt(plan.gap_hours, 1)} h bis zur Zielfahrt` : ""}</summary>
+        <div class="pweeks">${weeks}</div>
+        <p class="src">${esc(plan.hard_note)}</p>
+        <p class="src">${esc(plan.pattern_note)}</p>
+        <p class="src">${esc(plan.caveat)}</p>
+      </details>`;
   }
 
-  /* Two questions, and that is the whole form.
-
-     Everything else is already in the archive: the hours actually ridden over
-     the last eight weeks, the longest ride so far. Asking for numbers the data
-     already holds is how forms get abandoned - and every answered field is one
-     more chance to enter something wrong.
-
-     The day count is the one answer that cannot be read from the data, because
-     it is a decision about the future, not a record of the past. It also
-     settles the number that matters most: 80/20 counts SESSIONS, so five
-     riding days means four easy and one hard; two hard sessions is the
-     standard for 8-14 hour weeks, and even World Tour riders rarely exceed
-     three. */
   _goalForm(g) {
     const d = this._goalDraft || {};
     const goals = g.goals || {};
@@ -2764,6 +2737,15 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
 }
 
 /* Ziel und Plan */
+.goalbar{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.gtile{text-align:left;background:${C.card};border:1px solid ${C.line};border-radius:11px;
+  padding:11px 14px;color:${C.tx};font:inherit;cursor:pointer}
+.gtile:hover{border-color:${ROLE.series}66}
+.gtile small{display:block;color:${C.tx3};font-size:10.5px;letter-spacing:.07em}
+.gtile b{display:block;font-size:17px;margin:2px 0}
+.gtile em{font-style:normal;color:${C.tx2};font-size:12px}
+.planfold{margin-bottom:10px}
+@media(max-width:700px){.goalbar{grid-template-columns:1fr}}
 .daypick{display:grid;grid-template-columns:repeat(auto-fit,minmax(88px,1fr));gap:10px;margin:14px 0}
 .dopt{background:${C.card2};border:1px solid ${C.line};border-radius:10px;padding:12px 6px;
   color:${C.tx};font:inherit;cursor:pointer;text-align:center}

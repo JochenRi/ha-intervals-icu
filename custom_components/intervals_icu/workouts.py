@@ -170,12 +170,93 @@ LIBRARY: list[dict[str, Any]] = [
         "dfa": "unter 0,5, in den 15-Sekunden-Pausen kaum Erholung — das ist Absicht",
         "effect": "Hält dich länger nahe der maximalen Sauerstoffaufnahme als gleich "
                   "harte lange Intervalle, weil die Pausen zu kurz zum Absinken sind.",
-        "evidence": "Rønnestad: 3 Sätze à 13×30 s / 15 s, über 10 Wochen gegen "
-                    "aufwandsgleiche 4×5 min — signifikant größere Zuwächse bei VO2max "
-                    "und Radleistung bei gut trainierten Fahrern.",
-        "limit": "Protokollnamen sind keine Verschreibungen: die Zeit nahe VO2max ist ein "
-                 "Sitzungsmaß, kein bewiesener Prädiktor langfristiger Anpassung. Und "
-                 "die Leistung muss sitzen — zu hart begonnen bricht der dritte Satz weg.",
+        "evidence": "Rønnestad: 3 Sätze à 13×30 s / 15 s, über 10 Wochen gegen 4×5 min — "
+                    "signifikant größere Zuwächse bei VO2max und Radleistung bei gut "
+                    "trainierten Fahrern.",
+        "limit": "Oft wird der Vergleich als aufwandsgleich zitiert — er ist es nicht: "
+                 "3×13×30/15 sind 29,5 Minuten Arbeit gegen 20 Minuten bei 4×5. Ein Teil "
+                 "des Vorsprungs ist schlicht mehr Arbeit. Dazu: Protokollnamen sind keine "
+                 "Verschreibungen, und die Leistung muss sitzen — zu hart begonnen bricht "
+                 "der dritte Satz weg.",
+        "states": ["ready"],
+    },
+    {
+        "key": "vo2_4x4",
+        "title": "VO2max 4×4 min",
+        "purpose": "Maximale Sauerstoffaufnahme",
+        "minutes": 58,
+        "intensity": 89,
+        "load": 82,
+        "blocks": [(15, 55, "Einrollen"), (4, 110, "1"), (4, 50, "Pause"), (4, 110, "2"),
+                   (4, 50, "Pause"), (4, 110, "3"), (4, 50, "Pause"), (4, 110, "4"), (11, 50, "Ausrollen")],
+        "text": "- 15m 55% 85rpm\n\n4x\n- 4m 106-110% 95rpm\n- 4m 50%\n\n- 11m 50%",
+        "hr_hint": (1.06, 1.15),
+        "dfa": "unter 0,5 in den Blöcken",
+        "effect": "Der Einstieg in die VO2max-Arbeit: kurz genug, um sauber durchzukommen, "
+                  "lang genug für den Reiz.",
+        "evidence": "Das am häufigsten untersuchte Format; als Einstiegsdosis vor 5×4 und "
+                    "30/15 empfohlen.",
+        "limit": "Wer den letzten Block nicht mit derselben Leistung schafft, ist zu hart "
+                 "gestartet — beim nächsten Mal 2 bis 3 % niedriger ansetzen.",
+        "states": ["ready"],
+    },
+    {
+        "key": "vo2_5x4",
+        "title": "VO2max 5×4 min",
+        "purpose": "Maximale Sauerstoffaufnahme",
+        "minutes": 66,
+        "intensity": 91,
+        "load": 92,
+        "blocks": [(15, 55, "Einrollen"), (4, 112, "1"), (4, 50, "Pause"), (4, 112, "2"),
+                   (4, 50, "Pause"), (4, 112, "3"), (4, 50, "Pause"), (4, 112, "4"),
+                   (4, 50, "Pause"), (4, 112, "5"), (11, 50, "Ausrollen")],
+        "text": "- 15m 55% 85rpm\n\n5x\n- 4m 108-112% 95rpm\n- 4m 50%\n\n- 11m 50%",
+        "hr_hint": (1.07, 1.16),
+        "dfa": "unter 0,5, gegen Ende deutlich",
+        "effect": "Die Steigerung gegenüber 4×4: 20 statt 16 Minuten Arbeitszeit.",
+        "evidence": "Als Progression nach zwei Wochen 4×4 beschrieben; als Startdosis gilt "
+                    "5×4 bei 110–115 % FTP mit vier Minuten locker.",
+        "limit": "Ist der fünfte Block fast unmöglich, stimmt die Leistung. Sind alle "
+                 "beherrschbar, darf sie beim nächsten Mal 5 % höher liegen.",
+        "states": ["ready"],
+    },
+    {
+        "key": "vo2_3030",
+        "title": "30/30 nach Billat",
+        "purpose": "Maximale Sauerstoffaufnahme, kurze Intervalle",
+        "minutes": 56,
+        "intensity": 87,
+        "load": 78,
+        "blocks": [(15, 55, "Einrollen"), (10, 105, "Satz 1"), (4, 45, "Satzpause"),
+                   (10, 105, "Satz 2"), (4, 45, "Satzpause"), (10, 105, "Satz 3"), (3, 50, "Ausrollen")],
+        "text": "- 15m 55% 85rpm\n\n3x\n10x\n- 30s 100-110% 95rpm\n- 30s 50%\n\n- 4m 45%\n\n- 3m 50%",
+        "hr_hint": (1.05, 1.14),
+        "dfa": "um 0,5 schwankend — die 30 Sekunden Pause reichen für eine Teilerholung",
+        "effect": "In der halben Pause bleibt der Stoffwechsel oben: aus 30 Sekunden Arbeit "
+                  "wird rund eine Minute nahe der maximalen Sauerstoffaufnahme.",
+        "evidence": "Billat-Protokoll; als Ziel gelten 16 bis 36 Minuten Gesamtarbeit.",
+        "limit": "Mit steigender Form stößt man an eine Decke — dann liegt man "
+                 "stoffwechselseitig eher an der Schwelle als bei VO2max, und es ist Zeit "
+                 "für ein anderes Format.",
+        "states": ["ready"],
+    },
+    {
+        "key": "threshold_4x10",
+        "title": "Schwelle 4×10 min",
+        "purpose": "FTP, Einstiegsdosis",
+        "minutes": 78,
+        "intensity": 85,
+        "load": 78,
+        "blocks": [(15, 55, "Einrollen"), (10, 97, "1"), (5, 50, "Pause"), (10, 97, "2"),
+                   (5, 50, "Pause"), (10, 97, "3"), (5, 50, "Pause"), (10, 97, "4"), (8, 50, "Ausrollen")],
+        "text": "- 15m 55% 85rpm\n\n4x\n- 10m 95-100% 90rpm\n- 5m 50%\n\n- 8m 50%",
+        "hr_hint": (1.04, 1.11),
+        "dfa": "um 0,5 in den Blöcken",
+        "effect": "Dieselbe Zeit an der Schwelle wie 2×20, aber in kürzeren Stücken — "
+                  "leichter sauber zu fahren.",
+        "evidence": "Die empfohlene Progression lautet: erst Häufigkeit, dann Dauer "
+                    "(4×10 → 3×15 → 2×20), erst zuletzt Intensität.",
+        "limit": "Wer im zweiten Block schon 15 Watt verliert, ist noch nicht bei 2×20.",
         "states": ["ready"],
     },
     {
@@ -223,9 +304,10 @@ BY_KEY = {entry["key"]: entry for entry in LIBRARY}
 PRIORITY: dict[str, list[str]] = {
     "slump": ["recovery_40"],
     "recovering": ["recovery_40", "return_45"],
-    "rebound": ["return_45", "z2_60", "recovery_40"],
-    "strained": ["z2_60", "recovery_40", "tempo_2x20"],
-    "ready": ["vo2_3015", "vo2_4x8", "sweetspot_2x20", "threshold_3x12", "tempo_2x20", "z2_90", "z2_60"],
+    "rebound": ["return_45", "z2_60", "z2_90", "recovery_40"],
+    "strained": ["z2_60", "z2_90", "recovery_40", "tempo_2x20"],
+    "ready": ["vo2_4x4", "vo2_5x4", "vo2_3015", "vo2_3030", "vo2_4x8", "threshold_4x10",
+              "threshold_3x12", "sweetspot_2x20", "tempo_2x20", "z2_90", "z2_60"],
     "elevated": ["z2_60", "tempo_2x20", "recovery_40"],
     "unknown": ["z2_60", "recovery_40"],
 }
@@ -246,7 +328,7 @@ def scaled(entry: dict[str, Any], ftp: float | None, aerobic_hr: int | None) -> 
 
 def suggest(state: str, ftp: float | None = None, aerobic_hr: int | None = None,
             budget: float | None = None, hard_days_last_7: int = 0,
-            layoff_days: int | None = None, limit: int = 3) -> list[dict[str, Any]]:
+            layoff_days: int | None = None, limit: int = 5, goal: str | None = None) -> list[dict[str, Any]]:
     """Return concrete sessions for today, best first, each with a reason.
 
     The order is not taste: after a break or in a slump the ladder decides, a
@@ -254,7 +336,19 @@ def suggest(state: str, ftp: float | None = None, aerobic_hr: int | None = None,
     week is the conservative starting point the reviews name), and anything
     clearly over the load budget is marked rather than hidden.
     """
-    keys = PRIORITY.get(state, PRIORITY["unknown"])
+    keys = list(PRIORITY.get(state, PRIORITY["unknown"]))
+    # The goal reorders the shelf without emptying it: for a long-ride goal the
+    # hard session is garnish, so sweetspot and the long base rides come first
+    # and VO2max stays available but further down.
+    if goal == "long_ride":
+        front = ["z2_90", "z2_60", "sweetspot_2x20", "tempo_2x20"]
+        keys = [k for k in front if k in keys] + [k for k in keys if k not in front]
+    elif goal == "ftp":
+        front = ["threshold_4x10", "threshold_3x12", "sweetspot_2x20"]
+        keys = [k for k in front if k in keys] + [k for k in keys if k not in front]
+    elif goal == "health":
+        front = ["z2_60", "tempo_2x20", "recovery_40"]
+        keys = [k for k in front if k in keys] + [k for k in keys if k not in front]
     if layoff_days is not None and layoff_days >= 4 and state != "slump":
         keys = ["return_45", "z2_60", "recovery_40"]
     if hard_days_last_7 >= 2:

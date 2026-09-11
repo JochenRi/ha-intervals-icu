@@ -428,6 +428,7 @@ def websocket_workouts(hass, connection, msg) -> None:
         budget=budget,
         hard_days_last_7=coach_module._hard_days_recent(data, 7),
         layoff_days=(rec.get("layoff") or {}).get("days"),
+        goal=(data.get("goal") or {}).get("goal"),
     )
     connection.send_result(msg["id"], {
         "ftp": ftp,

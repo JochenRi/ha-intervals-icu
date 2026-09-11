@@ -59,7 +59,21 @@ check(all(entry["intensity"] < 70 for entry in recovering), "2 noch im Einbruch:
 
 ready = W.suggest("ready", ftp=215, aerobic_hr=157)
 check(any(entry["intensity"] >= 85 for entry in ready), "2 Normalbereich: kein harter Reiz angeboten")
-eq(ready[0]["key"], "vo2_3015", "2 Normalbereich: bestbelegtes Protokoll nicht zuerst")
+# Without a goal the ladder starts at the entry dose, not at the hardest
+# protocol: the recommended progression is 4x4 first, 5x4 after two weeks,
+# 30/15 only for well-trained riders.
+eq(ready[0]["key"], "vo2_4x4", "2 Normalbereich: nicht die Einstiegsdosis zuerst")
+check(len(ready) == 5, f"2 Normalbereich: {len(ready)} Vorschläge statt fünf")
+keys_ready = [e["key"] for e in ready]
+check("vo2_3015" in keys_ready or "vo2_5x4" in keys_ready,
+      "2 Normalbereich: keine Steigerung im Angebot")
+# the goal reorders without emptying the shelf
+long_goal = [e["key"] for e in W.suggest("ready", ftp=215, goal="long_ride")]
+check(long_goal[0].startswith("z2"), f"2 Langfahrt-Ziel: harte Einheit zuerst ({long_goal})")
+check(any(k.startswith("vo2") for k in long_goal),
+      "2 Langfahrt-Ziel: harte Einheit ganz verschwunden")
+ftp_goal = [e["key"] for e in W.suggest("ready", ftp=215, goal="ftp")]
+check(ftp_goal[0].startswith("threshold"), f"2 FTP-Ziel: keine Schwellenarbeit zuerst ({ftp_goal})")
 
 # --- 3  a break overrides the state ------------------------------------------
 after_break = W.suggest("ready", ftp=215, aerobic_hr=157, layoff_days=7)

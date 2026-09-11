@@ -1,6 +1,6 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 11.09.2026 · **Version:** 0.22.0 · **Status:** produktiv auf HEIMDALL,
+**Stand:** 11.09.2026 · **Version:** 0.23.0 · **Status:** produktiv auf HEIMDALL,
 Auslieferung über HACS aus `github.com/JochenRi/ha-intervals-icu`
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lokal
@@ -171,6 +171,26 @@ Werte liegt in der Anpassung der heutigen Einheit, nicht in der Planung der Woch
 
 Beim Umbau haben die alten Tests drei echte Regressionen gefangen: die Ampelfarbe ohne
 Wort (WCAG), der verschwundene Bullet-Graph und der fehlende Stand je Wert.
+
+### Der Trainer in einem Bild (0.23.0)
+
+**Oben zwei Kacheln** — Ziel und Zeit, beide anklickbar zum Ändern. **Unten fünf konkrete
+Einheiten für heute**, erzeugt aus Zustand, letzten Tagen, gemessenen Ankern und Ziel; eine
+davon per Klick in den Intervals-Kalender. Der Wochenplan ist eingeklappt: er ist Kontext,
+nicht die Frage des Tages.
+
+**Die Bibliothek trägt jetzt echte Alternativen** statt Varianten desselben:
+
+| Format | Beleg | Grenze |
+|---|---|---|
+| VO2max 4×4 | das am häufigsten untersuchte Format, als Einstiegsdosis empfohlen | wer den letzten Block nicht mit derselben Leistung schafft, ist zu hart gestartet — 2–3 % niedriger ansetzen |
+| VO2max 5×4 | Progression nach zwei Wochen 4×4; 110–115 % FTP, vier Minuten locker | ist der fünfte Block fast unmöglich, stimmt die Leistung |
+| 30/30 (Billat) | Ziel sind 16–36 Minuten Gesamtarbeit | mit steigender Form Deckeneffekt — dann liegt man eher an der Schwelle |
+| 30/15 (Rønnestad) | signifikant größere Zuwächse über zehn Wochen | **Richtigstellung:** der Vergleich wird oft als aufwandsgleich zitiert — 3×13×30/15 sind 29,5 min Arbeit gegen 20 min bei 4×5 |
+| Schwelle 4×10 | Progression: erst Häufigkeit, dann Dauer (4×10 → 3×15 → 2×20), zuletzt Intensität | wer im zweiten Block 15 Watt verliert, ist noch nicht bei 2×20 |
+
+**Das Ziel sortiert das Regal um, ohne es zu leeren:** bei „lange Fahrten" stehen Grundlage
+und SweetSpot vorn und VO2max weiter hinten — verfügbar, aber nicht als Hauptsache.
 
 ### Zwei Fragen (0.22.0) — das Zielformular ist weg
 

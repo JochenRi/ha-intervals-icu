@@ -114,13 +114,21 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   clean(html, "ziel gesetzt");
   contains(html, "Lange Fahrten durchstehen", "plan: Ziel nicht genannt");
   contains(html, "Durability", "plan: Zielgröße nicht genannt");
-  contains(html, "4 Tage", "plan: Wochenstruktur fehlt");
-  contains(html, "Fehlt noch", "plan: Lücke zum Ziel fehlt");
+  contains(html, "keinen Beleg", "plan: Einschränkung der 80/20-Regel fehlt");
+  // the head is two tiles, nothing more - everything else folds away
+  contains(html, "4 Tage pro Woche", "plan: Zeitangabe fehlt");
+  ok((html.match(/class="gtile"/g) || []).length === 2,
+     "plan: Kopf ist nicht auf zwei Kacheln reduziert");
+  contains(html, "2 harte Einheiten", "plan: Folge der Tageszahl fehlt");
+  contains(html, "aus deinen letzten Wochen gerechnet", "plan: Herkunft der Stunden fehlt");
+  contains(html, "noch 3,0 h bis zur Zielfahrt", "plan: Lücke zum Ziel fehlt");
+  // the weekly plan is present but folded - it is not the point of the page
+  ok(/class="more planfold"/.test(html), "plan: Wochenplan nicht eingeklappt");
+  ok(!/<details class="more planfold" open/.test(html), "plan: Wochenplan vorab geöffnet");
   ok((html.match(/class="pweek /g) || []).length === 4, "plan: nicht alle Wochen");
   contains(html, "Entlastung", "plan: Entlastungswoche nicht markiert");
   contains(html, "langer Tag", "plan: langer Tag fehlt");
   // the sources travel with it, folded
-  contains(html, "Maunder", "plan: Quelle der Zielgröße fehlt");
   contains(html, "keinen Unterschied", "plan: Blockperiodisierung falsch dargestellt");
   contains(html, "Konvention, kein Studienergebnis", "plan: Wachstumsregel nicht eingeordnet");
   contains(html, "Einbruch schlägt jeden Plan", "plan: Vorrang des Zustands fehlt");
