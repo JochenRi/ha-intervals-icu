@@ -1,6 +1,6 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 11.09.2026 · **Version:** 0.11.0 · **Status:** läuft produktiv auf HEIMDALL, Auslieferung über HACS
+**Stand:** 11.09.2026 · **Version:** 0.12.0 · **Status:** läuft produktiv auf HEIMDALL, Auslieferung über HACS
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu
 lokal archiviert, auswertet und in einem eigenen Seitenleisten-Panel darstellt.
@@ -199,6 +199,7 @@ laufende HA-Instanz oder einen Browser.
 | `test_analytics.py` | Trainingsmetriken gegen bekannte Ergebnisse |
 | `test_setup_simulation.py` | Entity-Aufbau, Übersetzungen, unique_ids |
 | `test_laps.py` | Runden-Normalisierung gegen unbekannte Feldnamen und kaputte Payloads (34) |
+| `test_workouts.py` | Einheitenauswahl je Zustand und die Intervals-Syntax des Kalender-Eintrags (241) |
 | `test_coach.py` | jede Zustandsregel und Empfehlung gegen ihren Fall, inkl. echtem Infektverlauf (60) |
 | `test_websocket_registration.py` | jeder registrierte Befehl trägt seinen Dekorator, Namen eindeutig, Panel ruft nichts Unbekanntes (73) |
 | `test_panel_views.js` | alle sieben Ansichten gegen volle, leere, löchrige und entartete Daten (283) |
@@ -288,6 +289,33 @@ Die Kniffe, die das Bild lesbar machen:
 - **Die Ableseleiste zeigt Rohwerte**, nicht z-Werte: 63 ms erkennt man wieder, +1,9 SD nicht.
 - **Klick auf ein Signal** blendet die übrigen ab, statt ein Fenster zu öffnen.
 - Darunter je Signal Lesehilfe und Quelle, aufklappbar.
+
+## 7d. Echte Einheiten und der Kalender-Knopf (neu in 0.12.0)
+
+Der Trainer schlägt keine Kategorien mehr vor, sondern **Einheiten**: Aufbau, Wattzahlen
+aus der eigenen FTP, Pulsfenster aus der gemessenen aeroben Schwelle, erwarteter
+DFA-Bereich — und ein Knopf, der die Einheit in den Intervals-Kalender legt.
+
+| Einheit | Beleg | Grenze |
+|---|---|---|
+| 30/15 nach Rønnestad | 3 Sätze à 13×30 s/15 s; über 10 Wochen gegen aufwandsgleiche 4×5 min signifikant größere Zuwächse bei VO2max und Radleistung | Protokollnamen sind keine Verschreibungen; Zeit nahe VO2max ist ein Sitzungsmaß, kein bewiesener Prädiktor |
+| VO2max 4×8 min | Seiler 2013, randomisiert: 4×8 vor 4×4 und 4×16 | nur ausgeruht sinnvoll |
+| Schwelle 3×12 | klassische Schwellenarbeit, DFA 0,5 als anaerobe Marke | hohe Last bei mäßigem VO2max-Reiz |
+| SweetSpot 2×20 | 88–94 % FTP, verbreitete Praxis | dünnere Studienlage als die beiden oben |
+| Tempo 2×20, Grundlage 60/90 | Dreizonenmodell (Seiler), 75–80 % unter der ersten Schwelle | Grundlage wirkt über Dauer; 60–90 min als Schwelle |
+| Wiedereinstieg 45, Regeneration 40 | stufenweise Rückkehr; Verlust nach kurzer Pause ist überwiegend Plasmavolumen | bei Symptomen abbrechen |
+
+**Der Schreibweg**, belegt statt geraten: die Schritte gehen als Intervals-Plaintext ins
+Feld `description`, `workout_doc` bleibt leer — Intervals parst selbst. Ein Format statt zwei.
+
+**Sicherheit beim Schreiben:** `POST` wird **nicht** wiederholt. Ein Timeout nach
+erfolgreichem Schreiben würde den Termin doppelt anlegen; stattdessen kommt eine klare
+Meldung mit der Bitte, im Kalender nachzusehen. Nur `429` wird erneut versucht — dort hat
+die Anfrage den Kalender nachweislich nicht erreicht.
+
+**Was der Prüfstand hier gefunden hat:** `VO2max 4×8` behauptete 75 Minuten, die Blöcke
+ergaben 67 — Dauer und Lastschätzung im Kalender wären falsch gewesen. Und der Eintrag
+trug keine Herkunft; jetzt steht in jedem erzeugten Workout, wer ihn angelegt hat.
 
 ## 8. Offen
 

@@ -352,4 +352,41 @@ function signals(kind) {
   return out;
 }
 
-module.exports = { TODAY, days, load, readiness, activities, streams, thresholds, calendar, pmc, laps, coach, signals };
+/* concrete sessions as intervals_icu/workouts returns them */
+function workouts(kind) {
+  const mk = (key, title, purpose, minutes, load, blocks, text, hr, fits) => ({
+    key, title, purpose, minutes, load, blocks,
+    blocks_w: blocks.map(([m, p, l]) => [m, Math.round(215 * p / 100), l]),
+    text, hr_window: hr, fits_budget: fits,
+    dfa: "unter 0,5 in den Blöcken", intensity: 90,
+    effect: "Hält dich länger nahe der maximalen Sauerstoffaufnahme.",
+    evidence: "Rønnestad: 3 Sätze à 13×30 s / 15 s, signifikant größere Zuwächse.",
+    limit: "Protokollnamen sind keine Verschreibungen.",
+  });
+  if (kind === "leer") return { ftp: null, aerobic_hr: null, budget: null, state: "unknown", workouts: [] };
+  if (kind === "ohneFTP") {
+    const w = mk("z2_60", "Grundlage 60 min", "Aerobe Basis", 60, 45,
+      [[10, 55, "Einrollen"], [45, 68, "gleichmäßig"], [5, 50, "Ausrollen"]],
+      "- 10m 55%\n- 45m 65-70%\n- 5m 50%", null, null);
+    delete w.blocks_w;
+    return { ftp: null, aerobic_hr: null, budget: null, state: "ready", workouts: [w] };
+  }
+  return {
+    ftp: 215, aerobic_hr: 157, budget: 90, state: "ready",
+    workouts: [
+      mk("vo2_3015", "30/15 nach Rønnestad", "Maximale Sauerstoffaufnahme", 62, 98,
+         [[15, 55, "Einrollen"], [10, 112, "Satz 1"], [3, 45, "Satzpause"], [10, 112, "Satz 2"],
+          [3, 45, "Satzpause"], [10, 112, "Satz 3"], [8, 50, "Ausrollen"]],
+         "- 15m 55% 85rpm\n\n3x\n13x\n- 30s 110-115% 95rpm\n- 15s 55%\n\n- 3m 45%\n\n- 8m 50%",
+         [170, 185], false),
+      mk("sweetspot_2x20", "SweetSpot 2×20 min", "Schwellenleistung", 70, 78,
+         [[12, 55, "Einrollen"], [20, 90, "Block 1"], [6, 55, "Pause"], [20, 90, "Block 2"], [8, 50, "Ausrollen"]],
+         "- 12m 55% 85rpm\n\n2x\n- 20m 88-93% 88rpm\n- 6m 55%\n\n- 8m 50%", [160, 170], true),
+      mk("z2_60", "Grundlage 60 min", "Aerobe Basis", 60, 45,
+         [[10, 55, "Einrollen"], [45, 68, "gleichmäßig"], [5, 50, "Ausrollen"]],
+         "- 10m 55% 85rpm\n- 45m 65-70% 85rpm\n- 5m 50%", [138, 152], true),
+    ],
+  };
+}
+
+module.exports = { TODAY, days, load, readiness, activities, streams, thresholds, calendar, pmc, laps, coach, signals, workouts };

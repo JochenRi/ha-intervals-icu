@@ -12,7 +12,7 @@ import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 
-from . import analytics, coach as coach_module, derive, importer
+from . import analytics, coach as coach_module, derive, importer, workouts as workout_lib
 from .api import IntervalsError
 from .const import DOMAIN
 
@@ -63,6 +63,8 @@ def async_register(hass: HomeAssistant) -> None:
         websocket_laps,
         websocket_coach,
         websocket_signals,
+        websocket_workouts,
+        websocket_plan_workout,
         websocket_thresholds,
         websocket_calendar,
         websocket_status,
@@ -386,3 +388,87 @@ def websocket_signals(hass, connection, msg) -> None:
         msg["id"],
         coach_module.signals(coordinator.archive.data, int(msg.get("days") or 180)),
     )
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "intervals_icu/workouts",
+        vol.Optional("athlete_id"): str,
+    }
+)
+@callback
+def websocket_workouts(hass, connection, msg) -> None:
+    """Return concrete sessions for today, with the athlete's own numbers."""
+    if (coordinator := _require(hass, connection, msg)) is None:
+        return
+    data = coordinator.archive.data
+    ready = analytics.readiness(data) or {}
+    rec = coach_module.recommend(data, ready.get("budget"))
+    anchors = rec.get("anchors") or {}
+
+    ftp = None
+    for settings in (data.get("sport_settings") or {}).values():
+        if isinstance(settings, dict) and settings.get("ftp"):
+            ftp = float(settings["ftp"])
+            break
+    if ftp is None:
+        ftp = anchors.get("ftp")
+
+    budget = (ready.get("budget") or {}).get("recommended")
+    picks = workout_lib.suggest(
+        (rec.get("state") or {}).get("state", "unknown"),
+        ftp=ftp,
+        aerobic_hr=anchors.get("aerobic_hr"),
+        budget=budget,
+        hard_days_last_7=coach_module._hard_days_recent(data, 7),
+        layoff_days=(rec.get("layoff") or {}).get("days"),
+    )
+    connection.send_result(msg["id"], {
+        "ftp": ftp,
+        "aerobic_hr": anchors.get("aerobic_hr"),
+        "budget": budget,
+        "state": (rec.get("state") or {}).get("state"),
+        "workouts": picks,
+    })
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "intervals_icu/plan_workout",
+        vol.Required("workout"): str,
+        vol.Required("date"): str,
+        vol.Optional("sport"): str,
+        vol.Optional("athlete_id"): str,
+    }
+)
+@websocket_api.async_response
+async def websocket_plan_workout(hass, connection, msg) -> None:
+    """Write one planned workout to the athlete's Intervals.icu calendar.
+
+    The only call in this integration that changes anything outside Home
+    Assistant. It runs on an explicit click, writes exactly one event, and is
+    never retried automatically - see api.async_create_event.
+    """
+    coordinator = _pick(hass, msg.get("athlete_id"))
+    if coordinator is None:
+        connection.send_error(msg["id"], "not_found", "no Intervals.icu athlete loaded")
+        return
+    entry = workout_lib.BY_KEY.get(str(msg["workout"]))
+    if entry is None:
+        connection.send_error(msg["id"], "not_found", f"unknown workout {msg['workout']}")
+        return
+    payload = workout_lib.to_event(
+        entry, str(msg["date"]), str(msg.get("sport") or "Ride"),
+        note="Vorgeschlagen von Home Assistant",
+    )
+    try:
+        created = await coordinator.client.async_create_event(payload)
+    except Exception as err:  # noqa: BLE001 - surfaced to the panel as a message
+        connection.send_error(msg["id"], "write_failed", str(err))
+        return
+    connection.send_result(msg["id"], {
+        "ok": True,
+        "name": entry["title"],
+        "date": str(msg["date"]),
+        "id": (created or {}).get("id") if isinstance(created, dict) else None,
+    })

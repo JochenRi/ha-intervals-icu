@@ -488,6 +488,7 @@ class IntervalsIcuPanel extends HTMLElement {
     this._sigDays = 180;
     this._sigMode = "stack";
     this._sigFocus = null;
+    this._woOpen = null;
     this._booted = false;
   }
 
@@ -512,6 +513,7 @@ class IntervalsIcuPanel extends HTMLElement {
         this._ws("status"), this._ws("readiness"),
         this._ws("days", { weeks: this._weeks }), this._ws("load"), this._ws("coach"),
       ]);
+      this._ws("workouts").then((w) => { this._workouts = w; if (this._tab === "trainer") this._render(); });
       this._status = status; this._rd = rd; this._days = days; this._load = load;
       this._coach = coachData;
       this._err = null;
@@ -524,6 +526,7 @@ class IntervalsIcuPanel extends HTMLElement {
   async _need(what) {
     try {
       if (what === "coach" && !this._coach) this._coach = await this._ws("coach");
+      if (what === "workouts" && !this._workouts) this._workouts = await this._ws("workouts");
       if (what === "signals" && !this._signals) {
         this._signals = await this._ws("signals", { days: this._sigDays });
       }
@@ -538,7 +541,7 @@ class IntervalsIcuPanel extends HTMLElement {
 
   async _setTab(t) {
     this._tab = t;
-    if (t === "trainer") await this._need("coach");
+    if (t === "trainer") { await this._need("coach"); await this._need("workouts"); }
     if (t === "signale") await this._need("signals");
     if (t === "fitness") await this._need("pmc");
     if (t === "akt") await this._need("akt");
@@ -630,6 +633,22 @@ class IntervalsIcuPanel extends HTMLElement {
         this._render();
       }
       else if (act === "sigmode") { this._sigMode = id; this._render(); }
+      else if (act === "plan") {
+        const when = el.dataset.when;
+        el.disabled = true;
+        const before = el.textContent;
+        el.textContent = "wird eingetragen …";
+        this._ws("plan_workout", { workout: id, date: when, sport: "Ride" })
+          .then((r) => { el.textContent = `im Kalender: ${dShort(r.date)}`; el.classList.add("done"); })
+          .catch((e) => {
+            el.disabled = false;
+            el.textContent = before;
+            this._toast(`Eintragen fehlgeschlagen: ${String(e && e.message || e)}`);
+          });
+      }
+      else if (act === "wodetail") {
+        this._woOpen = (this._woOpen === id ? null : id); this._render();
+      }
       else if (act === "sigfocus") {
         this._sigFocus = (this._sigFocus === id ? null : id); this._render();
       }
@@ -689,6 +708,91 @@ class IntervalsIcuPanel extends HTMLElement {
     });
     this._fillReadout(name, idx);
     this._xhOn = true;
+  }
+
+  _toast(text) {
+    const view = this._view;
+    if (!view) return;
+    const box = document.createElement("div");
+    box.className = "toast";
+    box.textContent = text;
+    view.appendChild(box);
+    setTimeout(() => box.remove(), 6000);
+  }
+
+  /* A session is a shape, not a word. The bar below draws the actual blocks
+     to scale, so "30/15" and "2x20" look as different as they are - and the
+     numbers underneath are this athlete's watts, not percentages to convert
+     in your head. */
+  _woBar(entry, ftp) {
+    const blocks = entry.blocks || [];
+    const total = blocks.reduce((sum, b) => sum + b[0], 0) || 1;
+    const colFor = (pct) => pct < 60 ? C.slate : pct < 76 ? C.cyan
+      : pct < 90 ? C.blue : pct < 101 ? C.violet : C.magenta;
+    let x = 0;
+    const segs = blocks.map(([min, pct, label]) => {
+      const w = (min / total) * 100;
+      const s = `<i class="wob" style="left:${x}%;width:${Math.max(0.6, w - 0.25)}%;
+        height:${Math.max(14, Math.min(100, pct * 0.78))}%;background:${colFor(pct)}"
+        title="${esc(label)} · ${min} min · ${pct} % FTP${ftp ? ` · ${Math.round(ftp * pct / 100)} W` : ""}"></i>`;
+      x += w;
+      return s;
+    }).join("");
+    return `<div class="wobar">${segs}</div>`;
+  }
+
+  rWorkouts(w) {
+    if (!w) return "";
+    const list = w.workouts || [];
+    if (!list.length) return "";
+    const ftp = w.ftp;
+    const today = new Date();
+    const iso = (d) => new Date(today.getTime() + d * 86400000).toISOString().slice(0, 10);
+
+    const cards = list.map((entry, index) => {
+      const open = this._woOpen === entry.key;
+      const fit = entry.fits_budget == null ? ""
+        : badge(entry.fits_budget ? "green" : "amber",
+                entry.fits_budget ? "passt ins Budget" : `über Budget (${fmt(w.budget)})`);
+      const hrw = entry.hr_window;
+      return `<div class="wocard ${index === 0 ? "first" : ""}">
+        <div class="wohead">
+          <div>
+            <div class="wotitle">${esc(entry.title)}</div>
+            <div class="wometa">${esc(entry.purpose)} · ${entry.minutes} min · Last ${fmt(entry.load)}${
+              hrw ? ` · ${hrw[0]}–${hrw[1]} bpm` : ""}</div>
+          </div>
+          ${fit}
+        </div>
+        ${this._woBar(entry, ftp)}
+        <div class="wosteps">${(entry.blocks_w || entry.blocks).map(([min, val, label]) =>
+          `<span><b>${min}′</b> ${esc(label)} <em>${entry.blocks_w ? val + " W" : val + " %"}</em></span>`).join("")}</div>
+        <p class="effect">${esc(entry.effect)}</p>
+        <div class="worow">
+          <button class="planbtn" data-act="plan" data-id="${esc(entry.key)}" data-when="${iso(0)}">
+            ${ico("cal", null, 15)} heute in den Kalender</button>
+          <button class="planbtn ghost" data-act="plan" data-id="${esc(entry.key)}" data-when="${iso(1)}">
+            morgen</button>
+          <button class="chipbtn" data-act="wodetail" data-id="${esc(entry.key)}">
+            ${open ? "weniger" : "Aufbau, DFA und Beleg"}</button>
+        </div>
+        ${open ? `<div class="wodetail">
+          <div class="kv2"><small>Schritte, wie sie in Intervals landen</small>
+            <pre>${esc(entry.text)}</pre></div>
+          <div class="kv2"><small>Erwartetes DFA alpha-1</small><p>${esc(entry.dfa)}</p></div>
+          <div class="kv2"><small>Beleg</small><p class="src">${esc(entry.evidence)}</p></div>
+          <div class="kv2"><small>Grenze</small><p class="src">${esc(entry.limit)}</p></div>
+        </div>` : ""}
+      </div>`;
+    }).join("");
+
+    return `<h3 class="secname">Konkrete Einheiten für heute
+      <span class="hint">— Watt aus deiner FTP${w.ftp ? ` (${fmt(w.ftp)} W)` : ""}, Puls aus deiner
+      gemessenen aeroben Schwelle${w.aerobic_hr ? ` (${w.aerobic_hr} bpm)` : ""}</span></h3>
+      <div class="wogrid">${cards}</div>
+      <p class="note">Ein Klick legt die Einheit als geplantes Workout in deinen
+      Intervals-Kalender — mit allen Schritten, direkt auf die Uhr übertragbar. Das ist der
+      einzige Schreibzugriff dieser Integration, er passiert nur auf diesen Knopf.</p>`;
   }
 
   /* ---------------- Signale ----------------
@@ -966,6 +1070,8 @@ class IntervalsIcuPanel extends HTMLElement {
         </details>
       </section>
 
+      ${this.rWorkouts(this._workouts)}
+
       <h3 class="secname">Deine gemessenen Anker <span class="hint">— keine Prozente einer Maximalherzfrequenz</span></h3>
       <div class="card ancgrid">
         <div class="stat"><small>Aerobe Schwelle (DFA 0,75)</small>
@@ -1118,8 +1224,6 @@ class IntervalsIcuPanel extends HTMLElement {
         ? spark(sp.v, { c: C.blue, last: stm.c, band: sp.band, hline: sp.hline, bars: sp.bars, zero: sp.zero }) +
           `<div class="spklbl">${sp.t}</div>`
         : `<div class="nospark">kein Verlauf verfügbar</div>`;
-      const bigHtml = sp && sp.v && sp.v.filter((v) => v != null).length > 3
-        ? this._bigTrend(sp, days) : "";
       return `<div class="sig card" style="border-left-color:${stm.c}">
         <div class="sighead">
           <span class="sigic" style="color:${stm.c}">${ico(SIG_ICON[cItem.id] || "dot", stm.c, 20)}</span>
@@ -1133,7 +1237,9 @@ class IntervalsIcuPanel extends HTMLElement {
         ${cItem.reference != null ? `<div class="sigref">Referenz ${fmt(cItem.reference, dec)} ${SIG_UNIT[cItem.id] || ""}</div>` : ""}
         <div class="sigsub">${esc(cItem.detail || "")}</div>
         ${sparkHtml}
-        ${cItem.source || bigHtml ? `<details class="more"><summary>Verlauf &amp; Quelle</summary>${bigHtml}<p class="src">${esc(cItem.source || "")}</p></details>` : ""}
+        ${cItem.source ? `<details class="more"><summary>Quelle und Grenzen</summary><p class="src">${esc(cItem.source || "")}</p>
+          <p class="src">Den vollen Verlauf mit Zustandsbändern und allen Signalen nebeneinander
+          zeigt der Tab <b>Signale</b> — dort ist die Kurve groß und mit Ableseleiste.</p></details>` : ""}
       </div>`;
     }).join("");
     return `
@@ -1151,28 +1257,6 @@ class IntervalsIcuPanel extends HTMLElement {
       <h3 class="secname">Die einzelnen Signale <span class="hint">— jedes gegen deine eigenen Werte, nicht gegen eine Norm. Der Ring oben zeigt sie in gleicher Reihenfolge.</span></h3>
       <div class="siggrid">${cards}</div>
       <p class="note">${esc(rd.note || "")}</p>`;
-  }
-
-  _bigTrend(sp, days) {
-    const vals = sp.v;
-    const [y0, y1] = domainOf([{ v: vals }]);
-    const mean = meanOf(vals);
-    const past = (days && days.days || []).filter((d) => !d.future).slice(-42);
-    const xt = [];
-    for (let i = 0; i < vals.length; i += Math.max(1, Math.floor(vals.length / 4))) {
-      if (past[i]) xt.push({ i, t: dShort(past[i].date) });
-    }
-    return chart({
-      h: 170, n: vals.length, y0: sp.zero ? Math.min(y0, 0) : y0, y1, xt,
-      bands: sp.band ? [{ a: sp.band.a, b: sp.band.b, c: C.blue, op: 0.1 }] : [],
-      hl: [
-        ...(mean != null ? [{ y: mean, c: C.tx3, d: 1, t: "Mittel" }] : []),
-        ...(sp.hline != null ? [{ y: sp.hline, c: C.amber, d: 1 }] : []),
-        ...(sp.zero ? [{ y: 0, c: C.tx3 }] : []),
-      ],
-      s: [sp.bars ? { t: "bars", v: vals, c: C.blue } : { t: "line", v: vals, c: C.blue, w: 2 }],
-      yf: (v) => fmt(v, Math.abs(y1 - y0) < 8 ? 1 : 0),
-    });
   }
 
   _nextPlanned(days) {
@@ -2048,6 +2132,35 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
   .lrow{grid-template-columns:30px 1fr 70px 74px;}
   .lrow>*:nth-child(5),.lrow>*:nth-child(6),.lrow>*:nth-child(7),.lrow>*:nth-child(8){display:none}
 }
+/* Workouts */
+.wogrid{display:grid;gap:12px}
+.wocard{background:${C.card};border:1px solid ${C.line};border-radius:12px;padding:14px}
+.wocard.first{border-color:${ROLE.series}66;box-shadow:0 0 0 1px ${ROLE.series}22}
+.wohead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.wotitle{font-size:19px;font-weight:700}
+.wometa{color:${C.tx2};font-size:13px;margin-top:2px}
+.wobar{position:relative;height:56px;background:#0006;border-radius:8px;margin:11px 0 8px;overflow:hidden}
+.wob{position:absolute;bottom:0;border-radius:2px 2px 0 0;opacity:.92}
+.wosteps{display:flex;gap:12px;flex-wrap:wrap;font-size:12.5px;color:${C.tx3};margin-bottom:8px}
+.wosteps b{color:${C.tx2}}
+.wosteps em{font-style:normal;color:${C.tx2}}
+.worow{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px}
+.planbtn{display:inline-flex;align-items:center;gap:7px;background:${ROLE.series}1e;
+  border:1px solid ${ROLE.series}66;color:${C.tx};border-radius:999px;padding:7px 14px;
+  font:inherit;font-size:13.5px;font-weight:600;cursor:pointer}
+.planbtn:hover{background:${ROLE.series}30}
+.planbtn.ghost{background:none;border-color:${C.line};color:${C.tx2};font-weight:500}
+.planbtn.done{background:${C.green}22;border-color:${C.green}66;color:${C.green}}
+.planbtn:disabled{opacity:.7;cursor:default}
+.wodetail{margin-top:10px;border-top:1px solid ${C.line};padding-top:10px;display:grid;gap:10px}
+.kv2 small{display:block;color:${C.tx3};font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px}
+.kv2 pre{margin:0;background:${C.card2};border-radius:8px;padding:10px 12px;font-size:12.5px;
+  white-space:pre-wrap;color:${C.tx2};font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.kv2 p{margin:0;font-size:13.5px;color:${C.tx2}}
+.toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:${C.card2};
+  border:1px solid ${C.red}66;color:${C.tx};border-radius:10px;padding:11px 16px;font-size:14px;z-index:99;
+  box-shadow:0 8px 26px #0009;max-width:min(560px,90vw)}
+
 /* Signale */
 .sigfield{position:relative;margin:0 2px 2px;transition:opacity .15s}
 .sigfield.dim{opacity:.45}

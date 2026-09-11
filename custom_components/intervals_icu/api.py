@@ -78,22 +78,37 @@ class IntervalsClient:
         self,
         path: str,
         params: dict[str, Any] | None = None,
+        method: str = "GET",
+        json: dict[str, Any] | None = None,
     ) -> Any:
-        """Perform a GET request and return the decoded JSON body."""
-        url = f"{API_BASE}{path}"
+        """Perform one request and return the decoded JSON body.
 
-        for attempt in range(1, MAX_RETRIES + 1):
+        Reads are retried; WRITES ARE NOT. A POST that times out may well have
+        succeeded on the server, and repeating it would put the same workout
+        on the calendar twice. A failed write is reported instead of guessed.
+        """
+        url = f"{API_BASE}{path}"
+        writing = method.upper() != "GET"
+        attempts = 1 if writing else MAX_RETRIES
+
+        for attempt in range(1, attempts + 1):
             await self._throttle()
             try:
-                response: ClientResponse = await self._session.get(
+                response: ClientResponse = await self._session.request(
+                    method.upper(),
                     url,
                     params=params,
+                    json=json,
                     auth=self._auth,
                     timeout=REQUEST_TIMEOUT,
                 )
             except (ClientError, asyncio.TimeoutError) as err:
-                if attempt == MAX_RETRIES:
-                    raise IntervalsError(f"connection to {url} failed: {err}") from err
+                if attempt == attempts:
+                    raise IntervalsError(
+                        f"connection to {url} failed: {err}"
+                        + (" - der Termin wurde NICHT sicher angelegt, bitte im "
+                           "Intervals-Kalender nachsehen" if writing else "")
+                    ) from err
                 await asyncio.sleep(2**attempt)
                 continue
 
@@ -105,8 +120,10 @@ class IntervalsClient:
 
                 if response.status == 429:
                     # The API sends Retry-After; honour it instead of guessing.
+                    # Safe to repeat even for a write: a rejected request did
+                    # not reach the calendar.
                     retry_after = float(response.headers.get("Retry-After", 2**attempt))
-                    if attempt == MAX_RETRIES:
+                    if attempt == attempts:
                         raise IntervalsRateLimitError(
                             f"rate limited on {path}, giving up after {attempt} tries"
                         )
@@ -115,7 +132,7 @@ class IntervalsClient:
                     continue
 
                 if response.status >= 500:
-                    if attempt == MAX_RETRIES:
+                    if attempt == attempts:
                         raise IntervalsError(
                             f"server error {response.status} on {path}"
                         )
@@ -215,6 +232,19 @@ class IntervalsClient:
         if fields:
             params["fields"] = ",".join(fields)
         return await self._request(f"/athlete/{self._athlete_id}/activities", params=params)
+
+    async def async_create_event(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Put one planned workout on the athlete's calendar.
+
+        The only write this integration makes. It happens on an explicit click
+        and nowhere else - nothing here runs on a timer or as a side effect of
+        a refresh.
+        """
+        return await self._request(
+            f"/athlete/{self._athlete_id}/events",
+            method="POST",
+            json=payload,
+        )
 
     async def async_get_intervals(self, activity_id: str) -> dict[str, Any]:
         """Return one activity including its laps/intervals.

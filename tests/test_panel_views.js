@@ -24,12 +24,20 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   const html = p.rHeute(rd, days, load);
   clean(html, "heute");
   for (const needle of ["Bereitschaft", "Belastungsbudget", "133", "Wie kommt die Zahl zustande",
-                        "Nächste Einheit", "Die einzelnen Signale", "Verlauf &amp; Quelle"]) {
+                        "Nächste Einheit", "Die einzelnen Signale", "Quelle und Grenzen"]) {
     contains(html, needle, "heute");
   }
   ok((html.match(/class="sig card"/g) || []).length === 7, "heute: nicht alle sieben Signalkarten");
   // independent fold-outs: one <details> per card, none sharing a name
   ok((html.match(/<details class="more">/g) || []).length >= 6, "heute: Aufklappfelder fehlen");
+  // one curve per card, not two: the tile showed a sparkline and the fold-out
+  // repeated the same series in large - redundant, and it made the card noisy
+  const cardsOnly = html.slice(html.indexOf('class="siggrid"'));
+  const spark = (cardsOnly.match(/class="spk"/g) || []).length;
+  const charts = (cardsOnly.match(/<svg class="ch"/g) || []).length;
+  ok(charts === 0, `heute: ${charts} zweite Kurve(n) in den Signalkarten - die Kachel zeigt sie schon`);
+  ok(spark >= 5, `heute: nur ${spark} Sparklines`);
+  contains(html, "Tab <b>Signale</b>", "heute: kein Verweis auf die große Ansicht");
   ok(!html.includes("<details name="), "heute: Aufklappfelder gekoppelt");
 
   clean(p.rHeute(null, null, null), "heute leer");
@@ -85,6 +93,53 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   ok((ready.match(/class="catrow"/g) || []).length >= 5, "trainer: Einheitenkatalog unvollständig");
   // the honest part must be present, not buried
   contains(ready, "kein belastbarer Zusammenhang", "trainer: die eigene Kalibrierung wird verschwiegen");
+}
+
+/* ── Konkrete Einheiten ─────────────────────────────────────────────────── */
+{
+  p._workouts = F.workouts();
+  const html = p.rTrainer(F.coach("ready"), rd);
+  clean(html, "workouts");
+  for (const needle of ["Konkrete Einheiten", "30/15 nach Rønnestad", "SweetSpot 2×20",
+                        "Grundlage 60 min", "in den Kalender", "morgen"]) {
+    contains(html, needle, "workouts");
+  }
+  // the athlete's own numbers, not percentages to convert in the head
+  contains(html, "215 W", "workouts: FTP nicht genannt");
+  contains(html, "157 bpm", "workouts: aerobe Schwelle nicht genannt");
+  contains(html, "241 W", "workouts: Wattzahlen der Blöcke fehlen");   // 112% von 215
+  contains(html, "170–185 bpm", "workouts: Pulsfenster fehlt");
+  // the structure has to be drawn, not described
+  ok((html.match(/class="wob"/g) || []).length >= 15, "workouts: Struktur nicht gezeichnet");
+  // over-budget must be marked, not hidden
+  contains(html, "über Budget", "workouts: Budget-Überschreitung verschwiegen");
+  // each session ships evidence AND its objection - only when unfolded
+  ok(!html.includes("Protokollnamen sind keine Verschreibungen"),
+     "workouts: Belege stehen ungefragt als Textwand da");
+  p._woOpen = "vo2_3015";
+  const open = p.rTrainer(F.coach("ready"), rd);
+  clean(open, "workouts aufgeklappt");
+  contains(open, "Rønnestad", "workouts: Beleg fehlt");
+  contains(open, "Protokollnamen sind keine Verschreibungen", "workouts: Grenze fehlt");
+  contains(open, "13x", "workouts: die Schritte für Intervals fehlen");
+  contains(open, "Erwartetes DFA", "workouts: erwarteter DFA-Bereich fehlt");
+  p._woOpen = null;
+
+  // the write is the only one - it must be an explicit button, never automatic
+  ok(/data-act="plan"/.test(html), "workouts: kein Knopf zum Eintragen");
+  ok((html.match(/data-act="plan"/g) || []).length === 6, "workouts: Knöpfe unvollständig");
+  contains(html, "einzige Schreibzugriff", "workouts: der Schreibzugriff wird nicht benannt");
+
+  // degenerate
+  p._workouts = F.workouts("ohneFTP");
+  const noftp = p.rTrainer(F.coach("ready"), rd);
+  clean(noftp, "workouts ohne FTP");
+  ok(!noftp.includes("undefined W"), "workouts: erfundene Wattzahlen ohne FTP");
+  p._workouts = F.workouts("leer");
+  clean(p.rTrainer(F.coach("ready"), rd), "workouts leer");
+  p._workouts = null;
+  clean(p.rTrainer(F.coach("ready"), rd), "workouts null");
+  p._workouts = F.workouts();
 }
 
 /* ── Signale ───────────────────────────────────────────────────────────── */
