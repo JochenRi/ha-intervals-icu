@@ -627,14 +627,19 @@ class IntervalsIcuPanel extends HTMLElement {
     box.innerHTML = `<div class="xt">${meta.xl(idx)}</div>${rows}`;
     box.hidden = false;
     this._xhOn = true;
-    const host = this.getBoundingClientRect();
+    // The box is positioned inside #app, which is capped at 1240px and
+    // centred - so its box is NOT the panel's box on a wide screen. Clamping
+    // against the wrong one let the readout slide off the right edge.
+    const app = this.shadowRoot.getElementById("app");
+    const frame = (app && app.getBoundingClientRect)
+      ? app.getBoundingClientRect() : this.getBoundingClientRect();
     // Measure after filling: the box grows with its content, and a fixed
-    // guess of 230px cut the numbers off at the right edge.
+    // guess of 230px cut the numbers off.
     const bw = box.offsetWidth || 210, bh = box.offsetHeight || 90;
-    let bx = e.clientX - host.left + 18, by = e.clientY - host.top + 14;
-    if (bx + bw > host.width - 8) bx = e.clientX - host.left - bw - 18;
-    bx = Math.max(8, Math.min(bx, host.width - bw - 8));
-    if (by + bh > host.height - 8) by = Math.max(8, host.height - bh - 8);
+    let bx = e.clientX - frame.left + 18, by = e.clientY - frame.top + 14;
+    if (bx + bw > frame.width - 8) bx = e.clientX - frame.left - bw - 18;
+    bx = Math.max(8, Math.min(bx, Math.max(8, frame.width - bw - 8)));
+    by = Math.max(8, Math.min(by, Math.max(8, frame.height - bh - 8)));
     box.style.left = bx + "px"; box.style.top = by + "px";
   }
 
@@ -1296,28 +1301,40 @@ class IntervalsIcuPanel extends HTMLElement {
       if (g && !groups.includes(g)) groups.push(g);
     }
     const rows = thr.filter((x) => sportFilter === "all" || groupKey(x.type) === sportFilter);
-    const solid = rows.filter((x) => (x.samples || 0) >= 5 && x.hr != null);
+    const solid = rows.filter((x) => (x.samples || 0) >= 5 && x.hr != null && x.hr > 0);
     if (!rows.length) return `<div class="card pad">Noch keine Schwellen-Messungen${sportFilter !== "all" ? " für diese Sportart" : ""}.</div>`;
     const n = rows.length;
-    const hrVals = rows.map((x) => (x.samples || 0) >= 5 ? x.hr : null);
+    const hrVals = rows.map((x) => ((x.samples || 0) >= 5 && x.hr > 0) ? x.hr : null);
     const roll = rollMedian(hrVals, 5);
     const cur = median(solid.slice(-5).map((x) => x.hr));
     const first = median(solid.slice(0, 5).map((x) => x.hr));
     const curW = median(solid.slice(-5).map((x) => x.power).filter((v) => v != null));
     const avgAll = meanOf(solid.map((x) => x.hr));
-    const [y0a, y1a] = domainOf([{ v: rows.map((x) => x.hr) }]);
+    // A zero threshold is a recording artefact, and a single-sample reading
+    // off a walk is not a threshold either: both used to stretch the axis
+    // from 0 to 160 and squash the real range into a line. The axis follows
+    // the readings that carry weight; the rest is clamped into view.
+    const solidHr = solid.map((x) => x.hr).filter((v) => v != null && v > 0);
+    let [y0a, y1a] = solidHr.length >= 2
+      ? domainOf([{ v: solidHr }], 0.14)
+      : domainOf([{ v: rows.map((x) => x.hr).filter((v) => v > 0) }]);
+    if (!(y1a > y0a)) { y0a = 100; y1a = 180; }
     const xt = monthTicks(rows.map((x) => x.date));
-    const pts = rows.map((x, i) => ({
-      i, v: x.hr,
-      c: (x.samples || 0) >= 5 ? ROLE.series : C.grey,
-      f: (x.samples || 0) >= 5, r: (x.samples || 0) >= 5 ? 4 : 3, op: (x.samples || 0) >= 5 ? 1 : 0.6,
-    }));
+    let clamped = 0;
+    const pts = rows.map((x, i) => {
+      if (x.hr == null || x.hr <= 0) return null;
+      const solidPt = (x.samples || 0) >= 5;
+      const v = Math.max(y0a, Math.min(y1a, x.hr));
+      if (v !== x.hr) clamped++;
+      return { i, v, c: solidPt ? ROLE.series : C.grey,
+               f: solidPt, r: solidPt ? 4 : 3, op: solidPt ? 1 : 0.6 };
+    }).filter(Boolean);
     const mainCh = chart({
       h: 260, n, y0: y0a, y1: y1a, xt, grp: "dfa",
       hl: avgAll != null ? [{ y: avgAll, c: C.tx3, d: 1, t: "Schnitt " + fmt(avgAll) }] : [],
       s: [{ t: "dots", p: pts, c: ROLE.series }, { t: "line", v: roll, c: ROLE.series, w: 2.4 }],
       label: "Schwellen-Herzfrequenz (bpm)", labelc: ROLE.series,
-    });
+    }) + (clamped ? `<p class="hint">${ico("warn", C.amber, 13)} ${clamped} Messung(en) außerhalb des dargestellten Bereichs — an der Achse geklemmt, damit der belastbare Bereich lesbar bleibt.</p>` : "");
     const powRows = rows.map((x) => (x.samples || 0) >= 5 ? x.power : null);
     let powCh = "";
     if (powRows.some((v) => v != null)) {

@@ -168,6 +168,10 @@ function thresholds() {
       hr: 150 + ((i * 9) % 22), power: i % 4 === 3 ? null : 135 + ((i * 5) % 25),
       samples: i % 5 ? 12 : 3,
     });
+    // two artefacts from the real account: a zero threshold, and a walk read
+    // off a single sample - both used to stretch the axis from 0 to 160
+    if (i === 12) out[out.length - 1] = { ...out[out.length - 1], hr: 0, power: null, samples: 8 };
+    if (i === 30) out[out.length - 1] = { ...out[out.length - 1], type: "Walk", hr: 90, power: null, samples: 1 };
     d = new Date(d.getTime() + 3 * 864e5);
   }
   return out;

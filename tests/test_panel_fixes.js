@@ -106,22 +106,36 @@ const acts = F.activities(), thr = F.thresholds();
   ok(new Set(axLabels).size === axLabels.length, `5 achse: DFA-Achse doppelt (${axLabels.join(",")})`);
 }
 
-/* ── 6  the readout box stays inside the panel ─────────────────────────── */
+/* ── 6  the readout box stays inside its own frame ─────────────────────
+   Twice wrong now: first clamped against a fixed 230px guess, then against
+   the panel element instead of #app - which is capped at 1240px and centred,
+   so on a 2560px monitor the two frames are 660px apart and the box slid off
+   the screen. The stub therefore uses two DIFFERENT rectangles. */
 {
-  p._grp.pmc = { n: 100, xl: (i) => "Tag " + i, rows: [{ l: "Fitness", c: "#fff", vals: Array.from({ length: 100 }, (_, i) => i) }] };
-  const box = p.shadowRoot._box;
-  box.offsetWidth = 236; box.offsetHeight = 96;   // the real box is wider than the old guess of 230
+  const wide = { left: 0, top: 0, width: 2560, height: 1300 };        // browser window
+  const app = { left: 660, top: 0, width: 1240, height: 1300 };       // centred #app
+  global.__HOST_RECT__ = wide; global.__APP_RECT__ = app;
+  const M2 = H.load();
+  const q = new M2.Panel();
+  q._grp.pmc = { n: 100, xl: (i) => "Tag " + i,
+                 rows: [{ l: "Fitness", c: M2.ROLE.ctl, vals: Array.from({ length: 100 }, (_, i) => i) }] };
+  const box = q.shadowRoot._box;
+  box.offsetWidth = 236; box.offsetHeight = 96;
   const svg = { dataset: { w: "880", padl: "48", padr: "14" },
-                getBoundingClientRect: () => ({ left: 100, top: 50, width: 880, height: 230 }) };
-  const g = { dataset: { grp: "pmc" }, querySelector: () => svg, querySelectorAll: () => p.shadowRoot._lines };
-  const host = p.getBoundingClientRect();
-  for (const cx of [110, 600, 1190, 2500]) {
-    p._xhMove(g, { clientX: cx, clientY: 700 });
+                getBoundingClientRect: () => ({ left: app.left + 20, top: 300, width: 1200, height: 230 }) };
+  const g = { dataset: { grp: "pmc" }, querySelector: () => svg, querySelectorAll: () => q.shadowRoot._lines };
+
+  for (const cx of [app.left + 20, app.left + 600, app.left + 1200, 2500, 0]) {
+    q._xhMove(g, { clientX: cx, clientY: 700 });
     const bx = parseFloat(box.style.left), by = parseFloat(box.style.top);
-    ok(bx >= 0 && bx + box.offsetWidth <= host.width,
-       `6 ablesekasten: ragt bei x=${cx} über den Rand (links ${bx}, breit ${box.offsetWidth})`);
-    ok(by >= 0 && by + box.offsetHeight <= host.height, `6 ablesekasten: ragt bei x=${cx} unten heraus`);
+    ok(bx >= 0 && bx + box.offsetWidth <= app.width,
+       `6 ablesekasten: bei x=${cx} außerhalb von #app (links ${bx}, breit ${box.offsetWidth}, Rahmen ${app.width})`);
+    ok(by >= 0 && by + box.offsetHeight <= app.height, `6 ablesekasten: bei x=${cx} unten heraus`);
   }
+  // and the numbers themselves have to be in there
+  q._xhMove(g, { clientX: app.left + 600, clientY: 700 });
+  ok(/<b class="tn">/.test(box.innerHTML), "6 ablesekasten: Werte fehlen im Kasten");
+  global.__HOST_RECT__ = null; global.__APP_RECT__ = null;
 }
 
 /* ── 7  one unit per tile ──────────────────────────────────────────────── */
@@ -162,6 +176,26 @@ const acts = F.activities(), thr = F.thresholds();
      "9 datum: falscher Stand bei Lücke am Ende");
   ok(p._stampOf({ v: [null, null], d: ["a", "b"] }) === null, "9 datum: leere Reihe liefert kein null");
   ok(p._stampOf(null) === null, "9 datum: fehlende Reihe stürzt");
+}
+
+/* ── 10  artefacts must not set the DFA axis ───────────────────────────
+   A zero threshold and a one-sample walk pulled the axis down to 0, which
+   squashed the range that actually matters (roughly 140-170) into a line. */
+{
+  const html = p.rDfa(thr, "all");
+  clean(html, "10 dfa achse");
+  const yLabels = [...html.matchAll(/class="ax">(\d+)</g)].map((m) => +m[1]);
+  ok(!yLabels.includes(0), `10 dfa achse: Achse beginnt bei 0 (${yLabels.join(",")})`);
+  const lo = Math.min(...yLabels), hi = Math.max(...yLabels);
+  ok(lo >= 110, `10 dfa achse: untere Grenze ${lo} - Artefakt bestimmt weiter die Achse`);
+  ok(hi - lo <= 80, `10 dfa achse: Spanne ${hi - lo} bpm, der belastbare Bereich bleibt gequetscht`);
+  contains(html, "geklemmt", "10 dfa achse: geklemmte Messung nicht ausgewiesen");
+  // the artefacts are still visible, just no longer in charge
+  const dots = (html.match(/<circle/g) || []).length;
+  ok(dots >= 50, `10 dfa achse: nur ${dots} Messpunkte - es wurden welche unterschlagen`);
+  // a series made entirely of artefacts must not produce a broken axis
+  clean(p.rDfa(thr.map((z) => ({ ...z, hr: 0 })), "all"), "10 dfa achse nur artefakte");
+  clean(p.rDfa(thr.map((z) => ({ ...z, samples: 1 })), "all"), "10 dfa achse nur dünn");
 }
 
 report("test_panel_fixes");

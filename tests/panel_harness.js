@@ -10,14 +10,21 @@ const PANEL = path.join(
   __dirname, "..", "custom_components", "intervals_icu", "frontend", "intervals-panel.js"
 );
 
-function stubElement() {
+/* The panel element and #app are NOT the same box: #app is capped at 1240px
+ * and centred, so on a wide screen it sits far from the window's left edge.
+ * The stub reproduces that offset - with both boxes identical, a readout
+ * clamped against the wrong frame still looked correct in the test. */
+function stubElement(appRect) {
+  const app = {
+    getBoundingClientRect: () => appRect || { left: 0, top: 0, width: 1200, height: 800 },
+  };
   const box = { innerHTML: "", hidden: true, style: {}, offsetWidth: 0, offsetHeight: 0 };
   const lines = [];
   const mkLine = () => { const a = {}; return { setAttribute: (k, v) => { a[k] = v; }, _a: a }; };
   for (let i = 0; i < 3; i++) lines.push(mkLine());
   return {
     innerHTML: "", _listeners: {}, _box: box, _lines: lines,
-    getElementById: (id) => (id === "xhbox" ? box : { innerHTML: "", hidden: true, style: {} }),
+    getElementById: (id) => (id === "xhbox" ? box : (id === "app" ? app : { innerHTML: "", hidden: true, style: {} })),
     querySelectorAll: (sel) => (sel === ".xh" ? lines : []),
     querySelector: () => null,
     addEventListener(type, fn) { this._listeners[type] = fn; },
@@ -26,8 +33,8 @@ function stubElement() {
 
 function load() {
   global.HTMLElement = class {
-    attachShadow() { this.shadowRoot = stubElement(); return this.shadowRoot; }
-    getBoundingClientRect() { return { left: 0, top: 0, width: 1200, height: 800 }; }
+    attachShadow() { this.shadowRoot = stubElement(global.__APP_RECT__); return this.shadowRoot; }
+    getBoundingClientRect() { return global.__HOST_RECT__ || { left: 0, top: 0, width: 1200, height: 800 }; }
   };
   const defined = {};
   global.customElements = {

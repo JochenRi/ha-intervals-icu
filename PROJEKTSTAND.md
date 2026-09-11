@@ -1,6 +1,6 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 11.09.2026 · **Version:** 0.9.1 · **Status:** läuft produktiv auf HEIMDALL, Auslieferung über HACS
+**Stand:** 11.09.2026 · **Version:** 0.9.2 · **Status:** läuft produktiv auf HEIMDALL, Auslieferung über HACS
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu
 lokal archiviert, auswertet und in einem eigenen Seitenleisten-Panel darstellt.
@@ -187,7 +187,7 @@ Tabellenziffern, 15 px Grundgröße. Grund: Lesbarkeit auf Distanz und am Handy.
 
 ## 6. Prüfstand
 
-**Acht Testläufe, 553 Einzelprüfungen, alle grün.** Kein Test braucht eine
+**Acht Testläufe, 576 Einzelprüfungen, alle grün.** Kein Test braucht eine
 laufende HA-Instanz oder einen Browser.
 
 | Datei | prüft |
@@ -198,7 +198,7 @@ laufende HA-Instanz oder einen Browser.
 | `test_analytics.py` | Trainingsmetriken gegen bekannte Ergebnisse |
 | `test_setup_simulation.py` | Entity-Aufbau, Übersetzungen, unique_ids |
 | `test_panel_views.js` | alle sieben Ansichten gegen volle, leere, löchrige und entartete Daten (283) |
-| `test_panel_fixes.js` | je ein Nachweis pro behobenem Fehler aus 0.9.0 (113) |
+| `test_panel_fixes.js` | je ein Nachweis pro behobenem Fehler (136) |
 | `test_panel_design.js` | Cursor-Geometrie und die Gestaltungsregeln als Zusicherung (44) |
 
 Die drei Frontend-Tests laden `intervals-panel.js` ohne Browser und rendern
@@ -223,6 +223,8 @@ Ausführen: `python3 tests/<datei>.py` bzw. `node tests/<datei>.js`.
 | 0.9.0 | einzelne Messpunkte zwischen Datenlücken unsichtbar | Pfad nur mit `M`, ohne `L` — in der Simulation gefunden und behoben |
 | 0.9.1 | Archiv-Abgleich lief nur beim Start, nie im Takt | Timer-Aktion war ein Lambda statt einer Coroutine-Funktion: HA führt sie im Executor-Thread aus, die erzeugte Aufgabe wird nie abgewartet. HA protokolliert genau das |
 | 0.9.1 | Ablesekasten ragte bei Mauszeiger außerhalb des Fensters hinaus | Klemmung nur in eine Richtung — in der neuen Simulation gefunden |
+| 0.9.2 | Ablesekasten rutschte auf breitem Monitor weiter aus dem Bild | gegen das Panel-Element geklemmt statt gegen `#app` (max. 1240 px, **zentriert**). Beide Rahmen waren im Test gleich groß gestubbt — der Test war grün, die Realität nicht. Die Testumgebung hält jetzt zwei verschiedene Rahmen |
+| 0.9.2 | DFA-Achse von 0 bis 160, echte Schwelle als Strich | eine Null-Schwelle und eine Gehen-Messung aus einem einzigen Messpunkt bestimmten die Achse — dieselbe Artefaktklasse wie in den Strömen, nur in der Schwellenreihe |
 
 ---
 
@@ -240,6 +242,8 @@ Ausführen: `python3 tests/<datei>.py` bzw. `node tests/<datei>.js`.
 | 6 | Ablesekasten am Rand abgeschnitten | Umklappen rechnet mit der gemessenen Kastenbreite, beidseitig geklemmt |
 | 7 | HRV-Karte mischte Einheiten | Kurve zeigt ln(rMSSD) mit Basislinienband, dieselbe Größe wie der Großwert |
 | 8 | DFA-Tab zeigte vier gleich große Zahlen | eine Leitzahl, drei Nebenwerte |
+| 6b | Kasten rutschte auf breitem Monitor trotzdem heraus (0.9.2) | Klemmung gegen `#app` statt gegen das Panel-Element |
+| 10 | DFA-Achse von Artefakten bestimmt (0.9.2) | Achse folgt den belastbaren Messungen, Artefakte werden geklemmt und ausgewiesen |
 | 9 | kein Datum sichtbar | Kopfzeile mit vollem Datum, jede Signalkarte mit „heute" oder „Stand TT.MM.JJJJ" in Warnfarbe |
 
 **Als Nächstes:**
