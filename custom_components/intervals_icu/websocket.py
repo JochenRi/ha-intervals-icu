@@ -62,6 +62,7 @@ def async_register(hass: HomeAssistant) -> None:
         websocket_streams,
         websocket_laps,
         websocket_coach,
+        websocket_signals,
         websocket_thresholds,
         websocket_calendar,
         websocket_status,
@@ -366,4 +367,22 @@ def websocket_coach(hass, connection, msg) -> None:
     ready = analytics.readiness(data)
     connection.send_result(
         msg["id"], coach_module.coach(data, (ready or {}).get("budget"))
+    )
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "intervals_icu/signals",
+        vol.Optional("athlete_id"): str,
+        vol.Optional("days"): vol.All(int, vol.Range(min=28, max=400)),
+    }
+)
+@callback
+def websocket_signals(hass, connection, msg) -> None:
+    """Return every signal per day, normalised, with state bands and sessions."""
+    if (coordinator := _require(hass, connection, msg)) is None:
+        return
+    connection.send_result(
+        msg["id"],
+        coach_module.signals(coordinator.archive.data, int(msg.get("days") or 180)),
     )

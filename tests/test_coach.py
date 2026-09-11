@@ -213,6 +213,60 @@ check(len(full["sessions"]) >= 5, "12 belege: Einheitenkatalog unvollständig")
 for key, session in full["sessions"].items():
     check(bool(session["effect"]), f"12 katalog: {key} ohne Wirkungsbeschreibung")
 
+# --- 13  the signal matrix ----------------------------------------------------
+sig = coach.signals(infekt, 90)
+check(len(sig["days"]) > 60, "13 signale: zu wenige Tage")
+row = sig["days"][-1]
+check("hrv" in row["z"] and "rhr" in row["z"], "13 signale: z-Werte fehlen")
+check("hrv" in row["raw"], "13 signale: Rohwerte fehlen")
+check(abs(row["z"]["hrv"]) < 6, f"13 signale: unplausibler z-Wert {row['z']}")
+# a lower resting heart rate has to read as BETTER, so the sign is flipped
+low = coach.signals(build(overrides={day(0): {"restingHR": 45.0}}), 60)["days"][-1]
+high = coach.signals(build(overrides={day(0): {"restingHR": 67.0}}), 60)["days"][-1]
+check(low["z"]["rhr"] > high["z"]["rhr"], "13 signale: Ruhepuls nicht gespiegelt")
+
+# --- 14  bands and trainer must never disagree --------------------------------
+# The chart paints the background from state_series, the trainer view from
+# state(). If those two use different rules the picture contradicts the text.
+for label, payload in (("infekt", infekt), ("normal", data), ("einbruch", slump)):
+    banded = coach.signals(payload, 120)["days"]
+    eq(banded[-1]["state"], coach.state(payload)["state"], f"14 {label}: Band widerspricht dem Trainer")
+
+series = coach.state_series(infekt)
+states_seen = [row["state"] for row in series[-8:]]
+check("slump" in states_seen, f"14 verlauf: kein Einbruch erkannt ({states_seen})")
+check(states_seen[-1] == "rebound", f"14 verlauf: endet nicht in Erholung ({states_seen})")
+check(states_seen.index("slump") < len(states_seen) - 1, "14 verlauf: Einbruch am Ende statt davor")
+
+# --- 15  sessions carry their DFA band split ----------------------------------
+withdfa = build()
+for key in withdfa["activities"]:
+    withdfa["dfa"][key] = {"secs_aerobic": 3000, "secs_transition": 400,
+                           "secs_anaerobic": 200, "hr_at_threshold": 157,
+                           "power_at_threshold": 158, "threshold_samples": 40}
+rows = [r for r in coach.signals(withdfa, 60)["days"] if r["activities"]]
+check(rows, "15 einheiten: keine im Fenster")
+bands = rows[-1]["activities"][0]["dfa_bands"]
+check(bands and sum(bands) in (99, 100, 101), f"15 einheiten: DFA-Anteile summieren nicht ({bands})")
+nodfa = coach.signals(build(), 60)["days"]
+sess = [r for r in nodfa if r["activities"]]
+check(sess and sess[-1]["activities"][0]["dfa_bands"] is None,
+      "15 einheiten: DFA-Anteile erfunden, wo keine Auswertung vorliegt")
+
+# --- 16  every signal ships its source and how to read it ---------------------
+for key, meta in sig["signals"].items():
+    check(bool(meta.get("read")), f"16 erklärung: {key} ohne Lesehilfe")
+    check(bool(meta.get("source")), f"16 erklärung: {key} ohne Quelle")
+    check(bool(meta.get("label")), f"16 erklärung: {key} ohne Bezeichnung")
+check("Gabbett" in sig["load_signals"]["acwr"]["source"], "16 erklärung: ACWR ohne Quelle")
+check(sig["swc"] == 0.5, "16 erklärung: kleinste bedeutsame Änderung fehlt")
+
+# --- 17  thin data must not produce bands --------------------------------------
+for label, payload in (("leer", {}), ("kurz", build(days=12)), ("kaputt", {"wellness": None})):
+    out = coach.signals(payload, 90)
+    check(isinstance(out["days"], list), f"17 {label}: keine Tagesliste")
+    check(all(isinstance(r.get("z"), dict) for r in out["days"]), f"17 {label}: kaputte Zeile")
+
 print(f"test_coach: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

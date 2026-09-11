@@ -87,6 +87,58 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   contains(ready, "kein belastbarer Zusammenhang", "trainer: die eigene Kalibrierung wird verschwiegen");
 }
 
+/* ── Signale ───────────────────────────────────────────────────────────── */
+{
+  const html = p.rSignale(F.signals());
+  clean(html, "signale");
+  for (const needle of ["Herzratenvariabilität", "Ruhepuls", "Schlaf", "Form",
+                        "Standardabweichungen", "gestapelt", "überlagert",
+                        "Einbruch", "aerob", "harte Einheit"]) {
+    contains(html, needle, "signale");
+  }
+  // the mirrored resting heart rate must be explained, not silently flipped
+  contains(html, "gespiegelt", "signale: Spiegelung des Ruhepulses nicht erklärt");
+  // one cursor group for the whole stack, not one per field
+  ok((html.match(/data-grp="sig"/g) || []).length === 1,
+     "signale: mehr als eine Cursor-Gruppe");
+  ok(p._grp.sig && p._grp.sig.rows.length >= 5, "signale: Ableseleiste unvollständig");
+  // the readout must carry RAW units - a z-score is not something you recognise
+  const hrvRow = p._grp.sig.rows.find((r) => /Herzraten/.test(r.l));
+  ok(hrvRow && hrvRow.u === "ms", `signale: Ableseleiste zeigt keine echten Einheiten (${hrvRow && hrvRow.u})`);
+  ok(hrvRow.vals.some((v) => v > 20), "signale: Ableseleiste zeigt z-Werte statt Millisekunden");
+  // state bands must be painted behind the fields
+  ok(/opacity="0\.18"/.test(html), "signale: Einbruchsband fehlt im Hintergrund");
+  // every signal ships its source
+  ok((html.match(/class="more expl"/g) || []).length >= 5,
+     "signale: nicht jedes Signal hat Erklärung und Quelle");
+  contains(html, "Gabbett", "signale: Quelle des ACWR fehlt");
+  contains(html, "Plews", "signale: Quelle der HRV-Regel fehlt");
+
+  // overlay mode
+  p._sigMode = "overlay";
+  const over = p.rSignale(F.signals());
+  clean(over, "signale überlagert");
+  ok((over.match(/<svg class="ch"/g) || []).length === 2,
+     "signale überlagert: nicht in ein Feld zusammengelegt");
+  p._sigMode = "stack";
+
+  // focus dims the others instead of opening a window
+  p._sigFocus = "hrv";
+  const focus = p.rSignale(F.signals());
+  clean(focus, "signale fokus");
+  ok((focus.match(/class="sigfield dim"/g) || []).length >= 2,
+     "signale: Fokus blendet die anderen nicht ab");
+  p._sigFocus = null;
+
+  // degenerate inputs
+  clean(p.rSignale(F.signals("luecken")), "signale mit Lücken");
+  clean(p.rSignale(F.signals("ohnedfa")), "signale ohne DFA");
+  clean(p.rSignale(F.signals("kurz")), "signale zu kurz");
+  contains(p.rSignale(F.signals("kurz")), "zu wenig Historie", "signale kurz");
+  clean(p.rSignale(F.signals("leer")), "signale leer");
+  clean(p.rSignale(null), "signale null");
+}
+
 /* ── Kalender ──────────────────────────────────────────────────────────── */
 {
   const html = p.rKalender(days);

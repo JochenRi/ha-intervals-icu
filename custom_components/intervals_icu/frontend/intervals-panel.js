@@ -247,7 +247,10 @@ function chart(o) {
   const n = Math.max(2, o.n || 2);
   const X = (i) => padL + (i / (n - 1)) * pw;
   const Y = (v) => padT + (1 - (v - o.y0) / ((o.y1 - o.y0) || 1)) * ph;
-  let g = "";
+  // `extra` is painted first: context behind the data, never on top of it.
+  // Used for the state bands, which have to sit behind every stacked field
+  // so one glance answers "what was going on that week".
+  let g = o.extra || "";
 
   for (const b of (o.bands || [])) {
     const y1 = Y(Math.min(o.y1, Math.max(o.y0, b.b)));
@@ -453,6 +456,7 @@ function bullet(b) {
 /* ------------------------------------------------------------------ */
 const TABS = [
   ["trainer", "Trainer"],
+  ["signale", "Signale"],
   ["heute", "Heute"], ["kalender", "Kalender"], ["fitness", "Fitness"],
   ["akt", "Aktivitäten"], ["belastung", "Belastung"], ["dfa", "DFA"], ["plan", "Plan"],
 ];
@@ -461,6 +465,10 @@ const VERDICT = {
   amber: "gelb — Umfang ja, Intensität dosieren.",
   red: "rot — heute leicht trainieren oder pausieren.",
   unknown: "noch zu wenige Daten für eine Einschätzung.",
+};
+const STATE_WORD = {
+  slump: "Einbruch", recovering: "noch im Einbruch", rebound: "Erholung nach Einbruch",
+  strained: "beansprucht", ready: "Normalbereich", unknown: "keine Daten",
 };
 const SIG_ICON = { hrv: "heart", rhr: "pulse", sleep: "moon", form: "gauge", acwr: "trend", monotony: "wave", subjective: "user" };
 const SIG_UNIT = { hrv: "ln rMSSD", rhr: "bpm", sleep: "h", form: "%", acwr: "", monotony: "", subjective: "/ 4" };
@@ -477,6 +485,9 @@ class IntervalsIcuPanel extends HTMLElement {
     this._dfaSport = "all";
     this._streams = {};
     this._laps = {};
+    this._sigDays = 180;
+    this._sigMode = "stack";
+    this._sigFocus = null;
     this._booted = false;
   }
 
@@ -513,6 +524,9 @@ class IntervalsIcuPanel extends HTMLElement {
   async _need(what) {
     try {
       if (what === "coach" && !this._coach) this._coach = await this._ws("coach");
+      if (what === "signals" && !this._signals) {
+        this._signals = await this._ws("signals", { days: this._sigDays });
+      }
       if (what === "pmc" && !this._pmc) this._pmc = await this._ws("pmc");
       if (what === "akt" && !this._acts) this._acts = await this._ws("activities", { limit: 300 });
       if (what === "thr" && !this._thr) this._thr = await this._ws("thresholds");
@@ -525,6 +539,7 @@ class IntervalsIcuPanel extends HTMLElement {
   async _setTab(t) {
     this._tab = t;
     if (t === "trainer") await this._need("coach");
+    if (t === "signale") await this._need("signals");
     if (t === "fitness") await this._need("pmc");
     if (t === "akt") await this._need("akt");
     if (t === "dfa") await this._need("thr");
@@ -578,6 +593,7 @@ class IntervalsIcuPanel extends HTMLElement {
     if (this._err && !this._rd) {
       html = `<div class="card pad err">Daten konnten nicht geladen werden: ${esc(this._err)}</div>`;
     } else if (this._tab === "trainer") html = this.rTrainer(this._coach, this._rd);
+    else if (this._tab === "signale") html = this.rSignale(this._signals);
     else if (this._tab === "heute") html = this.rHeute(this._rd, this._days, this._load);
     else if (this._tab === "kalender") html = this.rKalender(this._days);
     else if (this._tab === "fitness") html = this.rFitness(this._pmc, this._range);
@@ -608,6 +624,15 @@ class IntervalsIcuPanel extends HTMLElement {
       else if (act === "act") this._openAct(id);
       else if (act === "close") { this._sel = null; this._render(); }
       else if (act === "dfasport") { this._dfaSport = id; this._render(); }
+      else if (act === "sigdays") {
+        this._sigDays = +id; this._signals = null;
+        this._ws("signals", { days: this._sigDays }).then((s) => { this._signals = s; this._render(); });
+        this._render();
+      }
+      else if (act === "sigmode") { this._sigMode = id; this._render(); }
+      else if (act === "sigfocus") {
+        this._sigFocus = (this._sigFocus === id ? null : id); this._render();
+      }
     });
     root.addEventListener("pointermove", (e) => {
       const g = e.target.closest && e.target.closest("[data-grp]");
@@ -664,6 +689,190 @@ class IntervalsIcuPanel extends HTMLElement {
     });
     this._fillReadout(name, idx);
     this._xhOn = true;
+  }
+
+  /* ---------------- Signale ----------------
+     Seven series in seven units cannot share an axis - expressed as distance
+     from each signal's own baseline in standard deviations, they can.
+
+     The default is STACKED, not overlaid, on evidence: Javed/McDonnel/Elmqvist
+     (TVCG 2010) found split-space techniques clearly more efficient for
+     comparisons across series with a large visual span, and eight thin lines
+     exceed what colour vision can separate. Overlaying stays available for
+     two or three series, where shared space wins.
+
+     What makes the stack readable as one picture: a single time axis, a single
+     cursor, the same zero line in every field, and the state bands painted
+     behind ALL fields at once - so "what happened that week" is one glance. */
+  _stateBands(days, opts) {
+    const COL = { slump: C.red, recovering: C.amber, rebound: C.blue,
+                  strained: C.amber, ready: C.green, unknown: C.grey };
+    const OP = { slump: 0.18, recovering: 0.10, rebound: 0.10, strained: 0.07,
+                 ready: 0.0, unknown: 0.0 };
+    const n = days.length, w = opts.w, padL = opts.padL, padR = opts.padR;
+    const pw = w - padL - padR;
+    let out = "", run = null;
+    const flush = (end) => {
+      if (!run || !OP[run.state]) return;
+      const x0 = padL + (run.start / Math.max(1, n - 1)) * pw;
+      const x1 = padL + (end / Math.max(1, n - 1)) * pw;
+      out += `<rect x="${x0.toFixed(1)}" y="0" width="${Math.max(1.5, x1 - x0).toFixed(1)}"
+        height="${opts.h}" fill="${COL[run.state]}" opacity="${OP[run.state]}"/>`;
+    };
+    days.forEach((d, i) => {
+      if (!run || run.state !== d.state) { flush(i); run = { state: d.state, start: i }; }
+    });
+    flush(n - 1);
+    return out;
+  }
+
+  rSignale(sig) {
+    if (!sig) return `<div class="card pad">Signale werden geladen …</div>`;
+    const days = sig.days || [];
+    if (days.length < 10) return `<div class="card pad">Noch zu wenig Historie für den Signalvergleich.</div>`;
+    const n = days.length;
+    const swc = sig.swc || 0.5;
+    const KEYS = [
+      ["hrv", C.blue], ["rhr", ROLE.hr], ["sleep", C.cyan], ["form", C.violet],
+    ];
+    const labelOf = (k) => ((sig.signals || {})[k] || {}).label || k;
+    const series = {};
+    for (const [key] of KEYS) series[key] = days.map((d) => (d.z || {})[key] ?? null);
+    const acwr = days.map((d) => d.acwr ?? null);
+    const loads = days.map((d) => d.load || 0);
+
+    const xt = monthTicks(days.map((d) => d.date));
+    const bandOpts = { w: 880, padL: 48, padR: 14 };
+
+    // one field per signal: same zero line, same scale, one cursor
+    const field = (key, colour, h) => {
+      const vals = series[key];
+      if (!vals.some((v) => v != null)) return "";
+      const dim = this._sigFocus && this._sigFocus !== key;
+      const bands = this._stateBands(days, { ...bandOpts, h });
+      return `<div class="sigfield ${dim ? "dim" : ""}" data-act="sigfocus" data-id="${key}">
+        <div class="sflab" style="color:${colour}">${esc(labelOf(key))}
+          <span class="sfu">${esc(((sig.signals || {})[key] || {}).unit || "")}</span></div>
+        ${chart({
+          h, n, y0: -3, y1: 3, grp: "sig", padB: 4,
+          yticks: [-2, 0, 2], yf: (v) => (v > 0 ? "+" : "") + fmt(v, 0),
+          bands: [{ a: -swc, b: swc, c: C.tx3, op: 0.10 }],
+          hl: [{ y: 0, c: C.tx3 }],
+          s: [{ t: "line", v: vals, c: colour, w: 2, lop: dim ? 0.25 : 1 }],
+          extra: bands,
+        })}
+      </div>`;
+    };
+
+    let body = "";
+    if (this._sigMode === "overlay") {
+      const bandsBg = this._stateBands(days, { ...bandOpts, h: 300 });
+      body = `<div class="sigfield">
+        ${chart({ h: 300, n, y0: -3, y1: 3, grp: "sig", xt,
+          yticks: [-2, -1, 0, 1, 2], yf: (v) => (v > 0 ? "+" : "") + fmt(v, 0),
+          bands: [{ a: -swc, b: swc, c: C.tx3, op: 0.10 }],
+          hl: [{ y: 0, c: C.tx3, t: "deine Basislinie" }],
+          s: KEYS.filter(([k]) => series[k].some((v) => v != null))
+                 .map(([k, c]) => ({ t: "line", v: series[k], c,
+                   w: this._sigFocus === k ? 2.6 : 1.8,
+                   lop: this._sigFocus && this._sigFocus !== k ? 0.18 : 0.9 })),
+          extra: bandsBg })}
+      </div>`;
+    } else {
+      body = KEYS.map(([k, c]) => field(k, c, 86)).join("");
+    }
+
+    // load bar coloured by the DFA bands actually ridden
+    const maxLoad = Math.max(1, ...loads);
+    const barW = Math.max(1.6, (880 - 62) / n * 0.7);
+    let bars = "";
+    days.forEach((d, i) => {
+      if (!d.load) return;
+      const x = 48 + (i / Math.max(1, n - 1)) * (880 - 62);
+      const total = d.load / maxLoad * 74;
+      const act = (d.activities || []).find((a) => a.dfa_bands);
+      const parts = act ? act.dfa_bands : null;
+      if (!parts) {
+        bars += `<rect x="${(x - barW / 2).toFixed(1)}" y="${(80 - total).toFixed(1)}"
+          width="${barW.toFixed(1)}" height="${total.toFixed(1)}" fill="${C.slate}" opacity="0.75"/>`;
+      } else {
+        let y = 80;
+        [[parts[2], C.red], [parts[1], C.amber], [parts[0], C.green]].forEach(([share, col]) => {
+          const seg = total * (share / 100);
+          y -= seg;
+          if (seg > 0.4) bars += `<rect x="${(x - barW / 2).toFixed(1)}" y="${y.toFixed(1)}"
+            width="${barW.toFixed(1)}" height="${seg.toFixed(1)}" fill="${col}" opacity="0.9"/>`;
+        });
+      }
+      if (d.hard) bars += `<circle cx="${x.toFixed(1)}" cy="4" r="2.6" fill="${C.amber}"/>`;
+    });
+    const loadField = `<div class="sigfield">
+      <div class="sflab" style="color:${C.tx2}">Training <span class="sfu">Tageslast, gefärbt nach gefahrenen DFA-Bereichen</span></div>
+      <svg class="ch" viewBox="0 0 880 96" preserveAspectRatio="none" data-n="${n}" data-padl="48" data-padr="14">
+        ${this._stateBands(days, { ...bandOpts, h: 96 })}
+        <line x1="48" x2="866" y1="80" y2="80" stroke="${C.line}"/>
+        ${bars}
+        ${xt.map((tk) => `<text x="${48 + (tk.i / Math.max(1, n - 1)) * (880 - 62)}" y="93"
+           text-anchor="middle" class="ax">${tk.t}</text>`).join("")}
+        <line class="xh" x1="-9" x2="-9" y1="0" y2="84" stroke="${C.tx2}" stroke-width="1" stroke-dasharray="3 3" opacity="0"/>
+      </svg></div>`;
+
+    // the readout carries raw units, not z-scores - that is what one recognises
+    this._grp.sig = {
+      n,
+      xl: (i) => `${dMed(days[i].date)} · ${STATE_WORD[days[i].state] || days[i].state}`,
+      rows: [
+        ...KEYS.filter(([k]) => series[k].some((v) => v != null)).map(([k, c]) => ({
+          l: labelOf(k), c, u: ((sig.signals || {})[k] || {}).unit || "",
+          dec: k === "sleep" ? 1 : 0,
+          vals: days.map((d) => (d.raw || {})[k] ?? null),
+        })),
+        { l: "Akut : chronisch", c: C.slate, dec: 2, vals: acwr },
+        { l: "Tageslast", c: C.tx2, vals: loads },
+      ],
+    };
+
+    const legend = KEYS.map(([k, c]) =>
+      `<button class="lgbtn ${this._sigFocus === k ? "on" : ""}" data-act="sigfocus" data-id="${k}">
+        <i style="background:${c}"></i>${esc(labelOf(k))}</button>`).join("");
+    const statelegend = [["slump", "Einbruch", C.red], ["recovering", "noch im Einbruch", C.amber],
+                         ["rebound", "Erholung", C.blue], ["strained", "beansprucht", C.amber],
+                         ["ready", "Normalbereich", C.green]]
+      .map(([, w, c]) => `<span class="lg"><i class="swb" style="background:${c}"></i>${w}</span>`).join("");
+
+    const explain = Object.entries(sig.signals || {}).concat(Object.entries(sig.load_signals || {}))
+      .map(([key, meta]) => `<details class="more expl"><summary>${esc(meta.label)}${
+        meta.unit ? ` <span class="mut">in ${esc(meta.unit)}</span>` : ""}</summary>
+        <p class="readas">Zu lesen als: ${esc(meta.read || "")}</p>
+        <p class="src">${esc(meta.source || "")}</p></details>`).join("");
+
+    return `
+      <div class="bar">
+        <div class="legend">${legend}</div>
+        <div class="chips">
+          <button class="chipbtn ${this._sigMode === "stack" ? "on" : ""}" data-act="sigmode" data-id="stack">gestapelt</button>
+          <button class="chipbtn ${this._sigMode === "overlay" ? "on" : ""}" data-act="sigmode" data-id="overlay">überlagert</button>
+          ${[[42, "42 T"], [90, "3 M"], [180, "6 M"], [365, "1 J"]].map(([d, l]) =>
+            `<button class="chipbtn ${this._sigDays === d ? "on" : ""}" data-act="sigdays" data-id="${d}">${l}</button>`).join("")}
+        </div>
+      </div>
+      <p class="hint pad">Alle Signale in derselben Einheit: Abstand von <b>deiner eigenen</b>
+      Basislinie in Standardabweichungen. Die graue Zone ist ±0,5 — die kleinste bedeutsame
+      Änderung; was darin liegt, ist Rauschen. Der Ruhepuls ist gespiegelt, damit „oben"
+      überall günstig heißt. Hintergrundfarbe = Zustand laut Trainer.</p>
+      <div class="card pad0" data-grp="sig">
+        ${readout("sig")}
+        ${body}
+        ${this._sigMode === "stack" ? loadField : loadField}
+      </div>
+      <div class="bar"><div class="legend">${statelegend}
+        <span class="lg"><i class="swb" style="background:${C.green}"></i>aerob</span>
+        <span class="lg"><i class="swb" style="background:${C.amber}"></i>Übergang</span>
+        <span class="lg"><i class="swb" style="background:${C.red}"></i>anaerob</span>
+        <span class="lg">${ico("dot", C.amber, 12)} harte Einheit</span></div></div>
+
+      <h3 class="secname">Was die einzelnen Werte bedeuten <span class="hint">— und woher die Regel kommt</span></h3>
+      <div class="card">${explain}</div>`;
   }
 
   /* ---------------- Trainer ----------------
@@ -1839,6 +2048,21 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
   .lrow{grid-template-columns:30px 1fr 70px 74px;}
   .lrow>*:nth-child(5),.lrow>*:nth-child(6),.lrow>*:nth-child(7),.lrow>*:nth-child(8){display:none}
 }
+/* Signale */
+.sigfield{position:relative;margin:0 2px 2px;transition:opacity .15s}
+.sigfield.dim{opacity:.45}
+.sflab{position:absolute;left:52px;top:4px;font-size:12.5px;font-weight:650;pointer-events:none;z-index:2}
+.sflab .sfu{color:${C.tx3};font-weight:400;font-size:11.5px;margin-left:6px}
+.lgbtn{display:inline-flex;align-items:center;gap:6px;background:none;border:1px solid transparent;
+  border-radius:999px;padding:3px 10px;color:${C.tx2};font:inherit;font-size:13px;cursor:pointer}
+.lgbtn:hover{color:${C.tx}}
+.lgbtn.on{border-color:${C.line};background:${C.card2};color:${C.tx}}
+.lgbtn i{width:12px;height:4px;border-radius:2px;display:inline-block}
+.swb{width:12px;height:12px;border-radius:3px;display:inline-block;opacity:.85}
+.expl summary{font-size:14.5px;font-weight:600;color:${C.tx};padding:7px 0}
+.expl{border-bottom:1px solid ${C.line}44}
+.expl .readas{margin:2px 0 6px}
+
 /* Trainer */
 .tstate{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
 .tsic{flex:0 0 auto}

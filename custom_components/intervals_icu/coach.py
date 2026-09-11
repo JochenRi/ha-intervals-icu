@@ -537,3 +537,252 @@ def coach(data: dict[str, Any], budget: dict[str, Any] | None = None) -> dict[st
                         "Prozenten einer Maximalherzfrequenz.",
         },
     }
+
+
+# --- the signal matrix ---------------------------------------------------------
+# Seven signals in seven different units cannot share an axis. Expressed as
+# distance from the athlete's own baseline in standard deviations they can:
+# zero means "your normal", -2 means two spreads below it. That is what makes
+# the stacked view readable at all, and it is the same normalisation the
+# smallest-worthwhile-change logic already uses (PLEWS).
+SIGNALS: dict[str, dict[str, Any]] = {
+    "hrv": {
+        "label": "Herzratenvariabilität", "unit": "ms", "field": "hrv", "sign": 1, "log": True,
+        "read": "Höher als deine Basislinie heißt meist erholt. Aber nicht grenzenlos: "
+                "dauerhaft erhöhte Werte können auch Erschöpfung anzeigen.",
+        "source": "Plews/Buchheit und Altini: 7-Tage-Mittel gegen ein 60-Tage-Band, "
+                  "Schwelle ist die kleinste bedeutsame Änderung (0,5 SD). Deine Werte "
+                  "stammen aus der Nachtmessung der Uhr, nicht aus der validierten "
+                  "Morgenmessung im Liegen — als Trend brauchbar, als Absolutwert nicht.",
+    },
+    "rhr": {
+        "label": "Ruhepuls", "unit": "bpm", "field": "restingHR", "sign": -1, "log": False,
+        "read": "Niedriger ist besser, deshalb ist die Kurve gespiegelt: oben heißt immer "
+                "günstig. Der Ruhepuls schwankt von Tag zu Tag weniger als die HRV und "
+                "ordnet sie ein.",
+        "source": "Der Ruhepuls gilt als niederschwelliger Zusatzindikator; er ersetzt die "
+                  "HRV nicht, sondern ergänzt sie. Bei einem Infekt schlägt er oft "
+                  "deutlicher aus als die HRV.",
+    },
+    "sleep": {
+        "label": "Schlaf", "unit": "h", "field": "sleepSecs", "sign": 1, "log": False,
+        "scale": 1 / 3600,
+        "read": "Ein einzelner kurzer Schlaf sagt wenig; mehrere hintereinander sind ein "
+                "Signal. Auffällig lange Nächte nach einem Einbruch sind Erholung.",
+        "source": "Schlafdauer aus der Uhr geschätzt. Die Stadien-Erkennung von Wearables "
+                  "ist ungenau, die Dauer selbst ist brauchbar.",
+    },
+    "form": {
+        "label": "Form (TSB)", "unit": "", "field": "form", "sign": 1, "log": False,
+        "read": "Fitness minus Ermüdung. Positiv heißt ausgeruht, stark negativ heißt "
+                "belastet — beides ist weder gut noch schlecht, sondern eine Phase.",
+        "source": "Joe Friel; Intervals rechnet die Zonen relativ zur Fitness. Faustregel, "
+                  "keine Wissenschaft — sagt der Entwickler selbst.",
+    },
+}
+
+LOAD_SIGNALS = {
+    "acwr": {
+        "label": "Akut zu chronisch", "unit": "",
+        "read": "Verhältnis der letzten 7 zu den letzten 28 Tagen. Im Korridor 0,8–1,3 "
+                "unauffällig, ab 1,5 erhöht.",
+        "source": "Gabbett/Blanch. Umstritten: korrelative Belege, mathematisch gekoppelt, "
+                  "eine formelle Richtigstellung wurde beantragt, eine randomisierte Studie "
+                  "fand keinen Nutzen. Als Indikator lesen, nie als Urteil.",
+    },
+    "load": {
+        "label": "Tageslast", "unit": "",
+        "read": "Die Balken unten. Ihre Farbe zeigt, in welchen Bereichen die Einheit "
+                "gefahren wurde — gemessen an DFA alpha-1, nicht an geplanten Zonen.",
+        "source": "Rogers/Gronwald: alpha-1 über 0,75 aerob, 0,5–0,75 Übergang, "
+                  "darunter anaerob.",
+    },
+}
+
+
+def _z_series(values: dict[str, float], days: list[str], window: int = 60,
+              log: bool = False, sign: int = 1) -> dict[str, float]:
+    """Distance from a trailing baseline, in standard deviations.
+
+    The baseline trails the day it judges, so today is never part of its own
+    normal - otherwise a slow drift would erase itself.
+    """
+    import math
+    out: dict[str, float] = {}
+    ordered = [d for d in days if d in values]
+    for index, day in enumerate(ordered):
+        history = ordered[max(0, index - window):index]
+        if len(history) < 20:
+            continue
+        raw = [values[d] for d in history]
+        if log:
+            raw = [math.log(v) for v in raw if v > 0]
+        if len(raw) < 20:
+            continue
+        base, spread = _band(raw)
+        if spread <= 0:
+            continue
+        current = values[day]
+        if log:
+            if current <= 0:
+                continue
+            current = math.log(current)
+        out[day] = sign * (current - base) / spread
+    return out
+
+
+def state_series(data: dict[str, Any]) -> list[dict[str, str]]:
+    """The state for every past day, so the chart can be banded by it.
+
+    Same rules as `state`, applied day by day: a slump is an acute departure,
+    and it keeps colouring the following days until the recent values are back.
+    """
+    wellness = data.get("wellness") or {}
+    days = sorted(wellness)
+    hrv = _series(wellness, "hrv", days)
+    rhr = _series(wellness, "restingHR", days)
+    z_hrv = _z_series(hrv, days, log=True, sign=1)
+    z_rhr = _z_series(rhr, days, sign=1)      # unsigned here: a RISE is the warning
+
+    out: list[dict[str, str]] = []
+    slump_day: str | None = None
+    for day in days:
+        zh, zr = z_hrv.get(day), z_rhr.get(day)
+        if zh is None and zr is None:
+            out.append({"date": day, "state": "unknown"})
+            continue
+        acute = (zh is not None and zh <= -HRV_DROP_SD) or (zr is not None and zr >= RHR_RISE_SD)
+        if acute:
+            slump_day = day
+            out.append({"date": day, "state": "slump"})
+            continue
+        if slump_day is not None:
+            since = (date.fromisoformat(day) - date.fromisoformat(slump_day)).days
+            if since > RECOVERY_WINDOW:
+                slump_day = None
+            else:
+                # Same rule as state(): judge the recovery on the mean of the
+                # last three days, not on one day. A single dip below the
+                # baseline is noise, and the bands in the chart have to say
+                # exactly what the trainer view says.
+                window = [d for d in days if d <= day][-3:]
+                hs = [z_hrv[d] for d in window if d in z_hrv]
+                rs = [z_rhr[d] for d in window if d in z_rhr]
+                back = ((not hs or mean(hs) >= 0) and (not rs or mean(rs) <= 0))
+                out.append({"date": day, "state": "rebound" if back else "recovering"})
+                continue
+        if zh is not None and zh < -0.5:
+            out.append({"date": day, "state": "strained"})
+        else:
+            out.append({"date": day, "state": "ready"})
+    return out
+
+
+def signals(data: dict[str, Any], days_back: int = 180) -> dict[str, Any]:
+    """One row per day: every signal in its own units AND as a z-score, the
+    day's state, and what was ridden - including which DFA bands it touched."""
+    wellness = data.get("wellness") or {}
+    order = sorted(wellness)[-days_back:]
+    if not order:
+        return {"days": [], "signals": {}, "load_signals": LOAD_SIGNALS, "bands": []}
+
+    raw_by_signal: dict[str, dict[str, float]] = {}
+    z_by_signal: dict[str, dict[str, float]] = {}
+    all_days = sorted(wellness)
+    for key, meta in SIGNALS.items():
+        values: dict[str, float] = {}
+        for day in all_days:
+            value = _f((wellness.get(day) or {}).get(meta["field"]))
+            if value is None:
+                continue
+            values[day] = value * meta.get("scale", 1)
+        raw_by_signal[key] = values
+        z_by_signal[key] = _z_series(values, all_days, log=meta.get("log", False),
+                                     sign=meta.get("sign", 1))
+
+    states = {row["date"]: row["state"] for row in state_series(data)}
+
+    # activities per day, with the DFA band split so the bar can carry it
+    per_day: dict[str, list[dict[str, Any]]] = {}
+    dfa_all = data.get("dfa") or {}
+    for key, activity in (data.get("activities") or {}).items():
+        day = str(activity.get("start_date_local") or "")[:10]
+        if not day:
+            continue
+        summary = dfa_all.get(key) or {}
+        total = sum(_f(summary.get(field)) or 0 for field in
+                    ("secs_aerobic", "secs_transition", "secs_anaerobic"))
+        bands = None
+        if total > 0:
+            bands = [round((_f(summary.get(field)) or 0) / total * 100)
+                     for field in ("secs_aerobic", "secs_transition", "secs_anaerobic")]
+        group, label = ("other", "Sonstiges")
+        try:
+            from . import analytics as _an  # local import keeps this module HA-free
+            group, label = _an.sport_group(activity.get("type"))
+        except Exception:  # noqa: BLE001 - the fallback above is fine
+            pass
+        per_day.setdefault(day, []).append({
+            "id": key, "name": activity.get("name"), "group": group, "sport": label,
+            "load": _f(activity.get("icu_training_load")) or 0,
+            "intensity": _f(activity.get("icu_intensity")),
+            "minutes": round((activity.get("moving_time") or 0) / 60),
+            "dfa_bands": bands,
+            "hr": _f(activity.get("average_heartrate")),
+            "watts": _f(activity.get("icu_weighted_avg_watts") or activity.get("icu_average_watts")),
+            "decoupling": _f(activity.get("decoupling")),
+        })
+
+    acwr = {row["date"]: row.get("ratio") for row in _acwr_local(data)}
+    rows = []
+    for day in order:
+        acts = per_day.get(day, [])
+        rows.append({
+            "date": day,
+            "state": states.get(day, "unknown"),
+            "raw": {key: round(raw_by_signal[key].get(day), 2)
+                    for key in SIGNALS if raw_by_signal[key].get(day) is not None},
+            "z": {key: round(z_by_signal[key].get(day), 2)
+                  for key in SIGNALS if z_by_signal[key].get(day) is not None},
+            "acwr": round(acwr[day], 2) if acwr.get(day) is not None else None,
+            "load": round(sum(a["load"] for a in acts)),
+            "activities": acts,
+            "hard": any((a["intensity"] or 0) >= 80 for a in acts),
+        })
+
+    # contiguous state bands, so the background can be painted in few shapes
+    bands_out = []
+    for row in rows:
+        if bands_out and bands_out[-1]["state"] == row["state"]:
+            bands_out[-1]["to"] = row["date"]
+        else:
+            bands_out.append({"state": row["state"], "from": row["date"], "to": row["date"]})
+
+    return {"days": rows,
+            "signals": {key: {k: v for k, v in meta.items() if k not in ("field", "scale")}
+                        for key, meta in SIGNALS.items()},
+            "load_signals": LOAD_SIGNALS,
+            "bands": bands_out,
+            "swc": 0.5}
+
+
+def _acwr_local(data: dict[str, Any]) -> list[dict[str, Any]]:
+    """Acute:chronic per day, computed here so this module stays standalone."""
+    wellness = data.get("wellness") or {}
+    days = sorted(wellness)
+    loads = []
+    for day in days:
+        value = _f((wellness.get(day) or {}).get("ctlLoad"))
+        if value is None:
+            value = _f((wellness.get(day) or {}).get("load")) or 0.0
+        loads.append({"date": day, "load": value or 0.0})
+    out = []
+    for index, row in enumerate(loads):
+        if index < 27:
+            out.append({"date": row["date"], "ratio": None})
+            continue
+        acute = mean([r["load"] for r in loads[index - 6:index + 1]])
+        chronic = mean([r["load"] for r in loads[index - 27:index + 1]])
+        out.append({"date": row["date"],
+                    "ratio": (acute / chronic) if chronic > 0 else None})
+    return out

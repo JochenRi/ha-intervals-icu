@@ -1,6 +1,6 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 11.09.2026 · **Version:** 0.10.0 · **Status:** läuft produktiv auf HEIMDALL, Auslieferung über HACS
+**Stand:** 11.09.2026 · **Version:** 0.11.0 · **Status:** läuft produktiv auf HEIMDALL, Auslieferung über HACS
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu
 lokal archiviert, auswertet und in einem eigenen Seitenleisten-Panel darstellt.
@@ -261,6 +261,33 @@ beansprucht · im Normalbereich, und erkennt den Wiedereinstieg nach Pausen getr
 **Die Regel selbst ist nicht erfunden:** Javaloyes 2019/2020 und Vesterinen 2016
 (harte Einheit nur, wenn das 7-Tage-Mittel im oder über dem Normalband liegt), mit der
 Grenze von Düking 2021 daneben (kleiner, nicht signifikanter Effekt auf die Spitzenleistung).
+
+## 7c. Die Signal-Ansicht (neu in 0.11.0)
+
+Alle Signale auf **einer** Zeitachse, in **einer** Einheit: Abstand von der eigenen
+Basislinie in Standardabweichungen. Anders geht es nicht — ms, bpm, Stunden und ein
+Verhältnis teilen sich keine Achse.
+
+**Gestapelt statt überlagert, und zwar auf Befund:** Javed/McDonnel/Elmqvist (TVCG 2010)
+fanden getrennte Felder je Reihe beim Vergleich über mehrere Zeitreihen mit großer
+visueller Spannweite deutlich effizienter als gemeinsame Flächen; bei acht dünnen Linien
+versagt zudem die Farbauflösung des Auges. Überlagern bleibt als Schalter für zwei, drei
+Reihen, wo gemeinsame Fläche gewinnt.
+
+Die Kniffe, die das Bild lesbar machen:
+
+- **Hintergrundbänder aus dem Trainer** hinter *allen* Feldern: Einbruch, noch im
+  Einbruch, Erholung, beansprucht. Eine Woche wird damit zu einer Form, nicht zu vier
+  Kurvenfragmenten. `state_series` und `state` teilen sich die Regel — ein Test hält fest,
+  dass Band und Trainerurteil nie auseinanderlaufen.
+- **Der Ruhepuls ist gespiegelt**, damit „oben" in jedem Feld günstig heißt. Steht als
+  Satz daneben, nicht im Kleingedruckten.
+- **±0,5 SD als graue Zone** — die kleinste bedeutsame Änderung. Was darin liegt, ist Rauschen.
+- **Die Lastbalken sind nach den tatsächlich gefahrenen DFA-Bereichen eingefärbt**
+  (aerob/Übergang/anaerob), nicht nach geplanten Zonen. Harte Einheiten tragen einen Punkt.
+- **Die Ableseleiste zeigt Rohwerte**, nicht z-Werte: 63 ms erkennt man wieder, +1,9 SD nicht.
+- **Klick auf ein Signal** blendet die übrigen ab, statt ein Fenster zu öffnen.
+- Darunter je Signal Lesehilfe und Quelle, aufklappbar.
 
 ## 8. Offen
 

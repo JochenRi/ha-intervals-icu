@@ -303,4 +303,53 @@ function coach(kind) {
     warnings: [] } };
 }
 
-module.exports = { TODAY, days, load, readiness, activities, streams, thresholds, calendar, pmc, laps, coach };
+/* the signal matrix as intervals_icu/signals returns it, including the real
+ * September sequence: normal -> slump -> still down -> rebound */
+function signals(kind) {
+  const out = { days: [], swc: 0.5, bands: [],
+    signals: {
+      hrv: { label: "Herzratenvariabilität", unit: "ms", read: "Höher als deine Basislinie heißt meist erholt.",
+             source: "Plews/Buchheit und Altini: 7-Tage-Mittel gegen ein 60-Tage-Band." },
+      rhr: { label: "Ruhepuls", unit: "bpm", read: "Niedriger ist besser, die Kurve ist gespiegelt.",
+             source: "Niederschwelliger Zusatzindikator, ersetzt die HRV nicht." },
+      sleep: { label: "Schlaf", unit: "h", read: "Ein kurzer Schlaf sagt wenig, mehrere sind ein Signal.",
+               source: "Dauer aus der Uhr geschätzt." },
+      form: { label: "Form (TSB)", unit: "", read: "Fitness minus Ermüdung.",
+              source: "Joe Friel; Faustregel, keine Wissenschaft." },
+    },
+    load_signals: {
+      acwr: { label: "Akut zu chronisch", unit: "", read: "Korridor 0,8–1,3.",
+              source: "Gabbett/Blanch, umstritten." },
+      load: { label: "Tageslast", unit: "", read: "Farbe zeigt die gefahrenen DFA-Bereiche.",
+              source: "Rogers/Gronwald." },
+    } };
+  if (kind === "leer") return { ...out, days: [] };
+  const N = kind === "kurz" ? 6 : 120;
+  let d = new Date("2026-05-15T00:00:00");
+  for (let i = 0; i < N; i++) {
+    const iso = d.toISOString().slice(0, 10);
+    const last = N - i;
+    let state = "ready", hrvZ = 0.2 + ((i * 7) % 9 - 4) / 10, rhrZ = 0.1, raw = { hrv: 50, rhr: 56, sleep: 7.4, form: 2 };
+    if (last <= 7 && last > 4) { state = "slump"; hrvZ = -2.6; rhrZ = -1.9; raw = { hrv: 31, rhr: 64, sleep: 6.3, form: 8 }; }
+    else if (last <= 4 && last > 2) { state = "recovering"; hrvZ = -0.4; rhrZ = 0.3; raw = { hrv: 46, rhr: 56, sleep: 10.1, form: 12 }; }
+    else if (last <= 2) { state = "rebound"; hrvZ = 1.9; rhrZ = 2.1; raw = { hrv: 63, rhr: 51, sleep: 9.5, form: 13 }; }
+    const holes = kind === "luecken" && i % 5 === 2;
+    const hasSession = !holes && i % 3 === 0 && last > 7;
+    out.days.push({
+      date: iso, state,
+      z: holes ? {} : { hrv: +hrvZ.toFixed(2), rhr: +rhrZ.toFixed(2), sleep: 0.3, form: -0.2 },
+      raw: holes ? {} : raw,
+      acwr: i < 28 ? null : 0.9 + ((i * 11) % 40) / 100,
+      load: hasSession ? 60 + (i % 4) * 20 : 0,
+      hard: hasSession && i % 9 === 0,
+      activities: hasSession ? [{ id: "a" + i, name: "volumen", group: "ride", sport: "Rad",
+        load: 60, intensity: i % 9 === 0 ? 88 : 62, minutes: 75,
+        dfa_bands: kind === "ohnedfa" ? null : [82, 12, 6],
+        hr: 140, watts: 135, decoupling: 1.2 }] : [],
+    });
+    d = new Date(d.getTime() + 864e5);
+  }
+  return out;
+}
+
+module.exports = { TODAY, days, load, readiness, activities, streams, thresholds, calendar, pmc, laps, coach, signals };
