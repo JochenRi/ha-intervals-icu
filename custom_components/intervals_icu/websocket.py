@@ -203,33 +203,6 @@ def thin_streams(by_name: dict[str, list[Any]]) -> dict[str, Any]:
     }
 )
 @websocket_api.async_response
-@websocket_api.websocket_command(
-    {
-        vol.Required("type"): "intervals_icu/laps",
-        vol.Required("activity_id"): str,
-        vol.Optional("athlete_id"): str,
-    }
-)
-@websocket_api.async_response
-async def websocket_laps(hass, connection, msg) -> None:
-    """Fetch one activity's laps live.
-
-    Laps are not archived: they belong to a single opened activity and would
-    multiply the archive for no gain. The API returns them on the activity
-    itself when asked with intervals=true.
-    """
-    coordinator = _pick(hass, msg.get("athlete_id"))
-    if coordinator is None:
-        connection.send_error(msg["id"], "not_found", "no Intervals.icu athlete loaded")
-        return
-    try:
-        payload = await coordinator.client.async_get_intervals(str(msg["activity_id"]))
-    except Exception as err:  # noqa: BLE001 - surfaced to the panel as a message
-        connection.send_error(msg["id"], "fetch_failed", str(err))
-        return
-    connection.send_result(msg["id"], derive.normalize_laps(payload))
-
-
 async def websocket_streams(hass, connection, msg) -> None:
     """Fetch one activity's streams live and return them thinned.
 
@@ -348,3 +321,30 @@ def websocket_days(hass, connection, msg) -> None:
             weeks=msg.get("weeks", 12),
         ),
     )
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "intervals_icu/laps",
+        vol.Required("activity_id"): str,
+        vol.Optional("athlete_id"): str,
+    }
+)
+@websocket_api.async_response
+async def websocket_laps(hass, connection, msg) -> None:
+    """Fetch one activity's laps live.
+
+    Laps are not archived: they belong to a single opened activity and would
+    multiply the archive for no gain. The API returns them on the activity
+    itself when asked with intervals=true.
+    """
+    coordinator = _pick(hass, msg.get("athlete_id"))
+    if coordinator is None:
+        connection.send_error(msg["id"], "not_found", "no Intervals.icu athlete loaded")
+        return
+    try:
+        payload = await coordinator.client.async_get_intervals(str(msg["activity_id"]))
+    except Exception as err:  # noqa: BLE001 - surfaced to the panel as a message
+        connection.send_error(msg["id"], "fetch_failed", str(err))
+        return
+    connection.send_result(msg["id"], derive.normalize_laps(payload))
