@@ -314,6 +314,15 @@ function chart(o) {
   for (const x of (o.xt || [])) {
     g += `<text x="${X(x.i)}" y="${h - 6}" text-anchor="middle" class="ax">${x.t}</text>`;
   }
+  // Direct labels sit ON the line they name. A legend forces the eye to travel
+  // between two places and hold the mapping in memory; putting the name where
+  // the data is removes that search entirely.
+  for (const tag of (o.tags || [])) {
+    if (tag.v == null) continue;
+    const tx = Math.min(X(tag.i), w - padR - 4);
+    g += `<text x="${tx}" y="${(Y(tag.v) + (tag.dy || -5)).toFixed(1)}" text-anchor="end"
+      class="tag" fill="${tag.c}">${tag.t}</text>`;
+  }
   const xh = o.grp ? `<line class="xh" x1="-9" x2="-9" y1="${padT}" y2="${padT + ph}" stroke="${C.tx2}" stroke-width="1" stroke-dasharray="3 3" opacity="0"/>` : "";
   const lbl = o.label ? `<text x="${padL + 2}" y="${padT + 12}" class="pl" fill="${o.labelc || C.tx2}">${o.label}</text>` : "";
   return `<svg class="ch" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" data-n="${n}" data-padl="${padL}" data-padr="${padR}" data-w="${w}">${g}${lbl}${xh}</svg>`;
@@ -1733,6 +1742,15 @@ class IntervalsIcuPanel extends HTMLElement {
         // lightness carries the order: pale first block, solid last
         lop: 0.34 + 0.66 * (index / Math.max(1, cuts.length - 1)),
       }));
+      // one label per line, at its own end - no legend to look up
+      const tags = cuts.map((vals, index) => {
+        let last = vals.length - 1;
+        while (last > 0 && vals[last] == null) last--;
+        if (last < 1) return null;
+        const spread = (y1 - y0) || 1;
+        return { i: last, v: vals[last], t: "Block " + work[index].n, c: d.c,
+                 dy: -6 - (index % 2) * 10 };
+      }).filter(Boolean);
       const ticks = [];
       const secs = Math.round(medDur);
       for (let k = 0; k <= 4; k++) {
@@ -1748,7 +1766,7 @@ class IntervalsIcuPanel extends HTMLElement {
           bands: d.dfa ? [{ a: 0.5, b: 0.75, c: C.amber, op: 0.09 },
                           { a: y0, b: 0.5, c: C.red, op: 0.09 }] : [],
           hl: d.dfa ? [{ y: 0.75, c: C.green, d: 1, t: "0,75" }] : [],
-          s: series })}
+          s: series, tags })}
       </div>`;
     }).join("");
 
@@ -1765,11 +1783,28 @@ class IntervalsIcuPanel extends HTMLElement {
     const base = work[0];
     // The BAR is normalised so the rows can be compared; the NUMBER is in the
     // unit the rider thinks in. "+11 bpm" means something, "+6,5 %" does not.
+    // Heart rate recovery after each block: how far the pulse drops in the
+    // first 60 seconds of the following rest. It falls as a series wears on
+    // and is a fatigue marker in its own right - measured from the stream,
+    // because a lap average cannot show it.
+    const hrr = new Map();
+    if ((ch.heartrate || []).length) {
+      for (const lap of work) {
+        const iEnd = at(lap.end_s), i60 = at(lap.end_s + 60);
+        if (iEnd == null || i60 == null || i60 <= iEnd) continue;
+        const tail = ch.heartrate.slice(Math.max(0, iEnd - 4), iEnd + 1).filter((v) => v > 0);
+        const after = ch.heartrate[Math.min(i60, ch.heartrate.length - 1)];
+        if (tail.length && after > 0) hrr.set(lap.n, Math.max(...tail) - after);
+      }
+    }
+
     const measures = [
       { l: "Leistung", u: " W", dec: 0, c: ROLE.pow, get: (l) => l.avg_watts, good: "up" },
       { l: "Herzfrequenz", u: " bpm", dec: 0, c: ROLE.hr, get: (l) => l.avg_hr, good: "down" },
       { l: "DFA alpha-1", u: "", dec: 2, c: ROLE.dfa, get: (l) => l.dfa_a1, good: "up" },
       { l: "Watt pro Herzschlag", u: "", dec: 2, c: C.blue, get: (l) => l.ef, good: "up" },
+      { l: "Puls-Erholung", u: " bpm", dec: 0, c: C.magenta, get: (l) => hrr.get(l.n),
+        good: "up", hint: "Abfall in den ersten 60 s der Pause danach" },
     ].filter((m) => m.get(base) != null && work.some((l) => m.get(l) != null));
 
     const devs = measures.map((m) => work.slice(1).map((l) => {
@@ -1781,29 +1816,35 @@ class IntervalsIcuPanel extends HTMLElement {
     const devRows = measures.map((m, k) => {
       const bars = work.slice(1).map((l, i) => {
         const v = devs[k][i];
-        if (v == null) return `<span class="devcell"><i class="devbar"></i><b class="mut">–</b></span>`;
+        if (v == null) return `<span class="devcell"><i class="devbar"></i></span>`;
         const better = m.good === "up" ? v > 0 : v < 0;
         const col = Math.abs(v) < 1.5 ? C.tx3 : (better ? C.green : C.amber);
-        const w = Math.min(50, Math.abs(v) / span * 50);
+        const w = Math.min(46, Math.abs(v) / span * 46);
         const left = v < 0 ? 50 - w : 50;
         const absDelta = m.get(l) - m.get(base);
+        // the number sits at the end of its own bar, on the side it points to
+        const side = v < 0 ? `right:${(50 + w + 2).toFixed(1)}%` : `left:${(50 + w + 2).toFixed(1)}%`;
         return `<span class="devcell" title="Block ${l.n}: ${sign(Math.round(v * 10) / 10, 1)} % gegenüber Block ${base.n}">
-          <i class="devbar"><s style="left:${left}%;width:${w}%;background:${col}"></s></i>
-          <b class="tn" style="color:${col}">${sign(absDelta, m.dec)}${m.u}</b>
-          <em>Block ${l.n} · ${sign(Math.round(v * 10) / 10, 1)} %</em></span>`;
+          <i class="devbar"><s style="left:${left}%;width:${w}%;background:${col}"></s>
+            <b class="tn" style="${side};color:${col}">${sign(absDelta, m.dec)}${m.u}</b></i></span>`;
       }).join("");
       return `<div class="devrow">
-        <span class="devlab"><i class="sw" style="background:${m.c}"></i>${esc(m.l)}
-          <em>${m.good === "up" ? "höher ist besser" : "niedriger ist besser"}</em></span>
+        <span class="devlab"><i class="sw" style="background:${m.c}"></i>
+          <span><b>${esc(m.l)}</b><em>${m.good === "up" ? "höher ist besser" : "niedriger ist besser"}${
+            m.hint ? " · " + esc(m.hint) : ""}</em></span></span>
         <span class="devbars">${bars}</span></div>`;
     }).join("");
+
+    const devHead = `<div class="devrow devhead2"><span></span><span class="devbars">
+      ${work.slice(1).map((l) => `<span class="devcell colhead">Block ${l.n}</span>`).join("")}
+      </span></div>`;
 
     const deviation = `<div class="devbox">
       <div class="devhead">Abweichung gegenüber <b>Block ${base.n}</b>
         <span class="hint">— die Zahl in ihrer eigenen Einheit, die Balkenlänge normiert, damit
         die Zeilen vergleichbar bleiben. Rechts heißt mehr, links weniger; grün günstig,
         gelb ungünstig.</span></div>
-      ${devRows}</div>`;
+      ${devHead}${devRows}</div>`;
 
     // the verdict, in numbers that need no chart
     const last = work[work.length - 1];
@@ -1846,9 +1887,9 @@ class IntervalsIcuPanel extends HTMLElement {
       <span class="hint">— ${work.length} gleichartige Blöcke übereinandergelegt</span></h3>
       ${verdict}
       <div class="cmpgrid">${panels}</div>
-      <div class="cmplegend">${work.map((l, i) =>
-        `<span class="lg"><i class="sw" style="background:${ROLE.pow};opacity:${(0.34 + 0.66 * (i / Math.max(1, work.length - 1))).toFixed(2)}"></i>Block ${l.n}</span>`).join("")}
-        <span class="hint">heller = früher in der Serie</span></div>
+      <div class="cmplegend"><span class="hint">Jede Linie trägt ihren Namen am Ende.
+        Zusätzlich gilt: je blasser, desto früher in der Serie —
+        ${work.map((l) => "Block " + l.n).join(" → ")}.</span></div>
       <h4 class="subname">Was sich von Block zu Block geändert hat
         <span class="hint">— Abweichung statt Absolutwert: die Bezugsgröße kennst du bereits,
         und Länge an gemeinsamer Grundlinie liest sich nachweislich genauer als der Winkel
@@ -2361,8 +2402,15 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
 .devbar{position:relative;display:block;height:14px;background:#0006;border-radius:3px}
 .devbar::before{content:"";position:absolute;left:50%;top:-2px;bottom:-2px;width:1.5px;background:${C.tx3}}
 .devbar s{position:absolute;top:2px;bottom:2px;border-radius:2px;display:block}
-.devcell b{font-size:14px}
+.devbar b{position:absolute;top:-2px;font-size:13px;white-space:nowrap;line-height:18px}
+.devcell{min-height:22px}
 .devcell em{font-style:normal;color:${C.tx3};font-size:11px}
+.devcell.colhead{display:block;text-align:center;color:${C.tx2};font-size:12.5px;font-weight:600;min-width:120px}
+.devcell.colhead em{display:block;font-weight:400;font-size:11px}
+.devrow.devhead2{border-top:none;padding-bottom:2px}
+.devlab{align-items:flex-start}
+.devlab b{display:block;font-size:13.5px}
+.devlab em{display:block;max-width:200px;line-height:1.35}
 .cmpverdict{display:flex;gap:11px;align-items:flex-start;border-radius:10px;padding:11px 13px;
   margin:0 2px 12px;font-size:14px;line-height:1.5}
 .cmpverdict.worse{background:${C.amber}12;border:1px solid ${C.amber}44}

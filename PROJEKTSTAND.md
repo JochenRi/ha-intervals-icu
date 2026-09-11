@@ -1,6 +1,6 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 11.09.2026 · **Version:** 0.15.0 · **Status:** produktiv auf HEIMDALL,
+**Stand:** 11.09.2026 · **Version:** 0.16.0 · **Status:** produktiv auf HEIMDALL,
 Auslieferung über HACS aus `github.com/JochenRi/ha-intervals-icu`
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lokal
@@ -126,6 +126,15 @@ Daraus die neue Ansicht:
   in ihrer eigenen Einheit** (−10 W, +11 bpm) — dieselbe Regel wie bei der Ableseleiste.
   Richtung wird mitkodiert: bei „höher ist besser" und „niedriger ist besser" bedeutet
   dasselbe Vorzeichen Gegenteiliges.
+- **Jede Linie trägt ihren Namen am Ende (0.16.0).** Eine Legende zwingt den Blick, zwischen
+  zwei Orten zu pendeln und die Zuordnung im Kopf zu halten; Beschriftung an der Linie
+  entfernt diese Suche. Die Helligkeit bleibt als zweiter Kanal (blass = früh).
+- **Puls-Erholung als fünfte Kennzahl (0.16.0):** wie weit der Puls in den ersten 60
+  Sekunden der Pause nach jedem Block zurückkommt. Ein eigenständiges Ermüdungsmaß, das
+  aus den Rundenmittelwerten nicht ablesbar ist — es wird aus dem Stream gerechnet.
+- **Spaltenköpfe über den Abweichungsbalken (0.16.0):** vorher hatte ein Balken keine
+  Adresse; jetzt steht über jeder Spalte, zu welchem Block sie gehört, und die Zahl sitzt
+  am Ende ihres eigenen Balkens statt darunter.
 - **Felder sind anklickbar:** ein Klick zieht ein Kanalfeld auf volle Breite und mehr als
   doppelte Höhe, ein zweiter klappt es zurück.
 - **Ein Urteil in Worten** darüber: „Die Serie hat abgebaut. Vom 2. zum 8. Block: Leistung

@@ -333,10 +333,20 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
     contains(html, "Abweichung gegenüber", "blockvergleich: Abweichungsdarstellung fehlt");
     contains(html, "höher ist besser", "blockvergleich: Richtung nicht benannt");
     contains(html, "niedriger ist besser", "blockvergleich: Richtung des Pulses nicht benannt");
-    ok((html.match(/class="devrow"/g) || []).length === 4,
-       "blockvergleich: nicht alle vier Kennzahlen als Abweichung");
-    ok((html.match(/class="devcell"/g) || []).length === 12,
+    ok((html.match(/class="devrow"/g) || []).length === 5,
+       "blockvergleich: nicht alle fünf Kennzahlen als Abweichung");
+    ok((html.match(/class="devcell"/g) || []).length === 15,
        "blockvergleich: nicht je Block und Kennzahl ein Balken");
+    // column heads name the blocks, so a bar has an address
+    ok((html.match(/class="devcell colhead"/g) || []).length === 3,
+       "blockvergleich: keine Blockspalten - man weiß nicht, welcher Balken welcher Block ist");
+    // heart rate recovery: a fatigue marker the lap averages cannot show
+    contains(html, "Puls-Erholung", "blockvergleich: Puls-Erholung fehlt");
+    contains(html, "ersten 60 s der Pause", "blockvergleich: Puls-Erholung nicht erklärt");
+    // direct labels on the lines instead of a legend to look up
+    ok((html.match(/class="tag"/g) || []).length >= 12,
+       "blockvergleich: Linien tragen ihren Namen nicht");
+    contains(html, "Jede Linie trägt ihren Namen am Ende", "blockvergleich: Hinweis fehlt");
     ok(!html.includes("Block 2 = 100 %"), "blockvergleich: Steigungsdiagramm noch da");
     // the direction must be encoded, not just the amount - and checked INSIDE
     // the deviation block, where green appears nowhere else
