@@ -683,15 +683,6 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   clean(p.rDfa(thr.map((x) => ({ ...x, power: null })), "all"), "dfa ohne leistung");
 }
 
-/* ── Plan ──────────────────────────────────────────────────────────────── */
-{
-  const html = p.rPlan(cal, rd);
-  clean(html, "plan");
-  contains(html, "SweetSpot Erhalt", "plan");
-  clean(p.rPlan([], rd), "plan leer");
-  clean(p.rPlan(null, null), "plan null");
-  clean(p.rPlan(cal, null), "plan ohne budget");
-}
 
 /* ── Bausteine an den Rändern ──────────────────────────────────────────── */
 {

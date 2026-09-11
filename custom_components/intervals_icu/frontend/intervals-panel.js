@@ -467,7 +467,7 @@ const TABS = [
   ["trainer", "Trainer"],
   ["signale", "Signale"],
   ["heute", "Heute"], ["kalender", "Kalender"], ["fitness", "Fitness"],
-  ["akt", "Aktivitäten"], ["belastung", "Belastung"], ["dfa", "DFA"], ["plan", "Plan"],
+  ["akt", "Aktivitäten"], ["belastung", "Belastung"], ["dfa", "DFA"],
 ];
 const VERDICT = {
   green: "grün — normal trainieren.",
@@ -574,7 +574,6 @@ class IntervalsIcuPanel extends HTMLElement {
     if (t === "fitness") await this._need("pmc");
     if (t === "akt") await this._need("akt");
     if (t === "dfa") await this._need("thr");
-    if (t === "plan") await this._need("cal");
     this._render();
   }
 
@@ -638,7 +637,6 @@ class IntervalsIcuPanel extends HTMLElement {
     else if (this._tab === "akt") html = this.rAkt(this._acts, this._sel);
     else if (this._tab === "belastung") html = this.rBelastung(this._load);
     else if (this._tab === "dfa") html = this.rDfa(this._thr, this._dfaSport);
-    else if (this._tab === "plan") html = this.rPlan(this._cal, this._rd);
     this._view.innerHTML = html;
     // the strip must carry the newest values before anyone moves a mouse -
     // and on a touch screen nobody ever does
@@ -2557,43 +2555,6 @@ class IntervalsIcuPanel extends HTMLElement {
   }
 
   /* ---------------- Plan ---------------- */
-  rPlan(cal, rd) {
-    if (!cal) return `<div class="card pad">Plan wird geladen …</div>`;
-    const today = new Date().toISOString().slice(0, 10);
-    const upcoming = cal.filter((p) => String(p.start).slice(0, 10) >= today);
-    if (!upcoming.length) return `<div class="card pad">Keine geplanten Einheiten in den nächsten Wochen.</div>`;
-    const budget = rd && rd.budget;
-    const byDay = new Map();
-    for (const p of upcoming) {
-      const day = String(p.start).slice(0, 10);
-      if (!byDay.has(day)) byDay.set(day, []);
-      byDay.get(day).push(p);
-    }
-    const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
-    return [...byDay.entries()].map(([day, items]) => {
-      const title = day === today ? "Heute" : day === tomorrow ? "Morgen" : `${dShort(day)} ${dMed(day).slice(3)}`;
-      const rowsHtml = items.map((p) => {
-        const sp = sportOf(p.type);
-        let fit = "";
-        if (day === today && budget && p.load != null && !p.completed) {
-          fit = p.load <= budget.recommended ? badge("green", "passt ins Budget")
-            : p.load <= budget.corridor_top ? badge("amber", "über Budget") : badge("red", "deutlich über Budget");
-        }
-        return `<div class="prow">
-          <span class="aic" style="color:${sp.c}">${ico(sp.ic, sp.c, 20)}</span>
-          <div class="pmain"><b>${esc(p.summary || sp.l)}</b>
-            <small>${sp.l}${p.moving_time ? " · " + dur(p.moving_time) : ""}${p.intensity ? " · Intensität " + fmt(p.intensity) + " %" : ""}</small>
-            ${p.description ? `<details class="more"><summary>Beschreibung</summary><p class="src pre">${esc(p.description)}</p></details>` : ""}
-          </div>
-          ${p.load != null ? `<span class="cl tn big3">${fmt(p.load)}</span>` : ""}
-          ${p.completed ? badge("green", "erledigt") : fit}
-        </div>`;
-      }).join("");
-      return `<h3 class="secname">${title}</h3><div class="card pad0">${rowsHtml}</div>`;
-    }).join("");
-  }
-
-  /* ---------------- styles ---------------- */
   _css() {
     return `
 :host{display:block;height:100%;overflow-y:auto;background:${C.bg};color:${C.tx};

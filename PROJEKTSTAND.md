@@ -1,6 +1,6 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 11.09.2026 · **Version:** 0.30.1 · **Status:** produktiv auf HEIMDALL,
+**Stand:** 11.09.2026 · **Version:** 0.31.0 · **Status:** produktiv auf HEIMDALL,
 Auslieferung über HACS aus `github.com/JochenRi/ha-intervals-icu`
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lokal
@@ -17,7 +17,7 @@ kostenloses HACS-Repository für andere gedacht.
 | Archiv | Vollständige Historie lokal in `.storage`, ~300 kB, keine Datenbank |
 | Entitäten | 49 Sensoren + Kalender-Entität für Automationen und Langzeitstatistik |
 | Auswertung | Trainingslast, DFA alpha-1, Zustandserkennung, Lastbudget, Einheitenvorschläge |
-| Panel | Eintrag „Intervals" in der Seitenleiste, neun Ansichten |
+| Panel | Eintrag „Intervals" in der Seitenleiste, acht Ansichten |
 
 **Datenbestand (Konto i123456):** 487 Wellness-Tage · 239 Aktivitäten · 57 DFA-Auswertungen
 
@@ -96,7 +96,6 @@ Alles am eigenen Konto geprüft, nicht aus Dokumentation übernommen.
 | **Aktivitäten** | Tabelle, je Einheit: Kennzahlen, **Runden** mit EF-Verlauf, **Rundenkurven mit gemeinsamer Skala**, gestapelte Verlaufskurven |
 | **Belastung** | Wochenlast, ACWR, Intensitätsverteilung zweifach, HRV-Trend, Entkopplung |
 | **DFA** | Schwellenverlauf mit rollierendem Median, Leistung als eigenes Feld |
-| **Plan** | Geplante Workouts nach Tagen |
 
 ### Segmentanalyse (0.17.0) — dieselbe Tabelle für Intervalle und Grundlage
 
