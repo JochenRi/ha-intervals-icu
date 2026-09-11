@@ -4,8 +4,10 @@
 Auslieferung über HACS aus `github.com/JochenRi/ha-intervals-icu`
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lokal
-archiviert, auswertet und in einem eigenen Seitenleisten-Panel darstellt. Später als
-kostenloses HACS-Repository für andere gedacht.
+archiviert, auswertet und in einem eigenen Seitenleisten-Panel darstellt.
+
+**Umfang:** ~8.900 Zeilen, davon 3.130 Frontend · 21 WebSocket-Befehle · 15 Einheiten in
+8 Familien · 14 Testdateien mit rund 1.900 Einzelprüfungen · 31 Releases.
 
 ---
 
@@ -16,10 +18,10 @@ kostenloses HACS-Repository für andere gedacht.
 | API-Client | Wellness, Aktivitäten, Kalender, Streams, Runden; ein Schreibweg (Workout planen) |
 | Archiv | Vollständige Historie lokal in `.storage`, ~300 kB, keine Datenbank |
 | Entitäten | 49 Sensoren + Kalender-Entität für Automationen und Langzeitstatistik |
-| Auswertung | Trainingslast, DFA alpha-1, Zustandserkennung, Lastbudget, Einheitenvorschläge |
+| Auswertung | Trainingslast, DFA alpha-1, Zustandserkennung, Lastbudget, Einheitenvorschläge, Nachtreaktion, Einordnung gegen die eigene Historie |
 | Panel | Eintrag „Intervals" in der Seitenleiste, acht Ansichten |
 
-**Datenbestand (Konto i123456):** 487 Wellness-Tage · 239 Aktivitäten · 57 DFA-Auswertungen
+**Datenbestand:** 487 Wellness-Tage · 239 Aktivitäten · 57 DFA-Auswertungen
 
 ---
 
@@ -34,30 +36,24 @@ custom_components/intervals_icu/
 ├── store.py          Archiv über die offizielle HA-Storage-Schnittstelle
 ├── importer.py       Import- und Zusammenführ-Logik, versioniert
 ├── derive.py         Parselogik: Streams, DFA, Runden (HA-frei)
-├── analytics.py      Trainingsauswertung: PMC, ACWR, Monotonie, Bereitschaft (HA-frei)
-├── coach.py          Zustandserkennung, Anker, Signalmatrix, Empfehlung (HA-frei)
+├── analytics.py      PMC, ACWR, Monotonie, Bereitschaft (HA-frei)
+├── coach.py          Zustand, Anker, Signalmatrix, Nachtreaktion, Einordnung (HA-frei)
 ├── workouts.py       Einheitenbibliothek mit Belegen und Intervals-Syntax (HA-frei)
+├── plan.py           Zielprofil und Wochenlogik (HA-frei)
 ├── sensor.py         49 Entitäten
 ├── calendar.py       Kalender-Entität mit geplanten Workouts
-├── websocket.py      16 Kommandos für das Panel
+├── websocket.py      21 Kommandos für das Panel
 └── frontend/
-    └── intervals-panel.js   Panel, eine Datei ohne Abhängigkeiten
+    └── intervals-panel.js   Panel, eine Datei ohne Abhängigkeiten (3.130 Zeilen)
 ```
 
-### Warum so und nicht anders
+**Fünf HA-freie Module** (`derive`, `analytics`, `coach`, `workouts`, `plan`) importieren
+nichts von Home Assistant. Jede Rechnung und jede Regel lässt sich außerhalb von HA gegen
+echte Datensätze durchspielen — der gesamte Prüfstand beruht darauf.
 
-- **Vier HA-freie Module.** `derive`, `analytics`, `coach` und `workouts` importieren nichts
-  von Home Assistant. Jede Rechnung und jede Regel lässt sich damit außerhalb von HA gegen
-  echte Datensätze durchspielen — der gesamte Prüfstand beruht darauf.
-- **Kein zweites Repository für die Karte.** Panel und Hilfsfunktionen liegen in einer
-  Datei. Eine zweite Datei ist eine zweite Sache, die beim Kopieren verlorengeht — und der
-  Browser meldet nie, *welcher* Import fehlte.
-- **Archiv statt Recorder.** HA löscht Rohzustände nach ~10 Tagen und erzeugt Statistiken
-  nicht rückwirkend. Aktivitäten gehören nicht in die State-Machine; das Panel liest die
-  WebSocket-Schnittstelle.
-- **Streams und Runden bewusst nicht im Archiv.** Ein Jahr Sekundendaten hat auf der Platte
-  nichts verloren. Sie werden beim Öffnen einer Einheit live geholt, auf höchstens 900
-  Punkte ausgedünnt und nicht gespeichert.
+**Archiv statt Recorder.** HA löscht Rohzustände nach ~10 Tagen und erzeugt Statistiken
+nicht rückwirkend. Streams und Runden liegen bewusst *nicht* im Archiv: sie werden beim
+Öffnen einer Einheit live geholt, auf höchstens 900 Punkte ausgedünnt und nicht gespeichert.
 
 ---
 
@@ -70,12 +66,14 @@ Alles am eigenen Konto geprüft, nicht aus Dokumentation übernommen.
 | Auth ist **HTTP Basic** mit dem literalen Benutzernamen `API_KEY` | Bearer-Token funktioniert nicht — der häufigste 403-Grund |
 | Athlete-IDs tragen meist ein führendes `i` | nur früh registrierte Strava-Nutzer haben reine Zahlen |
 | CTL/ATL heißen im Wellness-Datensatz **`ctl`/`atl`** | nicht `icu_ctl`, wie im Forum behauptet |
+| **Die FTP steht auf jeder Aktivität als `icu_ftp`** | nicht in `sport_settings` — das kostete drei Releases (siehe 7.) |
+| **Die Tageslast steht in den Aktivitäten**, nicht verlässlich in `wellness.load` | dasselbe Muster, derselbe Tag |
 | `fields=` funktioniert | ganzer Jahresbestand in einer Anfrage |
 | Zonenzeiten kommen in **zwei Formaten** | Puls: Zahlenliste · Leistung: Objekte mit `secs` |
 | Strava-Aktivitäten liefert die API **nicht** aus | Platzhalter mit `_note`, müssen übersprungen werden |
 | `/activity/<id>/streams.json` liefert eine **Liste** | kein Mapping — `derive.streams_to_dict` macht daraus `name → daten` |
-| **Runden** haben keinen eigenen Endpunkt | sie hängen an der Aktivität: `/activity/<id>?intervals=true`, Feld `icu_intervals` |
-| **Workouts planen:** Schritte als Plaintext ins Feld `description` | `workout_doc` bleibt leer, Intervals parst selbst — ein Format statt zwei |
+| **Runden** haben keinen eigenen Endpunkt | sie hängen an der Aktivität: `?intervals=true`, Feld `icu_intervals`; mit `start_index`/`end_index` **und** `start_time`/`end_time` |
+| **Workouts planen:** Schritte als Plaintext ins Feld `description` | `workout_doc` bleibt leer, Intervals parst selbst |
 | `dfa_a1` liegt sekundengenau in den Streams | bei 57 von 239 Einheiten, abhängig von der Aufzeichnung |
 | DFA-Streams enthalten `0.0`-Artefakte am Anfang | zählt sonst fälschlich als anaerob |
 | Puls- und Wattströme enthalten Nullen (Aussetzer, Rollen) | verfälschen sonst die Schwellenablesung |
@@ -84,389 +82,18 @@ Alles am eigenen Konto geprüft, nicht aus Dokumentation übernommen.
 
 ---
 
-## 4. Die Ansichten
+## 4. Die acht Ansichten
 
 | Ansicht | Inhalt |
 |---|---|
-| **Trainer** | Zustand heute, konkrete Einheiten mit Wattzahlen und Kalender-Knopf, gemessene Anker, Durability, Wochenvorschlag, Einheitenkatalog |
+| **Trainer** | Zwei Kacheln (Ziel, Zeit) · Zustand als drei beschriftete Zeilen auf einer Achse · Leitempfehlung für heute · sieben Einheiten mit Watt, Wirkung, Beleg und Tagesurteil |
 | **Signale** | Alle Signale auf einer Zeitachse in Standardabweichungen, Zustandsbänder im Hintergrund, Lastbalken nach gefahrenen DFA-Bereichen |
-| **Heute** | Bereitschaftsring aus sieben Signalen, Lastbudget als Bullet-Graph mit Rechenweg |
-| **Kalender** | Wochenraster mit Wellness-Symbolen, Einheiten als Kacheln, Geplantes in drei Zuständen |
+| **Heute** | Was heute möglich ist + Obergrenze als Bullet-Graph · jedes Signal einzeln mit seinem System, aufklappbar mit 42-Tage-Kurve und eigenen Bereichen · sieben Tage Last · die Nacht nach der letzten Einheit |
+| **Kalender** | Wochenraster mit Wellness-Symbolen, Einheiten als Kacheln |
 | **Fitness** | Fitness/Ermüdung · Tagesbelastung · Form mit Friel-Zonen, gemeinsame Zeitachse |
-| **Aktivitäten** | Tabelle, je Einheit: Kennzahlen, **Runden** mit EF-Verlauf, **Rundenkurven mit gemeinsamer Skala**, gestapelte Verlaufskurven |
+| **Aktivitäten** | Tabelle; je Einheit: Kennzahlen, Runden, Segmentanalyse, Einordnung gegen die eigene Historie, Nachtreaktion, Verlaufskurven |
 | **Belastung** | Wochenlast, ACWR, Intensitätsverteilung zweifach, HRV-Trend, Entkopplung |
-| **DFA** | Schwellenverlauf mit rollierendem Median, Leistung als eigenes Feld |
-
-### Segmentanalyse (0.17.0) — dieselbe Tabelle für Intervalle und Grundlage
-
-**Zwei verworfene Entwürfe stehen davor, beide lehrreich:**
-
-1. *0.13.0 — eine Zeile je Runde, gemeinsame Skala.* Machte die Zeilen vergleichbar und jede
-   einzelne Kurve zum Strich.
-2. *0.14.0–0.16.0 — die Blöcke übereinandergelegt.* Theoretisch richtig (Gleicher:
-   Superposition, wenn die Objekte ähnlich genug sind), praktisch ein Knäuel: bei
-   verrauschten Sekundendaten gilt der Befund von Javed et al., dass mehr Linien die
-   Korrektheit senken und die Elemente ihre Unterscheidbarkeit verlieren. Direktbeschriftung
-   und Aufzoomen haben das gemildert, nicht behoben.
-
-**Was bleibt, ist die Tabelle** — und sie ist jetzt ein allgemeines Werkzeug (`_devTable`),
-das auf jede geordnete Liste von Abschnitten passt:
-
-| Fall | Abschnitte |
-|---|---|
-| Intervalleinheit | die gleichartigen Arbeitsblöcke |
-| Gleichmäßige Fahrt | vier gleich lange Viertel, Aufwärmphase ausgenommen |
-
-Zeilen sind Kennzahlen (Leistung, Puls, DFA, Watt/Herzschlag, Puls-Erholung), Spalten sind
-Abschnitte, jeder Balken die Abweichung vom ersten — **Länge an gemeinsamer Grundlinie**,
-die am genauesten gelesene Kodierung, mit der Zahl in ihrer eigenen Einheit daneben und dem
-Bezugswert in der Zeilenbeschriftung.
-
-**Der Grundlagen-Fall ist der Entkopplungstest, sichtbar gemacht.** Kardiale Drift — der
-Puls steigt bei konstanter Leistung — ist das *Was*; ob Watt pro Herzschlag zusammenhält,
-das *Na und*. Die Einordnung folgt den veröffentlichten Richtwerten: unter 3 % halten
-trainierte Fahrer, 5 % ist Friels Richtwert, 5–10 % ist der Freizeitbereich, über 10 % lag
-die Einheit wahrscheinlich über der aeroben Schwelle. **Vier Viertel statt zwei Hälften**,
-weil der Zeitpunkt der Veränderung selbst eine Information ist, die der übliche
-Einzelwert verschweigt.
-
-Ein Test fährt vier Fahrten mit unterschiedlicher Drift durch (1,1 % / 4,0 % / 5,3 % /
-14,5 %) und verlangt für jede die richtige Einstufung.
-
-### Die Wochenleiste, richtig ausgerichtet (0.30.1)
-
-Die sieben Tage lagen in einer Flex-Zeile, unten ausgerichtet — Tage mit Einheitennamen
-wurden dadurch höher als Tage ohne, und die Balken rutschten nach oben. **Damit war die
-Länge nicht mehr vergleichbar**, und genau darauf beruht die Darstellung.
-
-Jetzt ein Raster mit vier festen Zeilen je Tag: Balkenfeld · Datum · Last · Einheit. Alle
-Balken wachsen aus **derselben Grundlinie**, die Beschriftungen fluchten über alle sieben
-Tage, die Höhe ist ein Prozentsatz des Feldes statt einer Pixelzahl. Ruhetage stehen als
-„frei" da statt leer, der heutige Tag ist hinterlegt. Ein Test verbietet Pixelhöhen und
-verlangt, dass der höchste Balken sein Feld ausfüllt.
-
-### Bereiche aus den eigenen Daten (0.30.0)
-
-Die aufgeklappte Signalkurve trägt jetzt die Bereiche, die aus **deiner eigenen
-60-Tage-Verteilung** stammen — **in der Einheit des Signals, nicht in Standardabweichungen**:
-man erkennt 41 ms wieder, −1,5 SD nicht.
-
-| Bereich | Bedeutung |
-|---|---|
-| dunkles Band | ±0,5 SD um die Basislinie — **was darin liegt, ist Rauschen** |
-| helleres Band | ±1 SD — die gewohnte Schwankung |
-| gestrichelte Linie | die Basislinie selbst, beziffert |
-| gelbe Linie | 2 SD — ab hier ist ein Abfall kein Rauschen mehr |
-
-**Die Richtung folgt dem Signal:** bei der HRV liegt die Warnlinie unten („Einbruch ab
-35 ms"), beim Ruhepuls oben („auffällig hoch 62 bpm"). Bei der HRV läuft die Rücktransformation
-über `exp()`, weil die Basislinie auf der Log-Skala gerechnet wird — ohne das kämen negative
-Millisekunden heraus; ein Test prüft genau das.
-
-**Beim Bauen gefunden:** die Warnlinie des Ruhepulses lag außerhalb der Achse und wurde
-stillschweigend nicht gezeichnet. Die Achse schließt jetzt alle Marken ein.
-
-### Heute: aufklappbare Signale, echte Tageslast (0.29.0)
-
-**Ein Klick auf eine Signalkarte zieht sie auf volle Breite** — mit dem Wert groß, der
-42-Tage-Kurve gegen die eigene Basislinie und dem Satz, worüber dieser Wert überhaupt etwas
-aussagt. Vorher stand die Erklärung klein am Kartenrand.
-
-**Und ein zweiter Fehler derselben Art wie die FTP:** die Tageslast wurde aus dem Feld
-`load` des Wellness-Datensatzes gelesen. Das ist auf diesem Konto nicht gefüllt — Ergebnis:
-**„0 Last in sieben Tagen"** in einer Woche mit einer Ausfahrt und einem Spaziergang. Jetzt
-wird sie aus den Aktivitäten summiert, das Wellness-Feld dient nur noch als Rückfall, und
-jeder Tagesbalken trägt den Namen der Einheit. Ein Test entfernt das Wellness-Feld aus dem
-Archiv und verlangt trotzdem die richtige Wochenlast.
-
-### Heute, neu gebaut (0.21.0) — gegen die Kritik an Bereitschaftswerten
-
-Ring, Punktwert („5 von 7 Signalen") und Monotonie sind raus. Zwei Befunde haben die
-Ansicht neu geformt:
-
-**Bereitschaft ist nicht Erholung.** *Erholung beschreibt, was als Reaktion auf vergangenen
-Stress passiert ist; Bereitschaft, was im gegenwärtigen Moment vertragen wird.* Eine Zahl
-presst beides zusammen — und ein niedriger Wert aus einer kurzen Nacht sieht aus wie einer
-aus einem beginnenden Infekt, verlangt aber das Gegenteil.
-
-**Von vierzehn Bereitschaftswerten aus zehn Wearable-Häusern** (Garmin, Whoop, Oura, Polar,
-Fitbit …) legt **kein einziger seine Formel offen**, und kaum einer hat eine Validierung
-vorzuweisen. Die Zutaten sind überall dieselben — HRV 86 %, Ruhepuls 79 %, Schlaf 71 % —,
-die Gewichtung bleibt Betriebsgeheimnis.
-
-**Die empfohlene Alternative steht in derselben Quelle** und ist jetzt die Gliederung der
-Seite: solche Daten nicht als Urteil behandeln, sondern als Anstoß zur Nachfrage —
-*was hat sich geändert, welches System treibt es, wie passt das zum jüngsten Training.*
-
-1. **Was heute möglich ist** — ein Satz, dazu eine Obergrenze als Bullet-Graph mit dem
-   heute schon Gefahrenen.
-2. **Was sich bewegt hat** — jedes Signal einzeln, **mit dem System, über das es etwas
-   aussagt** (autonomes Nervensystem vs. Verhalten) und mit dem, was es nicht kann.
-   Nie gemittelt.
-3. **Woher das kommt** — sieben Tage Last, nach Zustand eingefärbt, und die Nacht nach der
-   letzten Einheit, ausdrücklich als *Erholung, nicht Bereitschaft* beschriftet.
-
-**Wo Signale und Urteil auseinanderlaufen, sagt die Seite warum** statt es zu verstecken:
-„Herzratenvariabilität liegt unter deiner Basislinie — aber weder weit genug noch lange
-genug für einen Einbruch. Die Regel entscheidet über das Mittel der letzten drei Tage."
-
-**Und sie reicht nicht über heute hinaus.** Was morgen geht, hängt an der Belastung
-außerhalb des Trainings, und die steht in keinen Daten — *der wirksamste Einsatz solcher
-Werte liegt in der Anpassung der heutigen Einheit, nicht in der Planung der Woche.*
-
-Beim Umbau haben die alten Tests drei echte Regressionen gefangen: die Ampelfarbe ohne
-Wort (WCAG), der verschwundene Bullet-Graph und der fehlende Stand je Wert.
-
-### Die Empfehlung sichtbar, die Prozente endlich weg (0.28.0)
-
-**Ein Fehler, der drei Versionen überlebt hat:** das Aufklappfeld „Schritte, wie sie in
-Intervals landen" zeigte `entry.text` — den Prozent-Text — obwohl das Backend längst
-`entry.text_w` mit Wattwerten berechnete. Die Umstellung auf Watt war im Kalender richtig
-angekommen, in der Anzeige nie. Gefunden erst, als jemand hinsah, der die Seite benutzt.
-**Ein Test prüft jetzt den Inhalt dieses Feldes** und schlägt fehl, sobald dort wieder ein
-Prozentzeichen auftaucht.
-
-**Die Empfehlung war zu einer Textzeile geschrumpft.** In 0.27.0 wurde der doppelte
-Empfehlungsblock entfernt und die Marke auf eine Karte gesetzt — richtig gegen die doppelte
-Logik, falsch fürs Auge: die wichtigste Aussage der Seite stand als kleinste Zeile darin.
-Jetzt eine eigene Leitkarte: **„HEUTE EMPFOHLEN — aus deinem Zustand, den letzten Tagen und
-deinem Ziel"**, mit Titel, Dauer, Last, Pulsfenster, Wattbereich, Wirkung und Kalender-Knopf.
-**Aus derselben Logik wie die Liste** — die Karte unten trägt den Verweis „das ist die
-Empfehlung von oben", damit erkennbar bleibt, dass nicht zweimal gerechnet wird.
-
-### Eine Logik statt zweier (0.27.0)
-
-Der Trainer hatte **zwei Antworten auf dieselbe Frage**: oben einen Empfehlungsblock aus
-`coach.recommend`, unten die Einheitenliste aus `workouts.suggest`. Sie widersprachen sich
-nicht, aber sie konnten es jederzeit — zwei Rechenwege auf dieselbe Frage sind ein Fehler,
-der nur auf seinen Tag wartet.
-
-**Jetzt ist die Liste die Empfehlung.** Die erste Karte, die heute passt, trägt die Marke
-*„Empfehlung für heute — aus Zustand, letzten Tagen und Ziel"*. Ist die erste Einheit
-abgeraten, wandert die Marke nach unten statt zu verschwinden; ein Test erzwingt das und
-schlägt fehl, sobald wieder blind Index 0 markiert wird.
-
-**Das Lastbudget stand doppelt** — einmal als Ampel, einmal als Zusatzzeile. Es ist Teil
-desselben Urteils: passt eine Einheit zum Zustand, überschreitet aber das Budget, sagt das
-Abzeichen jetzt *„über dem Budget (95)"* statt zweimal dasselbe an zwei Stellen.
-
-### Die Trainer-Seite, durchgesehen (0.26.0)
-
-- **Prozente vollständig raus.** Auch die Blockbeschriftungen und die Tooltips tragen jetzt
-  Watt; Prozente erscheinen nur noch, wenn keine FTP bekannt ist — dann mit dem Zusatz
-  „% FTP", damit klar ist, worauf sie sich beziehen.
-- **Das Wissen ist zurück, aber am richtigen Ort.** Der gestrichene Einheitenkatalog hatte
-  erklärt, was welcher Reiz bewirkt. Das steht jetzt auf jeder Karte: **„Was das bringt"**
-  und **„Beleg"** sichtbar, die Grenze aufklappbar. Wissen gehört neben die Sache, nicht in
-  eine Tabelle am Seitenende.
-- **Der Zustand hat Zeilen statt Punktwolke.** Drei Zeilen, Name links, Punkt auf der
-  gemeinsamen Achse, Wert rechts — Beschriftung **an** der Sache statt in einer Legende
-  darunter, weil eine Legende den Blick zwischen zwei Orten pendeln lässt. Normalband und
-  Nulllinie laufen hinter allen Zeilen durch, damit weiter eine Skala gilt.
-- **Die lange Fahrt fehlte im Katalog** — das längste Angebot waren 95 Minuten, bei einem
-  Ziel von sechs Stunden. Neu: *Lange Grundlage 2,5 h* und *Lange Fahrt 3,5 h mit Endblock*
-  (zwei Zehnminutenblöcke am Ende, im ermüdeten Zustand — genau das, was das Ziel verlangt).
-  Die teuerste Einheit im Katalog, entsprechend bewertet.
-- **Das Laden läuft parallel** statt nacheinander: drei Rundreisen in Folge waren der
-  Unterschied zwischen sofort und „lädt noch".
-
-### Watt statt Prozent, und der Trainer auf das Nötige gekürzt (0.25.0)
-
-**Die Kalendereinträge tragen jetzt absolute Wattwerte** statt Prozentangaben:
-`- 4m 228-236w 95rpm` statt `- 4m 106-110%`. Grund: eine Prozentangabe landet nur dann
-richtig, wenn die in Intervals hinterlegte FTP mit der übereinstimmt, aus der die Einheit
-gerechnet wurde — stimmt sie nicht, ist **jedes Ziel der Einheit still verschoben**, und
-der Fahrer merkt es nicht. Ohne bekannte FTP bleiben Prozente stehen, statt Zahlen zu
-erfinden.
-
-**Gestrichen:** die Sieben-Tage-Vorschau und der Einheitenkatalog. Beides beantwortete
-nicht die Frage des Tages.
-
-**Umbenannt, weil es falsch hieß:** aus „Nächste Einheit" wurde **„Empfehlung für heute —
-aus Zustand, letzten Tagen und Ziel"**. Es war nie eine gewählte Einheit, sondern immer
-eine Empfehlung; der Name behauptete etwas anderes.
-
-**Der Zustand wird anders gezeichnet:** aus drei getrennten Balken wurde **eine Achse mit
-drei Punkten**. Drei Balken zwingen zum Vergleich über getrennte Skalen; Position auf einer
-gemeinsamen Achse ist die am genauesten gelesene Kodierung. Das Normalband (±0,5 SD) liegt
-hinterlegt, die Basislinie ist markiert, die Werte stehen beziffert darunter.
-
-### Bewerten statt filtern (0.24.0)
-
-**Der Fehler:** bei „Erholung nach Einbruch" blieben drei Grundlagenfahrten übrig, weil
-alles Härtere herausgefiltert wurde. Drei Varianten derselben Sache sind keine Auswahl.
-
-**Jetzt steht je Art genau eine Einheit da — und jede trägt ein Urteil für heute:**
-
-| | |
-|---|---|
-| **passt heute** | grün |
-| **möglich, kostet aber** | gelb, mit Begründung |
-| **heute nicht** | rot, mit Begründung |
-
-Sechs Arten: Grundlage · SweetSpot · Tempo · Schwelle · VO2max · Regeneration (dazu
-Wiedereinstieg nach einer Pause ab vier Tagen). Nichts verschwindet mehr — **die
-Entscheidung liegt beim Athleten, die Aufgabe der Daten ist zu sagen, was sie kostet.**
-
-Innerhalb einer Art wird die Variante gewählt, die zum Tag passt: bei VO2max ist das 4×4
-als Einstiegsdosis, 5×4 als Steigerung, 30/15 nur für gut Trainierte; liegt schon ein
-harter Tag in der Woche, rückt die kleinere Dosis nach vorn. Die übrigen Varianten stehen
-als Alternativen daneben.
-
-**Ein zweiter harter Tag stuft ab, er versteckt nicht:** bei zwei harten Tagen in der
-Woche wird die harte Einheit auf „möglich, kostet aber" gesetzt, mit dem Grund — zwei sind
-der Standard für Wochen dieser Größe, ein dritter die Ausnahme.
-
-**Oben nur noch zwei Kacheln.** Kein Wochenplan, keine Budgetwarnung, keine Vorschau: die
-Frage des Tages ist, welche Einheit — nicht, wie Woche 7 aussieht.
-
-### Der Trainer in einem Bild (0.23.0)
-
-**Oben zwei Kacheln** — Ziel und Zeit, beide anklickbar zum Ändern. **Unten fünf konkrete
-Einheiten für heute**, erzeugt aus Zustand, letzten Tagen, gemessenen Ankern und Ziel; eine
-davon per Klick in den Intervals-Kalender. Der Wochenplan ist eingeklappt: er ist Kontext,
-nicht die Frage des Tages.
-
-**Die Bibliothek trägt jetzt echte Alternativen** statt Varianten desselben:
-
-| Format | Beleg | Grenze |
-|---|---|---|
-| VO2max 4×4 | das am häufigsten untersuchte Format, als Einstiegsdosis empfohlen | wer den letzten Block nicht mit derselben Leistung schafft, ist zu hart gestartet — 2–3 % niedriger ansetzen |
-| VO2max 5×4 | Progression nach zwei Wochen 4×4; 110–115 % FTP, vier Minuten locker | ist der fünfte Block fast unmöglich, stimmt die Leistung |
-| 30/30 (Billat) | Ziel sind 16–36 Minuten Gesamtarbeit | mit steigender Form Deckeneffekt — dann liegt man eher an der Schwelle |
-| 30/15 (Rønnestad) | signifikant größere Zuwächse über zehn Wochen | **Richtigstellung:** der Vergleich wird oft als aufwandsgleich zitiert — 3×13×30/15 sind 29,5 min Arbeit gegen 20 min bei 4×5 |
-| Schwelle 4×10 | Progression: erst Häufigkeit, dann Dauer (4×10 → 3×15 → 2×20), zuletzt Intensität | wer im zweiten Block 15 Watt verliert, ist noch nicht bei 2×20 |
-
-**Das Ziel sortiert das Regal um, ohne es zu leeren:** bei „lange Fahrten" stehen Grundlage
-und SweetSpot vorn und VO2max weiter hinten — verfügbar, aber nicht als Hauptsache.
-
-### Zwei Fragen (0.22.0) — das Zielformular ist weg
-
-Aus sieben Feldern sind zwei Fragen geworden: **Worauf trainierst du?** und **an wie vielen
-Tagen pro Woche?** Alles andere steht bereits im Archiv und wird von dort gelesen —
-tatsächliche Wochenstunden der letzten acht Wochen, bisherige Fahrtage, längste Fahrt. Die
-Zieldauer ergibt sich als runde Zahl über dem bisher Erreichten und lässt sich ändern.
-Jedes nicht gestellte Feld ist eines, das niemand falsch ausfüllt.
-
-**Die Tageszahl ist die einzige Angabe, die nicht in den Daten stehen kann** — sie ist eine
-Entscheidung über die Zukunft, keine Aufzeichnung der Vergangenheit. Und sie klärt die
-wichtigste Zahl gleich mit:
-
-| Fahrtage | harte Einheiten |
-|---|---|
-| 2–3 | 1 |
-| 4–6 | 2 |
-| 7 | 3 |
-
-**Begründung:** die 80/20-Verteilung zählt **Einheiten, nicht Minuten** — bei fünf
-Fahrtagen vier lockere und eine harte. Zwei harte Einheiten sind der Standard für Wochen
-von 8 bis 14 Stunden; selbst WorldTour-Fahrer mit 25 Stunden gehen selten über drei.
-**Einschränkung, die mitgeliefert wird:** 80/20 ist eine nützliche Beschreibung, keine
-allgemeine Wochenvorschrift — ein Review von 2023 fand nur sieben geeignete Studien und
-keinen Beleg, dass ein Verteilungsmodell immer gewinnt.
-
-### Ziel und Plan (0.20.0) — der Trainer ist entpausiert
-
-Der Trainer schlug Einheiten vor, ohne zu wissen, wofür. Jetzt fragt er einmal: **Was
-willst du können, wie viele Tage hast du, wie viele Stunden, was kann nicht verschoben
-werden** — und leitet daraus Wochen ab. Das Profil liegt lokal im Archiv, nichts davon
-geht an intervals.icu.
-
-**Für das Ziel „lange Fahrten" ist die Zielgröße nicht FTP, sondern Durability.** Maunder
-definiert sie als *Zeitpunkt und Ausmaß der Verschlechterung physiologischer Merkmale
-während langer Belastung*. Sie ist eine eigene Eigenschaft: Profifahrer schlagen ihre
-Konkurrenz nicht über die frische Leistung, sondern darüber, wie viel davon nach Stunden
-übrig ist. Trainiert wird sie über lange Einheiten knapp unter der aeroben Schwelle — und
-ab etwa sechs bis acht Wochen vor dem Ziel über **Qualität am Ende** der langen Fahrt, nicht
-am Anfang. Dazu der Hinweis, der am häufigsten falsch gemacht wird: **durchgehend
-verpflegen** — der Reiz soll aus der Belastung kommen, nicht aus leeren Speichern.
-
-**Was der Planer bewusst NICHT behauptet:** dass Blockperiodisierung besser sei. Zwölf
-Wochen, trainierte Radfahrer, lastgleich verglichen — **kein Unterschied** in der
-Zeitfahrleistung. Ihr echter Vorteil ist praktisch: ein Reiz je Block vereinfacht die
-Planung und lässt sie sich an die Wochen anpassen, die das Leben übrig lässt. Das steht so
-im Panel.
-
-**Belastungsmuster** 3:1 (ab vier Tagen) oder 2:1, Entlastungswoche bei rund zwei Dritteln
-des Umfangs. Der lange Tag wächst etwa 12 % je Belastungswoche — **als Konvention
-ausgewiesen, nicht als Studienergebnis**.
-
-**Die ehrlichste Zeile im ganzen Planer** ist die Rechnung, die sagt, dass es nicht geht:
-Bei 8 Wochenstunden ist eine 6,5-Stunden-Fahrt nicht aufzubauen — sie wäre 81 % der
-Wochenzeit. Statt eine Zahl zu drucken und sie dann still zu kappen, steht da, wie viele
-Wochenstunden das Ziel braucht (rund 11) und was aus der jetzigen Woche erreichbar ist
-(4,8 h). Ein Test erzwingt, dass der angezeigte lange Tag nie über dem Wochenbudget liegt.
-
-### Wie diese Einheit dasteht (0.19.0)
-
-„Entkopplung 11,4 %" gegen Friels 5 % sagt, wo du gegenüber einer Population stehst. Die
-Frage, die zählt, ist eine andere: **ist das für dich viel?** Dafür wird jede Einheit gegen
-die eigenen vergleichbaren gestellt — dieselbe Sportart, Intensität ±10 Punkte, Dauer
-±40 %, und nur Einheiten, die **vorher** lagen.
-
-Gezeichnet als Bereich: die mittlere Hälfte der Vergleichseinheiten als Band, der Median
-als Strich, diese Einheit als Punkt — Position auf gemeinsamer Skala. Daneben der
-Prozentrang in Worten.
-
-**Das Urteil hängt am Verlassen der mittleren Hälfte, nicht am Prozentrang.** Der erste
-Entwurf nutzte Rang ≥ 60 bzw. ≤ 40; bei enger Verteilung landet damit ein Unterschied von
-0,3 Prozentpunkten auf Rang 62 und hieße „schlechter als sonst" — Rauschen im Gewand eines
-Befundes. Die mittlere Hälfte ist zugleich genau das Band, das gezeichnet wird: Wort und
-Bild können nicht auseinanderlaufen.
-
-**Am echten Konto geprüft**, Fahrt vom 04.09.2026 (3h28m, Last 129): Entkopplung 10,6 %
-gegen einen eigenen Median von 2,1 % bei 17 Vergleichsfahrten — **Prozentrang 94**. Watt
-pro Herzschlag dagegen 0,923 gegen Median 0,695, Rang 76. Eine starke und zugleich
-ungewöhnlich entkoppelte Fahrt, zwei Tage vor dem Infekt.
-
-### Die Nacht danach (0.18.0)
-
-Jede Einheit bekommt die Frage beantwortet: **was hat sie gekostet?** Dafür wird die Nacht
-direkt nach der Einheit ausgewertet — Schlaf ist die sauberste Messbedingung, die es gibt,
-und nach einem harten Reiz steigt die nächtliche Herzfrequenz, ln(rMSSD) fällt; die
-Rückkehr zu den Ruhewerten dauert Minuten bis einen ganzen Tag, getrieben vor allem von der
-Intensität.
-
-**Der entscheidende Kunstgriff: gelesen wird gegen die eigene übliche Antwort**, nicht
-gegen einen Normwert. Der Zusammenhang zwischen Last und HRV-Änderung ist **glockenförmig**
-— eine sehr lockere und eine sehr harte Einheit können beide eine unauffällige Nacht
-hinterlassen, aus entgegengesetzten Gründen. Ein absoluter Schwellenwert würde nach jeder
-harten Fahrt Fehlalarm schlagen. Stattdessen wird die Nacht mit den Folgenächten früherer
-Einheiten **ähnlicher Last und Intensität** verglichen (mindestens fünf, sonst kein Urteil).
-
-Beispiel aus der Simulation: HRV −1,54 SD unter der Basislinie — absolut ein Einbruch.
-Üblich nach Einheiten dieser Größe ist bei diesem Athleten −1,49 SD. Urteil: **unauffällig.**
-
-**Gewichtet statt gemittelt:** HRV 1,0 · Ruhepuls 0,8 · Schlafdauer 0,3. Die Studien messen
-nächtliche Herzfrequenz und HRV — das ist die autonome Antwort. Schlafdauer ist Verhalten
-und darf eine kurze Nacht nach spätem Feierabend nicht über das Herz stellen.
-
-### Gestaltungsregeln, jede mit Grund
-
-Cleveland & McGill, mehrfach repliziert: Position ist der genaueste Kanal, dann Länge auf
-gemeinsamer Grundlinie; Winkel, Fläche und Farbe liegen dahinter. Daraus und aus der
-weiteren Recherche:
-
-- **Menge → Länge auf gleicher Grundlinie.** Keine Kreise, keine Flächen.
-- **Zustand → Farbe *und* Wort *und* eigene Icon-Form.** Dreifach, weil rund 8 % der Männer
-  Rot und Grün nicht trennen können (WCAG 1.4.1).
-- **Zwei Farbregister, die sich nie mischen.** Grün/Gelb/Rot bedeuten ausschließlich ein
-  Urteil; Blau/Violett/Cyan/Magenta/Schiefer tragen Kategorien und Kanäle. Innerhalb einer
-  Ansicht kommt jeder Datenton höchstens einmal vor. Ein Test erzwingt beides — dieselbe
-  Fehlerklasse hat 0.7.0, 0.8.0 und 0.9.0 je ein Release gekostet.
-- **Keine zweiten Achsen.** Verwandte Reihen stapeln als Kleinvielfache über einer
-  gemeinsamen Zeitachse mit einem Cursor.
-- **Mehrere Zeitreihen: gestapelt, nicht überlagert.** Javed/McDonnel/Elmqvist (TVCG 2010):
-  getrennte Felder je Reihe sind beim Vergleich über Reihen mit großer visueller Spannweite
-  deutlich effizienter; acht dünne Linien überfordern die Farbauflösung des Auges.
-  Überlagern bleibt als Schalter für den Fall kleiner Spannweite.
-- **Kein Tacho.** Für „Ist-Wert gegen Zielbereich" ein Bullet-Graph (Few).
-- **Kein schwebender Ablesekasten.** Die Werte stehen in einer festen Leiste im Kartenkopf.
-  Ein positionierter Kasten war dreimal am falschen Fleck; die Fehlerklasse ist entfernt,
-  nicht repariert.
-- **Rohwerte in der Ableseleiste**, auch wenn die Kurven normalisiert sind: 63 ms erkennt
-  man wieder, +1,9 SD nicht.
-- **Aufklappfelder sind unabhängig**, Quellen eingeklappt statt als Textwand.
+| **DFA** | Schwellenverlauf mit rollierendem Median |
 
 ---
 
@@ -476,25 +103,29 @@ Jede Kennzahl trägt Quelle und Grenze sichtbar mit sich.
 
 | Kennzahl | Quelle | Grenze |
 |---|---|---|
-| Form-Zonen | Joe Friel; Intervals rechnet relativ zur Fitness | Faustregel, „keine Wissenschaft" — sagt der Entwickler selbst |
-| Akut zu chronisch (7:28) | Gabbett/Blanch, Korridor 0,8–1,3 | korrelativ, mathematisch gekoppelt, formelle Richtigstellung beantragt, RCT ohne Nutzen |
+| Form-Zonen | Joe Friel | Faustregel, „keine Wissenschaft" — sagt der Entwickler selbst |
+| Akut zu chronisch | Gabbett/Blanch, Korridor 0,8–1,3 | korrelativ, mathematisch gekoppelt, formelle Richtigstellung beantragt, RCT ohne Nutzen |
 | Monotonie / Strain | Foster: Wochenmittel ÷ Streuung | erst ab drei Trainingstagen aussagekräftig |
-| Intensitätsverteilung | Dreizonenmodell Seiler, Elite ≈ 75/8/17 | polarisiert knapp vorn beim VO2peak, begründeter Widerspruch |
+| Intensitätsverteilung | Dreizonenmodell Seiler, Elite ≈ 75/8/17 | 80/20 ist eine Beschreibung, keine Vorschrift; Review 2023: sieben Studien, kein Beleg für ein überlegenes Modell |
 | HRV-Trend | 7-Tage-Mittel ln(rMSSD) gegen 60-Tage-Band, Schwelle 0,5 SD (Plews/Altini) | Nachtmessung der Uhr, nicht die validierte Morgenmessung im Liegen |
-| Entkopplung | Friel: ≤ 5 % bei ruhigen Dauereinheiten | nur bei gleichmäßiger Fahrt aussagekräftig |
+| Entkopplung | Friel: ≤ 5 %; trainierte oft < 3 %, Freizeit 5–10 % | nur bei gleichmäßiger Fahrt aussagekräftig |
 | DFA alpha-1 | Rogers/Gronwald: 0,75 ≈ VT1, 0,5 ≈ VT2 | gegen Gasaustausch validiert; empfindlich für Artefakte und Gerät |
-| Zustandsregel | Javaloyes 2019/2020, Vesterinen 2016: harter Reiz nur im oder über dem Normalband | Düking 2021 (8 Studien, 198 Teilnehmer): mittlerer Effekt submaximal, **klein und nicht signifikant** auf die Spitzenleistung |
-| Wiedereinstieg | Mujika/Coyle: bis ~2 Wochen Pause überwiegend Plasmavolumen | darüber hinaus geht Substanz verloren |
-| 30/15 | Rønnestad: 3×13×30/15 gegen aufwandsgleiche 4×5 min, 10 Wochen — signifikant größere Zuwächse | Protokollnamen sind keine Verschreibungen; Zeit nahe VO2max ist ein Sitzungsmaß |
-| **Bereitschaftsampel** | aus den Zeilen darüber zusammengesetzt | Bestandteile belegt, **Kombination nicht** |
+| Durability | Maunder: Zeitpunkt und Ausmaß der Verschlechterung während langer Belastung | eigene Eigenschaft, unabhängig von FTP und VO2max |
+| Kardiale Drift | HF steigt bei konstanter Last; bei Trainierten abgeschwächt | das *Was*; ob Watt/Herzschlag hält, ist das *Na und* |
+| Nachtreaktion | Nachtmessung ist die sauberste Bedingung; Rückkehr zur Ruhe-HRV dauert Minuten bis 24 h | **glockenförmiger** Zusammenhang zwischen Last und HRV-Änderung — deshalb nur gegen die eigene übliche Antwort lesbar |
+| 30/15 | Rønnestad: signifikant größere Zuwächse über 10 Wochen | **Richtigstellung:** der Vergleich ist *nicht* aufwandsgleich — 29,5 min Arbeit gegen 20 min bei 4×5 |
+| VO2max-Formate | 4×4 als Einstiegsdosis, 5×4 als Progression, 30/30 (Billat), 4×8 (Seiler) | „wer den letzten Block nicht mit derselben Leistung schafft, ist zu hart gestartet" |
+| Schwellenprogression | erst Häufigkeit, dann Dauer (4×10 → 3×15 → 2×20), zuletzt Intensität | — |
+| Harte Tage pro Woche | 2 ist Standard für 8–14-h-Wochen; WorldTour bei 25 h selten mehr als 3 | 80/20 zählt Einheiten, nicht Minuten |
+| Blockperiodisierung | 12 Wochen, lastgleich, trainierte Radfahrer | **kein Unterschied** zur traditionellen Periodisierung; ihr Vorteil ist praktisch |
+| **Bereitschaftswerte allgemein** | 14 Werte aus 10 Wearable-Häusern untersucht | **keiner legt seine Formel offen**, kaum einer ist validiert; ein niedriger Wert aus kurzer Nacht sieht aus wie einer aus beginnendem Infekt |
+| **Bereitschaftsampel hier** | aus den Zeilen darüber zusammengesetzt | Bestandteile belegt, **Kombination nicht** |
 | **Lastbudget** | ACWR-Definition nach heute aufgelöst | Zielwahl je Ampelfarbe ist eine Setzung |
 
 ### Der wichtigste Befund: die eigene Kalibrierung
 
 Bevor eine Ampel gebaut wurde, wurde geprüft, ob sie bei diesem Athleten überhaupt etwas
-vorhersagt. Zielgröße: Watt pro Herzschlag je Einheit, intensitätsbereinigt und gegen die
-jeweils letzten zehn vergleichbaren Einheiten normiert (damit der Saisonaufbau nicht als
-Tagesform durchgeht).
+vorhersagt. Zielgröße: Watt pro Herzschlag je Einheit, intensitätsbereinigt.
 
 | Prädiktor | r | erklärt | n |
 |---|---|---|---|
@@ -503,16 +134,11 @@ Tagesform durchgeht).
 | Schlaf | −0,060 | 0,4 % | 97 |
 | Last der letzten 7 Tage | 0,263 | 6,9 % | 100 |
 
-**Bei n = 97 ist r = 0,155 nicht signifikant.** Der Ruhepuls dreht zwischen Gesamtdatensatz
-und Rollenfahrten sein Vorzeichen. Das heißt: die Morgenwerte sagen die *feine* Tagesform
-dieses Athleten nicht vorher. Das steht so im Panel.
-
-**Wofür sie sehr wohl taugen:** einen Infekt haben sie sauber abgebildet — Ruhepuls
-+3,7 SD an einem Tag, HRV −2,7 SD. Warnlampe, nicht Feinsteuerung.
+**Bei n = 97 ist r = 0,155 nicht signifikant.** Die Morgenwerte sagen die *feine* Tagesform
+dieses Athleten nicht vorher. Das steht so im Panel. **Wofür sie taugen:** einen Infekt
+haben sie sauber abgebildet — Ruhepuls +3,7 SD, HRV −2,7 SD. Warnlampe, nicht Feinsteuerung.
 
 ### Fallbeispiel: der Infekt vom September 2026
-
-Der einzige saubere Prüffall, den dieses System bisher hatte.
 
 | Tag | HRV | Ruhepuls | Zustand laut Panel |
 |---|---|---|---|
@@ -522,43 +148,45 @@ Der einzige saubere Prüffall, den dieses System bisher hatte.
 | 10.–11.09. | 63 (+1,9 SD) | 50–51 (−2,1 SD) | Erholung nach Einbruch |
 
 Die Erwartung für die erste Einheit danach wurde **vor** der Fahrt festgelegt (9
-vergleichbare lockere Einheiten, 01.07.–04.09.): EF 0,968 ± 0,032 · HF 143 ± 4 ·
-Leistung 139 ± 5 W.
+vergleichbare lockere Einheiten): EF 0,968 ± 0,032 · HF 143 ± 4 · Leistung 139 ± 5 W.
 
-Ergebnis der Einheit am 11.09.: **EF 1,00 · HF 133 · 133 W · Entkopplung 1,5 %.**
-Intensitätsbereinigt wären 0,938 zu erwarten gewesen — tatsächlich 1,00, also **+3,4
-Standardabweichungen**. Kein erhöhter Puls bei gewohnter Leistung, sondern ein deutlich
-niedrigerer. Der Infekt war durch. Einschränkung: ein Teil davon ist die Erholungsphase
-selbst (fünf Tage Pause, zwei Nächte über zehn Stunden Schlaf), und dieser Anteil
-verschwindet mit den nächsten Einheiten.
+Ergebnis am 11.09.: **EF 1,00 · HF 133 · 133 W · Entkopplung 1,5 %.** Intensitätsbereinigt
+wären 0,938 zu erwarten gewesen — tatsächlich 1,00, also **+3,4 Standardabweichungen**. Kein
+erhöhter Puls bei gewohnter Leistung, sondern ein deutlich niedrigerer. Einschränkung: ein
+Teil davon ist die Erholungsphase selbst und verschwindet mit den nächsten Einheiten.
+
+**Und rückblickend der stärkste Einzelbefund des Systems:** die Fahrt vom 04.09. (3h28,
+Last 129) hatte eine Entkopplung von 10,6 % gegen einen eigenen Median von 2,1 % bei 17
+Vergleichsfahrten — **Prozentrang 94**. Die Nacht danach lag 2,7 SD unter der eigenen
+Normalreaktion auf solche Einheiten. **Der Einbruch kam zwei Tage später.**
 
 ---
 
-## 6. Prüfstand
+## 6. Gestaltungsregeln, jede mit Grund
 
-**Dreizehn Testläufe, über 1.100 Einzelprüfungen, alle grün.** Kein Test braucht eine
-laufende HA-Instanz oder einen Browser.
+Cleveland & McGill, mehrfach repliziert: **Positionsurteile sind 1,4–2,5 mal genauer als
+Längenurteile und rund doppelt so genau wie Winkelurteile.** Daraus und aus der weiteren
+Recherche:
 
-| Datei | prüft |
-|---|---|
-| `test_derive.py` | Parselogik gegen echte Payloads |
-| `test_dfa.py` | DFA-Auswertung, Bandgrenzen, Artefakte, Aussetzer |
-| `test_import.py` | vollständiger Import gegen einen Nachbau des Kontos |
-| `test_analytics.py` | Trainingsmetriken gegen bekannte Ergebnisse |
-| `test_setup_simulation.py` | Entity-Aufbau, Übersetzungen, unique_ids |
-| `test_laps.py` | Runden-Normalisierung gegen unbekannte Feldnamen und kaputte Payloads |
-| `test_coach.py` | jede Zustandsregel gegen ihren Fall, inkl. echtem Infektverlauf; Bänder und Trainerurteil dürfen nie auseinanderlaufen |
-| `test_workouts.py` | Einheitenauswahl je Zustand, Blocksummen, Intervals-Syntax des Kalendereintrags |
-| `test_websocket_registration.py` | jeder registrierte Befehl trägt seinen Dekorator, Namen eindeutig, Panel ruft nichts Unbekanntes |
-| `test_panel_views.js` | alle Ansichten gegen volle, leere, löchrige und entartete Daten |
-| `test_panel_fixes.js` | je ein Nachweis pro behobenem Fehler |
-| `test_panel_design.js` | Cursor-Geometrie und die Gestaltungsregeln als Zusicherung |
-
-Ausführen: `python3 tests/<datei>.py` bzw. `node tests/<datei>.js`.
-
-**Das Prinzip dahinter:** Ein Test, der den alten Fehler nicht nachweislich findet, ist
-kein Test. Bei den kritischen Fixes wurde der Fix jeweils zurückgedreht und geprüft, dass
-der Test fehlschlägt.
+- **Menge → Länge auf gemeinsamer Grundlinie.** Keine Kreise, keine Flächen, kein Tacho.
+- **Vergleich → Position auf einer gemeinsamen Achse**, nicht Winkel (kein Steigungsdiagramm)
+  und nicht getrennte Spuren (keine drei Einzelbalken).
+- **Abweichung statt Absolutwert**, wenn die Bezugsgröße bekannt ist — mit **Skala**, sonst
+  ist ein Balken eine Ordnung und keine Messung.
+- **Zahl in der eigenen Einheit, Balkenlänge normiert.** „+11 bpm" sagt etwas, „+6,5 %" nicht.
+- **Zustand → Farbe *und* Wort *und* eigene Icon-Form.** Rund 8 % der Männer trennen Rot und
+  Grün nicht (WCAG 1.4.1).
+- **Zwei Farbregister, die sich nie mischen.** Grün/Gelb/Rot ausschließlich für Urteile;
+  Blau/Violett/Cyan/Magenta/Schiefer für Kategorien. Ein Test erzwingt beides — dieselbe
+  Fehlerklasse hat 0.7.0, 0.8.0 und 0.9.0 je ein Release gekostet.
+- **Direktbeschriftung statt Legende.** Eine Legende zwingt den Blick zwischen zwei Orten
+  und die Zuordnung ins Gedächtnis.
+- **Mehrere Zeitreihen: gestapelt, nicht überlagert** (Javed/McDonnel/Elmqvist) — außer bei
+  wenigen, sehr ähnlichen Objekten, wo Superposition gewinnt (Gleicher). Bei verrauschten
+  Sekundendaten gewinnt **keins von beidem**: dort aggregieren.
+- **Keine zweiten Achsen**, ein Cursor über gestapelte Kleinvielfache.
+- **Kein schwebender Ablesekasten** — feste Leiste im Kartenkopf.
+- **Eine Leitzahl je Ansicht.** **Quellen eingeklappt**, Wissen neben der Sache.
 
 ---
 
@@ -571,61 +199,112 @@ der Test fehlschlägt.
 | 0.5.0 | alle Ansichten „Unknown error" | Zonenzeiten in Objektform, `float()` auf ein dict |
 | 0.5.0 | ein Ausfall riss alles mit | `Promise.all` statt `allSettled` |
 | 0.5.1 | Panel lädt nicht | zweite JS-Datei fehlte beim Kopieren |
-| 0.7.0 / 0.8.0 / 0.9.0 | zwei Gelbtöne, zweites Blau, zweites Rot | dreimal dieselbe Klasse → seit 0.9.1 zwei getrennte Farbregister mit Test |
-| 0.9.0 | einzelne Messpunkte zwischen Lücken unsichtbar | Pfad nur mit `M`, ohne `L` |
-| 0.9.1 / 0.9.2 / 0.9.3 | Ablesekasten dreimal am falschen Fleck | zweimal die Rechnung repariert, zweimal falsch (zuletzt: gegen das Panel-Element geklemmt statt gegen das zentrierte `#app`). Beim dritten Mal die **Fehlerklasse entfernt**: feste Leiste statt positioniertem Kasten |
-| 0.9.2 | DFA-Achse von 0 bis 160 | eine Null-Schwelle und eine Ein-Punkt-Messung bestimmten die Achse |
-| 0.9.4 | **Integration startete nicht** | neuer Handler zwischen Dekoratoren und `def` des Nachbarn gesetzt → der Nachbar ging nackt raus. 544 grüne Prüfungen halfen nicht, weil keine davon den **Start** prüfte. Seitdem tut `test_websocket_registration.py` genau das |
-| 0.9.4 | Runden-Urteil verglich Aufwärmen mit Ausfahren („34 % Abfall") | ein Serienurteil darf nur Gleichartiges vergleichen — in der Simulation gefunden |
-| 0.11.0 | Zustandsbänder widersprachen dem Trainerurteil | Bänder nutzten den Tageswert, der Trainer das 3-Tage-Mittel |
-| 0.28.1 | Prozente statt Watt — trotz dreier Releases, die das Gegenteil behaupteten | Die FTP steht als `icu_ftp` **auf jeder Aktivität**; gesucht wurde sie in `sport_settings`, das dieses Archiv nicht führt. Ergebnis: `ftp = None`, und jede Einheit fiel auf Prozente zurück. Prozente sind die ehrliche Antwort, wenn nichts bekannt ist — und die falsche, wenn die Zahl die ganze Zeit in den Daten stand. Gefunden erst, als der Nutzer zum dritten Mal dasselbe meldete. **Lehre: bei „X erscheint nicht" zuerst prüfen, ob die Quelle überhaupt ankommt, statt die Anzeigestelle zu reparieren.** |
-| 0.19.0 | Einordnung nannte 2,0 % gegen Median 1,71 % „schlechter als sonst" | Urteil hing am Prozentrang; bei enger Verteilung ist Rang 62 kein Befund. Jetzt entscheidet das Verlassen der mittleren Hälfte — dasselbe Band, das gezeichnet wird |
+| 0.7.0 / 0.8.0 / 0.9.0 | zwei Gelbtöne, zweites Blau, zweites Rot | dreimal dieselbe Klasse → zwei getrennte Farbregister mit Test |
+| 0.9.0 | Messpunkte zwischen Lücken unsichtbar | Pfad nur mit `M`, ohne `L` |
+| 0.9.1–0.9.3 | Ablesekasten dreimal am falschen Fleck | zweimal die Rechnung repariert, zweimal falsch. Beim dritten Mal die **Fehlerklasse entfernt**: feste Leiste statt positioniertem Kasten |
+| 0.9.4 | **Integration startete nicht** | neuer Handler zwischen fremde Dekoratoren gesetzt. 544 grüne Prüfungen halfen nicht, weil keine den **Start** prüfte |
+| 0.11.0 | Zustandsbänder widersprachen dem Trainerurteil | zwei Regeln für dieselbe Frage |
 | 0.12.0 | `VO2max 4×8` behauptete 75 min, Blöcke ergaben 67 | Dauer und Last im Kalender wären falsch gewesen |
-| 0.16.0 | Überlagerte Blockkurven blieben unlesbar | die Konstruktion war theoriegerecht, die Daten aber zu verrauscht: vier Linien wurden zum Knäuel. Direktbeschriftung und Zoom milderten, behoben hat es erst das Weglassen — die Tabelle allein trägt die Aussage |
-| 0.14.0 | Steigungsdiagramm „Alles auf einer Achse" war unlesbar | die Information lag im Winkel — der schlechteste der drei Kanäle; bei zwei Blöcken vier gerade Linien ohne Aussage. Ersetzt durch Abweichungsbalken an gemeinsamer Grundlinie |
-| 0.13.0 | Rundenkurven waren unlesbar: gemeinsame Skala über alle Zeilen machte jede einzelne Kurve zum Strich | Vergleichbarkeit und Lesbarkeit gegeneinander eingetauscht. Der Test maß nur das eine Ziel und meldete Erfolg. Ersetzt durch Superposition + Indexierung; der neue Test misst die Kurvenamplitude |
-| 0.13.0 | Rundenkurven zogen den ersten Messpunkt der nächsten Runde mit | das Ende einer Runde ist der erste Messpunkt der nächsten — bei einer Pause vor einem 259-W-Block ein Sprung von 91 auf 259 W mitten in der Erholungskurve. Vom Geometrie-Test gefunden, nicht vom Auge |
+| 0.13.0 | Rundenkurven unlesbar | gemeinsame Skala über alle Zeilen machte jede Kurve zum Strich. **Der Test maß nur ein Ziel und meldete Erfolg** |
+| 0.13.0 | Segmentierung zog den ersten Messpunkt der nächsten Runde mit | bei einer Pause vor 259 W ein Sprung mitten in der Erholungskurve |
+| 0.14.0 | Steigungsdiagramm unlesbar | Information lag im **Winkel** — dem schlechtesten Kanal |
+| 0.16.0 | überlagerte Blockkurven blieben ein Knäuel | theoriegerecht, aber die Daten zu verrauscht. Behoben hat es erst das **Weglassen** |
+| 0.19.0 | 2,0 % gegen Median 1,71 % hieß „schlechter als sonst" | Urteil hing am Prozentrang; jetzt am Verlassen der mittleren Hälfte |
+| 0.24.0 | bei „Erholung" blieben drei Grundlagenfahrten übrig | **gefiltert statt bewertet** — drei Varianten derselben Sache sind keine Auswahl |
+| **0.28.1** | **Prozente statt Watt — trotz dreier Releases, die das Gegenteil behaupteten** | Die FTP steht als `icu_ftp` auf **jeder Aktivität**; gesucht wurde sie in `sport_settings`. `ftp = None` → Rückfall auf Prozente. **Zweimal die Anzeige repariert, nie die Eingabe geprüft.** |
+| 0.29.0 | „0 Last in sieben Tagen" bei Ausfahrt und Spaziergang | dasselbe Muster: Last aus `wellness.load` statt aus den Aktivitäten |
+| 0.30.0 | Ruhepuls-Warnlinie unsichtbar | sie lag außerhalb der Achse und wurde stillschweigend nicht gezeichnet |
+| 0.30.1 | Wochenbalken verrutscht | Flex-Zeile unten ausgerichtet; Tage mit Einheitennamen wurden höher und schoben ihren Balken hoch — **die gemeinsame Grundlinie war dahin** |
+
+### Die drei Fehlerklassen, die sich durchziehen
+
+1. **Falsche Quelle statt falscher Anzeige.** FTP, Tageslast — beide standen in den Daten und
+   wurden am falschen Ort gesucht. **Lehre: bei „X erscheint nicht" zuerst prüfen, ob die
+   Quelle ankommt.** Das hat einen ganzen Nachmittag gekostet.
+2. **Tests, die nur ein Ziel messen.** Die Rundenkurven waren „grün" mit Amplitude 1 px. Ein
+   Test muss beide Ziele prüfen — vergleichbar *und* lesbar.
+3. **Zwei Rechenwege auf dieselbe Frage.** Zustandsbänder gegen Trainerurteil (0.11.0),
+   Empfehlungsblock gegen Einheitenliste (0.27.0). Beide Male: eine Quelle, ein Weg.
 
 ---
 
 ## 8. Sicherheitsentscheidungen
 
-- **Ein einziger Schreibzugriff.** `POST /athlete/<id>/events` legt ein geplantes Workout
-  an. Er passiert nur auf einen Klick im Panel, nie auf einem Timer, nie als Nebenwirkung.
-- **Schreibzugriffe werden nicht wiederholt.** Ein Timeout nach erfolgreichem POST hätte
-  den Termin doppelt angelegt. Stattdessen kommt eine klare Meldung mit der Bitte, im
-  Kalender nachzusehen. Nur `429` wird erneut versucht — dort hat die Anfrage den Kalender
+- **Ein einziger Schreibzugriff.** `POST /athlete/<id>/events` legt ein geplantes Workout an.
+  Nur auf einen Klick im Panel, nie auf einem Timer, nie als Nebenwirkung.
+- **Schreibzugriffe werden nicht wiederholt.** Ein Timeout nach erfolgreichem POST hätte den
+  Termin doppelt angelegt. Nur `429` wird erneut versucht — dort hat die Anfrage den Kalender
   nachweislich nicht erreicht.
+- **Kalendereinträge tragen absolute Watt**, keine Prozente: eine Prozentangabe landet nur
+  richtig, wenn die FTP in Intervals mit der übereinstimmt, aus der gerechnet wurde.
 - **Jeder erzeugte Eintrag trägt seine Herkunft** im Beschreibungstext.
-- **Der API-Key** liegt im Config-Entry und geht ausschließlich an intervals.icu.
+- **Das Zielprofil liegt lokal** im Archiv und geht nicht an intervals.icu.
 
 ---
 
-## 9. Offen
+## 9. Prüfstand
 
-**Als Nächstes:**
-- Signal-Ansicht: deutlicher zeigen, *warum* gerade was passiert — Ereignisse annotieren
-  statt nur einfärben
-- Ziel- und Zeitprofil als Eingabe, damit der Trainer planen statt vorschlagen kann
+**Vierzehn Dateien, rund 1.900 Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
+HA-Instanz oder einen Browser.
+
+| Datei | prüft | Umfang |
+|---|---|---|
+| `test_derive.py` | Parselogik gegen echte Payloads | |
+| `test_dfa.py` | DFA-Auswertung, Bandgrenzen, Artefakte | |
+| `test_import.py` | vollständiger Import gegen einen Nachbau des Kontos | |
+| `test_analytics.py` | Trainingsmetriken gegen bekannte Ergebnisse | |
+| `test_setup_simulation.py` | Entity-Aufbau, Übersetzungen, unique_ids | |
+| `test_laps.py` | Runden-Normalisierung | 34 |
+| `test_coach.py` | Zustandsregeln, Infektverlauf, Nachtreaktion, Einordnung, Bereiche | 141 |
+| `test_plan.py` | Zielprofil, Wochenmuster, Zeitbudget | 117 |
+| `test_workouts.py` | Einheitenauswahl, Wattumrechnung, Intervals-Syntax | 545 |
+| `test_websocket_registration.py` | Registrierung, Dekoratoren, FTP-Quelle | 135 |
+| `test_panel_views.js` | alle Ansichten gegen volle, leere, löchrige, entartete Daten | 707 |
+| `test_panel_fixes.js` | je ein Nachweis pro behobenem Fehler | 140 |
+| `test_panel_design.js` | Gestaltungsregeln als Zusicherung | 49 |
+
+**Das Prinzip:** Ein Test, der den alten Fehler nicht nachweislich findet, ist kein Test. Bei
+den kritischen Fixes wurde der Fix zurückgedreht und geprüft, dass der Test fehlschlägt.
+Diese Gegenproben haben mehrfach gezeigt, dass ein Test *nicht* scharf war — dann wurde er
+geschärft, nicht der Code gelobt.
+
+---
+
+## 10. Offen — ehrlich priorisiert
+
+**Was ich selbst als Lücke sehe:**
+
+1. **Die Belastungs-Ansicht ist seit 0.6.0 unangetastet.** Die Kritik am ACWR ist seither
+   härter geworden als das, was dort steht. Größte Lücke zwischen Inhalt und Stand.
+2. **Der DFA-Tab** nutzt einen rollierenden Median über Einheiten. Ob das der richtige
+   Schätzer ist, wurde nie geprüft.
+3. **Die Kalender-Ansicht** stammt aus 0.9.0 und folgt nicht den Regeln, die seither
+   entstanden sind (gemeinsame Grundlinie, Farbregister, Direktbeschriftung).
+4. **Ein systematischer Durchlauf durch alle Datenquellen.** Zwei Felder wurden am falschen
+   Ort gesucht; es gibt vermutlich weitere.
+
+**Funktional offen:**
 - Webhooks statt Polling
 - Historien-Import in die HA-Langzeitstatistik (`async_import_statistics`)
+- Runden-Visualisierung je Runde (nach dem Scheitern von 0.13.0–0.16.0 bewusst zurückgestellt)
 
 **Für die Veröffentlichung:**
 - Brand-Icon 256×256 an `home-assistant/brands` (PR) — solange es fehlt, bleibt die
   HACS-Prüfung im CI rot; für die Installation als benutzerdefiniertes Repository ohne Belang
-- Repository-Topics setzen (macht die andere Hälfte der CI grün)
+- Repository-Topics setzen
 - Aufnahme in den HACS-Standardkatalog beantragen
 
 **Zwei Hinweise persönlich:**
-1. Der API-Key stand im Klartext im Chatverlauf. Vor Veröffentlichung in Intervals neu
-   erzeugen, in HA über den Reauth-Dialog eintragen. Dasselbe gilt für den GitHub-Token.
-2. Die tägliche Wellness-Abfrage in Intervals einschalten. Selbsteingeschätzte Werte sind
+1. **API-Key und GitHub-Token standen im Klartext im Chatverlauf.** Vor Veröffentlichung neu
+   erzeugen; der Key in HA über den Reauth-Dialog.
+2. **Die tägliche Wellness-Abfrage in Intervals einschalten.** Selbsteingeschätzte Werte sind
    laut Review der empfindlichste Einzelindikator — der größte verfügbare Hebel auf die
-   Aussagekraft des ganzen Systems.
+   Aussagekraft des ganzen Systems, und der einzige, der die 2-Prozent-Kalibrierung aus
+   Abschnitt 5 nach oben bewegen könnte.
 
 ---
 
-## 10. Betrieb
+## 11. Betrieb
 
 **Update:** HACS → *Intervals.icu* → aktualisieren → HA neu starten → Browser **hart** neu
 laden. Der Service Worker des HA-Frontends bedient Module aus eigenem Speicher, an Strg+F5
@@ -635,13 +314,9 @@ aktualisieren". Gegenprobe im Inkognito-Fenster.
 **Cache:** `PANEL_VERSION` in `const.py` hängt an der Modul-URL. Wer das Panel ändert, ohne
 die Zahl zu erhöhen, sieht weiter die alte Fassung.
 
-**Rückzieher:** In HACS lässt sich jede frühere Version wählen. Zusätzlich liegt eine
-Sicherungskopie des Ordners auf dem PC.
+**Rückzieher:** In HACS lässt sich jede frühere Version wählen.
 
-**Diagnose:**
-- Archivstand: Sensor „Archiv"
-- Log: `custom_components.intervals_icu`
-- Panel-Fehler: Browser-Konsole (F12)
+**Diagnose:** Sensor „Archiv" · Log `custom_components.intervals_icu` · Browser-Konsole (F12)
 
-**Datenhaltung:** Archiv in `.storage/intervals_icu.<athlet>`, API-Key im Config-Entry.
-Beides überlebt ein Update.
+**Datenhaltung:** Archiv in `.storage/intervals_icu.<athlet>`, API-Key und Zielprofil im
+Config-Entry bzw. Archiv. Beides überlebt ein Update.
