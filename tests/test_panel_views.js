@@ -40,6 +40,25 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   contains(html, "Woher das kommt", "heute: Herkunft fehlt");
   ok((html.match(/class="tday"/g) || []).length === 7, "heute: nicht sieben Tage");
   contains(html, "Last in sieben Tagen", "heute: Wochenlast fehlt");
+  // the days must show what was actually ridden - reading the load from the
+  // wellness row reported "0 load in seven days" on a week with a ride and a walk
+  contains(html, "volumen", "heute: Einheit des Tages fehlt im Wochenbalken");
+  contains(html, "Rehburg-Lo", "heute: zweite Einheit fehlt");
+  ok((html.match(/class="tdayn"/g) || []).length === 2, "heute: nicht jede Einheit benannt");
+
+  // a signal card opens into a full-width view with its curve and its meaning
+  ok((html.match(/data-act="sigopen"/g) || []).length === 3, "heute: Karten nicht anklickbar");
+  ok(!/class="tsigbig"/.test(html), "heute: große Ansicht ohne Klick offen");
+  p._sigOpen = "hrv";
+  const opened = p.rHeute(F.today());
+  clean(opened, "heute signal offen");
+  ok(/class="tsig[^"]*big"/.test(opened), "heute: Karte wird nicht groß");
+  ok((opened.match(/class="tsigbig"/g) || []).length === 1, "heute: mehr als eine Karte offen");
+  ok(/<svg class="ch"/.test(opened), "heute: große Ansicht ohne Kurve");
+  contains(opened, "Worüber dieser Wert etwas sagt", "heute: große Ansicht ohne Erklärung");
+  contains(opened, "kleinste bedeutsame Änderung", "heute: Rauschgrenze nicht erklärt");
+  contains(opened, "Basislinie", "heute: Bezugslinie fehlt in der Kurve");
+  p._sigOpen = null;
   contains(html, "Erholung, nicht Bereitschaft", "heute: Nacht nicht als Erholung eingeordnet");
   // the removed things must STAY removed
   ok(!/Monotonie/.test(html), "heute: Monotonie wieder da");

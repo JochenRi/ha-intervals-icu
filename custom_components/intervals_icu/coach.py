@@ -1095,12 +1095,28 @@ def today(data: dict[str, Any], budget: dict[str, Any] | None = None) -> dict[st
         })
 
     # recent training - the other half of "how does this fit what you did"
+    # The day's load comes from the ACTIVITIES, not from the wellness row: that
+    # field is not filled on every account, and reading it there reported "0
+    # load in seven days" on a week that contained a ride and a walk.
+    by_day: dict[str, list[dict[str, Any]]] = {}
+    for activity in (data.get("activities") or {}).values():
+        key = str(activity.get("start_date_local") or "")[:10]
+        if key:
+            by_day.setdefault(key, []).append(activity)
+
     recent = []
     for day_key in days[-7:]:
         row = wellness.get(day_key) or {}
+        sessions = by_day.get(day_key, [])
+        load = sum(_f(a.get("icu_training_load")) or 0 for a in sessions)
+        if not load:
+            load = _f(row.get("load")) or 0
         recent.append({
             "date": day_key,
-            "load": round(_f(row.get("load")) or 0),
+            "load": round(load),
+            "sessions": [{"name": a.get("name"), "type": a.get("type"),
+                          "minutes": round((a.get("moving_time") or 0) / 60)}
+                         for a in sessions],
             "state": series.get(day_key, "unknown"),
         })
     week_load = sum(row["load"] for row in recent)
@@ -1170,6 +1186,14 @@ def today(data: dict[str, Any], budget: dict[str, Any] | None = None) -> dict[st
         "state_label": condition.get("label"),
         "state_text": condition.get("text"),
         "signals": signals,
+        # 42 days per signal, so the enlarged card can show a curve instead of
+        # a single number with nothing to compare it against
+        "history": {
+            key: [_f((wellness.get(d) or {}).get(field)) * (1 / 3600 if field == "sleepSecs" else 1)
+                  if _f((wellness.get(d) or {}).get(field)) else None
+                  for d in days[-42:]]
+            for key, field, _log, _sign, _label, _unit in NIGHT_FIELDS
+        },
         "moved": [s for s in signals if s["moved"]],
         "recent": recent,
         "week_load": round(week_load),

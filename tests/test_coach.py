@@ -409,6 +409,40 @@ check(early["peers"] <= 2, f"21 einordnung: spätere Einheiten im Vergleich ({ea
 check(coach.session_context(rides, "nope")["available"] is False,
       "21 einordnung: unbekannte Einheit ausgewertet")
 
+# --- 22  the day's load comes from the activities ------------------------------
+# Reading it from the wellness row reported "0 load in seven days" on a week
+# that contained a ride and a walk - that field is simply not filled on every
+# account, and the activities always are.
+noload = night_history()
+for row in noload["wellness"].values():
+    row.pop("load", None)
+today_view = coach.today(noload, {"recommended": 90})
+check(today_view["available"], "22 heute: nicht auswertbar")
+check(today_view["week_load"] > 0,
+      f"22 heute: Wochenlast 0 trotz Einheiten im Archiv ({today_view['week_load']})")
+ridden = [row for row in today_view["recent"] if row["load"] > 0]
+check(ridden, "22 heute: kein Tag mit Last")
+check(all(row["sessions"] for row in ridden), "22 heute: Einheiten nicht benannt")
+check(today_view["rest_days"] < 7, "22 heute: alle Tage als Ruhetage gezählt")
+
+# a genuinely empty week must still read as empty
+empty = night_history()
+empty["activities"] = {}
+for row in empty["wellness"].values():
+    row.pop("load", None)
+quiet = coach.today(empty, None)
+eq(quiet["week_load"], 0, "22 heute: Last ohne Einheiten erfunden")
+eq(quiet["rest_days"], 7, "22 heute: Ruhetage nicht gezählt")
+
+# --- 23  every signal ships 42 days of history for the enlarged card ----------
+history = today_view.get("history") or {}
+check("hrv" in history, "23 verlauf: HRV fehlt")
+check(len(history["hrv"]) <= 42, "23 verlauf: mehr als 42 Tage")
+check(any(v is not None for v in history["hrv"]), "23 verlauf: nur Lücken")
+check(all(v is None or 10 < v < 200 for v in history["hrv"]), "23 verlauf: unplausible Werte")
+check(all(v is None or 3 < v < 14 for v in history.get("sleep", [])),
+      "23 verlauf: Schlaf nicht in Stunden umgerechnet")
+
 print(f"test_coach: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

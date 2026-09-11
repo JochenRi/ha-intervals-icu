@@ -506,6 +506,7 @@ class IntervalsIcuPanel extends HTMLElement {
     this._night = {};
     this._goal = null;
     this._today = null;
+    this._sigOpen = null;
     this._goalEdit = false;
     this._goalDraft = null;
     this._ctx = {};
@@ -708,6 +709,9 @@ class IntervalsIcuPanel extends HTMLElement {
           .catch((e) => { el.disabled = false; this._toast(`Speichern fehlgeschlagen: ${String(e && e.message || e)}`); });
       }
       else if (act === "planweeks") { this._planOpen = (this._planOpen === id ? null : id); this._render(); }
+      else if (act === "sigopen") {
+        this._sigOpen = (this._sigOpen === id ? null : id); this._render();
+      }
       else if (act === "cmpzoom") {
         this._cmpFocus = (this._cmpFocus === id ? null : id); this._render();
       }
@@ -1428,7 +1432,9 @@ class IntervalsIcuPanel extends HTMLElement {
       const width = Math.min(50, Math.abs(s.z) / 3 * 50);
       const left = s.z < 0 ? 50 - width : 50;
       const dec = s.unit === "h" ? 1 : 0;
-      return `<div class="tsig ${s.moved ? "moved" : ""}">
+      const big = this._sigOpen === s.key;
+      return `<div class="tsig ${s.moved ? "moved" : ""} ${big ? "big" : ""}"
+          data-act="sigopen" data-id="${esc(s.key)}" title="${big ? "kleiner" : "größer"}">
         <div class="tsighead"><b>${esc(s.label)}</b>
           <span class="tsigsys">${esc(s.system)}</span></div>
         <div class="tsignum"><b class="tn" style="color:${scol}">${fmt(s.value, dec)}</b>
@@ -1440,6 +1446,20 @@ class IntervalsIcuPanel extends HTMLElement {
           <i class="tsigfill" style="left:${left.toFixed(1)}%;width:${Math.max(1, width).toFixed(1)}%;background:${scol}"></i></div>
         <div class="tsigfoot"><span style="color:${scol}">${sign(s.z, 1)} SD · ${esc(s.direction)}</span>
           <em>${esc(s.limit)}</em></div>
+        ${big ? `<div class="tsigbig">
+          <div class="tsigbignum"><b class="tn" style="color:${scol}">${fmt(s.value, dec)}</b>
+            <small>${esc(s.unit)}</small>
+            <span>gegen deine Basislinie von ${fmt(s.baseline, dec)} ${esc(s.unit)}</span></div>
+          ${chart({ h: 190, n: Math.max(2, (t.history && t.history[s.key] || []).length || 2),
+            y0: Math.min(...((t.history && t.history[s.key] || [s.baseline, s.value]).filter((v) => v != null)), s.baseline) * 0.94,
+            y1: Math.max(...((t.history && t.history[s.key] || [s.baseline, s.value]).filter((v) => v != null)), s.baseline) * 1.06,
+            yf: (v) => fmt(v, dec),
+            hl: [{ y: s.baseline, c: C.tx3, d: 1, t: "Basislinie" }],
+            s: [{ t: "line", v: (t.history && t.history[s.key]) || [s.baseline, s.value], c: scol, w: 2 }] })}
+          <p class="src"><b>Worüber dieser Wert etwas sagt:</b> ${esc(s.system)}.
+            ${esc(s.limit)}. Die graue Zone ist ±0,5 SD — die kleinste bedeutsame Änderung;
+            was darin liegt, ist Rauschen und kein Signal.</p>
+        </div>` : ""}
       </div>`;
     }).join("");
 
@@ -1448,10 +1468,14 @@ class IntervalsIcuPanel extends HTMLElement {
       const height = d.load ? Math.max(6, (d.load / maxLoad) * 46) : 2;
       const dcol = { slump: C.red, recovering: C.amber, rebound: C.blue,
                      strained: C.amber }[d.state] || C.slate;
-      return `<div class="tday" title="${esc(d.date)}: Last ${d.load}">
+      const names = (d.sessions || []).map((s) => s.name || s.type).filter(Boolean);
+      return `<div class="tday" title="${esc(d.date)}: Last ${d.load}${
+        names.length ? " · " + esc(names.join(", ")) : " · kein Training"}">
         <i style="height:${height.toFixed(0)}px;background:${dcol}"></i>
         <span>${esc(dShort(d.date))}</span>
-        <b class="tn">${d.load || "–"}</b></div>`;
+        <b class="tn">${d.load || "–"}</b>
+        ${names.length ? `<em class="tdayn">${esc(names[0].slice(0, 10))}${
+          names.length > 1 ? " +" + (names.length - 1) : ""}</em>` : ""}</div>`;
     }).join("");
 
     const night = t.night && t.night.available ? `<div class="tnight">
@@ -2763,7 +2787,16 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
 .tnote{display:flex;gap:9px;align-items:flex-start;background:${C.card2};border-radius:10px;
   padding:11px 14px;font-size:13.5px;color:${C.tx2};margin-bottom:4px;line-height:1.5}
 .tsigs{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px}
-.tsig{background:${C.card};border:1px solid ${C.line};border-radius:11px;padding:12px 14px;opacity:.72}
+.tsig{background:${C.card};border:1px solid ${C.line};border-radius:11px;padding:12px 14px;
+  opacity:.72;cursor:zoom-in}
+.tsig:hover{border-color:${C.tx3}66}
+.tsig.big{grid-column:1 / -1;opacity:1;cursor:zoom-out}
+.tsigbig{margin-top:12px;border-top:1px solid ${C.line};padding-top:12px}
+.tsigbignum{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.tsigbignum b{font-size:40px;line-height:1}
+.tsigbignum small{font-size:15px;color:${C.tx3}}
+.tsigbignum span{color:${C.tx2};font-size:13px;margin-left:auto}
+.tdayn{display:block;font-style:normal;color:${C.tx3};font-size:10px;margin-top:1px}
 .tsig.moved{opacity:1;border-color:${C.line}}
 .tsighead{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
 .tsighead b{font-size:14.5px}

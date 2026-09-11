@@ -1,6 +1,6 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 11.09.2026 · **Version:** 0.28.1 · **Status:** produktiv auf HEIMDALL,
+**Stand:** 11.09.2026 · **Version:** 0.29.0 · **Status:** produktiv auf HEIMDALL,
 Auslieferung über HACS aus `github.com/JochenRi/ha-intervals-icu`
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lokal
@@ -133,6 +133,19 @@ Einzelwert verschweigt.
 
 Ein Test fährt vier Fahrten mit unterschiedlicher Drift durch (1,1 % / 4,0 % / 5,3 % /
 14,5 %) und verlangt für jede die richtige Einstufung.
+
+### Heute: aufklappbare Signale, echte Tageslast (0.29.0)
+
+**Ein Klick auf eine Signalkarte zieht sie auf volle Breite** — mit dem Wert groß, der
+42-Tage-Kurve gegen die eigene Basislinie und dem Satz, worüber dieser Wert überhaupt etwas
+aussagt. Vorher stand die Erklärung klein am Kartenrand.
+
+**Und ein zweiter Fehler derselben Art wie die FTP:** die Tageslast wurde aus dem Feld
+`load` des Wellness-Datensatzes gelesen. Das ist auf diesem Konto nicht gefüllt — Ergebnis:
+**„0 Last in sieben Tagen"** in einer Woche mit einer Ausfahrt und einem Spaziergang. Jetzt
+wird sie aus den Aktivitäten summiert, das Wellness-Feld dient nur noch als Rückfall, und
+jeder Tagesbalken trägt den Namen der Einheit. Ein Test entfernt das Wellness-Feld aus dem
+Archiv und verlangt trotzdem die richtige Wochenlast.
 
 ### Heute, neu gebaut (0.21.0) — gegen die Kritik an Bereitschaftswerten
 
