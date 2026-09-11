@@ -682,38 +682,27 @@ class IntervalsIcuPanel extends HTMLElement {
         this._woOpen = (this._woOpen === id ? null : id); this._render();
       }
       else if (act === "goaledit") {
-        this._goalDraft = { ...(this._goal && this._goal.profile || {}) };
+        this._goalDraft = {};   // start clean: two questions, not a filled form
         this._goalEdit = true; this._render();
       }
       else if (act === "goalcancel") { this._goalEdit = false; this._render(); }
       else if (act === "goalpick") {
-        this._goalDraft = { ...(this._goalDraft || {}), goal: id }; this._render();
+        this._goalDraft = { ...(this._goalDraft || {}), goal: id || null }; this._render();
+      }
+      else if (act === "goaldays") {
+        this._goalDraft = { ...(this._goalDraft || {}), days_per_week: Number(id) };
+        this._render();
       }
       else if (act === "goalsave") {
-        const root = this._view;
         const draft = { ...(this._goalDraft || {}) };
-        const num = (name) => {
-          const field = root.querySelector(`[data-field="${name}"]`);
-          const value = field && field.value !== "" ? Number(field.value) : null;
-          return Number.isFinite(value) ? value : null;
-        };
-        const text = (name) => {
-          const field = root.querySelector(`[data-field="${name}"]`);
-          return field && field.value ? field.value : null;
-        };
-        draft.days_per_week = num("days_per_week");
-        draft.hours_per_week = num("hours_per_week");
-        draft.longest_day_hours = num("longest_day_hours");
-        draft.target_hours = num("target_hours");
-        draft.target_date = text("target_date");
-        draft.long_day = text("long_day");
-        draft.notes = text("notes") || "";
-        const box = root.querySelector('[data-field="indoor_only"]');
-        draft.indoor_only = !!(box && box.checked);
-        draft.hard_days = [...root.querySelectorAll('[data-hard]:checked')].map((e) => e.dataset.hard);
-        el.disabled = true; el.textContent = "wird gespeichert …";
+        if (!draft.goal || !draft.days_per_week) return;
+        el.disabled = true; el.textContent = "wird erstellt …";
         this._ws("set_goal", { profile: draft })
-          .then((r) => { this._goal = { ...(this._goal || {}), ...r }; this._goalEdit = false; this._render(); })
+          .then((r) => {
+            this._goal = { ...(this._goal || {}), ...r };
+            this._goalEdit = false; this._workouts = null; this._render();
+            this._ws("workouts").then((w) => { this._workouts = w; this._render(); });
+          })
           .catch((e) => { el.disabled = false; this._toast(`Speichern fehlgeschlagen: ${String(e && e.message || e)}`); });
       }
       else if (act === "planweeks") { this._planOpen = (this._planOpen === id ? null : id); this._render(); }
@@ -952,68 +941,66 @@ class IntervalsIcuPanel extends HTMLElement {
       </div>`;
   }
 
+  /* Two questions, and that is the whole form.
+
+     Everything else is already in the archive: the hours actually ridden over
+     the last eight weeks, the longest ride so far. Asking for numbers the data
+     already holds is how forms get abandoned - and every answered field is one
+     more chance to enter something wrong.
+
+     The day count is the one answer that cannot be read from the data, because
+     it is a decision about the future, not a record of the past. It also
+     settles the number that matters most: 80/20 counts SESSIONS, so five
+     riding days means four easy and one hard; two hard sessions is the
+     standard for 8-14 hour weeks, and even World Tour riders rarely exceed
+     three. */
   _goalForm(g) {
-    const d = this._goalDraft || (g.profile && g.profile.goal ? { ...g.profile } : {});
+    const d = this._goalDraft || {};
     const goals = g.goals || {};
     const state = g.state || {};
     const picked = d.goal;
-    const field = (name, label, attrs, hint) => `<label class="gfield">
-      <span>${esc(label)}</span>
-      <input data-field="${name}" ${attrs} value="${d[name] != null ? esc(String(d[name])) : ""}">
-      ${hint ? `<em>${esc(hint)}</em>` : ""}</label>`;
 
+    const known = [
+      state.typical_hours ? `${fmt(state.typical_hours, 1)} h pro Woche` : null,
+      state.typical_days ? `${fmt(state.typical_days, 1)} Fahrtage` : null,
+      state.longest_ride_hours ? `längste Fahrt ${fmt(state.longest_ride_hours, 1)} h` : null,
+    ].filter(Boolean).join(" · ");
+
+    if (!picked) {
+      return `<div class="card pad">
+        <h3 class="secname" style="margin-top:0">Worauf trainierst du?</h3>
+        <p class="hint">Eine Frage, dann noch eine — mehr braucht es nicht.
+          ${known ? `Den Rest lese ich aus deinen Daten: ${esc(known)}.` : ""}</p>
+        <div class="goalpick">
+          ${Object.entries(goals).map(([key, info]) => `<button
+            class="gopt" data-act="goalpick" data-id="${key}">
+            <b>${esc(info.label)}</b><span>${esc(info.detail)}</span></button>`).join("")}
+        </div>
+        ${g.profile && g.profile.goal ? `<button class="chipbtn" data-act="goalcancel">abbrechen</button>` : ""}
+      </div>`;
+    }
+
+    const info = goals[picked] || {};
     return `<div class="card pad">
-      <h3 class="secname" style="margin-top:0">Was willst du erreichen?</h3>
-      <p class="hint">Ohne diese Angaben kann ein Plan nur raten. Sie lassen sich jederzeit ändern.</p>
-      <div class="goalpick">
-        ${Object.entries(goals).map(([key, info]) => `<button
-          class="gopt ${picked === key ? "on" : ""}" data-act="goalpick" data-id="${key}">
-          <b>${esc(info.label)}</b><span>${esc(info.detail)}</span></button>`).join("")}
+      <h3 class="secname" style="margin-top:0">An wie vielen Tagen pro Woche fährst du?</h3>
+      <p class="hint">Ziel: <b>${esc(info.label)}</b> — trainiert wird ${esc(info.target || "")}.
+        <button class="linkbtn" data-act="goalpick" data-id="">anderes Ziel</button></p>
+      <div class="daypick">
+        ${[2, 3, 4, 5, 6, 7].map((n) => `<button class="dopt ${d.days_per_week === n ? "on" : ""}"
+          data-act="goaldays" data-id="${n}"><b>${n}</b><span>Tage</span>
+          <em>${n <= 3 ? "1 hart" : n <= 6 ? "2 hart" : "3 hart"}</em></button>`).join("")}
       </div>
-      ${picked ? `
-        <div class="gfields">
-          ${field("days_per_week", "Tage pro Woche", 'type="number" min="1" max="7" step="1"',
-                  "An wie vielen Tagen kannst du verlässlich fahren?")}
-          ${field("hours_per_week", "Stunden pro Woche", 'type="number" min="2" max="30" step="0.5"',
-                  "Realistisch, nicht im besten Fall.")}
-          ${field("longest_day_hours", "Längster Tag, den du schaffst", 'type="number" min="1" max="12" step="0.5"',
-                  state.longest_ride_hours ? `Im Archiv steht ${state.longest_ride_hours} h.` : "")}
-          ${picked === "long_ride"
-            ? field("target_hours", "Zielfahrt in Stunden", 'type="number" min="2" max="24" step="0.5"',
-                    "Wie lang soll die Fahrt am Ende sein?") : ""}
-          ${field("target_date", "Zieldatum (optional)", 'type="date"',
-                  "Wenn du eines hast, wird rückwärts geplant.")}
-          ${field("long_day", "Welcher Tag ist der lange? (optional)", 'type="text" placeholder="z. B. Samstag"', "")}
-          ${field("notes", "Was ich sonst wissen sollte", 'type="text" placeholder="Schichtdienst, Knie, keine Rolle im Sommer …"',
-                  "Steht im Plan als Hinweis und wird nicht automatisch verrechnet.")}
-        </div>
-        <label class="gcheck"><input type="checkbox" data-field="indoor_only" ${d.indoor_only ? "checked" : ""}>
-          <span>nur drinnen auf der Rolle</span></label>
-        <div class="gdays"><span>Tage, an denen nichts Hartes geht:</span>
-          ${["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map((day) => `<label class="gday">
-            <input type="checkbox" data-hard="${day}" ${(d.hard_days || []).includes(day) ? "checked" : ""}>
-            <span>${day}</span></label>`).join("")}
-        </div>
-        <div class="worow">
-          <button class="planbtn" data-act="goalsave">Ziel speichern</button>
-          ${g.profile && g.profile.goal ? `<button class="chipbtn" data-act="goalcancel">abbrechen</button>` : ""}
-        </div>` : ""}
+      <p class="hint">Die harte Einheit pro Woche folgt aus der Tageszahl: die 80/20-Verteilung
+        zählt Einheiten, nicht Minuten. Bei fünf Fahrtagen vier lockere und eine harte; zwei
+        harte sind der Standard für Wochen von 8 bis 14 Stunden.</p>
+      <div class="worow">
+        <button class="planbtn" data-act="goalsave" ${d.days_per_week ? "" : "disabled"}>
+          ${d.days_per_week ? "Plan erstellen" : "Tage wählen"}</button>
+        ${g.profile && g.profile.goal ? `<button class="chipbtn" data-act="goalcancel">abbrechen</button>` : ""}
+      </div>
     </div>`;
   }
 
-  /* ---------------- Signale ----------------
-     Seven series in seven units cannot share an axis - expressed as distance
-     from each signal's own baseline in standard deviations, they can.
-
-     The default is STACKED, not overlaid, on evidence: Javed/McDonnel/Elmqvist
-     (TVCG 2010) found split-space techniques clearly more efficient for
-     comparisons across series with a large visual span, and eight thin lines
-     exceed what colour vision can separate. Overlaying stays available for
-     two or three series, where shared space wins.
-
-     What makes the stack readable as one picture: a single time axis, a single
-     cursor, the same zero line in every field, and the state bands painted
-     behind ALL fields at once - so "what happened that week" is one glance. */
   _stateBands(days, opts) {
     const COL = { slump: C.red, recovering: C.amber, rebound: C.blue,
                   strained: C.amber, ready: C.green, unknown: C.grey };
@@ -2777,6 +2764,16 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
 }
 
 /* Ziel und Plan */
+.daypick{display:grid;grid-template-columns:repeat(auto-fit,minmax(88px,1fr));gap:10px;margin:14px 0}
+.dopt{background:${C.card2};border:1px solid ${C.line};border-radius:10px;padding:12px 6px;
+  color:${C.tx};font:inherit;cursor:pointer;text-align:center}
+.dopt:hover{border-color:${ROLE.series}66}
+.dopt.on{border-color:${ROLE.series};background:${ROLE.series}18}
+.dopt b{display:block;font-size:24px;font-weight:700;line-height:1.1}
+.dopt span{display:block;color:${C.tx3};font-size:11.5px}
+.dopt em{display:block;font-style:normal;color:${C.tx2};font-size:11.5px;margin-top:4px}
+.linkbtn{background:none;border:none;color:${ROLE.series};font:inherit;font-size:13px;
+  cursor:pointer;text-decoration:underline;padding:0 0 0 6px}
 .goalhead{display:flex;justify-content:space-between;align-items:flex-start;gap:14px}
 .goaltitle{font-size:24px;margin:2px 0 4px;font-weight:700}
 .goalsub{color:${C.tx2};font-size:14px;margin:0 0 10px}

@@ -73,30 +73,38 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
 
 /* ── Ziel und Plan ─────────────────────────────────────────────────────── */
 {
-  // no goal yet: the form, not an empty plan
+  // Two questions and nothing else. Everything the archive already knows must
+  // NOT be asked for again - every extra field is a chance to get it wrong.
   p._goal = F.goal("neu");
+  p._goalDraft = null;
   const fresh = p.rGoal(p._goal);
   clean(fresh, "ziel neu");
-  contains(fresh, "Was willst du erreichen", "ziel: keine Frage gestellt");
+  contains(fresh, "Worauf trainierst du", "ziel: keine Frage gestellt");
   for (const needle of ["Lange Fahrten durchstehen", "Schwellenleistung heben",
                         "Spitzenleistung heben", "Fit bleiben"]) {
     contains(fresh, needle, "ziel: Auswahl unvollständig");
   }
-  // the fields only appear once a goal is picked - one question at a time
-  ok(!fresh.includes('data-field="hours_per_week"'), "ziel: Felder vor der Zielwahl");
+  // what the data already holds is shown, not demanded
+  contains(fresh, "Den Rest lese ich aus deinen Daten", "ziel: bekannte Werte nicht genutzt");
+  contains(fresh, "längste Fahrt 3,5 h", "ziel: bekannte längste Fahrt nicht gezeigt");
+  ok(!/data-field="hours_per_week"/.test(fresh), "ziel: fragt nach Stunden, die im Archiv stehen");
+  ok(!/data-field="longest_day_hours"/.test(fresh), "ziel: fragt nach der längsten Fahrt");
+  ok(!/data-field="target_date"/.test(fresh), "ziel: fragt nach einem Zieldatum");
+  ok(!/data-field=/.test(fresh), `ziel: Formularfelder statt zwei Fragen`);
+
+  // second question: days per week, and it says what follows from each answer
   p._goalDraft = { goal: "long_ride" };
-  const picked = p.rGoal(p._goal);
-  clean(picked, "ziel gewählt");
-  for (const field of ["days_per_week", "hours_per_week", "longest_day_hours",
-                       "target_hours", "target_date", "notes"]) {
-    ok(picked.includes(`data-field="${field}"`), `ziel: Feld ${field} fehlt`);
-  }
-  ok((picked.match(/data-hard=/g) || []).length === 7, "ziel: Wochentage unvollständig");
-  contains(picked, "Im Archiv steht 3.5 h", "ziel: bekannter Bestwert nicht angeboten");
-  // target duration is asked ONLY where it means something
-  p._goalDraft = { goal: "vo2max" };
-  ok(!p.rGoal(p._goal).includes('data-field="target_hours"'),
-     "ziel: Zieldauer auch ohne Langfahrt-Ziel abgefragt");
+  const step2 = p.rGoal(p._goal);
+  clean(step2, "ziel schritt 2");
+  contains(step2, "An wie vielen Tagen", "ziel: zweite Frage fehlt");
+  ok((step2.match(/data-act="goaldays"/g) || []).length === 6, "ziel: Tagesauswahl unvollständig");
+  contains(step2, "1 hart", "ziel: Folge der Tageszahl nicht gezeigt");
+  contains(step2, "2 hart", "ziel: Folge der Tageszahl nicht gezeigt");
+  contains(step2, "zählt Einheiten, nicht Minuten", "ziel: 80/20-Regel nicht erklärt");
+  // no plan can be created before the second answer
+  ok(/data-act="goalsave" disabled/.test(step2), "ziel: Plan ohne Tagesangabe erzeugbar");
+  p._goalDraft = { goal: "long_ride", days_per_week: 4 };
+  ok(!/data-act="goalsave" disabled/.test(p.rGoal(p._goal)), "ziel: Plan trotz Angabe nicht erzeugbar");
   p._goalDraft = null;
 
   // a stored goal: the plan

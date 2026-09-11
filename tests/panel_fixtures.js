@@ -343,7 +343,7 @@ function goal(kind) {
     vo2max: { label: "Spitzenleistung heben", detail: "Die Pyramide oben breiter machen.", target: "VO2max", why: "Rønnestads 30/15.", key_session: "die VO2max-Einheit" },
     health: { label: "Fit bleiben", detail: "Form halten.", target: "Erhalt", why: "Gleichmäßige Grundlage.", key_session: "die Grundlageneinheit" },
   };
-  const state = { longest_ride_hours: 3.5, weekly_load: 181 };
+  const state = { longest_ride_hours: 3.5, weekly_load: 181, typical_hours: 8.5, typical_days: 3.1 };
   if (kind === "neu") {
     return { profile: { goal: null, hard_days: [] }, state, goals, plan: { ready: false, missing: ["goal"] } };
   }

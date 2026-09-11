@@ -1,6 +1,6 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 11.09.2026 · **Version:** 0.21.0 · **Status:** produktiv auf HEIMDALL,
+**Stand:** 11.09.2026 · **Version:** 0.22.0 · **Status:** produktiv auf HEIMDALL,
 Auslieferung über HACS aus `github.com/JochenRi/ha-intervals-icu`
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lokal
@@ -171,6 +171,31 @@ Werte liegt in der Anpassung der heutigen Einheit, nicht in der Planung der Woch
 
 Beim Umbau haben die alten Tests drei echte Regressionen gefangen: die Ampelfarbe ohne
 Wort (WCAG), der verschwundene Bullet-Graph und der fehlende Stand je Wert.
+
+### Zwei Fragen (0.22.0) — das Zielformular ist weg
+
+Aus sieben Feldern sind zwei Fragen geworden: **Worauf trainierst du?** und **an wie vielen
+Tagen pro Woche?** Alles andere steht bereits im Archiv und wird von dort gelesen —
+tatsächliche Wochenstunden der letzten acht Wochen, bisherige Fahrtage, längste Fahrt. Die
+Zieldauer ergibt sich als runde Zahl über dem bisher Erreichten und lässt sich ändern.
+Jedes nicht gestellte Feld ist eines, das niemand falsch ausfüllt.
+
+**Die Tageszahl ist die einzige Angabe, die nicht in den Daten stehen kann** — sie ist eine
+Entscheidung über die Zukunft, keine Aufzeichnung der Vergangenheit. Und sie klärt die
+wichtigste Zahl gleich mit:
+
+| Fahrtage | harte Einheiten |
+|---|---|
+| 2–3 | 1 |
+| 4–6 | 2 |
+| 7 | 3 |
+
+**Begründung:** die 80/20-Verteilung zählt **Einheiten, nicht Minuten** — bei fünf
+Fahrtagen vier lockere und eine harte. Zwei harte Einheiten sind der Standard für Wochen
+von 8 bis 14 Stunden; selbst WorldTour-Fahrer mit 25 Stunden gehen selten über drei.
+**Einschränkung, die mitgeliefert wird:** 80/20 ist eine nützliche Beschreibung, keine
+allgemeine Wochenvorschrift — ein Review von 2023 fand nur sieben geeignete Studien und
+keinen Beleg, dass ein Verteilungsmodell immer gewinnt.
 
 ### Ziel und Plan (0.20.0) — der Trainer ist entpausiert
 

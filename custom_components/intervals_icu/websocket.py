@@ -6,6 +6,7 @@ which keeps hundreds of days of history out of the state machine.
 
 from __future__ import annotations
 
+from datetime import date, timedelta
 from typing import Any
 
 import voluptuous as vol
@@ -524,9 +525,22 @@ def _state_for_plan(data: dict[str, Any]) -> dict[str, Any]:
     wellness = data.get("wellness") or {}
     recent = [wellness[d] for d in sorted(wellness)[-28:]]
     loads = [float(row.get("load") or 0) for row in recent]
+
+    # The hours the athlete actually rides, taken from the last eight weeks -
+    # so the form does not have to ask for a number the archive already holds.
+    cutoff = (date.today() - timedelta(days=56)).isoformat()
+    seconds = 0
+    days_ridden = set()
+    for activity in (data.get("activities") or {}).values():
+        day = str(activity.get("start_date_local") or "")[:10]
+        if day >= cutoff:
+            seconds += activity.get("moving_time") or 0
+            days_ridden.add(day)
     return {
         "longest_ride_hours": round(longest, 1),
         "weekly_load": round(sum(loads) / 4) if loads else None,
+        "typical_hours": round(seconds / 3600 / 8, 1) if seconds else None,
+        "typical_days": round(len(days_ridden) / 8, 1) if days_ridden else None,
     }
 
 

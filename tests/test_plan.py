@@ -39,10 +39,31 @@ TODAY = "2026-09-12"
 # --- 1  nothing is invented without the answers -------------------------------
 eq(P.plan({})["ready"], False, "1 leeres Profil ergibt einen Plan")
 eq(P.plan({})["missing"], ["goal"], "1 fehlendes Ziel nicht benannt")
+# Only ONE thing must be asked: the days. Hours and the longest ride are in
+# the archive, and a target duration defaults to a round number above what the
+# athlete already manages - every field not asked is a field not got wrong.
 partial = P.plan(profile(goal="long_ride"))
-eq(partial["ready"], False, "1 Plan ohne Zeitangaben")
-for field in ("days_per_week", "hours_per_week", "target_hours"):
-    check(field in partial["missing"], f"1 {field} nicht als fehlend gemeldet")
+eq(partial["ready"], False, "1 Plan ohne Tagesangabe")
+eq(partial["missing"], ["days_per_week"], "1 mehr als die Tagesangabe verlangt")
+from_data = P.plan(profile(goal="long_ride", days_per_week=4),
+                   {"typical_hours": 8.5, "longest_ride_hours": 3.5}, weeks=4, today=TODAY)
+eq(from_data["ready"], True, "1 Plan trotz Archivdaten verweigert")
+check(from_data["weeks"][0]["hours"] > 7, "1 Wochenstunden nicht aus dem Archiv übernommen")
+check(from_data["target_hours"] and from_data["target_hours"] > 3.5,
+      "1 kein Ziel aus dem bisher Erreichten abgeleitet")
+eq(from_data["hours_source"], "aus deinen letzten Wochen gerechnet", "1 Herkunft der Stunden unklar")
+
+# the number of hard sessions follows from the days - 80/20 counts SESSIONS
+for days, expect in ((2, 1), (3, 1), (4, 2), (5, 2), (6, 2), (7, 3)):
+    result = P.plan(profile(goal="ftp", days_per_week=days), {"typical_hours": 9},
+                    weeks=2, today=TODAY)
+    got = result["hard_per_week"]
+    check(got == expect or (days >= 7 and got >= 2),
+          f"1 {days} Tage ergeben {got} harte Einheiten statt {expect}")
+    hard = [s for s in result["weeks"][0]["sessions"] if s["role"] == "quality"]
+    check(len(hard) <= got, f"1 {days} Tage: mehr harte Einheiten geplant als vorgesehen")
+check("zählt Einheiten, nicht Minuten" in from_data["hard_note"], "1 80/20-Regel nicht erklärt")
+check("keinen Beleg" in from_data["hard_note"], "1 Einschränkung der 80/20-Regel fehlt")
 # for a goal that needs no target duration, that field must NOT be demanded
 ftp_partial = P.plan(profile(goal="ftp", days_per_week=4, hours_per_week=8))
 eq(ftp_partial["ready"], True, "1 FTP-Ziel verlangt eine Zieldauer")

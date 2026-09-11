@@ -130,19 +130,34 @@ def plan(profile: dict[str, Any], state: dict[str, Any] | None = None,
     if not goal:
         return {"ready": False, "missing": ["goal"]}
 
-    missing = [field for field in ("days_per_week", "hours_per_week")
-               if not profile.get(field)]
-    if goal_key == "long_ride" and not profile.get("target_hours"):
-        missing.append("target_hours")
-    if missing:
-        return {"ready": False, "missing": missing, "goal": goal_key}
+    # Two questions, not seven. Everything else is already in the archive:
+    # how many hours this athlete actually rides, how long their longest ride
+    # was. Asking for numbers the data already holds is how forms get abandoned.
+    if not profile.get("days_per_week"):
+        return {"ready": False, "missing": ["days_per_week"], "goal": goal_key}
 
     days = int(profile["days_per_week"])
-    hours = float(profile["hours_per_week"])
+    hours = float(profile.get("hours_per_week")
+                  or (state or {}).get("typical_hours") or days * 1.6)
     longest_now = float(profile.get("longest_day_hours")
                         or (state or {}).get("longest_ride_hours") or 0)
+    # For the long-ride goal, the target defaults to the round number above
+    # what they already manage - a goal they can change, not a form field.
     target_hours = float(profile.get("target_hours") or 0)
+    if goal_key == "long_ride" and not target_hours:
+        target_hours = max(4.0, round(longest_now * 1.6 * 2) / 2)
     pattern = 3 if days >= 4 else 2
+
+    # How many hard sessions a week - the one number that actually follows from
+    # the day count. 80/20 counts SESSIONS, not minutes: at five riding days,
+    # four easy and one hard. Two hard sessions is the standard for 8-14 hour
+    # amateur weeks, and even World Tour riders at 25+ hours rarely exceed
+    # three. The caveat travels with it: 80/20 is a useful description, not a
+    # universal weekly prescription, and a 2023 review found no evidence that
+    # one distribution model always wins.
+    hard_per_week = 1 if days <= 3 else 2 if days <= 6 else 3
+    if goal_key == "long_ride":
+        hard_per_week = min(hard_per_week, 1 if days <= 3 else 2)
 
     start = date.fromisoformat(today) if today else date.today()
     weeks_left = None
@@ -173,7 +188,7 @@ def plan(profile: dict[str, Any], state: dict[str, Any] | None = None,
         capped = goal_key == "long_ride" and long_day > ceiling + 0.05
 
         sessions = _sessions(goal, goal_key, days, week_hours, long_day, kind, phase_key,
-                             profile, target_hours)
+                             profile, target_hours, hard_per_week)
         out_weeks.append({
             "index": index + 1,
             "start": (start + timedelta(days=7 * index)).isoformat(),
@@ -215,6 +230,18 @@ def plan(profile: dict[str, Any], state: dict[str, Any] | None = None,
         "goal": goal_key, "goal_label": goal["label"], "target": goal["target"],
         "why": goal["why"], "key_session": goal["key_session"],
         "pattern": f"{pattern}:1",
+        "hard_per_week": hard_per_week,
+        "hard_note": (
+            f"{hard_per_week} harte Einheit{'en' if hard_per_week != 1 else ''} pro Woche. "
+            "Die 80/20-Verteilung zählt Einheiten, nicht Minuten: bei fünf Fahrtagen vier "
+            "lockere und eine harte. Zwei harte Einheiten sind der Standard für Wochen von "
+            "8 bis 14 Stunden, und selbst WorldTour-Fahrer mit 25 Stunden gehen selten über "
+            "drei. Einschränkung: 80/20 ist eine nützliche Beschreibung, keine allgemeine "
+            "Wochenvorschrift — ein Review von 2023 fand nur sieben geeignete Studien und "
+            "keinen Beleg, dass ein Verteilungsmodell immer gewinnt."
+        ),
+        "hours_source": ("angegeben" if profile.get("hours_per_week")
+                         else "aus deinen letzten Wochen gerechnet"),
         "pattern_note": (
             f"{pattern} Belastungswochen, dann eine Entlastungswoche mit rund einem "
             "Drittel weniger Umfang. Ob die Wochen in Blöcken oder gemischt liegen, "
@@ -240,7 +267,7 @@ def plan(profile: dict[str, Any], state: dict[str, Any] | None = None,
 
 def _sessions(goal: dict[str, Any], goal_key: str, days: int, week_hours: float,
               long_day: float, kind: str, phase: str, profile: dict[str, Any],
-              target_hours: float) -> list[dict[str, Any]]:
+              target_hours: float, hard_per_week: int = 2) -> list[dict[str, Any]]:
     """The sessions of one week, fitted into the days that are available."""
     sessions: list[dict[str, Any]] = []
     remaining_hours = week_hours
@@ -277,7 +304,7 @@ def _sessions(goal: dict[str, Any], goal_key: str, days: int, week_hours: float,
         slots -= 1
 
     quality_slots = 0 if kind == "recovery" else min(
-        goal["mix"]["quality"], max(0, slots - 1) if goal_key == "long_ride" else slots)
+        hard_per_week, max(0, slots - 1) if goal_key == "long_ride" else slots)
     if phase == "taper":
         quality_slots = min(1, quality_slots)
 
