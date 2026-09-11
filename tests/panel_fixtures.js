@@ -222,4 +222,85 @@ function laps(kind) {
   ] };
 }
 
-module.exports = { TODAY, days, load, readiness, activities, streams, thresholds, calendar, pmc, laps };
+/* coach payloads, one per state the backend can report */
+function coach(kind) {
+  const anchors = { aerobic_hr: 157, aerobic_power: 158, n: 30,
+    trend_power: { power_before: 155, power_now: 158, hr_before: 157, hr_now: 157,
+                   power_change_pct: 2.2, hr_change: -0.4 },
+    source: "Median der letzten fünf belastbaren DFA-Messungen (Rogers/Gronwald)" };
+  const base = {
+    plan: ["Grundlage, gleichmäßig", "Regeneration, ganz locker", "Grundlage, gleichmäßig",
+           "Zügige Dauerfahrt", "Regeneration, ganz locker", "Grundlage, gleichmäßig",
+           "SweetSpot / Schwelle"].map((title, i) => ({
+      date: `2026-09-${String(11 + i).padStart(2, "0")}`,
+      key: i === 6 ? "sweetspot" : (i % 2 ? "recovery" : "endurance"),
+      title, minutes: [60, 120], hr_window: [138, 152],
+      effect: "Reiz für Kapillarisierung und mitochondriale Dichte." })),
+    sessions: {
+      rest: { title: "Ruhetag", effect: "Anpassung passiert in der Erholung.", dfa: null, hr_window: null },
+      recovery: { title: "Regeneration, ganz locker", effect: "Durchblutung ohne Reiz.", dfa: "über 1,0", hr_window: [113, 129] },
+      endurance: { title: "Grundlage, gleichmäßig", effect: "Kapillarisierung, Mitochondrien, Fettstoffwechsel.", dfa: "0,75–1,0", hr_window: [138, 152] },
+      tempo: { title: "Zügige Dauerfahrt", effect: "Schiebt die aerobe Schwelle nach oben.", dfa: "um 0,75", hr_window: [152, 160] },
+      sweetspot: { title: "SweetSpot / Schwelle", effect: "Wirksamster Reiz für die Schwellenleistung.", dfa: "0,5–0,75", hr_window: [160, 173] },
+      vo2max: { title: "VO2max-Intervalle", effect: "Stärkster Reiz auf die Sauerstoffaufnahme.", dfa: "unter 0,5", hr_window: [170, 188] },
+    },
+    evidence: { rule: "Javaloyes 2019/2020, Vesterinen 2016 — HRV-gesteuerte Steuerung.",
+                limit: "Düking 2021: kleiner, nicht signifikanter Effekt auf die Spitzenleistung.",
+                own_data: "Schwellen aus eigenen DFA-Messungen." },
+  };
+  const durability = { n: 73, short: 0.0, long: 0.4, verdict: "die aerobe Basis trägt auch lange Einheiten",
+                       source: "Friel: bis 5 % Entkopplung" };
+  const states = {
+    ready: { state: "ready", label: "im Normalbereich", since: null, week_z: 0.3,
+             recent_hrv_z: 0.4, recent_rhr_z: -0.2, confidence: "mittel",
+             detail: "Das 7-Tage-Mittel liegt in deinem Normalband." },
+    rebound: { state: "rebound", label: "Erholung nach Einbruch", since: "2026-09-06", week_z: -0.63,
+               recent_hrv_z: 1.5, recent_rhr_z: -1.8, confidence: "mittel",
+               detail: "Der Einbruch war vor 5 Tagen. Das 7-Tage-Mittel hinkt noch nach." },
+    slump: { state: "slump", label: "Einbruch", since: "2026-09-11", week_z: -1.9,
+             recent_hrv_z: -2.4, recent_rhr_z: 2.9, confidence: "hoch",
+             detail: "Deine Werte sind heute deutlich außerhalb deines Normalbereichs." },
+    unknown: { state: "unknown", label: "zu wenig Historie", since: null, week_z: null,
+               recent_hrv_z: null, recent_rhr_z: null, confidence: "keine",
+               detail: "unter drei Wochen Wellness-Daten" },
+  };
+  if (kind === "slump") {
+    return { ...base, recommendation: { key: "rest", title: "Ruhetag", minutes: 0, hr_window: null,
+      power_window: null, expected_dfa: null, effect: "Keine Anpassung, sondern die Bedingung dafür.",
+      estimated_load: 0, fits_budget: null, state: states.slump, layoff: { days: 0, phase: null, note: null },
+      anchors, durability, habit: null,
+      reasons: [{ weil: "Einbruch", quelle: "Plews/Altini", text: "Werte außerhalb des Normalbereichs." }],
+      warnings: [] } };
+  }
+  if (kind === "rebound") {
+    return { ...base, recommendation: { key: "endurance", title: "Grundlage, gleichmäßig",
+      minutes: [60, 120], hr_window: [138, 152], power_window: [139, 153], expected_dfa: "meist 0,75–1,0",
+      effect: "Reiz für Kapillarisierung und mitochondriale Dichte.", estimated_load: 45,
+      fits_budget: true, state: states.rebound,
+      layoff: { days: 7, last: "2026-09-04", phase: "wiedereinstieg",
+                note: "Bis etwa zwei Wochen Pause kostet vor allem das Plasmavolumen Leistung." },
+      anchors, durability, habit: { n: 6, median_intensity: 85, hard_share: 83 },
+      reasons: [{ weil: "7 Tage ohne Einheit", quelle: "Mujika/Coyle", text: "Plasmavolumen, kein Trainingsverlust." },
+                { weil: "Erholung nach Einbruch", quelle: "Plews", text: "Signal zum Wiedereinstieg, nicht zur Intensität." }],
+      warnings: ["Nach einem Infekt gilt: stufenweise aufbauen und bei wiederkehrenden Symptomen abbrechen.",
+                 "Dein eigenes Muster: nach 6 Pausen lag die erste Einheit im Median bei 85 % Intensität."] } };
+  }
+  if (kind === "unknown") {
+    return { ...base, plan: [], recommendation: { key: "endurance", title: "Grundlage, gleichmäßig",
+      minutes: [60, 120], hr_window: null, power_window: null, expected_dfa: "meist 0,75–1,0",
+      effect: "Reiz für Kapillarisierung.", estimated_load: null, fits_budget: null,
+      state: states.unknown, layoff: { days: null, phase: null, note: null },
+      anchors: { aerobic_hr: null, aerobic_power: null, n: 1, trend_power: null,
+                 source: "zu wenige belastbare DFA-Messungen" },
+      durability: null, habit: null, reasons: [], warnings: [] } };
+  }
+  return { ...base, recommendation: { key: "sweetspot", title: "SweetSpot / Schwelle",
+    minutes: [45, 75], hr_window: [160, 173], power_window: [161, 174], expected_dfa: "0,5–0,75 in den Blöcken",
+    effect: "Der wirksamste Reiz für die Leistung an der zweiten Schwelle.", estimated_load: 54,
+    fits_budget: false, state: states.ready, layoff: { days: 1, phase: null, note: null },
+    anchors, durability, habit: { n: 6, median_intensity: 85, hard_share: 83 },
+    reasons: [{ weil: "im Normalbereich", quelle: "Javaloyes", text: "Ein harter Reiz ist möglich." }],
+    warnings: [] } };
+}
+
+module.exports = { TODAY, days, load, readiness, activities, streams, thresholds, calendar, pmc, laps, coach };

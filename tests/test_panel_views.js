@@ -48,6 +48,45 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   ok(p._nextPlanned(null) === null, "heute: _nextPlanned stürzt ohne Daten");
 }
 
+/* ── Trainer ───────────────────────────────────────────────────────────── */
+{
+  for (const kind of ["ready", "rebound", "slump", "unknown"]) {
+    const html = p.rTrainer(F.coach(kind), rd);
+    clean(html, "trainer " + kind);
+    contains(html, "Zustand heute", "trainer " + kind);
+    contains(html, "Nächste Einheit", "trainer " + kind);
+    contains(html, "Was das bewirkt", "trainer " + kind);
+    contains(html, "Düking", "trainer " + kind + ": Grenze der Regel fehlt");
+  }
+  clean(p.rTrainer(null, rd), "trainer ohne Daten");
+
+  const reb = p.rTrainer(F.coach("rebound"), rd);
+  contains(reb, "Erholung nach Einbruch", "trainer rebound");
+  contains(reb, "hinkt noch nach", "trainer rebound: Nachlauf nicht erklärt");
+  contains(reb, "Grundlage", "trainer rebound: empfiehlt keine lockere Einheit");
+  contains(reb, "stufenweise", "trainer rebound: Infekt-Hinweis fehlt");
+  contains(reb, "85 %", "trainer rebound: eigenes Muster fehlt");
+  contains(reb, "138–152 bpm", "trainer rebound: Zielpuls fehlt");
+  contains(reb, "06.09.2026", "trainer rebound: Einbruchsdatum fehlt");
+
+  const slump = p.rTrainer(F.coach("slump"), rd);
+  contains(slump, "Ruhetag", "trainer slump");
+  ok(!slump.includes("Zielpuls"), "trainer slump: Ruhetag mit Zielpuls");
+
+  const unk = p.rTrainer(F.coach("unknown"), rd);
+  clean(unk, "trainer unknown");
+  ok(!unk.includes("bpm</b>") || unk.includes("–"), "trainer unknown: erfundene Anker");
+
+  const ready = p.rTrainer(F.coach("ready"), rd);
+  contains(ready, "über dem Budget", "trainer ready: Budget-Abgleich fehlt");
+  contains(ready, "157", "trainer: Anker fehlt");
+  contains(ready, "2,2 %", "trainer: Entwicklung der Schwellenleistung fehlt");
+  ok((ready.match(/class="pday/g) || []).length === 7, "trainer: Wochenplan unvollständig");
+  ok((ready.match(/class="catrow"/g) || []).length >= 5, "trainer: Einheitenkatalog unvollständig");
+  // the honest part must be present, not buried
+  contains(ready, "kein belastbarer Zusammenhang", "trainer: die eigene Kalibrierung wird verschwiegen");
+}
+
 /* ── Kalender ──────────────────────────────────────────────────────────── */
 {
   const html = p.rKalender(days);

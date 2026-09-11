@@ -452,6 +452,7 @@ function bullet(b) {
 /* the panel                                                           */
 /* ------------------------------------------------------------------ */
 const TABS = [
+  ["trainer", "Trainer"],
   ["heute", "Heute"], ["kalender", "Kalender"], ["fitness", "Fitness"],
   ["akt", "Aktivitäten"], ["belastung", "Belastung"], ["dfa", "DFA"], ["plan", "Plan"],
 ];
@@ -469,7 +470,7 @@ class IntervalsIcuPanel extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
-    this._tab = "heute";
+    this._tab = "trainer";
     this._grp = {};
     this._range = 182;
     this._weeks = 12;
@@ -496,11 +497,12 @@ class IntervalsIcuPanel extends HTMLElement {
     this._view = this.shadowRoot.getElementById("view");
     this._attach();
     try {
-      const [status, rd, days, load] = await Promise.all([
+      const [status, rd, days, load, coachData] = await Promise.all([
         this._ws("status"), this._ws("readiness"),
-        this._ws("days", { weeks: this._weeks }), this._ws("load"),
+        this._ws("days", { weeks: this._weeks }), this._ws("load"), this._ws("coach"),
       ]);
       this._status = status; this._rd = rd; this._days = days; this._load = load;
+      this._coach = coachData;
       this._err = null;
     } catch (err) {
       this._err = String(err && err.message || err);
@@ -510,6 +512,7 @@ class IntervalsIcuPanel extends HTMLElement {
 
   async _need(what) {
     try {
+      if (what === "coach" && !this._coach) this._coach = await this._ws("coach");
       if (what === "pmc" && !this._pmc) this._pmc = await this._ws("pmc");
       if (what === "akt" && !this._acts) this._acts = await this._ws("activities", { limit: 300 });
       if (what === "thr" && !this._thr) this._thr = await this._ws("thresholds");
@@ -521,6 +524,7 @@ class IntervalsIcuPanel extends HTMLElement {
 
   async _setTab(t) {
     this._tab = t;
+    if (t === "trainer") await this._need("coach");
     if (t === "fitness") await this._need("pmc");
     if (t === "akt") await this._need("akt");
     if (t === "dfa") await this._need("thr");
@@ -573,7 +577,8 @@ class IntervalsIcuPanel extends HTMLElement {
     let html = "";
     if (this._err && !this._rd) {
       html = `<div class="card pad err">Daten konnten nicht geladen werden: ${esc(this._err)}</div>`;
-    } else if (this._tab === "heute") html = this.rHeute(this._rd, this._days, this._load);
+    } else if (this._tab === "trainer") html = this.rTrainer(this._coach, this._rd);
+    else if (this._tab === "heute") html = this.rHeute(this._rd, this._days, this._load);
     else if (this._tab === "kalender") html = this.rKalender(this._days);
     else if (this._tab === "fitness") html = this.rFitness(this._pmc, this._range);
     else if (this._tab === "akt") html = this.rAkt(this._acts, this._sel);
@@ -659,6 +664,154 @@ class IntervalsIcuPanel extends HTMLElement {
     });
     this._fillReadout(name, idx);
     this._xhOn = true;
+  }
+
+  /* ---------------- Trainer ----------------
+     The verdict first, then what to ride, then why - and the limits of the
+     rule sit next to it rather than in a footnote. Every number here is
+     either measured from this athlete or carries the study it comes from. */
+  rTrainer(c, rd) {
+    if (!c) return `<div class="card pad">Trainer wird geladen …</div>`;
+    const r = c.recommendation || {};
+    const st = r.state || {};
+    const STATE_LOOK = {
+      ready:      { c: C.green,  ic: "ok",    w: "im Normalbereich" },
+      rebound:    { c: C.blue,   ic: "trend", w: "Erholung nach Einbruch" },
+      strained:   { c: C.amber,  ic: "warn",  w: "beansprucht" },
+      recovering: { c: C.amber,  ic: "warn",  w: "noch im Einbruch" },
+      slump:      { c: C.red,    ic: "stop",  w: "Einbruch" },
+      elevated:   { c: C.violet, ic: "wave",  w: "auffällig hoch" },
+      unknown:    { c: C.grey,   ic: "na",    w: "keine Einschätzung" },
+    };
+    const look = STATE_LOOK[st.state] || STATE_LOOK.unknown;
+    const anc = r.anchors || {};
+    const hrw = r.hr_window, pw = r.power_window;
+
+    const zbar = (label, value, unit) => {
+      if (value == null) return "";
+      const pos = Math.max(-3, Math.min(3, value));
+      const col = pos < -0.5 ? C.amber : pos > 1.5 ? C.violet : C.green;
+      return `<div class="zrow"><span>${label}</span>
+        <i class="zline"><s class="zmid"></s>
+          <b style="left:${((pos + 3) / 6 * 100).toFixed(1)}%;background:${col}"></b></i>
+        <b class="tn">${sign(value, 2)}${unit ? " " + unit : ""}</b></div>`;
+    };
+
+    const fitBadge = r.fits_budget == null ? ""
+      : badge(r.fits_budget ? "green" : "amber",
+              r.fits_budget ? "passt ins Budget" : "über dem Budget");
+
+    const reasons = (r.reasons || []).map((x) => `<li><b>${esc(x.weil)}</b>
+      <span class="src">${esc(x.text)}</span>
+      <em class="qq">${esc(x.quelle)}</em></li>`).join("");
+    const warns = (r.warnings || []).map((w) =>
+      `<div class="warnrow">${ico("warn", C.amber, 16)}<span>${esc(w)}</span></div>`).join("");
+
+    const lay = r.layoff || {};
+    const dur = r.durability;
+    const trend = anc.trend_power;
+    const plan = (c.plan || []).map((d, i) => {
+      const hard = d.key === "sweetspot" || d.key === "vo2max";
+      return `<div class="pday ${i === 0 ? "on" : ""} ${hard ? "hard" : ""}">
+        <span class="pd">${dShort(d.date)}</span>
+        <b>${esc(d.title)}</b>
+        <small>${d.minutes ? d.minutes[0] + "–" + d.minutes[1] + " min" : "frei"}${
+          d.hr_window ? ` · ${d.hr_window[0]}–${d.hr_window[1]} bpm` : ""}</small>
+      </div>`;
+    }).join("");
+
+    return `
+      <section class="card hero" style="border-color:${look.c}55">
+        <div class="tstate">
+          <span class="tsic" style="color:${look.c}">${ico(look.ic, look.c, 30)}</span>
+          <div>
+            <div class="kicker">Zustand heute</div>
+            <div class="tslabel" style="color:${look.c}">${esc(st.label || "–")}</div>
+          </div>
+          <div class="tsz">
+            ${zbar("7-Tage-Mittel HRV", st.week_z, "SD")}
+            ${zbar("letzte 3 Tage HRV", st.recent_hrv_z, "SD")}
+            ${zbar("letzte 3 Tage Ruhepuls", st.recent_rhr_z, "SD")}
+          </div>
+        </div>
+        <p class="tdetail">${esc(st.detail || "")}</p>
+        ${st.since ? `<p class="hint">Einbruch erkannt am ${dMed(st.since)} — solange er im
+          7-Tage-Fenster steckt, zieht er das Mittel nach unten, auch wenn die letzten Tage
+          längst wieder darüber liegen.</p>` : ""}
+      </section>
+
+      <section class="card rec" style="border-left:3px solid ${look.c}">
+        <div class="kicker">Nächste Einheit</div>
+        <div class="rectitle">${esc(r.title || "–")} ${fitBadge}</div>
+        <div class="recgrid">
+          ${r.minutes ? `<div class="kv"><small>Dauer</small><b>${r.minutes[0]}–${r.minutes[1]} min</b></div>` : ""}
+          ${hrw ? `<div class="kv"><small>Zielpuls</small><b class="tn">${hrw[0]}–${hrw[1]} bpm</b></div>` : ""}
+          ${pw ? `<div class="kv"><small>Zielleistung</small><b class="tn">${pw[0]}–${pw[1]} W</b></div>` : ""}
+          ${r.expected_dfa ? `<div class="kv"><small>Erwartetes DFA alpha-1</small><b>${esc(r.expected_dfa)}</b></div>` : ""}
+          ${r.estimated_load != null ? `<div class="kv"><small>Geschätzte Last</small><b class="tn">${fmt(r.estimated_load)}</b></div>` : ""}
+        </div>
+        <p class="effect"><b>Was das bewirkt:</b> ${esc(r.effect || "")}</p>
+        ${warns}
+        <details class="more"><summary>Warum diese Einheit?</summary>
+          <ul class="reasons">${reasons}</ul>
+        </details>
+      </section>
+
+      <h3 class="secname">Deine gemessenen Anker <span class="hint">— keine Prozente einer Maximalherzfrequenz</span></h3>
+      <div class="card ancgrid">
+        <div class="stat"><small>Aerobe Schwelle (DFA 0,75)</small>
+          <b class="tn lead1" style="color:${ROLE.series}">${anc.aerobic_hr ? fmt(anc.aerobic_hr) : "–"} <span class="unit">bpm</span></b>
+          <span class="mut">${esc(anc.source || "")}</span></div>
+        <div class="sidestats">
+          <div class="stat"><small>bei Leistung</small><b class="tn small2">${anc.aerobic_power ? fmt(anc.aerobic_power) + " W" : "–"}</b></div>
+          <div class="stat"><small>Messungen</small><b class="tn small2">${fmt(anc.n || 0)}</b></div>
+          ${trend ? `<div class="stat"><small>Entwicklung</small>
+            <b class="tn small2" style="color:${trend.power_change_pct >= 0 ? C.green : C.amber}">${sign(trend.power_change_pct, 1)} %</b>
+            <span class="mut">${trend.power_before} → ${trend.power_now} W bei ${trend.hr_before} → ${trend.hr_now} bpm</span></div>` : ""}
+        </div>
+      </div>
+      ${trend ? `<p class="note">${trend.power_change_pct > 0
+        ? `Mehr Leistung bei praktisch gleicher Herzfrequenz an der aeroben Schwelle — das ist die Anpassung, auf die Grundlagentraining zielt.`
+        : `Die Leistung an der aeroben Schwelle hat sich nicht verbessert.`}</p>` : ""}
+
+      ${dur ? `<h3 class="secname">Wie lange trägt die Grundlage?</h3>
+      <div class="card">
+        <div class="durrow">
+          <div class="stat"><small>unter 90 min</small><b class="tn small2">${dur.short != null ? fmt(dur.short,1) + " %" : "–"}</b></div>
+          <div class="stat"><small>ab 90 min</small><b class="tn small2">${dur.long != null ? fmt(dur.long,1) + " %" : "–"}</b></div>
+          <div class="stat"><small>Einheiten</small><b class="tn small2">${dur.n}</b></div>
+        </div>
+        <p class="effect">${esc(dur.verdict)}</p>
+        <details class="more"><summary>Quelle und Grenzen</summary><p class="src">${esc(dur.source)} — Entkopplung ist nur auf gleichmäßigen Einheiten aussagekräftig; Intervalle sind hier ausgeschlossen.</p></details>
+      </div>` : ""}
+
+      <h3 class="secname">Die nächsten sieben Tage <span class="hint">— Vorschlag, kein Plan in Stein</span></h3>
+      <div class="planrow">${plan}</div>
+
+      ${lay.note ? `<div class="card"><div class="sechead">${ico("clock", C.tx2, 18)}<h3>Seit ${lay.days} Tagen keine Einheit</h3></div>
+        <p class="src">${esc(lay.note)}</p></div>` : ""}
+
+      <details class="more card"><summary>Worauf diese Empfehlung beruht — und was sie nicht kann</summary>
+        <p class="src"><b>Die Regel:</b> ${esc((c.evidence || {}).rule || "")}</p>
+        <p class="src"><b>Die Grenze:</b> ${esc((c.evidence || {}).limit || "")}</p>
+        <p class="src"><b>Deine Werte:</b> ${esc((c.evidence || {}).own_data || "")}</p>
+        <p class="src"><b>Und der ehrlichste Teil:</b> an deinen eigenen Daten ließ sich
+        bisher kein belastbarer Zusammenhang zwischen Morgenwerten und Tagesform nachweisen
+        (rund 2 % erklärte Streuung bei knapp 100 Wertepaaren, statistisch nicht von Zufall
+        zu trennen). Die Regel oben stammt aus kontrollierten Studien, nicht aus deinem Konto.
+        Was bei dir nachweislich funktioniert hat, steht unter „Anker": mehr Leistung bei
+        gleicher Herzfrequenz.</p>
+      </details>
+
+      <h3 class="secname">Der Einheitenkatalog <span class="hint">— was welcher Reiz bewirkt</span></h3>
+      <div class="card pad0">
+        ${Object.entries(c.sessions || {}).map(([key, s]) => `<div class="catrow">
+          <b>${esc(s.title)}</b>
+          <span class="tn">${s.hr_window ? s.hr_window[0] + "–" + s.hr_window[1] + " bpm" : "–"}</span>
+          <span class="mut">${s.dfa ? "DFA " + esc(s.dfa) : ""}</span>
+          <span class="src">${esc(s.effect)}</span>
+        </div>`).join("")}
+      </div>`;
   }
 
   /* ---------------- Heute ---------------- */
@@ -1685,6 +1838,45 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
   .lhead{display:none}
   .lrow{grid-template-columns:30px 1fr 70px 74px;}
   .lrow>*:nth-child(5),.lrow>*:nth-child(6),.lrow>*:nth-child(7),.lrow>*:nth-child(8){display:none}
+}
+/* Trainer */
+.tstate{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+.tsic{flex:0 0 auto}
+.tslabel{font-size:27px;font-weight:700;line-height:1.1}
+.tsz{flex:1 1 340px;min-width:280px;display:grid;gap:5px}
+.zrow{display:grid;grid-template-columns:160px 1fr 74px;gap:10px;align-items:center;font-size:12.5px;color:${C.tx2}}
+.zline{position:relative;height:8px;background:#0006;border-radius:4px;display:block}
+.zline .zmid{position:absolute;left:50%;top:-3px;bottom:-3px;width:1.5px;background:${C.tx3};display:block}
+.zline b{position:absolute;top:-3px;width:9px;height:14px;border-radius:3px;transform:translateX(-50%)}
+.tdetail{color:${C.tx};font-size:15px;margin:12px 2px 0;max-width:900px}
+.rec{padding:16px}
+.rectitle{font-size:24px;font-weight:700;display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:2px 0 12px}
+.recgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:9px;margin-bottom:12px}
+.recgrid .kv{display:block}
+.recgrid .kv small{display:block;color:${C.tx3};font-size:11.5px;margin-bottom:2px}
+.recgrid .kv b{font-size:16px}
+.effect{color:${C.tx2};font-size:14px;line-height:1.55;max-width:900px;margin:4px 0 8px}
+.warnrow{display:flex;gap:9px;align-items:flex-start;background:${C.amber}12;border:1px solid ${C.amber}33;
+  border-radius:9px;padding:9px 11px;margin:8px 0;font-size:13.5px;color:${C.tx2}}
+.reasons{margin:6px 0 0;padding-left:18px;color:${C.tx2};font-size:13.5px}
+.reasons li{margin-bottom:7px}
+.reasons .src{display:block}
+.qq{display:block;color:${C.tx3};font-size:12px;font-style:normal}
+.ancgrid{display:grid;grid-template-columns:minmax(250px,1fr) 2fr;gap:22px;align-items:center}
+.durrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:14px;margin-bottom:6px}
+.planrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:8px;margin-bottom:14px}
+.pday{background:${C.card};border:1px solid ${C.line};border-radius:10px;padding:10px}
+.pday.on{border-color:${ROLE.series};box-shadow:0 0 0 1px ${ROLE.series}55}
+.pday.hard{background:${C.card2}}
+.pday .pd{display:block;color:${C.tx3};font-size:12px}
+.pday b{display:block;font-size:14px;margin:2px 0}
+.pday small{color:${C.tx2};font-size:12px}
+.catrow{display:grid;grid-template-columns:190px 110px 190px 1fr;gap:12px;align-items:baseline;
+  padding:10px 14px;border-bottom:1px solid ${C.line}44;font-size:13px}
+@media(max-width:980px){
+  .ancgrid{grid-template-columns:1fr}
+  .catrow{grid-template-columns:1fr;gap:3px}
+  .zrow{grid-template-columns:120px 1fr 64px}
 }
 .dfabox{background:${C.card2};border-radius:10px;padding:13px 15px}
 .dfar{display:grid;grid-template-columns:150px 1fr 52px 62px;gap:10px;align-items:center;font-size:13.5px;padding:3px 0}

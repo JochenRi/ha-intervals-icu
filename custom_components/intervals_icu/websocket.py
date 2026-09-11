@@ -12,7 +12,7 @@ import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 
-from . import analytics, derive, importer
+from . import analytics, coach as coach_module, derive, importer
 from .api import IntervalsError
 from .const import DOMAIN
 
@@ -61,6 +61,7 @@ def async_register(hass: HomeAssistant) -> None:
         websocket_activity,
         websocket_streams,
         websocket_laps,
+        websocket_coach,
         websocket_thresholds,
         websocket_calendar,
         websocket_status,
@@ -348,3 +349,21 @@ async def websocket_laps(hass, connection, msg) -> None:
         connection.send_error(msg["id"], "fetch_failed", str(err))
         return
     connection.send_result(msg["id"], derive.normalize_laps(payload))
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "intervals_icu/coach",
+        vol.Optional("athlete_id"): str,
+    }
+)
+@callback
+def websocket_coach(hass, connection, msg) -> None:
+    """Return the trainer view: state, next session, week ahead, evidence."""
+    if (coordinator := _require(hass, connection, msg)) is None:
+        return
+    data = coordinator.archive.data
+    ready = analytics.readiness(data)
+    connection.send_result(
+        msg["id"], coach_module.coach(data, (ready or {}).get("budget"))
+    )
