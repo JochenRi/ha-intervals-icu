@@ -1063,6 +1063,40 @@ def session_context(data: dict[str, Any], activity_id: str) -> dict[str, Any]:
 #   3. WHERE IT COMES FROM - the last days of training and the night after
 # And only today. Beyond that the load outside training is unknown, so the
 # page does not pretend to reach further.
+def _signal_bands(data: dict[str, Any], day: str) -> dict[str, Any]:
+    """Baseline and the SD thresholds, converted back into real units."""
+    import math
+    wellness = data.get("wellness") or {}
+    days = sorted(d for d in wellness if d <= day)[-60:]
+    out: dict[str, Any] = {}
+    for key, field, use_log, direction, label, unit in NIGHT_FIELDS:
+        raw = []
+        for d in days:
+            value = _f((wellness.get(d) or {}).get(field))
+            if value is None or value <= 0:
+                continue
+            raw.append(math.log(value) if use_log else value)
+        if len(raw) < 20:
+            continue
+        base, spread = _band(raw)
+        if spread <= 0:
+            continue
+        scale = 1 / 3600 if field == "sleepSecs" else 1
+
+        def at(sd: float) -> float:
+            value = base + sd * spread
+            return (math.exp(value) if use_log else value) * scale
+
+        out[key] = {
+            "baseline": round(at(0), 2),
+            "noise": [round(at(-SWC_SD), 2), round(at(SWC_SD), 2)],
+            "usual": [round(at(-1), 2), round(at(1), 2)],
+            "slump": round(at(-HRV_DROP_SD if direction > 0 else HRV_DROP_SD), 2),
+            "unit": unit,
+        }
+    return out
+
+
 def today(data: dict[str, Any], budget: dict[str, Any] | None = None) -> dict[str, Any]:
     wellness = data.get("wellness") or {}
     if not wellness:
@@ -1186,6 +1220,12 @@ def today(data: dict[str, Any], budget: dict[str, Any] | None = None) -> dict[st
         "state_label": condition.get("label"),
         "state_text": condition.get("text"),
         "signals": signals,
+        # The bands that matter, expressed in the signal's OWN unit rather than
+        # in standard deviations - a rider recognises 41 ms, not -1.5 SD. They
+        # are the same thresholds the rules already use: +-0.5 SD is noise by
+        # definition, +-1 SD is the ordinary spread, and 2 SD is where a drop
+        # stops being noise and becomes a slump.
+        "bands": _signal_bands(data, current),
         # 42 days per signal, so the enlarged card can show a curve instead of
         # a single number with nothing to compare it against
         "history": {

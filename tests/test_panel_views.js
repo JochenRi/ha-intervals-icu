@@ -58,6 +58,22 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   contains(opened, "Worüber dieser Wert etwas sagt", "heute: große Ansicht ohne Erklärung");
   contains(opened, "kleinste bedeutsame Änderung", "heute: Rauschgrenze nicht erklärt");
   contains(opened, "Basislinie", "heute: Bezugslinie fehlt in der Kurve");
+  // the bands come from the athlete's OWN 60-day distribution and are drawn in
+  // the signal's own unit - a rider recognises 41 ms, not -1.5 SD
+  ok((opened.match(/<rect[^>]*opacity="0\.(08|14)"/g) || []).length >= 2,
+     "heute: keine Bereiche aus der eigenen Verteilung");
+  contains(opened, "Basislinie 48", "heute: Basislinie nicht in echter Einheit");
+  contains(opened, "Einbruch ab 35", "heute: Einbruchsschwelle nicht eingezeichnet");
+  contains(opened, "Die Bereiche:", "heute: Bereiche nicht erklärt");
+  contains(opened, "aus deinen letzten 60 Tagen gerechnet", "heute: Herkunft der Bereiche fehlt");
+  // for the resting heart rate the threshold points the OTHER way
+  p._sigOpen = "rhr";
+  const rhrOpen = p.rHeute(F.today());
+  clean(rhrOpen, "heute ruhepuls offen");
+  contains(rhrOpen, "auffällig hoch 62", "heute: Ruhepuls-Schwelle falsch herum");
+  ok(!/Einbruch ab/.test(rhrOpen.slice(rhrOpen.indexOf("tsigbig"))),
+     "heute: Ruhepuls als Einbruch beschriftet");
+  p._sigOpen = "hrv";
   p._sigOpen = null;
   contains(html, "Erholung, nicht Bereitschaft", "heute: Nacht nicht als Erholung eingeordnet");
   // the removed things must STAY removed

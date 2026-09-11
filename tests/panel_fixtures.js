@@ -310,6 +310,11 @@ function today(kind) {
         sessions: [{ name: "volumen", type: "Ride", minutes: 60 }] },
     ],
     week_load: 47, rest_days: 5,
+    bands: {
+      hrv: { baseline: 48.2, noise: [44.6, 52.1], usual: [41.3, 56.3], slump: 34.8, unit: "ms" },
+      rhr: { baseline: 56.4, noise: [55.1, 57.7], usual: [53.8, 59.0], slump: 61.6, unit: "bpm" },
+      sleep: { baseline: 7.4, noise: [7.1, 7.7], usual: [6.8, 8.0], slump: 5.6, unit: "h" },
+    },
     history: {
       hrv: Array.from({ length: 42 }, (_, i) => 48 + ((i * 7) % 9) - 4),
       rhr: Array.from({ length: 42 }, (_, i) => 56 + ((i * 5) % 6) - 3),

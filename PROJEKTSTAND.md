@@ -1,6 +1,6 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 11.09.2026 · **Version:** 0.29.0 · **Status:** produktiv auf HEIMDALL,
+**Stand:** 11.09.2026 · **Version:** 0.30.0 · **Status:** produktiv auf HEIMDALL,
 Auslieferung über HACS aus `github.com/JochenRi/ha-intervals-icu`
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lokal
@@ -133,6 +133,27 @@ Einzelwert verschweigt.
 
 Ein Test fährt vier Fahrten mit unterschiedlicher Drift durch (1,1 % / 4,0 % / 5,3 % /
 14,5 %) und verlangt für jede die richtige Einstufung.
+
+### Bereiche aus den eigenen Daten (0.30.0)
+
+Die aufgeklappte Signalkurve trägt jetzt die Bereiche, die aus **deiner eigenen
+60-Tage-Verteilung** stammen — **in der Einheit des Signals, nicht in Standardabweichungen**:
+man erkennt 41 ms wieder, −1,5 SD nicht.
+
+| Bereich | Bedeutung |
+|---|---|
+| dunkles Band | ±0,5 SD um die Basislinie — **was darin liegt, ist Rauschen** |
+| helleres Band | ±1 SD — die gewohnte Schwankung |
+| gestrichelte Linie | die Basislinie selbst, beziffert |
+| gelbe Linie | 2 SD — ab hier ist ein Abfall kein Rauschen mehr |
+
+**Die Richtung folgt dem Signal:** bei der HRV liegt die Warnlinie unten („Einbruch ab
+35 ms"), beim Ruhepuls oben („auffällig hoch 62 bpm"). Bei der HRV läuft die Rücktransformation
+über `exp()`, weil die Basislinie auf der Log-Skala gerechnet wird — ohne das kämen negative
+Millisekunden heraus; ein Test prüft genau das.
+
+**Beim Bauen gefunden:** die Warnlinie des Ruhepulses lag außerhalb der Achse und wurde
+stillschweigend nicht gezeichnet. Die Achse schließt jetzt alle Marken ein.
 
 ### Heute: aufklappbare Signale, echte Tageslast (0.29.0)
 

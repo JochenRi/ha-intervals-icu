@@ -443,6 +443,33 @@ check(all(v is None or 10 < v < 200 for v in history["hrv"]), "23 verlauf: unpla
 check(all(v is None or 3 < v < 14 for v in history.get("sleep", [])),
       "23 verlauf: Schlaf nicht in Stunden umgerechnet")
 
+# --- 24  the bands, in the signal's own unit ----------------------------------
+# A rider recognises 41 ms; -1.5 SD means nothing at a glance. So the
+# thresholds the rules already use are converted back into real units - and for
+# the HRV that conversion has to go through exp(), because the baseline is
+# computed on the log scale.
+bands = today_view.get("bands") or {}
+check("hrv" in bands and "rhr" in bands, "24 bereiche: fehlen")
+hrv_band = bands["hrv"]
+check(hrv_band["noise"][0] < hrv_band["baseline"] < hrv_band["noise"][1],
+      f"24 bereiche: Rauschband liegt nicht um die Basislinie ({hrv_band})")
+check(hrv_band["usual"][0] < hrv_band["noise"][0], "24 bereiche: 1 SD enger als 0,5 SD")
+check(hrv_band["usual"][1] > hrv_band["noise"][1], "24 bereiche: 1 SD enger als 0,5 SD")
+check(hrv_band["slump"] < hrv_band["usual"][0],
+      f"24 bereiche: Einbruchsschwelle innerhalb der gewohnten Schwankung ({hrv_band})")
+check(10 < hrv_band["baseline"] < 200, f"24 bereiche: HRV-Basislinie unplausibel ({hrv_band})")
+check(hrv_band["slump"] > 0, "24 bereiche: negative HRV-Schwelle - log-Rücktransformation fehlt")
+
+# for the resting heart rate the threshold points the OTHER way: HIGH is bad
+rhr_band = bands["rhr"]
+check(rhr_band["slump"] > rhr_band["usual"][1],
+      f"24 bereiche: Ruhepuls-Schwelle nach unten statt nach oben ({rhr_band})")
+check(40 < rhr_band["baseline"] < 90, f"24 bereiche: Ruhepuls unplausibel ({rhr_band})")
+
+# thin history yields no bands rather than invented ones
+thin_bands = coach.today(night_history(days=15), None).get("bands") or {}
+check(not thin_bands, f"24 bereiche: aus zu wenigen Tagen erfunden ({thin_bands})")
+
 print(f"test_coach: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

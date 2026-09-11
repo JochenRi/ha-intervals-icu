@@ -1450,12 +1450,42 @@ class IntervalsIcuPanel extends HTMLElement {
           <div class="tsigbignum"><b class="tn" style="color:${scol}">${fmt(s.value, dec)}</b>
             <small>${esc(s.unit)}</small>
             <span>gegen deine Basislinie von ${fmt(s.baseline, dec)} ${esc(s.unit)}</span></div>
-          ${chart({ h: 190, n: Math.max(2, (t.history && t.history[s.key] || []).length || 2),
+          ${(() => {
+            const band = (t.bands || {})[s.key];
+            const series = (t.history && t.history[s.key]) || [s.baseline, s.value];
+            const vals = series.filter((v) => v != null);
+            // the axis has to CONTAIN the threshold line, or it is drawn
+            // outside the plot and silently disappears
+            const marks = band ? [band.slump, band.usual[0], band.usual[1], band.baseline] : [s.baseline];
+            const lo = Math.min(...vals, ...marks) * 0.96;
+            const hi = Math.max(...vals, ...marks) * 1.04;
+            // bands from the athlete's own 60-day distribution, drawn in the
+            // signal's own unit: noise, ordinary spread, and the line where a
+            // drop stops being noise
+            const bands = band ? [
+              { a: band.usual[0], b: band.usual[1], c: C.tx3, op: 0.08 },
+              { a: band.noise[0], b: band.noise[1], c: C.tx3, op: 0.14 },
+            ] : [];
+            const lines = band ? [
+              { y: band.baseline, c: C.tx3, d: 1, t: `Basislinie ${fmt(band.baseline, dec)}` },
+              { y: band.slump, c: C.amber, d: 1, t: `${s.key === "rhr" ? "auffällig hoch" : "Einbruch ab"} ${fmt(band.slump, dec)}` },
+            ] : [{ y: s.baseline, c: C.tx3, d: 1, t: "Basislinie" }];
+            return chart({ h: 200, n: Math.max(2, series.length), y0: lo, y1: hi,
+              yf: (v) => fmt(v, dec), bands, hl: lines,
+              s: [{ t: "line", v: series, c: scol, w: 2 }] });
+          })()}
+          ${false ? chart({ h: 190, n: Math.max(2, (t.history && t.history[s.key] || []).length || 2),
             y0: Math.min(...((t.history && t.history[s.key] || [s.baseline, s.value]).filter((v) => v != null)), s.baseline) * 0.94,
             y1: Math.max(...((t.history && t.history[s.key] || [s.baseline, s.value]).filter((v) => v != null)), s.baseline) * 1.06,
             yf: (v) => fmt(v, dec),
             hl: [{ y: s.baseline, c: C.tx3, d: 1, t: "Basislinie" }],
-            s: [{ t: "line", v: (t.history && t.history[s.key]) || [s.baseline, s.value], c: scol, w: 2 }] })}
+            s: [{ t: "line", v: (t.history && t.history[s.key]) || [s.baseline, s.value], c: scol, w: 2 }] }) : ""}
+          ${(t.bands || {})[s.key] ? `<p class="src"><b>Die Bereiche:</b> das dunkle Band ist
+            ±0,5 Standardabweichungen um deine Basislinie — was darin liegt, ist Rauschen.
+            Das hellere ist deine gewohnte Schwankung (±1 SD). Die gelbe Linie markiert
+            ${s.key === "rhr" ? "den Wert, ab dem der Ruhepuls auffällig hoch ist"
+                              : "den Wert, ab dem ein Abfall kein Rauschen mehr ist"}
+            (2 SD). Alles aus deinen letzten 60 Tagen gerechnet.</p>` : ""}
           <p class="src"><b>Worüber dieser Wert etwas sagt:</b> ${esc(s.system)}.
             ${esc(s.limit)}. Die graue Zone ist ±0,5 SD — die kleinste bedeutsame Änderung;
             was darin liegt, ist Rauschen und kein Signal.</p>
