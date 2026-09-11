@@ -193,4 +193,33 @@ function pmc(daysObj) {
     .map((d) => ({ date: d.date, ctl: d.ctl, atl: d.atl, form: d.form, load: d.load }));
 }
 
-module.exports = { TODAY, days, load, readiness, activities, streams, thresholds, calendar, pmc };
+/* laps as the panel receives them from intervals_icu/laps. The field names
+ * on the API side are undocumented, so the normaliser accepts several - the
+ * python side is tested separately; here the already-normalised shape is
+ * used, including the awkward cases: rest laps without power, laps without
+ * DFA, and a series whose efficiency factor fades (real fatigue signature). */
+function laps(kind) {
+  if (kind === "empty") return { laps: [], seen_keys: [], source: null };
+  if (kind === "error") return { error: "HTTP 500" };
+  if (kind === "noPower") {
+    return { source: "laps", seen_keys: ["name"], laps: [
+      { n: 1, label: "Runde 1", moving_time: 1800, avg_hr: 95 },
+      { n: 2, label: "Runde 2", moving_time: 1500, avg_hr: 98 },
+    ] };
+  }
+  // the VO2max session from the screenshots: EF fades 1.49 -> 1.37
+  return { source: "icu_intervals", seen_keys: ["label", "moving_time", "average_watts"], laps: [
+    { n: 1, label: "Aufwärmen", moving_time: 989, avg_watts: 118, avg_hr: 123, avg_cadence: 76, zone: "Z1", ef: 1.12, dfa_a1: 1.44 },
+    { n: 2, label: "4x", moving_time: 237, avg_watts: 259, avg_hr: 170, avg_cadence: 88, zone: "Z5", ef: 1.49, dfa_a1: 0.85 },
+    { n: 3, label: "Pause", moving_time: 185, avg_watts: 91, avg_hr: 155, avg_cadence: 70, zone: "Z1", ef: 0.84, dfa_a1: 0.97 },
+    { n: 4, label: "4x", moving_time: 235, avg_watts: 251, avg_hr: 174, avg_cadence: 89, zone: "Z5", ef: 1.42, dfa_a1: 0.77 },
+    { n: 5, label: "Pause", moving_time: 186, avg_watts: 91, avg_hr: 161, avg_cadence: 69, zone: "Z1", ef: 0.79, dfa_a1: 0.82 },
+    { n: 6, label: "4x", moving_time: 235, avg_watts: 250, avg_hr: 178, avg_cadence: 88, zone: "Z5", ef: 1.38, dfa_a1: 0.64 },
+    { n: 7, label: "Pause", moving_time: 184, avg_watts: 89, avg_hr: 164, avg_cadence: 68, zone: "Z1", ef: 0.76, dfa_a1: 0.58 },
+    { n: 8, label: "4x", moving_time: 235, avg_watts: 249, avg_hr: 178, avg_cadence: 87, zone: "Z5", ef: 1.37, dfa_a1: 0.59 },
+    { n: 9, label: "Ausfahren", moving_time: 487, avg_watts: 92, avg_hr: 149, avg_cadence: 65, zone: "Z1", ef: 0.73, dfa_a1: 0.90 },
+    { n: 10, label: "Rollen", moving_time: 40, avg_hr: 120 },
+  ] };
+}
+
+module.exports = { TODAY, days, load, readiness, activities, streams, thresholds, calendar, pmc, laps };

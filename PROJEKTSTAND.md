@@ -1,6 +1,6 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 11.09.2026 · **Version:** 0.9.3 · **Status:** läuft produktiv auf HEIMDALL, Auslieferung über HACS
+**Stand:** 11.09.2026 · **Version:** 0.9.4 · **Status:** läuft produktiv auf HEIMDALL, Auslieferung über HACS
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu
 lokal archiviert, auswertet und in einem eigenen Seitenleisten-Panel darstellt.
@@ -97,6 +97,7 @@ Alles am eigenen Konto geprüft, nicht aus Dokumentation übernommen.
 | Zonenzeiten kommen in **zwei Formaten** | Puls: Zahlenliste · Leistung: Objekte mit `secs` |
 | Strava-Aktivitäten liefert die API **nicht** aus | Platzhalter mit `_note`, müssen übersprungen werden |
 | `/activity/<id>/streams.json` liefert eine **Liste** von Stream-Objekten | kein Mapping — `derive.streams_to_dict` macht daraus `name → daten` |
+| Runden liefert die API **nicht** als eigenen Endpunkt | sie hängen an der Aktivität: `/activity/<id>?intervals=true` (Forum-Thread 126341, bestätigt) |
 | `dfa_a1` liegt sekundengenau in den Streams | bei 56 von 238 Einheiten, abhängig von der Aufzeichnung |
 | DFA-Streams enthalten `0.0`-Artefakte am Anfang | zählt sonst fälschlich als anaerob |
 | Puls- und Wattströme enthalten Nullen (Aussetzer, Rollen) | verfälschen sonst die Schwellenablesung |
@@ -197,6 +198,7 @@ laufende HA-Instanz oder einen Browser.
 | `test_import.py` | vollständiger Import gegen einen Nachbau des Kontos |
 | `test_analytics.py` | Trainingsmetriken gegen bekannte Ergebnisse |
 | `test_setup_simulation.py` | Entity-Aufbau, Übersetzungen, unique_ids |
+| `test_laps.py` | Runden-Normalisierung gegen unbekannte Feldnamen und kaputte Payloads (34) |
 | `test_panel_views.js` | alle sieben Ansichten gegen volle, leere, löchrige und entartete Daten (283) |
 | `test_panel_fixes.js` | je ein Nachweis pro behobenem Fehler (136) |
 | `test_panel_design.js` | Cursor-Geometrie und die Gestaltungsregeln als Zusicherung (44) |
@@ -224,6 +226,7 @@ Ausführen: `python3 tests/<datei>.py` bzw. `node tests/<datei>.js`.
 | 0.9.1 | Archiv-Abgleich lief nur beim Start, nie im Takt | Timer-Aktion war ein Lambda statt einer Coroutine-Funktion: HA führt sie im Executor-Thread aus, die erzeugte Aufgabe wird nie abgewartet. HA protokolliert genau das |
 | 0.9.1 | Ablesekasten ragte bei Mauszeiger außerhalb des Fensters hinaus | Klemmung nur in eine Richtung — in der neuen Simulation gefunden |
 | 0.9.2 | Ablesekasten rutschte auf breitem Monitor weiter aus dem Bild | gegen das Panel-Element geklemmt statt gegen `#app` (max. 1240 px, **zentriert**). Beide Rahmen waren im Test gleich groß gestubbt — der Test war grün, die Realität nicht. Die Testumgebung hält jetzt zwei verschiedene Rahmen |
+| 0.9.4 | Runden-Urteil verglich Aufwärmen mit Ausfahren und meldete „34 % Abfall" | ein Serienurteil darf nur **vergleichbare** Abschnitte gegeneinander stellen (ähnliche Leistung, ähnliche Dauer) — in der Simulation gefunden, bevor es je jemand sah |
 | 0.9.3 | Ablesekasten **zum dritten Mal** am falschen Fleck | zweimal an der Positionsrechnung repariert, zweimal falsch. Statt eines dritten Versuchs wurde die Fehlerklasse entfernt: die Werte stehen jetzt in einer **festen Leiste** im Kartenkopf, es gibt kein positioniertes Element mehr. Kein Rahmen, den man verwechseln kann |
 | 0.9.2 | DFA-Achse von 0 bis 160, echte Schwelle als Strich | eine Null-Schwelle und eine Gehen-Messung aus einem einzigen Messpunkt bestimmten die Achse — dieselbe Artefaktklasse wie in den Strömen, nur in der Schwellenreihe |
 

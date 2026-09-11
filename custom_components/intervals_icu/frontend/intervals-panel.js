@@ -475,6 +475,7 @@ class IntervalsIcuPanel extends HTMLElement {
     this._weeks = 12;
     this._dfaSport = "all";
     this._streams = {};
+    this._laps = {};
     this._booted = false;
   }
 
@@ -533,11 +534,14 @@ class IntervalsIcuPanel extends HTMLElement {
     this._sel = (this._acts || []).find((a) => String(a.id) === String(id)) || null;
     this._render();
     if (this._sel && !this._streams[id]) {
-      try {
-        this._streams[id] = await this._ws("streams", { activity_id: String(id) });
-      } catch (err) {
-        this._streams[id] = { error: String(err && err.message || err) };
-      }
+      const [st, lp] = await Promise.allSettled([
+        this._ws("streams", { activity_id: String(id) }),
+        this._ws("laps", { activity_id: String(id) }),
+      ]);
+      this._streams[id] = st.status === "fulfilled"
+        ? st.value : { error: String(st.reason && st.reason.message || st.reason) };
+      this._laps[id] = lp.status === "fulfilled"
+        ? lp.value : { error: String(lp.reason && lp.reason.message || lp.reason) };
       if (this._sel && String(this._sel.id) === String(id)) this._render();
     }
   }
@@ -1059,6 +1063,7 @@ class IntervalsIcuPanel extends HTMLElement {
         <button class="chipbtn" data-act="close">Schließen</button>
       </div>
       <div class="kvgrid">${stats}</div>
+      ${this._lapBlock(a)}
       <h3 class="secname">Verlauf <span class="hint">— gestapelte Felder, eine Zeitachse, ein Cursor: so siehst du, wie sich HF und DFA zur Leistung verhalten.</span></h3>
       ${streamsHtml}
       ${this._dfaBlock(a.dfa)}
@@ -1130,6 +1135,68 @@ class IntervalsIcuPanel extends HTMLElement {
     }).join("");
     this._grp.str = { n, xl: (i) => hhmm(tAt(i)) + " h", rows: rowsMeta };
     return `<div class="card2 pad0" data-grp="str">${readout("str")}${panels}</div>`;
+  }
+
+  /* Laps. The point of the table is not the single lap but the trend across
+     a series: watts per heartbeat falling from one interval to the next is
+     the body giving out, at constant external load. Hence EF and DFA get a
+     bar each, scaled within this activity, and the drop is stated in words. */
+  _lapBlock(a) {
+    const data = this._laps[a.id];
+    if (!data) return `<h3 class="secname">Runden</h3>
+      <div class="loading"><span class="spin"></span> Runden werden geladen …</div>`;
+    if (data.error) return `<h3 class="secname">Runden</h3>
+      <div class="err pad">Runden konnten nicht geladen werden: ${esc(data.error)}</div>`;
+    const laps = data.laps || [];
+    if (!laps.length) return `<h3 class="secname">Runden</h3>
+      <div class="mut pad">Für diese Einheit liefert Intervals keine Runden.</div>`;
+
+    // Comparing warm-up against cool-down produces a nonsense "34% drop".
+    // A verdict over a series is only allowed across COMPARABLE efforts:
+    // the hard blocks, at similar power and similar duration. Everything
+    // else - warm-up, recoveries, roll-outs - is excluded from the verdict
+    // but still shown in the table.
+    const powered = laps.filter((l) => (l.avg_watts || 0) > 0 && (l.moving_time || 0) >= 60);
+    const peak = Math.max(0, ...powered.map((l) => l.avg_watts || 0));
+    let work = powered.filter((l) => (l.avg_watts || 0) >= peak * 0.85);
+    const durs = work.map((l) => l.moving_time || 0);
+    const medDur = median(durs) || 0;
+    work = work.filter((l) => medDur > 0 && Math.abs((l.moving_time || 0) - medDur) <= medDur * 0.35);
+    const efs = work.map((l) => l.ef).filter((v) => v != null);
+    const efMax = Math.max(1e-9, ...efs);
+    const dfas = laps.map((l) => l.dfa_a1).filter((v) => v != null);
+    const dfaMax = Math.max(1e-9, ...dfas);
+    let verdict = "";
+    if (efs.length >= 3) {
+      const drop = (efs[0] - efs[efs.length - 1]) / efs[0] * 100;
+      const st = drop > 8 ? "red" : drop > 3 ? "amber" : "green";
+      verdict = `<div class="lapverdict">${badge(st, `${sign(-Math.round(drop * 10) / 10, 1)} % Watt pro Herzschlag über ${efs.length} vergleichbare Abschnitte`)}
+        <span class="mut">${drop > 3
+          ? "die Leistung je Herzschlag fällt — bei gleicher äußerer Last ist das Ermüdung"
+          : "die Leistung je Herzschlag bleibt stehen — die Serie war verkraftbar"}</span></div>`;
+    }
+    const rows = laps.map((l) => {
+      const rest = (l.avg_watts || 0) <= 0 || (l.moving_time || 0) < 60;
+      const bar = (v, max, col) => v == null ? `<span class="mut">–</span>`
+        : `<i class="lbar"><s style="width:${Math.max(3, Math.min(100, v / max * 100))}%;background:${col}"></s></i><b class="tn">${fmt(v, 2)}</b>`;
+      return `<div class="lrow ${rest ? "rest" : ""}">
+        <span class="tn ln">${l.n}</span>
+        <span class="llbl">${esc(l.label || (rest ? "Pause" : "Intervall"))}${l.zone ? ` <em>${esc(l.zone)}</em>` : ""}</span>
+        <span class="tn">${dur(l.moving_time)}</span>
+        <span class="tn">${l.avg_watts != null ? fmt(l.avg_watts) + " W" : "–"}</span>
+        <span class="tn">${l.avg_hr != null ? fmt(l.avg_hr) + " bpm" : "–"}</span>
+        <span class="tn">${l.avg_cadence != null ? fmt(l.avg_cadence) : "–"}</span>
+        <span class="lb">${bar(l.ef, efMax, ROLE.pow)}</span>
+        <span class="lb">${bar(l.dfa_a1, dfaMax, ROLE.dfa)}</span>
+      </div>`;
+    }).join("");
+    return `<h3 class="secname">Runden <span class="hint">— ${laps.length} Abschnitte${data.source ? `, Feld „${esc(data.source)}"` : ""}</span></h3>
+      ${verdict}
+      <div class="card2 pad0">
+        <div class="lhead"><span>#</span><span>Abschnitt</span><span>Dauer</span><span>Ø Watt</span>
+          <span>Ø HF</span><span>Kadenz</span><span>EF (W/Schlag)</span><span>DFA a1</span></div>
+        ${rows}
+      </div>`;
   }
 
   _dfaBlock(s) {
@@ -1602,6 +1669,23 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
 .spin{width:16px;height:16px;border:2px solid ${C.line};border-top-color:${C.blue};border-radius:50%;
   animation:sp 0.9s linear infinite;display:inline-block}
 @keyframes sp{to{transform:rotate(360deg)}}
+.lapverdict{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 4px 8px;font-size:13.5px}
+.lhead,.lrow{display:grid;grid-template-columns:34px minmax(120px,1.2fr) 74px 78px 82px 62px 1.1fr 1.1fr;
+  gap:10px;align-items:center;padding:7px 12px;font-size:13.5px}
+.lhead{color:${C.tx3};font-size:12px;font-weight:600;border-bottom:1px solid ${C.line}}
+.lrow{border-bottom:1px solid ${C.line}44}
+.lrow.rest{opacity:.55}
+.lrow .ln{color:${C.tx3}}
+.llbl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.llbl em{font-style:normal;color:${C.tx3};font-weight:500;font-size:12px}
+.lb{display:flex;align-items:center;gap:7px}
+.lbar{flex:1;height:8px;background:#0006;border-radius:4px;overflow:hidden;display:block;min-width:34px}
+.lbar s{display:block;height:100%}
+@media(max-width:980px){
+  .lhead{display:none}
+  .lrow{grid-template-columns:30px 1fr 70px 74px;}
+  .lrow>*:nth-child(5),.lrow>*:nth-child(6),.lrow>*:nth-child(7),.lrow>*:nth-child(8){display:none}
+}
 .dfabox{background:${C.card2};border-radius:10px;padding:13px 15px}
 .dfar{display:grid;grid-template-columns:150px 1fr 52px 62px;gap:10px;align-items:center;font-size:13.5px;padding:3px 0}
 .dbar{height:9px;background:#0006;border-radius:4px;overflow:hidden;display:block}

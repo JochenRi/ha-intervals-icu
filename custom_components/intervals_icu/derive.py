@@ -262,3 +262,84 @@ def streams_to_dict(streams: Any) -> dict[str, list[Any]]:
         if isinstance(stream, dict) and stream.get("type"):
             result[str(stream["type"])] = stream.get("data") or []
     return result
+
+
+# --- laps ----------------------------------------------------------------
+# The API returns the laps on the activity itself (intervals=true), and the
+# field names are not documented. Every value therefore has a list of
+# candidate names, newest naming first: an unknown payload degrades to a
+# missing value rather than to an exception, and `normalize_laps` reports
+# which keys it actually saw so the mapping can be corrected against a real
+# account instead of guessed.
+_LAP_FIELDS: dict[str, tuple[str, ...]] = {
+    "label": ("label", "name", "type"),
+    "type": ("type", "group_id"),
+    "start": ("start_time", "start_index", "start"),
+    "moving_time": ("moving_time", "elapsed_time", "duration"),
+    "distance": ("distance",),
+    "avg_watts": ("average_watts", "avg_watts", "icu_average_watts", "watts"),
+    "np_watts": ("weighted_average_watts", "icu_weighted_avg_watts", "normalized_watts"),
+    "max_watts": ("max_watts",),
+    "avg_hr": ("average_heartrate", "avg_hr", "heartrate"),
+    "max_hr": ("max_heartrate", "max_hr"),
+    "avg_cadence": ("average_cadence", "avg_cadence", "cadence"),
+    "avg_speed": ("average_speed", "avg_speed", "speed"),
+    "intensity": ("intensity", "icu_intensity"),
+    "zone": ("zone", "power_zone", "hr_zone"),
+    "load": ("icu_training_load", "training_load", "load"),
+    "decoupling": ("decoupling", "icu_hr_pw_decoupling", "hr_pw_decoupling"),
+    "ef": ("efficiency_factor", "icu_efficiency_factor", "ef"),
+    "dfa_a1": ("average_dfa_a1", "dfa_a1", "avg_dfa_a1", "icu_dfa_a1"),
+    "w_balance": ("wbal_start", "w_balance", "wbal"),
+}
+
+_LAP_LISTS = ("icu_intervals", "intervals", "laps", "icu_laps")
+
+
+def normalize_laps(payload: Any) -> dict[str, Any]:
+    """Pull the laps out of an activity payload into a stable shape.
+
+    Returns {"laps": [...], "seen_keys": [...], "source": "<field>"}. The
+    caller can show the laps; `seen_keys` exists so an unmapped payload can
+    be diagnosed from the panel instead of from a debugger.
+    """
+    if not isinstance(payload, dict):
+        return {"laps": [], "seen_keys": [], "source": None}
+
+    raw: list[Any] = []
+    source: str | None = None
+    for key in _LAP_LISTS:
+        value = payload.get(key)
+        if isinstance(value, list) and value:
+            raw, source = value, key
+            break
+
+    seen: list[str] = []
+    for item in raw:
+        if isinstance(item, dict):
+            for key in item:
+                if key not in seen:
+                    seen.append(key)
+
+    laps: list[dict[str, Any]] = []
+    for index, item in enumerate(raw):
+        if not isinstance(item, dict):
+            continue
+        lap: dict[str, Any] = {"n": index + 1}
+        for target, candidates in _LAP_FIELDS.items():
+            for name in candidates:
+                if item.get(name) is not None:
+                    lap[target] = item[name]
+                    break
+        # Efficiency factor is the one number worth deriving when missing:
+        # watts per heartbeat is what shows a fading effort across a series.
+        if lap.get("ef") is None:
+            watts, hr = lap.get("np_watts") or lap.get("avg_watts"), lap.get("avg_hr")
+            try:
+                if watts and hr and float(hr) > 0:
+                    lap["ef"] = round(float(watts) / float(hr), 2)
+            except (TypeError, ValueError):
+                pass
+        laps.append(lap)
+
+    return {"laps": laps, "seen_keys": sorted(seen), "source": source}

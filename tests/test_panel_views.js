@@ -94,6 +94,51 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   const walk = p.rAkt(acts, { ...acts[2], id: "walkX" });
   clean(walk, "detail gehen");
   ok(!walk.includes("Leistung (W)"), "detail: leeres Leistungsfeld gezeichnet");
+  // --- Runden -----------------------------------------------------------
+  p._laps = {};
+  clean(p.rAkt(acts, acts[0]), "runden laden");
+  ok(p.rAkt(acts, acts[0]).includes("Runden werden geladen"), "runden: kein Ladehinweis");
+
+  p._laps[acts[0].id] = F.laps("error");
+  clean(p.rAkt(acts, acts[0]), "runden fehler");
+  contains(p.rAkt(acts, acts[0]), "HTTP 500", "runden fehler");
+
+  p._laps[acts[0].id] = F.laps("empty");
+  const noLaps = p.rAkt(acts, acts[0]);
+  clean(noLaps, "runden leer");
+  contains(noLaps, "keine Runden", "runden leer");
+
+  p._laps[acts[0].id] = F.laps("noPower");
+  const noPow = p.rAkt(acts, acts[0]);
+  clean(noPow, "runden ohne Leistung");
+  ok(!noPow.includes("Watt pro Herzschlag über die Serie"),
+     "runden: Urteil ohne Leistungsdaten behauptet");
+
+  p._laps[acts[0].id] = F.laps();
+  const full = p.rAkt(acts, acts[0]);
+  clean(full, "runden voll");
+  for (const needle of ["Runden", "Aufwärmen", "Z5", "EF (W/Schlag)", "DFA a1", "259 W", "170 bpm"]) {
+    contains(full, needle, "runden");
+  }
+  ok((full.match(/class="lrow/g) || []).length === 10, "runden: nicht alle Abschnitte gezeigt");
+  ok((full.match(/class="lrow rest/g) || []).length === 1, "runden: Pause/Rollen nicht abgesetzt");
+  // the fading series must be named as such, with the right sign
+  contains(full, "Watt pro Herzschlag über 4 vergleichbare Abschnitte", "runden urteil");
+  ok(/-8[,.]/.test(full) || /−8/.test(full), `runden: Abfall falsch beziffert`);
+  ok(full.includes("Ermüdung"), "runden: fallende Serie nicht als Ermüdung benannt");
+  // a stable series must NOT be called fatigue
+  p._laps[acts[0].id] = { source: "x", laps: [
+    { n: 1, label: "4x", moving_time: 240, avg_watts: 250, avg_hr: 170, ef: 1.47 },
+    { n: 2, label: "4x", moving_time: 240, avg_watts: 250, avg_hr: 171, ef: 1.46 },
+    { n: 3, label: "4x", moving_time: 240, avg_watts: 250, avg_hr: 170, ef: 1.47 },
+  ] };
+  const steady = p.rAkt(acts, acts[0]);
+  clean(steady, "runden stabil");
+  ok(!steady.includes("ist das Ermüdung"), "runden: stabile Serie als Ermüdung gemeldet");
+  contains(steady, "über 3 vergleichbare Abschnitte", "runden stabil zählung");
+  contains(steady, "verkraftbar", "runden stabil");
+  p._laps = {};
+
   clean(p.rAkt([], null), "aktivitäten leer");
   clean(p.rAkt(null, null), "aktivitäten null");
 }

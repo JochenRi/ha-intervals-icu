@@ -216,6 +216,19 @@ class IntervalsClient:
             params["fields"] = ",".join(fields)
         return await self._request(f"/athlete/{self._athlete_id}/activities", params=params)
 
+    async def async_get_intervals(self, activity_id: str) -> dict[str, Any]:
+        """Return one activity including its laps/intervals.
+
+        The laps are not a separate endpoint: they come back on the activity
+        itself when asked for with intervals=true. Verified against the
+        forum thread where the maintainer's answer is confirmed working
+        (forum.intervals.icu topic 126341).
+        """
+        return await self._request(
+            f"/activity/{activity_id}",
+            params={"intervals": "true"},
+        )
+
     async def async_get_streams(
         self,
         activity_id: str,
