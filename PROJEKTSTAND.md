@@ -1,6 +1,6 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 11.09.2026 · **Version:** 0.12.0 · **Status:** produktiv auf HEIMDALL,
+**Stand:** 11.09.2026 · **Version:** 0.13.0 · **Status:** produktiv auf HEIMDALL,
 Auslieferung über HACS aus `github.com/JochenRi/ha-intervals-icu`
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lokal
@@ -93,10 +93,24 @@ Alles am eigenen Konto geprüft, nicht aus Dokumentation übernommen.
 | **Heute** | Bereitschaftsring aus sieben Signalen, Lastbudget als Bullet-Graph mit Rechenweg |
 | **Kalender** | Wochenraster mit Wellness-Symbolen, Einheiten als Kacheln, Geplantes in drei Zuständen |
 | **Fitness** | Fitness/Ermüdung · Tagesbelastung · Form mit Friel-Zonen, gemeinsame Zeitachse |
-| **Aktivitäten** | Tabelle, je Einheit: Kennzahlen, **Runden** mit EF-Verlauf, gestapelte Verlaufskurven |
+| **Aktivitäten** | Tabelle, je Einheit: Kennzahlen, **Runden** mit EF-Verlauf, **Rundenkurven mit gemeinsamer Skala**, gestapelte Verlaufskurven |
 | **Belastung** | Wochenlast, ACWR, Intensitätsverteilung zweifach, HRV-Trend, Entkopplung |
 | **DFA** | Schwellenverlauf mit rollierendem Median, Leistung als eigenes Feld |
 | **Plan** | Geplante Workouts nach Tagen |
+
+### Rundenkurven (0.13.0)
+
+Je Runde eine Zeile, darin Leistung, Herzfrequenz und DFA nebeneinander — **mit
+derselben y-Skala in jeder Zeile**. Das ist der ganze Punkt: skaliert sich jede Zeile
+selbst, sehen vier abbauende Blöcke identisch aus und der Abfall verschwindet. Ein Test
+beweist das über die Geometrie (die Pausenzeile muss flach und tief liegen, die vier
+Arbeitsblöcke als Treppe); dreht man die gemeinsame Skala zurück, liegen alle vier auf
+46,8 px — exakt der Fehler, den die Ansicht verhindern soll.
+
+Darunter je Block der Vergleich zum ersten gleichartigen Block in Worten: „Watt −3,9 %,
+Puls +11, DFA −0,29". Verglichen wird nur Gleichartiges (ähnliche Leistung, ähnliche
+Dauer); bei weniger als drei vergleichbaren Blöcken steht da, dass ein Serienurteil
+geraten wäre.
 
 ### Gestaltungsregeln, jede mit Grund
 
@@ -236,6 +250,7 @@ der Test fehlschlägt.
 | 0.9.4 | Runden-Urteil verglich Aufwärmen mit Ausfahren („34 % Abfall") | ein Serienurteil darf nur Gleichartiges vergleichen — in der Simulation gefunden |
 | 0.11.0 | Zustandsbänder widersprachen dem Trainerurteil | Bänder nutzten den Tageswert, der Trainer das 3-Tage-Mittel |
 | 0.12.0 | `VO2max 4×8` behauptete 75 min, Blöcke ergaben 67 | Dauer und Last im Kalender wären falsch gewesen |
+| 0.13.0 | Rundenkurven zogen den ersten Messpunkt der nächsten Runde mit | das Ende einer Runde ist der erste Messpunkt der nächsten — bei einer Pause vor einem 259-W-Block ein Sprung von 91 auf 259 W mitten in der Erholungskurve. Vom Geometrie-Test gefunden, nicht vom Auge |
 
 ---
 
@@ -260,8 +275,6 @@ zwischen Ausdauer und Spitzenleistung. Ohne das ist jede Reihenfolge geraten, au
 jede einzelne Einheit belegt ist. Erst klären, dann weiterbauen.
 
 **Als Nächstes:**
-- Runden-Visualisierung: je Runde eine eigene Kurvenzeile (Watt/HF/DFA), gleiche Skala über
-  alle Runden, darunter der Vergleich Runde-zu-Runde in Worten
 - Signal-Ansicht: deutlicher zeigen, *warum* gerade was passiert — Ereignisse annotieren
   statt nur einfärben
 - Ziel- und Zeitprofil als Eingabe, damit der Trainer planen statt vorschlagen kann

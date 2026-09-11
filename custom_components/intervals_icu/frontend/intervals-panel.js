@@ -1510,6 +1510,7 @@ class IntervalsIcuPanel extends HTMLElement {
       </div>
       <div class="kvgrid">${stats}</div>
       ${this._lapBlock(a)}
+      ${this._lapCurves(a)}
       <h3 class="secname">Verlauf <span class="hint">— gestapelte Felder, eine Zeitachse, ein Cursor: so siehst du, wie sich HF und DFA zur Leistung verhalten.</span></h3>
       ${streamsHtml}
       ${this._dfaBlock(a.dfa)}
@@ -1643,6 +1644,134 @@ class IntervalsIcuPanel extends HTMLElement {
           <span>Ø HF</span><span>Kadenz</span><span>EF (W/Schlag)</span><span>DFA a1</span></div>
         ${rows}
       </div>`;
+  }
+
+  /* Per-lap curves.
+
+     The table above says WHAT changed across a series. This says HOW: one row
+     per lap, three small charts side by side, and - the point of the whole
+     thing - THE SAME Y SCALE ON EVERY ROW. Without that the rows look alike
+     and the fade disappears; with it, a series that is giving out reads as a
+     staircase at a glance.
+
+     Segmentation goes by TIME, not by index: the lap indices count in the
+     original 1 Hz recording while the panel holds a thinned stream, so an
+     index used directly would cut the wrong pieces out. */
+  _lapCurves(a) {
+    const data = this._laps[a.id], st = this._streams[a.id];
+    if (!data || data.error || !st || st.error || !st.points) return "";
+    const laps = (data.laps || []).filter((l) => l.start_s != null && l.end_s != null);
+    if (laps.length < 2) {
+      return laps.length === 1
+        ? `<p class="hint pad">Eine einzige Runde — hier gibt es nichts zu vergleichen.
+           Die Kurven der ganzen Einheit stehen unten im Verlauf.</p>`
+        : "";
+    }
+    const ch = st.channels || {};
+    const time = ch.time || [];
+    const at = (sec) => {
+      // nearest sample to a second mark, works on any thinning
+      if (!time.length) return null;
+      let lo = 0, hi = time.length - 1;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (time[mid] < sec) lo = mid + 1; else hi = mid;
+      }
+      return lo;
+    };
+
+    const DEFS = [
+      { k: "watts", l: "Leistung", u: "W", c: ROLE.pow, zeroGap: true },
+      { k: "heartrate", l: "Herzfrequenz", u: "bpm", c: ROLE.hr, zeroGap: true },
+      { k: "dfa_a1", l: "DFA α1", u: "", c: ROLE.dfa, dec: 2, zeroGap: true, dfa: true },
+    ].filter((d) => (ch[d.k] || []).some((v) => v != null && v > 0));
+    if (!DEFS.length) return "";
+
+    // one scale per channel across ALL laps - that is what makes them comparable
+    const scale = {};
+    for (const d of DEFS) {
+      const vals = (ch[d.k] || []).filter((v) => v != null && (!d.zeroGap || v > 0));
+      if (!vals.length) continue;
+      let lo = Math.min(...vals), hi = Math.max(...vals);
+      if (d.dfa) { lo = Math.min(lo, 0.4); hi = Math.max(hi, 1.3); }
+      else { lo = d.k === "watts" ? 0 : lo * 0.96; hi = hi * 1.04; }
+      scale[d.k] = [lo, hi];
+    }
+
+    // the comparison only runs over like efforts - same rule as the verdict
+    const powered = laps.filter((l) => (l.avg_watts || 0) > 0 && (l.moving_time || 0) >= 60);
+    const peak = Math.max(0, ...powered.map((l) => l.avg_watts || 0));
+    const work = powered.filter((l) => (l.avg_watts || 0) >= peak * 0.85);
+    const medDur = median(work.map((l) => l.moving_time || 0)) || 0;
+    const series = work.filter((l) => medDur > 0 && Math.abs((l.moving_time || 0) - medDur) <= medDur * 0.35);
+    const firstOfSeries = series[0];
+
+    const rows = laps.map((lap) => {
+      // end is EXCLUSIVE: a lap's end second is the next lap's first sample,
+      // and taking it along drags a 259 W spike into the recovery curve.
+      const i0 = at(lap.start_s), i1 = at(lap.end_s);
+      if (i0 == null || i1 == null || i1 - i0 < 2) return "";
+      const inSeries = series.includes(lap);
+      const rest = !inSeries && (lap.avg_watts || 0) < peak * 0.85;
+
+      const charts = DEFS.map((d) => {
+        const raw = (ch[d.k] || []).slice(i0, i1)
+          .map((v) => (v == null || (d.zeroGap && v <= 0)) ? null : v);
+        if (!raw.some((v) => v != null)) {
+          return `<div class="lcell"><div class="lcl">${d.l}</div><div class="nospark">–</div></div>`;
+        }
+        const [y0, y1] = scale[d.k] || domainOf([{ v: raw }]);
+        const mean = meanOf(raw);
+        return `<div class="lcell">
+          <div class="lcl" style="color:${d.c}">${d.l}
+            <b class="tn">${fmt(mean, d.dec || 0)}${d.u ? " " + d.u : ""}</b></div>
+          ${chart({ h: 54, n: Math.max(2, raw.length), y0, y1, padL: 6, padR: 4, padT: 4, padB: 4,
+            yticks: [], ym: 0,
+            bands: d.dfa ? [{ a: 0.5, b: 0.75, c: C.amber, op: 0.10 },
+                            { a: y0, b: 0.5, c: C.red, op: 0.10 }] : [],
+            hl: d.dfa ? [{ y: 0.75, c: C.green, d: 1 }] : [],
+            s: [{ t: "line", v: raw, c: d.c, w: 1.6 }] })}
+        </div>`;
+      }).join("");
+
+      // what changed against the first comparable effort, in words
+      let delta = "";
+      if (inSeries && firstOfSeries && lap !== firstOfSeries) {
+        const dw = lap.avg_watts != null && firstOfSeries.avg_watts
+          ? (lap.avg_watts - firstOfSeries.avg_watts) / firstOfSeries.avg_watts * 100 : null;
+        const dh = lap.avg_hr != null && firstOfSeries.avg_hr != null
+          ? lap.avg_hr - firstOfSeries.avg_hr : null;
+        const dd = lap.dfa_a1 != null && firstOfSeries.dfa_a1 != null
+          ? lap.dfa_a1 - firstOfSeries.dfa_a1 : null;
+        const worse = (dw != null && dw < -2) || (dh != null && dh > 3) || (dd != null && dd < -0.1);
+        const parts = [];
+        if (dw != null) parts.push(`Watt ${sign(Math.round(dw * 10) / 10, 1)} %`);
+        if (dh != null) parts.push(`Puls ${sign(dh)}`);
+        if (dd != null) parts.push(`DFA ${sign(dd, 2)}`);
+        delta = `<div class="ldelta ${worse ? "worse" : "held"}">
+          ${ico(worse ? "warn" : "ok", worse ? C.amber : C.green, 14)}
+          <span>gegen Block ${firstOfSeries.n}: ${parts.join(" · ")}</span></div>`;
+      }
+
+      return `<div class="lrowc ${rest ? "rest" : ""} ${inSeries ? "series" : ""}">
+        <div class="lrowhead">
+          <span class="tn ln">${lap.n}</span>
+          <b>${esc(lap.label || (rest ? "Pause" : "Abschnitt"))}</b>
+          <small>${dur(lap.moving_time)}${lap.zone ? ` · Z${esc(String(lap.zone))}` : ""}</small>
+          ${delta}
+        </div>
+        <div class="lcells">${charts}</div>
+      </div>`;
+    }).join("");
+
+    const note = series.length >= 3
+      ? `<p class="hint pad">${series.length} vergleichbare Blöcke, gleiche Skala in jeder Zeile —
+         ein Abfall über die Serie ist dadurch als Treppe sichtbar, nicht als Rechenaufgabe.</p>`
+      : `<p class="hint pad">Weniger als drei gleichartige Blöcke — die Kurven stehen da,
+         ein Serienurteil wäre geraten.</p>`;
+    return `<h3 class="secname">Runden im Verlauf
+      <span class="hint">— je Runde eine Zeile, gleiche Skala über alle Runden</span></h3>
+      ${note}<div class="lcurves">${rows}</div>`;
   }
 
   _dfaBlock(s) {
@@ -2132,6 +2261,28 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
   .lrow{grid-template-columns:30px 1fr 70px 74px;}
   .lrow>*:nth-child(5),.lrow>*:nth-child(6),.lrow>*:nth-child(7),.lrow>*:nth-child(8){display:none}
 }
+/* Runden im Verlauf */
+.lcurves{display:grid;gap:6px}
+.lrowc{display:grid;grid-template-columns:210px 1fr;gap:12px;align-items:center;
+  background:${C.card2};border-radius:10px;padding:8px 10px}
+.lrowc.rest{opacity:.5;background:none;border:1px dashed ${C.line}}
+.lrowc.series{border-left:3px solid ${ROLE.pow}}
+.lrowhead{display:flex;flex-direction:column;gap:1px}
+.lrowhead b{font-size:14px}
+.lrowhead small{color:${C.tx3};font-size:12px}
+.lrowhead .ln{color:${C.tx3};font-size:11.5px}
+.ldelta{display:flex;align-items:center;gap:5px;font-size:12px;margin-top:3px}
+.ldelta.worse{color:${C.amber}}
+.ldelta.held{color:${C.green}}
+.lcells{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.lcell{min-width:0}
+.lcl{font-size:11px;color:${C.tx3};display:flex;justify-content:space-between;gap:6px;margin-bottom:1px}
+.lcl b{color:${C.tx}}
+@media(max-width:980px){
+  .lrowc{grid-template-columns:1fr}
+  .lcells{grid-template-columns:1fr}
+}
+
 /* Workouts */
 .wogrid{display:grid;gap:12px}
 .wocard{background:${C.card};border:1px solid ${C.line};border-radius:12px;padding:14px}

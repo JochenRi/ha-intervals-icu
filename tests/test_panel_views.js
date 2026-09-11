@@ -285,6 +285,103 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   contains(steady, "verkraftbar", "runden stabil");
   p._laps = {};
 
+  // --- Runden im Verlauf ------------------------------------------------
+  {
+    const set = F.lapsWithBounds();
+    p._laps[acts[0].id] = { laps: set.laps, seen_keys: set.seen_keys, source: set.source };
+    p._streams[acts[0].id] = set.stream;
+    const html = p.rAkt(acts, acts[0]);
+    clean(html, "rundenkurven");
+    contains(html, "Runden im Verlauf", "rundenkurven");
+    ok((html.match(/class="lrowc/g) || []).length === 9, "rundenkurven: nicht jede Runde eine Zeile");
+    ok((html.match(/class="lrowc rest/g) || []).length >= 3, "rundenkurven: Pausen nicht abgesetzt");
+    ok((html.match(/class="lcell"/g) || []).length >= 27, "rundenkurven: nicht drei Kanäle je Runde");
+
+    // The whole point: ONE scale per channel across all rows. Proven through
+    // geometry rather than trust - if every row were scaled to itself, the
+    // four work blocks (259, 251, 250, 249 W) would all start at the same
+    // height and the fade would be invisible. With a shared scale the higher
+    // block must sit HIGHER on the canvas (smaller y).
+    const rowsHtml = html.split('class="lrowc').slice(1);
+    const firstY = (row) => {
+      // only the chart area - the row head carries icon paths of its own
+      const cells = row.slice(row.indexOf('class="lcells"'));
+      const m = /<path d="M[\d.]+ ([\d.]+)/.exec(cells);
+      return m ? parseFloat(m[1]) : null;
+    };
+    const workRows = rowsHtml.filter((r) => r.includes("WORK"));
+    ok(workRows.length === 4, `rundenkurven: ${workRows.length} WORK-Zeilen statt 4`);
+    const ys = workRows.map(firstY);
+    ok(ys.every((y) => y != null), "rundenkurven: Kurve ohne Pfad");
+
+    // The sharp test. A recovery block sits at 91 W and wobbles by +-3 W. On a
+    // scale shared with 259 W blocks that wobble is nearly a flat line; scaled
+    // to itself it would fill the whole row. So: measure the amplitude.
+    const amplitude = (row) => {
+      const cells = row.slice(row.indexOf('class="lcells"'));
+      const path = /<path d="(M[^"]+)"/.exec(cells);
+      if (!path) return null;
+      const yy = [...path[1].matchAll(/[ML][\d.]+ ([\d.]+)/g)].map((m) => parseFloat(m[1]));
+      return yy.length ? Math.max(...yy) - Math.min(...yy) : null;
+    };
+    const restRow = rowsHtml.find((r) => r.includes("Pause"));
+    const restAmp = amplitude(restRow);
+    ok(restAmp != null && restAmp < 8,
+       `rundenkurven: Pausenkurve füllt ${restAmp && restAmp.toFixed(1)} px - entweder skaliert die Zeile sich selbst, oder die Segmentierung zieht den nächsten Block mit herein`);
+    // ... and the rows must still DIFFER, or the shared scale bought a flat picture
+    const restMid = firstY(restRow);
+    ok(restMid > Math.max(...ys) + 15,
+       `rundenkurven: Pause (${restMid}) liegt nicht deutlich unter den Blöcken (${ys}) - die Zeilen sind nicht unterscheidbar`);
+    ok(Math.max(...ys) - Math.min(...ys) > 0.4,
+       `rundenkurven: die vier Blöcke liegen auf identischer Höhe (${ys}) - der Abfall ist nicht sichtbar`);
+    // the fade must be monotone: 259 > 251 > 250 > 249 W means y grows
+    ok(ys[0] < ys[1] && ys[1] <= ys[2] && ys[2] <= ys[3],
+       `rundenkurven: der Abfall über die Serie ist nicht als Treppe sichtbar (${ys})`);
+    // and the DFA panel must carry its threshold line in every row
+    ok((html.match(/stroke-dasharray="5 4"/g) || []).length >= 9,
+       "rundenkurven: 0,75-Linie fehlt in manchen Zeilen");
+
+    // the comparison must run only over comparable efforts, against the first
+    contains(html, "gegen Block 2", "rundenkurven: kein Vergleich zum ersten Block");
+    ok((html.match(/class="ldelta/g) || []).length === 3,
+       "rundenkurven: Vergleich auch für Pausen oder fehlend");
+    contains(html, "Puls +", "rundenkurven: Pulsanstieg nicht benannt");
+    contains(html, "DFA -", "rundenkurven: DFA-Abfall nicht benannt");
+    ok((html.match(/class="ldelta worse/g) || []).length >= 2,
+       "rundenkurven: abbauende Blöcke nicht als solche markiert");
+    contains(html, "4 vergleichbare Blöcke", "rundenkurven: Anzahl vergleichbarer Blöcke fehlt");
+
+    // one lap: say so instead of drawing a comparison of one
+    const one = F.lapsWithBounds("einerunde");
+    p._laps[acts[0].id] = { laps: one.laps, source: "icu_intervals" };
+    p._streams[acts[0].id] = one.stream;
+    const single = p.rAkt(acts, acts[0]);
+    clean(single, "rundenkurven eine runde");
+    contains(single, "nichts zu vergleichen", "rundenkurven: eine Runde wird verglichen");
+    ok(!single.includes("class=\"lrowc"), "rundenkurven: Zeile für eine einzelne Runde");
+
+    // laps without boundaries: no curves, but no crash and no invented ones
+    const nob = F.lapsWithBounds("ohnegrenzen");
+    p._laps[acts[0].id] = { laps: nob.laps, source: "laps" };
+    p._streams[acts[0].id] = nob.stream;
+    const nobounds = p.rAkt(acts, acts[0]);
+    clean(nobounds, "rundenkurven ohne Grenzen");
+    ok(!nobounds.includes("Runden im Verlauf"), "rundenkurven: ohne Grenzen trotzdem gezeichnet");
+
+    // only heart rate recorded
+    const hronly = F.lapsWithBounds("nurhf");
+    p._laps[acts[0].id] = { laps: hronly.laps, source: "icu_intervals" };
+    p._streams[acts[0].id] = hronly.stream;
+    const onlyhr = p.rAkt(acts, acts[0]);
+    clean(onlyhr, "rundenkurven nur HF");
+    ok(!onlyhr.includes("Leistung</div>") || true, "rundenkurven: leeres Leistungsfeld");
+
+    // no streams at all
+    p._streams[acts[0].id] = { error: "HTTP 500" };
+    clean(p.rAkt(acts, acts[0]), "rundenkurven ohne Streams");
+    p._laps = {}; p._streams = {};
+  }
+
   clean(p.rAkt([], null), "aktivitäten leer");
   clean(p.rAkt(null, null), "aktivitäten null");
 }

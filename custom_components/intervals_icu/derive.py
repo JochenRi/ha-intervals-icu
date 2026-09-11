@@ -274,6 +274,13 @@ def streams_to_dict(streams: Any) -> dict[str, list[Any]]:
 _LAP_FIELDS: dict[str, tuple[str, ...]] = {
     "label": ("label", "name", "type"),
     "type": ("type", "group_id"),
+    # Both are kept: the index counts in the ORIGINAL 1 Hz stream while the
+    # panel receives a thinned one, so mapping by time is the safe route and
+    # the index is only a fallback.
+    "start_s": ("start_time",),
+    "end_s": ("end_time",),
+    "start_index": ("start_index",),
+    "end_index": ("end_index",),
     "start": ("start_time", "start_index", "start"),
     "moving_time": ("moving_time", "elapsed_time", "duration"),
     "distance": ("distance",),

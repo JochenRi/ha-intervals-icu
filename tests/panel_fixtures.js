@@ -198,6 +198,63 @@ function pmc(daysObj) {
  * python side is tested separately; here the already-normalised shape is
  * used, including the awkward cases: rest laps without power, laps without
  * DFA, and a series whose efficiency factor fades (real fatigue signature). */
+/* laps WITH stream boundaries, plus a matching thinned stream: the indices
+ * count in the original 1 Hz recording while the panel holds a 4 s stream,
+ * which is exactly where a naive implementation cuts the wrong pieces. */
+function lapsWithBounds(kind) {
+  const secs = 4;
+  const blocks = [
+    ["Aufwärmen", 600, 118, 123, 1.30, false],
+    ["WORK", 240, 259, 168, 0.88, true],
+    ["Pause", 180, 91, 152, 1.05, false],
+    ["WORK", 240, 251, 174, 0.78, true],
+    ["Pause", 180, 91, 158, 0.95, false],
+    ["WORK", 240, 250, 178, 0.64, true],
+    ["Pause", 180, 89, 161, 0.90, false],
+    ["WORK", 240, 249, 179, 0.59, true],
+    ["Ausfahren", 300, 92, 147, 1.10, false],
+  ];
+  const laps = [];
+  const watts = [], hr = [], dfa = [], time = [], cad = [];
+  let clock = 0, n = 0;
+  for (const [label, len, w, h, d, isWork] of blocks) {
+    n += 1;
+    laps.push({ n, label, type: isWork ? "WORK" : "RECOVERY",
+      start_s: clock, end_s: clock + len, start_index: clock, end_index: clock + len,
+      moving_time: len, avg_watts: w, avg_hr: h, dfa_a1: d, zone: isWork ? 5 : 1,
+      ef: Math.round((w / h) * 100) / 100, avg_cadence: 78 });
+    for (let s = 0; s < len; s += secs) {
+      time.push(clock + s);
+      // a couple of dropouts, because real recordings have them
+      const drop = (clock + s) % 377 === 0;
+      watts.push(drop ? 0 : w + ((s / secs) % 7) - 3);
+      hr.push(drop ? 0 : h + ((s / secs) % 5) - 2);
+      dfa.push(d + (((s / secs) % 9) - 4) / 100);
+      cad.push(78);
+    }
+    clock += len;
+  }
+  if (kind === "einerunde") {
+    return { laps: [laps[0]], seen_keys: ["start_index"], source: "icu_intervals",
+             stream: { points: time.length, sample_secs: secs,
+                       channels: { time, watts, heartrate: hr, dfa_a1: dfa, cadence: cad } } };
+  }
+  if (kind === "ohnegrenzen") {
+    return { laps: laps.map(({ start_s, end_s, start_index, end_index, ...rest }) => rest),
+             seen_keys: [], source: "laps",
+             stream: { points: time.length, sample_secs: secs,
+                       channels: { time, watts, heartrate: hr, dfa_a1: dfa } } };
+  }
+  if (kind === "nurhf") {
+    return { laps, seen_keys: [], source: "icu_intervals",
+             stream: { points: time.length, sample_secs: secs,
+                       channels: { time, heartrate: hr } } };
+  }
+  return { laps, seen_keys: ["start_index", "end_index"], source: "icu_intervals",
+           stream: { points: time.length, sample_secs: secs,
+                     channels: { time, watts, heartrate: hr, dfa_a1: dfa, cadence: cad } } };
+}
+
 function laps(kind) {
   if (kind === "empty") return { laps: [], seen_keys: [], source: null };
   if (kind === "error") return { error: "HTTP 500" };
@@ -389,4 +446,4 @@ function workouts(kind) {
   };
 }
 
-module.exports = { TODAY, days, load, readiness, activities, streams, thresholds, calendar, pmc, laps, coach, signals, workouts };
+module.exports = { TODAY, days, load, readiness, activities, streams, thresholds, calendar, pmc, laps, lapsWithBounds, coach, signals, workouts };
