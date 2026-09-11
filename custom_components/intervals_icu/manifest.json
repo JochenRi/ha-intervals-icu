@@ -16,5 +16,5 @@
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/JochenRi/ha-intervals-icu/issues",
   "requirements": [],
-  "version": "0.25.0"
+  "version": "0.26.0"
 }

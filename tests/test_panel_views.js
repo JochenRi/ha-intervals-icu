@@ -150,8 +150,14 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   ok((html.match(/class="zdot"/g) || []).length === 3, "trainer: nicht drei Punkte auf einer Achse");
   ok(/class="zband"/.test(html), "trainer: Normalband fehlt");
   ok(/class="zzero"/.test(html), "trainer: Basislinie nicht markiert");
-  contains(html, "deine Basislinie", "trainer: Achse nicht beschriftet");
-  ok((html.match(/class="zleg"/g) || []).length === 3, "trainer: Werte nicht beziffert");
+  // labels sit ON the rows now, not in a legend below - a legend forces the
+  // eye between two places and the mapping into working memory
+  ok((html.match(/class="zrow"/g) || []).length === 3, "trainer: nicht drei beschriftete Zeilen");
+  ok((html.match(/class="zname"/g) || []).length === 3, "trainer: Zeilen ohne Namen");
+  ok((html.match(/class="zval/g) || []).length === 3, "trainer: Werte nicht beziffert");
+  ok(!/class="zleg"/.test(html), "trainer: getrennte Legende wieder da");
+  contains(html, "±0,5 = Rauschen", "trainer: Normalband nicht erklärt");
+  contains(html, "7-Tage-Mittel HRV", "trainer: Signal nicht benannt");
 }
 
 /* ── Einheiten für heute ──────────────────────────────────────────────── */

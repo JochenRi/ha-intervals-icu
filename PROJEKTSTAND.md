@@ -1,6 +1,6 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 11.09.2026 · **Version:** 0.25.0 · **Status:** produktiv auf HEIMDALL,
+**Stand:** 11.09.2026 · **Version:** 0.26.0 · **Status:** produktiv auf HEIMDALL,
 Auslieferung über HACS aus `github.com/JochenRi/ha-intervals-icu`
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lokal
@@ -171,6 +171,26 @@ Werte liegt in der Anpassung der heutigen Einheit, nicht in der Planung der Woch
 
 Beim Umbau haben die alten Tests drei echte Regressionen gefangen: die Ampelfarbe ohne
 Wort (WCAG), der verschwundene Bullet-Graph und der fehlende Stand je Wert.
+
+### Die Trainer-Seite, durchgesehen (0.26.0)
+
+- **Prozente vollständig raus.** Auch die Blockbeschriftungen und die Tooltips tragen jetzt
+  Watt; Prozente erscheinen nur noch, wenn keine FTP bekannt ist — dann mit dem Zusatz
+  „% FTP", damit klar ist, worauf sie sich beziehen.
+- **Das Wissen ist zurück, aber am richtigen Ort.** Der gestrichene Einheitenkatalog hatte
+  erklärt, was welcher Reiz bewirkt. Das steht jetzt auf jeder Karte: **„Was das bringt"**
+  und **„Beleg"** sichtbar, die Grenze aufklappbar. Wissen gehört neben die Sache, nicht in
+  eine Tabelle am Seitenende.
+- **Der Zustand hat Zeilen statt Punktwolke.** Drei Zeilen, Name links, Punkt auf der
+  gemeinsamen Achse, Wert rechts — Beschriftung **an** der Sache statt in einer Legende
+  darunter, weil eine Legende den Blick zwischen zwei Orten pendeln lässt. Normalband und
+  Nulllinie laufen hinter allen Zeilen durch, damit weiter eine Skala gilt.
+- **Die lange Fahrt fehlte im Katalog** — das längste Angebot waren 95 Minuten, bei einem
+  Ziel von sechs Stunden. Neu: *Lange Grundlage 2,5 h* und *Lange Fahrt 3,5 h mit Endblock*
+  (zwei Zehnminutenblöcke am Ende, im ermüdeten Zustand — genau das, was das Ziel verlangt).
+  Die teuerste Einheit im Katalog, entsprechend bewertet.
+- **Das Laden läuft parallel** statt nacheinander: drei Rundreisen in Folge waren der
+  Unterschied zwischen sofort und „lädt noch".
 
 ### Watt statt Prozent, und der Trainer auf das Nötige gekürzt (0.25.0)
 

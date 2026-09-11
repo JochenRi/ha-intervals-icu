@@ -79,6 +79,47 @@ LIBRARY: list[dict[str, Any]] = [
         "states": ["ready", "rebound"],
     },
     {
+        "key": "z2_150",
+        "title": "Lange Grundlage 2,5 h",
+        "purpose": "Ermüdungswiderstand",
+        "minutes": 150,
+        "intensity": 63,
+        "load": 115,
+        "blocks": [(12, 55, "Einrollen"), (130, 67, "gleichmäßig"), (8, 50, "Ausrollen")],
+        "text": "- 12m 55% 85rpm\n- 130m 64-70% 85rpm\n- 8m 50%",
+        "hr_hint": (0.88, 0.97),
+        "dfa": "über 0,75; sinkt er im letzten Drittel, ist die Grundlage am Ende",
+        "effect": "Ab dieser Dauer wird trainiert, wie lange die Grundlage trägt — "
+                  "Fettoxidation, Ermüdungswiderstand, Widerstand gegen Muskelschaden.",
+        "evidence": "Durability nach Maunder: Zeitpunkt und Ausmaß der Verschlechterung "
+                    "während langer Belastung. Eine eigene Eigenschaft, unabhängig von FTP.",
+        "limit": "Durchgehend verpflegen. Der Reiz soll aus der Belastung kommen, nicht "
+                 "aus leeren Speichern — das ist der häufigste Fehler bei langen Einheiten.",
+        "states": ["ready", "rebound"],
+    },
+    {
+        "key": "z2_210_late",
+        "title": "Lange Fahrt 3,5 h mit Endblock",
+        "purpose": "Durability, spezifisch",
+        "minutes": 210,
+        "intensity": 68,
+        "load": 175,
+        "blocks": [(12, 55, "Einrollen"), (150, 67, "gleichmäßig"), (10, 88, "Endblock 1"),
+                   (5, 55, "locker"), (10, 88, "Endblock 2"), (23, 50, "Ausrollen")],
+        "text": ("- 12m 55% 85rpm\n- 150m 64-70% 85rpm\n\n2x\n- 10m 86-90% 88rpm\n"
+                 "- 5m 55%\n\n- 23m 50%"),
+        "hr_hint": (0.88, 1.05),
+        "dfa": "über 0,75 im Hauptteil, in den Endblöcken um 0,6 — im ermüdeten Zustand",
+        "effect": "Qualität am ENDE der langen Fahrt: genau der Zustand, den eine "
+                  "Sechsstundenfahrt im letzten Drittel verlangt.",
+        "evidence": "Ab etwa sechs bis acht Wochen vor dem Ziel gehört harte Arbeit ans "
+                    "Ende der langen Fahrt — ein frischer Intervallblock trainiert nicht, "
+                    "was nach Stunden gebraucht wird.",
+        "limit": "Die teuerste Einheit im Katalog. Nur mit grünem Zustand und mindestens "
+                 "zwei ruhigen Tagen davor.",
+        "states": ["ready"],
+    },
+    {
         "key": "tempo_2x20",
         "title": "Tempo 2×20 min",
         "purpose": "Aerobe Schwelle anheben",
@@ -346,6 +387,7 @@ def scaled(entry: dict[str, Any], ftp: float | None, aerobic_hr: int | None) -> 
 FAMILIES: list[tuple[str, str, list[str]]] = [
     ("recovery", "Regeneration", ["recovery_40"]),
     ("endurance", "Grundlage", ["z2_90", "z2_60"]),
+    ("long", "Lange Fahrt", ["z2_210_late", "z2_150"]),
     ("tempo", "Tempo", ["tempo_2x20"]),
     ("sweetspot", "SweetSpot", ["sweetspot_2x20"]),
     ("threshold", "Schwelle", ["threshold_4x10", "threshold_3x12"]),
@@ -356,20 +398,20 @@ FAMILIES: list[tuple[str, str, list[str]]] = [
 # What each state can carry. Not a filter - a verdict per family, so every kind
 # of session stays visible and says what it would cost today.
 FIT_BY_STATE: dict[str, dict[str, str]] = {
-    "slump":      {"recovery": "ok", "return": "maybe", "endurance": "no", "tempo": "no",
-                   "sweetspot": "no", "threshold": "no", "vo2max": "no"},
-    "recovering": {"recovery": "ok", "return": "ok", "endurance": "maybe", "tempo": "no",
-                   "sweetspot": "no", "threshold": "no", "vo2max": "no"},
-    "rebound":    {"recovery": "ok", "return": "ok", "endurance": "ok", "tempo": "maybe",
-                   "sweetspot": "maybe", "threshold": "no", "vo2max": "no"},
-    "strained":   {"recovery": "ok", "return": "ok", "endurance": "ok", "tempo": "maybe",
-                   "sweetspot": "maybe", "threshold": "no", "vo2max": "no"},
-    "ready":      {"recovery": "ok", "return": "ok", "endurance": "ok", "tempo": "ok",
-                   "sweetspot": "ok", "threshold": "ok", "vo2max": "ok"},
-    "elevated":   {"recovery": "ok", "return": "ok", "endurance": "ok", "tempo": "maybe",
-                   "sweetspot": "maybe", "threshold": "no", "vo2max": "no"},
-    "unknown":    {"recovery": "ok", "return": "ok", "endurance": "ok", "tempo": "maybe",
-                   "sweetspot": "maybe", "threshold": "maybe", "vo2max": "maybe"},
+    "slump":      {"recovery": "ok", "return": "maybe", "endurance": "no", "long": "no",
+                   "tempo": "no", "sweetspot": "no", "threshold": "no", "vo2max": "no"},
+    "recovering": {"recovery": "ok", "return": "ok", "endurance": "maybe", "long": "no",
+                   "tempo": "no", "sweetspot": "no", "threshold": "no", "vo2max": "no"},
+    "rebound":    {"recovery": "ok", "return": "ok", "endurance": "ok", "long": "maybe",
+                   "tempo": "maybe", "sweetspot": "maybe", "threshold": "no", "vo2max": "no"},
+    "strained":   {"recovery": "ok", "return": "ok", "endurance": "ok", "long": "maybe",
+                   "tempo": "maybe", "sweetspot": "maybe", "threshold": "no", "vo2max": "no"},
+    "ready":      {"recovery": "ok", "return": "ok", "endurance": "ok", "long": "ok",
+                   "tempo": "ok", "sweetspot": "ok", "threshold": "ok", "vo2max": "ok"},
+    "elevated":   {"recovery": "ok", "return": "ok", "endurance": "ok", "long": "maybe",
+                   "tempo": "maybe", "sweetspot": "maybe", "threshold": "no", "vo2max": "no"},
+    "unknown":    {"recovery": "ok", "return": "ok", "endurance": "ok", "long": "maybe",
+                   "tempo": "maybe", "sweetspot": "maybe", "threshold": "maybe", "vo2max": "maybe"},
 }
 
 FIT_REASON = {
@@ -404,7 +446,7 @@ def _variant(keys: list[str], state: str, ftp: float | None, budget: float | Non
 
 def suggest(state: str, ftp: float | None = None, aerobic_hr: int | None = None,
             budget: float | None = None, hard_days_last_7: int = 0,
-            layoff_days: int | None = None, limit: int = 6,
+            layoff_days: int | None = None, limit: int = 7,
             goal: str | None = None) -> list[dict[str, Any]]:
     """One session per family, each judged for today - never filtered away.
 
@@ -415,11 +457,11 @@ def suggest(state: str, ftp: float | None = None, aerobic_hr: int | None = None,
     """
     fits = FIT_BY_STATE.get(state, FIT_BY_STATE["unknown"])
     order = {
-        "long_ride": ["endurance", "sweetspot", "tempo", "threshold", "vo2max", "recovery", "return"],
-        "ftp": ["threshold", "sweetspot", "endurance", "vo2max", "tempo", "recovery", "return"],
-        "vo2max": ["vo2max", "threshold", "endurance", "sweetspot", "tempo", "recovery", "return"],
-        "health": ["endurance", "tempo", "recovery", "sweetspot", "threshold", "vo2max", "return"],
-    }.get(goal or "", ["endurance", "vo2max", "sweetspot", "threshold", "tempo", "recovery", "return"])
+        "long_ride": ["long", "endurance", "sweetspot", "tempo", "threshold", "vo2max", "recovery", "return"],
+        "ftp": ["threshold", "sweetspot", "endurance", "vo2max", "tempo", "long", "recovery", "return"],
+        "vo2max": ["vo2max", "threshold", "endurance", "sweetspot", "tempo", "long", "recovery", "return"],
+        "health": ["endurance", "tempo", "recovery", "sweetspot", "threshold", "vo2max", "long", "return"],
+    }.get(goal or "", ["endurance", "vo2max", "sweetspot", "threshold", "tempo", "long", "recovery", "return"])
 
     out: list[dict[str, Any]] = []
     for family in order:

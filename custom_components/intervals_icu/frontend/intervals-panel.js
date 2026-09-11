@@ -563,8 +563,10 @@ class IntervalsIcuPanel extends HTMLElement {
 
   async _setTab(t) {
     this._tab = t;
+    // parallel, not one after the other: three round trips in sequence is the
+    // difference between "instant" and "why is this still loading"
     if (t === "trainer") {
-      await this._need("coach"); await this._need("workouts"); await this._need("goal");
+      await Promise.all([this._need("coach"), this._need("workouts"), this._need("goal")]);
     }
     if (t === "heute") await this._need("today");
     if (t === "signale") await this._need("signals");
@@ -794,7 +796,7 @@ class IntervalsIcuPanel extends HTMLElement {
       const w = (min / total) * 100;
       const s = `<i class="wob" style="left:${x}%;width:${Math.max(0.6, w - 0.25)}%;
         height:${Math.max(14, Math.min(100, pct * 0.78))}%;background:${colFor(pct)}"
-        title="${esc(label)} · ${min} min · ${pct} % FTP${ftp ? ` · ${Math.round(ftp * pct / 100)} W` : ""}"></i>`;
+        title="${esc(label)} · ${min} min · ${ftp ? Math.round(ftp * pct / 100) + " W" : pct + " % FTP"}"></i>`;
       x += w;
       return s;
     }).join("");
@@ -828,8 +830,9 @@ class IntervalsIcuPanel extends HTMLElement {
         </div>
         ${this._woBar(entry, ftp)}
         <div class="wosteps">${(entry.blocks_w || entry.blocks).map(([min, val, label]) =>
-          `<span><b>${min}′</b> ${esc(label)} <em>${entry.blocks_w ? val + " W" : val + " %"}</em></span>`).join("")}</div>
-        <p class="effect">${esc(entry.effect)}</p>
+          `<span><b>${min}′</b> ${esc(label)} <em>${entry.blocks_w ? val + " W" : val + " % FTP"}</em></span>`).join("")}</div>
+        <p class="effect"><b>Was das bringt:</b> ${esc(entry.effect)}</p>
+        <p class="evi"><b>Beleg:</b> ${esc(entry.evidence)}</p>
         ${entry.fit_reason ? `<p class="fitwhy">${ico(entry.fit === "no" ? "warn" : "info",
           entry.fit === "no" ? C.red : C.amber, 14)} ${esc(entry.fit_reason)}</p>` : ""}
         ${entry.fits_budget === false ? `<p class="fitwhy">${ico("info", C.tx2, 14)}
@@ -1219,17 +1222,20 @@ class IntervalsIcuPanel extends HTMLElement {
               ].filter(([, v]) => v != null);
               if (!pts.length) return "";
               const pos = (z) => ((Math.max(-3, Math.min(3, z)) + 3) / 6 * 100).toFixed(1);
+              // One row per signal, name on the LEFT, value on the RIGHT of the
+              // same row - no legend to look up. A legend forces the eye between
+              // two places and the mapping into memory. The band and zero line
+              // run behind every row, so all three still read on one scale.
               return `<div class="zplot">
-                <div class="zaxis">
-                  <i class="zband"></i>
-                  <i class="zzero"></i>
-                  ${pts.map(([label, z, col], i) => `<i class="zdot" style="left:${pos(z)}%;
-                    background:${col};top:${6 + i * 15}px" title="${esc(label)}: ${sign(z, 2)} SD"></i>`).join("")}
-                </div>
-                <div class="zscale"><span>−3 SD</span><span>deine Basislinie</span><span>+3 SD</span></div>
-                <div class="zlegend">${pts.map(([label, z, col]) =>
-                  `<span class="zleg"><i style="background:${col}"></i>${esc(label)}
-                    <b class="tn" style="color:${col}">${sign(z, 2)}</b></span>`).join("")}</div>
+                ${pts.map(([label, z, col]) => `<div class="zrow">
+                  <span class="zname">${esc(label)}</span>
+                  <span class="ztrack">
+                    <i class="zband"></i><i class="zzero"></i>
+                    <i class="zdot" style="left:${pos(z)}%;background:${col}"></i>
+                  </span>
+                  <b class="zval tn" style="color:${col}">${sign(z, 2)}</b>
+                </div>`).join("")}
+                <div class="zscale"><span>−3 SD</span><span>±0,5 = Rauschen</span><span>+3 SD</span></div>
               </div>`;
             })()}
           </div>
@@ -2564,16 +2570,19 @@ svg.ch{display:block;width:100%;height:auto}
 .rv i{width:9px;height:9px;border-radius:3px;display:inline-block}
 .rv b{color:${C.tx};font-size:14.5px}
 /* Zustand: ein Punktdiagramm statt dreier Balken */
-.zplot{min-width:280px}
-.zaxis{position:relative;height:58px;background:#0006;border-radius:6px}
-.zband{position:absolute;left:41.7%;width:16.6%;top:0;bottom:0;background:${C.tx3};opacity:.18;border-radius:4px}
-.zzero{position:absolute;left:50%;top:0;bottom:0;width:1.5px;background:${C.tx3};opacity:.6}
-.zdot{position:absolute;width:11px;height:11px;border-radius:3px;margin-left:-5px}
-.zscale{display:flex;justify-content:space-between;color:${C.tx3};font-size:10.5px;margin-top:3px}
-.zlegend{display:grid;gap:2px;margin-top:7px}
-.zleg{display:flex;align-items:center;gap:7px;font-size:12.5px;color:${C.tx2}}
-.zleg i{width:10px;height:10px;border-radius:3px;display:inline-block}
-.zleg b{margin-left:auto}
+.zplot{min-width:300px}
+.zrow{display:grid;grid-template-columns:150px 1fr 52px;gap:10px;align-items:center;padding:3px 0}
+.zname{font-size:12.5px;color:${C.tx2}}
+.ztrack{position:relative;height:20px;background:#0006;border-radius:4px;display:block}
+.zband{position:absolute;left:41.7%;width:16.6%;top:0;bottom:0;background:${C.tx3};opacity:.2;border-radius:3px}
+.zzero{position:absolute;left:50%;top:0;bottom:0;width:1.5px;background:${C.tx3};opacity:.65}
+.zdot{position:absolute;top:4px;width:12px;height:12px;border-radius:3px;margin-left:-6px}
+.zval{font-size:14px;text-align:right}
+.zscale{display:grid;grid-template-columns:150px 1fr 52px;gap:10px;color:${C.tx3};font-size:10.5px}
+.zscale span:nth-child(1){grid-column:2;text-align:left}
+.zscale span:nth-child(2){grid-column:2;text-align:center;margin-top:-13px}
+.zscale span:nth-child(3){grid-column:2;text-align:right;margin-top:-13px}
+.evi{font-size:12.5px;color:${C.tx3};margin:4px 0 0;line-height:1.45}
 
 /* Heute */
 .hero{border-width:1.5px;padding:20px}
@@ -2695,16 +2704,19 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
   .lrow>*:nth-child(5),.lrow>*:nth-child(6),.lrow>*:nth-child(7),.lrow>*:nth-child(8){display:none}
 }
 /* Zustand: ein Punktdiagramm statt dreier Balken */
-.zplot{min-width:280px}
-.zaxis{position:relative;height:58px;background:#0006;border-radius:6px}
-.zband{position:absolute;left:41.7%;width:16.6%;top:0;bottom:0;background:${C.tx3};opacity:.18;border-radius:4px}
-.zzero{position:absolute;left:50%;top:0;bottom:0;width:1.5px;background:${C.tx3};opacity:.6}
-.zdot{position:absolute;width:11px;height:11px;border-radius:3px;margin-left:-5px}
-.zscale{display:flex;justify-content:space-between;color:${C.tx3};font-size:10.5px;margin-top:3px}
-.zlegend{display:grid;gap:2px;margin-top:7px}
-.zleg{display:flex;align-items:center;gap:7px;font-size:12.5px;color:${C.tx2}}
-.zleg i{width:10px;height:10px;border-radius:3px;display:inline-block}
-.zleg b{margin-left:auto}
+.zplot{min-width:300px}
+.zrow{display:grid;grid-template-columns:150px 1fr 52px;gap:10px;align-items:center;padding:3px 0}
+.zname{font-size:12.5px;color:${C.tx2}}
+.ztrack{position:relative;height:20px;background:#0006;border-radius:4px;display:block}
+.zband{position:absolute;left:41.7%;width:16.6%;top:0;bottom:0;background:${C.tx3};opacity:.2;border-radius:3px}
+.zzero{position:absolute;left:50%;top:0;bottom:0;width:1.5px;background:${C.tx3};opacity:.65}
+.zdot{position:absolute;top:4px;width:12px;height:12px;border-radius:3px;margin-left:-6px}
+.zval{font-size:14px;text-align:right}
+.zscale{display:grid;grid-template-columns:150px 1fr 52px;gap:10px;color:${C.tx3};font-size:10.5px}
+.zscale span:nth-child(1){grid-column:2;text-align:left}
+.zscale span:nth-child(2){grid-column:2;text-align:center;margin-top:-13px}
+.zscale span:nth-child(3){grid-column:2;text-align:right;margin-top:-13px}
+.evi{font-size:12.5px;color:${C.tx3};margin:4px 0 0;line-height:1.45}
 
 /* Heute */
 .thead{font-size:14px;color:${C.tx2};margin:0 2px 8px}
