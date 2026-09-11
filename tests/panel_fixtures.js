@@ -275,6 +275,32 @@ function steadyStream(kind) {
 }
 
 /* the night after a session, as intervals_icu/night returns it */
+/* how this session sits among comparable ones, as intervals_icu/context returns it */
+function context(kind) {
+  if (kind === "leer") return { available: false };
+  const full = {
+    available: true, group: "ride", peers: 18,
+    window: { intensity: 61, minutes: 208 },
+    metrics: {
+      decoupling: { label: "Entkopplung", unit: "%", value: 10.6, median: 2.1,
+        best: -0.6, worst: 16.9, p25: 0.9, p75: 5.4, n: 17, enough: true,
+        rank: 94, good: "down", verdict: "schlechter als sonst" },
+      ef: { label: "Watt pro Herzschlag", unit: "", value: 0.923, median: 0.695,
+        best: 0.98, worst: 0.55, p25: 0.63, p75: 0.79, n: 17, enough: true,
+        rank: 76, good: "up", verdict: "besser als sonst" },
+      hr: { label: "Ø Herzfrequenz", unit: "bpm", value: 142, median: 139,
+        best: 128, worst: 151, p25: 134, p75: 144, n: 17, enough: true,
+        rank: 55, good: "down", verdict: "im üblichen Bereich" },
+    },
+    note: "Verglichen wird mit deinen eigenen früheren Einheiten derselben Sportart, deren Intensität um höchstens 10 Punkte und deren Dauer um höchstens 40 % abweicht. Der Prozentrang sagt, wie viele der Vergleichseinheiten schlechter lagen.",
+  };
+  if (kind === "duenn") {
+    return { ...full, peers: 3, metrics: { decoupling: {
+      label: "Entkopplung", unit: "%", value: 10.6, n: 3, enough: false } } };
+  }
+  return full;
+}
+
 function night(kind) {
   if (kind === "keine") return { available: false, reason: "no_wellness", night_date: "2026-09-02" };
   if (kind === "unbekannt") return { available: false, reason: "unknown_activity" };
@@ -499,4 +525,4 @@ function workouts(kind) {
   };
 }
 
-module.exports = { TODAY, days, load, readiness, activities, streams, thresholds, calendar, pmc, laps, lapsWithBounds, steadyStream, night, coach, signals, workouts };
+module.exports = { TODAY, days, load, readiness, activities, streams, thresholds, calendar, pmc, laps, lapsWithBounds, steadyStream, night, context, coach, signals, workouts };

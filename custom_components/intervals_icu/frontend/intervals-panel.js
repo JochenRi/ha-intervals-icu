@@ -500,6 +500,7 @@ class IntervalsIcuPanel extends HTMLElement {
     this._woOpen = null;
     this._cmpFocus = null;
     this._night = {};
+    this._ctx = {};
     this._booted = false;
   }
 
@@ -567,10 +568,11 @@ class IntervalsIcuPanel extends HTMLElement {
     this._sel = (this._acts || []).find((a) => String(a.id) === String(id)) || null;
     this._render();
     if (this._sel && !this._streams[id]) {
-      const [st, lp, ni] = await Promise.allSettled([
+      const [st, lp, ni, cx] = await Promise.allSettled([
         this._ws("streams", { activity_id: String(id) }),
         this._ws("laps", { activity_id: String(id) }),
         this._ws("night", { activity_id: String(id) }),
+        this._ws("context", { activity_id: String(id) }),
       ]);
       this._streams[id] = st.status === "fulfilled"
         ? st.value : { error: String(st.reason && st.reason.message || st.reason) };
@@ -578,6 +580,7 @@ class IntervalsIcuPanel extends HTMLElement {
         ? lp.value : { error: String(lp.reason && lp.reason.message || lp.reason) };
       this._night[id] = ni.status === "fulfilled"
         ? ni.value : { available: false, reason: String(ni.reason && ni.reason.message || ni.reason) };
+      this._ctx[id] = cx.status === "fulfilled" ? cx.value : { available: false };
       if (this._sel && String(this._sel.id) === String(id)) this._render();
     }
   }
@@ -1528,6 +1531,7 @@ class IntervalsIcuPanel extends HTMLElement {
       <div class="kvgrid">${stats}</div>
       ${this._lapBlock(a)}
       ${this._lapCompare(a)}
+      ${this._ctxBlock(a)}
       ${this._nightBlock(a)}
       <h3 class="secname">Verlauf <span class="hint">— gestapelte Felder, eine Zeitachse, ein Cursor: so siehst du, wie sich HF und DFA zur Leistung verhalten.</span></h3>
       ${streamsHtml}
@@ -1715,6 +1719,16 @@ class IntervalsIcuPanel extends HTMLElement {
       ${rest.map((s) => `<span class="devcell colhead">${esc(s.label)}</span>`).join("")}
       </span></div>`;
 
+    // A bar without a scale is an ordering, not a measurement: you can see
+    // which is longer, but not by how much. The full half-width equals the
+    // largest deviation in the whole table, so one tick set serves every row.
+    const edge = Math.round(span);
+    const foot = `<div class="devrow devfoot"><span></span><span class="devbars">
+      ${rest.map(() => `<span class="devcell"><i class="devscale">
+        <u style="left:2%">-${edge} %</u><u style="left:50%;transform:translateX(-50%)">0</u>
+        <u style="right:2%">+${edge} %</u></i></span>`).join("")}
+      </span></div>`;
+
     const rows = measures.map((m, k) => {
       const bars = rest.map((s, i) => {
         const v = devs[k][i];
@@ -1741,7 +1755,7 @@ class IntervalsIcuPanel extends HTMLElement {
     return `<div class="devbox">
       <div class="devhead">Abweichung gegenüber <b>${esc(base.label)}</b>
         <span class="hint">— ${esc(opts.note || "die Zahl in ihrer eigenen Einheit, die Balkenlänge normiert, damit die Zeilen vergleichbar bleiben. Rechts heißt mehr, links weniger; grün günstig, gelb ungünstig.")}</span></div>
-      ${head}${rows}</div>`;
+      ${head}${rows}${foot}</div>`;
   }
 
   /* Segment analysis for one activity.
@@ -1902,6 +1916,62 @@ class IntervalsIcuPanel extends HTMLElement {
      THIS athlete's own usual answer to sessions of the same size. A night at
      -1.5 SD can be perfectly ordinary if that is what this rider always does
      after a session like this one. */
+  /* Where this session sits among the rider's own comparable ones.
+
+     A decoupling of 11.4% means nothing by itself. Friel's 5% is a population
+     benchmark; what actually answers "is that a lot FOR ME" is the spread of
+     this rider's own comparable rides. Drawn as a bullet-style range: the
+     middle half of past sessions as a band, the median as a tick, this
+     session as a dot - position on a common scale, the most accurately read
+     encoding, with the percentile spelled out in words underneath. */
+  _ctxBlock(a) {
+    const c = this._ctx[a.id];
+    if (!c || !c.available) return "";
+    const entries = Object.entries(c.metrics || {});
+    if (!entries.length) return "";
+
+    const rows = entries.map(([key, m]) => {
+      if (!m.enough) {
+        return `<div class="ctxrow thin">
+          <span class="ctxlab"><b>${esc(m.label)}</b></span>
+          <span class="ctxval tn">${fmt(m.value, 2)}<small>${esc(m.unit)}</small></span>
+          <span class="ctxbar"></span>
+          <span class="ctxsay">nur ${m.n} vergleichbare Einheiten — zu wenig für eine Einordnung</span>
+        </div>`;
+      }
+      const lo = Math.min(m.best, m.worst, m.value);
+      const hi = Math.max(m.best, m.worst, m.value);
+      const pad = (hi - lo) * 0.08 || 1;
+      const pos = (v) => ((v - (lo - pad)) / ((hi + pad) - (lo - pad))) * 100;
+      const band = [pos(Math.min(m.p25, m.p75)), pos(Math.max(m.p25, m.p75))];
+      const good = m.verdict === "besser als sonst";
+      const bad = m.verdict === "schlechter als sonst";
+      const col = good ? C.green : bad ? C.amber : C.tx2;
+      const share = m.good === "up" ? m.rank : 100 - m.rank;
+      return `<div class="ctxrow">
+        <span class="ctxlab"><b>${esc(m.label)}</b>
+          <em>Median ${fmt(m.median, 2)}${esc(m.unit)} · ${m.n} Einheiten</em></span>
+        <span class="ctxval tn" style="color:${col}">${fmt(m.value, 2)}<small>${esc(m.unit)}</small></span>
+        <span class="ctxbar" title="mittlere Hälfte deiner Vergleichseinheiten: ${fmt(m.p25, 2)} bis ${fmt(m.p75, 2)}">
+          <i class="ctxband" style="left:${band[0].toFixed(1)}%;width:${Math.max(1, band[1] - band[0]).toFixed(1)}%"></i>
+          <i class="ctxmed" style="left:${pos(m.median).toFixed(1)}%"></i>
+          <i class="ctxdot" style="left:${pos(m.value).toFixed(1)}%;background:${col}"></i>
+        </span>
+        <span class="ctxsay" style="color:${col}">${esc(m.verdict)}
+          <em>${good || !bad ? "besser" : "schlechter"} als ${fmt(good || !bad ? share : 100 - share, 0)} % deiner Vergleichseinheiten</em></span>
+      </div>`;
+    }).join("");
+
+    return `<h3 class="secname">Wie diese Einheit dasteht
+      <span class="hint">— gegen ${c.peers} eigene Einheiten derselben Sportart, ähnlicher Intensität und Dauer</span></h3>
+      <div class="ctxbox">
+        <div class="ctxscale"><span>schlechter</span><span>mittlere Hälfte</span><span>besser</span></div>
+        ${rows}
+        <details class="more"><summary>Wie die Vergleichsgruppe gebildet wird</summary>
+          <p class="src">${esc(c.note)}</p></details>
+      </div>`;
+  }
+
   _nightBlock(a) {
     const n = this._night[a.id];
     if (!n) return "";
@@ -2427,6 +2497,33 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
   .lrow{grid-template-columns:30px 1fr 70px 74px;}
   .lrow>*:nth-child(5),.lrow>*:nth-child(6),.lrow>*:nth-child(7),.lrow>*:nth-child(8){display:none}
 }
+/* Wie diese Einheit dasteht */
+.ctxbox{background:${C.card2};border-radius:10px;padding:10px 14px}
+.ctxscale{display:grid;grid-template-columns:1fr 92px minmax(160px,1.4fr) minmax(190px,1fr);gap:12px;
+  color:${C.tx3};font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+.ctxscale span:nth-child(1){grid-column:3;text-align:left}
+.ctxscale span:nth-child(2){grid-column:3;text-align:center;margin-top:-14px}
+.ctxscale span:nth-child(3){grid-column:3;text-align:right;margin-top:-14px}
+.ctxrow{display:grid;grid-template-columns:1fr 92px minmax(160px,1.4fr) minmax(190px,1fr);gap:12px;
+  align-items:center;padding:10px 0;border-bottom:1px solid ${C.line}44}
+.ctxrow:last-of-type{border-bottom:none}
+.ctxlab b{font-size:14px;display:block}
+.ctxlab em{font-style:normal;color:${C.tx3};font-size:11.5px}
+.ctxval{font-size:19px;text-align:right}
+.ctxval small{font-size:12px;color:${C.tx3};margin-left:3px}
+.ctxbar{position:relative;height:18px;background:#0006;border-radius:4px;display:block}
+.ctxband{position:absolute;top:3px;bottom:3px;background:${C.slate};opacity:.5;border-radius:3px}
+.ctxmed{position:absolute;top:1px;bottom:1px;width:2px;background:${C.tx2}}
+.ctxdot{position:absolute;top:2px;width:9px;height:14px;border-radius:3px;margin-left:-4px}
+.ctxsay{font-size:13.5px}
+.ctxsay em{font-style:normal;display:block;color:${C.tx3};font-size:11.5px}
+.ctxrow.thin .ctxsay{color:${C.tx3};font-size:12.5px}
+@media(max-width:900px){
+  .ctxscale{display:none}
+  .ctxrow{grid-template-columns:1fr 84px}
+  .ctxbar,.ctxsay{grid-column:1 / -1}
+}
+
 /* Die Nacht danach */
 .nightbox{background:${C.card2};border-radius:10px;padding:6px 14px 10px}
 .nrow{display:grid;grid-template-columns:1fr 92px 78px minmax(200px,1.2fr);gap:12px;
@@ -2462,6 +2559,9 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
 .devcell em{font-style:normal;color:${C.tx3};font-size:11px}
 .devcell.colhead{display:block;text-align:center;color:${C.tx2};font-size:12.5px;font-weight:600;min-width:120px}
 .devcell.colhead em{display:block;font-weight:400;font-size:11px}
+.devfoot{border-top:1px solid ${C.line}44;padding-top:6px;margin-top:2px}
+.devscale{position:relative;display:block;height:13px}
+.devscale u{position:absolute;top:0;text-decoration:none;color:${C.tx3};font-size:10.5px}
 .devrow.devhead2{border-top:none;padding-bottom:2px}
 .devlab{align-items:flex-start}
 .devlab b{display:block;font-size:13.5px}

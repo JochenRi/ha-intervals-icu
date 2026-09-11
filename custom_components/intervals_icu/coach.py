@@ -932,3 +932,113 @@ def night_after(data: dict[str, Any], activity_id: str) -> dict[str, Any]:
             "Nachtmessung der Uhr, nicht die validierte Morgenmessung im Liegen."
         ),
     }
+
+
+# --- is this number large FOR THIS RIDER? -------------------------------------
+# A decoupling of 11.4% means nothing on its own. Friel's 5% is a population
+# benchmark; what the rider needs to know is where this ride sits among their
+# own comparable rides. Same logic as the night reading: the reference is the
+# athlete's own history, not a published threshold.
+def _percentile_rank(values: list[float], value: float) -> int:
+    below = sum(1 for v in values if v < value)
+    equal = sum(1 for v in values if v == value)
+    return round((below + 0.5 * equal) / len(values) * 100)
+
+
+def session_context(data: dict[str, Any], activity_id: str) -> dict[str, Any]:
+    """Place this session's key numbers among the athlete's comparable sessions.
+
+    Comparable means: same sport group, intensity within 10 points, duration
+    within 40%. Without that narrowing a three-hour base ride would be judged
+    against a 45-minute interval session, and the comparison would be noise.
+    """
+    activities = data.get("activities") or {}
+    activity = activities.get(str(activity_id))
+    if not activity:
+        return {"available": False}
+
+    def _group(entry: dict[str, Any]) -> str:
+        kind = str(entry.get("type") or "")
+        if kind in ("Ride", "VirtualRide", "GravelRide", "MountainBikeRide"):
+            return "ride"
+        if kind in ("Run", "TrailRun", "VirtualRun"):
+            return "run"
+        return kind or "other"
+
+    day = str(activity.get("start_date_local") or "")[:10]
+    group = _group(activity)
+    intensity = _f(activity.get("icu_intensity")) or 0.0
+    minutes = (activity.get("moving_time") or 0) / 60
+
+    peers = []
+    for key, other in activities.items():
+        if key == str(activity_id) or _group(other) != group:
+            continue
+        other_day = str(other.get("start_date_local") or "")[:10]
+        if not other_day or other_day >= day:
+            continue
+        other_int = _f(other.get("icu_intensity")) or 0.0
+        other_min = (other.get("moving_time") or 0) / 60
+        if abs(other_int - intensity) > 10:
+            continue
+        if minutes > 0 and abs(other_min - minutes) > minutes * 0.4:
+            continue
+        peers.append(other)
+
+    metrics = (
+        ("decoupling", "Entkopplung", "%", "down", lambda e: _f(e.get("decoupling"))),
+        ("ef", "Watt pro Herzschlag", "", "up",
+         lambda e: (_f(e.get("icu_weighted_avg_watts") or e.get("icu_average_watts")) or 0)
+                   / (_f(e.get("average_heartrate")) or 1)
+                   if e.get("average_heartrate") else None),
+        ("hr", "Ø Herzfrequenz", "bpm", "down", lambda e: _f(e.get("average_heartrate"))),
+    )
+
+    out: dict[str, Any] = {}
+    for key, label, unit, good, getter in metrics:
+        value = getter(activity)
+        if value is None:
+            continue
+        history = [v for v in (getter(p) for p in peers) if v is not None]
+        if len(history) < 6:
+            out[key] = {"label": label, "unit": unit, "value": round(value, 2),
+                        "n": len(history), "enough": False}
+            continue
+        ordered = sorted(history)
+        rank = _percentile_rank(ordered, value)
+        # The verdict hangs on leaving the MIDDLE HALF, not on the percentile.
+        # In a tight distribution a hair's difference lands at rank 62, and
+        # calling that "worse than usual" would be noise dressed as a finding.
+        # The middle half is also exactly the band the panel draws, so the
+        # words and the picture cannot disagree.
+        low, high = ordered[max(0, len(ordered) // 4 - 1)], ordered[min(len(ordered) - 1, (3 * len(ordered)) // 4)]
+        above, below = value > high, value < low
+        favourable = above if good == "up" else below
+        unfavourable = below if good == "up" else above
+        out[key] = {
+            "label": label, "unit": unit, "value": round(value, 2),
+            "median": round(median(ordered), 2),
+            "best": round(ordered[0] if good == "down" else ordered[-1], 2),
+            "worst": round(ordered[-1] if good == "down" else ordered[0], 2),
+            "p25": round(ordered[max(0, len(ordered) // 4 - 1)], 2),
+            "p75": round(ordered[min(len(ordered) - 1, (3 * len(ordered)) // 4)], 2),
+            "n": len(history), "enough": True, "rank": rank, "good": good,
+            "verdict": ("besser als sonst" if favourable else
+                        "schlechter als sonst" if unfavourable else "im üblichen Bereich"),
+        }
+
+    return {
+        "available": bool(out),
+        "group": group,
+        "peers": len(peers),
+        "window": {"intensity": round(intensity), "minutes": round(minutes)},
+        "metrics": out,
+        "note": (
+            "Verglichen wird mit deinen eigenen früheren Einheiten derselben Sportart, "
+            "deren Intensität um höchstens 10 Punkte und deren Dauer um höchstens 40 % "
+            "abweicht. Ohne diese Eingrenzung stünde eine Dreistundenfahrt neben einer "
+            "45-Minuten-Intervalleinheit, und der Vergleich wäre Rauschen. Der "
+            "Prozentrang sagt, wie viele der Vergleichseinheiten schlechter lagen — "
+            "50 heißt genau im Mittelfeld."
+        ),
+    }

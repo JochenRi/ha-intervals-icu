@@ -309,6 +309,10 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
        "blockvergleich: keine Kopfzeile mit den Blocknamen");
     ok((html.match(/class="devcell colhead"/g) || []).length === 3,
        "blockvergleich: keine Blockspalten");
+    // a bar without a scale is an ordering, not a measurement
+    ok((html.match(/class="devscale"/g) || []).length === 3,
+       "blockvergleich: keine Skala unter den Balken");
+    ok(/devfoot/.test(html), "blockvergleich: Skalenzeile fehlt");
     contains(html, "Block 4", "blockvergleich: Spalte fehlt");
     contains(html, "Puls-Erholung", "blockvergleich: Puls-Erholung fehlt");
     // the reference value itself must be visible, not only the deviation
@@ -384,6 +388,52 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
     ok(!short.includes("Wie sich die Fahrt entwickelt hat"),
        "grundlage: zu kurze Fahrt trotzdem geviertelt");
     p._laps = {}; p._streams = {};
+  }
+
+  // --- Wie diese Einheit dasteht -----------------------------------------
+  {
+    p._laps[acts[0].id] = { laps: [], source: "none" };
+    p._streams[acts[0].id] = F.steadyStream();
+    p._ctx[acts[0].id] = F.context();
+    const html = p.rAkt(acts, acts[0]);
+    clean(html, "einordnung");
+    contains(html, "Wie diese Einheit dasteht", "einordnung");
+    contains(html, "gegen 18 eigene Einheiten", "einordnung: Vergleichsgruppe nicht benannt");
+    // the number alone says nothing - the rider's own median must be there
+    contains(html, "Median 2,10", "einordnung: eigener Median fehlt");
+    contains(html, "17 Einheiten", "einordnung: Umfang der Vergleichsgruppe fehlt");
+    // range, median tick and this session's dot - position on a common scale
+    ok((html.match(/class="ctxband"/g) || []).length === 3, "einordnung: keine Streuungsbänder");
+    ok((html.match(/class="ctxmed"/g) || []).length === 3, "einordnung: keine Medianmarken");
+    ok((html.match(/class="ctxdot"/g) || []).length === 3, "einordnung: dieser Wert nicht verortet");
+    // the verdict has to differ per metric - and the direction must be respected
+    contains(html, "schlechter als sonst", "einordnung: schlechte Entkopplung nicht benannt");
+    contains(html, "besser als sonst", "einordnung: guter EF-Wert nicht benannt");
+    contains(html, "im üblichen Bereich", "einordnung: mittlerer Wert falsch eingestuft");
+    // a LOW decoupling is good, a HIGH one bad - the rank must be read that way
+    // scoped to the context block - the segment verdict above also mentions
+    // "Entkopplung" and carries its own colour, which would mask the defect
+    const box = html.slice(html.indexOf('class="ctxbox"'));
+    const decRow = box.slice(box.indexOf("Entkopplung"), box.indexOf("Watt pro Herzschlag"));
+    ok(/#fbbf24/.test(decRow), "einordnung: schlechte Entkopplung nicht als ungünstig gefärbt");
+    ok(!/#34d399/.test(decRow),
+       "einordnung: hohe Entkopplung als günstig gefärbt - die Richtung wird ignoriert");
+    const efRow = box.slice(box.indexOf("Watt pro Herzschlag"), box.indexOf("Ø Herzfrequenz"));
+    ok(/#34d399/.test(efRow), "einordnung: guter Wert nicht als günstig gefärbt");
+    ok(!/#fbbf24/.test(efRow), "einordnung: guter Wert als ungünstig gefärbt");
+
+    // too few comparable sessions: say so, do not rank against three rides
+    p._ctx[acts[0].id] = F.context("duenn");
+    const thin = p.rAkt(acts, acts[0]);
+    clean(thin, "einordnung dünn");
+    contains(thin, "zu wenig für eine Einordnung", "einordnung: Urteil trotz dünner Basis");
+    ok(!thin.includes("ctxband"), "einordnung: Streuungsband ohne Datenbasis gezeichnet");
+
+    p._ctx[acts[0].id] = F.context("leer");
+    clean(p.rAkt(acts, acts[0]), "einordnung leer");
+    ok(!p.rAkt(acts, acts[0]).includes("Wie diese Einheit dasteht"),
+       "einordnung: leerer Block gezeigt");
+    p._ctx = {}; p._laps = {}; p._streams = {};
   }
 
   // --- Die Nacht danach ---------------------------------------------------

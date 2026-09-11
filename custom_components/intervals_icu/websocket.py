@@ -66,6 +66,7 @@ def async_register(hass: HomeAssistant) -> None:
         websocket_workouts,
         websocket_plan_workout,
         websocket_night,
+        websocket_context,
         websocket_thresholds,
         websocket_calendar,
         websocket_status,
@@ -490,4 +491,22 @@ def websocket_night(hass, connection, msg) -> None:
     connection.send_result(
         msg["id"],
         coach_module.night_after(coordinator.archive.data, str(msg["activity_id"])),
+    )
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "intervals_icu/context",
+        vol.Required("activity_id"): str,
+        vol.Optional("athlete_id"): str,
+    }
+)
+@callback
+def websocket_context(hass, connection, msg) -> None:
+    """Where this session's numbers sit among the athlete's comparable ones."""
+    if (coordinator := _require(hass, connection, msg)) is None:
+        return
+    connection.send_result(
+        msg["id"],
+        coach_module.session_context(coordinator.archive.data, str(msg["activity_id"])),
     )

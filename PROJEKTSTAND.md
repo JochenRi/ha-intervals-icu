@@ -1,6 +1,6 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 11.09.2026 · **Version:** 0.18.0 · **Status:** produktiv auf HEIMDALL,
+**Stand:** 11.09.2026 · **Version:** 0.19.0 · **Status:** produktiv auf HEIMDALL,
 Auslieferung über HACS aus `github.com/JochenRi/ha-intervals-icu`
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lokal
@@ -133,6 +133,28 @@ Einzelwert verschweigt.
 
 Ein Test fährt vier Fahrten mit unterschiedlicher Drift durch (1,1 % / 4,0 % / 5,3 % /
 14,5 %) und verlangt für jede die richtige Einstufung.
+
+### Wie diese Einheit dasteht (0.19.0)
+
+„Entkopplung 11,4 %" gegen Friels 5 % sagt, wo du gegenüber einer Population stehst. Die
+Frage, die zählt, ist eine andere: **ist das für dich viel?** Dafür wird jede Einheit gegen
+die eigenen vergleichbaren gestellt — dieselbe Sportart, Intensität ±10 Punkte, Dauer
+±40 %, und nur Einheiten, die **vorher** lagen.
+
+Gezeichnet als Bereich: die mittlere Hälfte der Vergleichseinheiten als Band, der Median
+als Strich, diese Einheit als Punkt — Position auf gemeinsamer Skala. Daneben der
+Prozentrang in Worten.
+
+**Das Urteil hängt am Verlassen der mittleren Hälfte, nicht am Prozentrang.** Der erste
+Entwurf nutzte Rang ≥ 60 bzw. ≤ 40; bei enger Verteilung landet damit ein Unterschied von
+0,3 Prozentpunkten auf Rang 62 und hieße „schlechter als sonst" — Rauschen im Gewand eines
+Befundes. Die mittlere Hälfte ist zugleich genau das Band, das gezeichnet wird: Wort und
+Bild können nicht auseinanderlaufen.
+
+**Am echten Konto geprüft**, Fahrt vom 04.09.2026 (3h28m, Last 129): Entkopplung 10,6 %
+gegen einen eigenen Median von 2,1 % bei 17 Vergleichsfahrten — **Prozentrang 94**. Watt
+pro Herzschlag dagegen 0,923 gegen Median 0,695, Rang 76. Eine starke und zugleich
+ungewöhnlich entkoppelte Fahrt, zwei Tage vor dem Infekt.
 
 ### Die Nacht danach (0.18.0)
 
@@ -293,6 +315,7 @@ der Test fehlschlägt.
 | 0.9.4 | **Integration startete nicht** | neuer Handler zwischen Dekoratoren und `def` des Nachbarn gesetzt → der Nachbar ging nackt raus. 544 grüne Prüfungen halfen nicht, weil keine davon den **Start** prüfte. Seitdem tut `test_websocket_registration.py` genau das |
 | 0.9.4 | Runden-Urteil verglich Aufwärmen mit Ausfahren („34 % Abfall") | ein Serienurteil darf nur Gleichartiges vergleichen — in der Simulation gefunden |
 | 0.11.0 | Zustandsbänder widersprachen dem Trainerurteil | Bänder nutzten den Tageswert, der Trainer das 3-Tage-Mittel |
+| 0.19.0 | Einordnung nannte 2,0 % gegen Median 1,71 % „schlechter als sonst" | Urteil hing am Prozentrang; bei enger Verteilung ist Rang 62 kein Befund. Jetzt entscheidet das Verlassen der mittleren Hälfte — dasselbe Band, das gezeichnet wird |
 | 0.12.0 | `VO2max 4×8` behauptete 75 min, Blöcke ergaben 67 | Dauer und Last im Kalender wären falsch gewesen |
 | 0.16.0 | Überlagerte Blockkurven blieben unlesbar | die Konstruktion war theoriegerecht, die Daten aber zu verrauscht: vier Linien wurden zum Knäuel. Direktbeschriftung und Zoom milderten, behoben hat es erst das Weglassen — die Tabelle allein trägt die Aussage |
 | 0.14.0 | Steigungsdiagramm „Alles auf einer Achse" war unlesbar | die Information lag im Winkel — der schlechteste der drei Kanäle; bei zwei Blöcken vier gerade Linien ohne Aussage. Ersetzt durch Abweichungsbalken an gemeinsamer Grundlinie |

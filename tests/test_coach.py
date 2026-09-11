@@ -344,6 +344,71 @@ check(nowell["available"] is False, "19 nacht: Urteil ohne Wellness-Daten")
 check("glockenförmig" in result["caveat"], "19 nacht: Glockenform nicht genannt")
 check("Nachtmessung" in result["caveat"], "19 nacht: Messgrenze nicht genannt")
 
+# --- 20  where a session sits among comparable ones ---------------------------
+# The point: 11.4% decoupling means nothing against a population benchmark.
+# What answers "is that a lot for me" is this rider's own spread.
+def ride_history(n=40):
+    _random.seed(3)
+    wellness, activities = {}, {}
+    for index in range(n):
+        iso = day(-(n - 1 - index))
+        wellness[iso] = {"id": iso, "hrv": 49.0, "restingHR": 56.0,
+                         "sleepSecs": 26640, "form": 0.0, "load": 60.0}
+        activities[f"r{index}"] = {
+            "id": f"r{index}", "start_date_local": iso + "T09:00", "type": "Ride",
+            "icu_training_load": 60.0, "icu_intensity": 62.0, "moving_time": 3600,
+            "decoupling": round(2.0 + _random.gauss(0, 1.2), 2),
+            "average_heartrate": 138.0, "icu_average_watts": 96.0,
+        }
+    return {"wellness": wellness, "activities": activities, "dfa": {}}
+
+
+rides = ride_history()
+# make the newest ride an outlier in decoupling
+rides["activities"]["r39"]["decoupling"] = 11.4
+ctx = coach.session_context(rides, "r39")
+check(ctx["available"], "20 einordnung: nicht verfügbar")
+dec = ctx["metrics"]["decoupling"]
+check(dec["enough"], "20 einordnung: Vergleichsgruppe zu klein gemeldet")
+check(dec["rank"] >= 90, f"20 einordnung: Ausreißer nicht als solcher erkannt (Rang {dec['rank']})")
+eq(dec["verdict"], "schlechter als sonst", "20 einordnung: hohe Entkopplung falsch gewertet")
+check(dec["median"] < 4, f"20 einordnung: Median unplausibel ({dec['median']})")
+
+# the same number at the good end must read as good - direction matters
+rides["activities"]["r39"]["decoupling"] = -0.9
+good = coach.session_context(rides, "r39")["metrics"]["decoupling"]
+eq(good["verdict"], "besser als sonst", "20 einordnung: niedrige Entkopplung nicht als gut gewertet")
+check(good["rank"] <= 15, f"20 einordnung: Rang der guten Fahrt zu hoch ({good['rank']})")
+
+# a middling value must not be dressed up either way
+rides["activities"]["r39"]["decoupling"] = 2.0
+mid = coach.session_context(rides, "r39")["metrics"]["decoupling"]
+eq(mid["verdict"], "im üblichen Bereich", "20 einordnung: Mittelfeld falsch gewertet")
+
+# --- 21  the comparison group has to be comparable ----------------------------
+mixed = ride_history()
+# a three-hour easy ride and a 45-minute hard one must not share a group
+mixed["activities"]["long"] = {
+    "id": "long", "start_date_local": day(-2) + "T09:00", "type": "Ride",
+    "icu_training_load": 129.0, "icu_intensity": 61.0, "moving_time": 12000,
+    "decoupling": 10.6, "average_heartrate": 142.0, "icu_average_watts": 131.0,
+}
+long_ctx = coach.session_context(mixed, "long")
+check(long_ctx["peers"] == 0 or not long_ctx["metrics"]["decoupling"]["enough"],
+      f"21 einordnung: Langfahrt gegen Kurzeinheiten verglichen ({long_ctx['peers']} Partner)")
+# a run must never be compared against rides
+mixed["activities"]["run"] = {
+    "id": "run", "start_date_local": day(-1) + "T09:00", "type": "Run",
+    "icu_training_load": 60.0, "icu_intensity": 62.0, "moving_time": 3600,
+    "decoupling": 3.0, "average_heartrate": 140.0,
+}
+eq(coach.session_context(mixed, "run")["peers"], 0, "21 einordnung: Lauf gegen Radfahrten verglichen")
+# only sessions BEFORE this one count - no peeking into the future
+early = coach.session_context(rides, "r2")
+check(early["peers"] <= 2, f"21 einordnung: spätere Einheiten im Vergleich ({early['peers']})")
+check(coach.session_context(rides, "nope")["available"] is False,
+      "21 einordnung: unbekannte Einheit ausgewertet")
+
 print(f"test_coach: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)
