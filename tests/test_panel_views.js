@@ -112,46 +112,75 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   p._goalEdit = false;
   const html = p.rGoal(p._goal);
   clean(html, "ziel gesetzt");
+  // The head is TWO tiles and nothing else - no plan, no weeks, no warning.
+  // The question of the day is which session to ride, not what week 7 looks like.
   contains(html, "Lange Fahrten durchstehen", "plan: Ziel nicht genannt");
   contains(html, "Durability", "plan: Zielgröße nicht genannt");
-  contains(html, "keinen Beleg", "plan: Einschränkung der 80/20-Regel fehlt");
-  // the head is two tiles, nothing more - everything else folds away
   contains(html, "4 Tage pro Woche", "plan: Zeitangabe fehlt");
+  contains(html, "2 harte Einheiten", "plan: Folge der Tageszahl fehlt");
   ok((html.match(/class="gtile"/g) || []).length === 2,
      "plan: Kopf ist nicht auf zwei Kacheln reduziert");
-  contains(html, "2 harte Einheiten", "plan: Folge der Tageszahl fehlt");
-  contains(html, "aus deinen letzten Wochen gerechnet", "plan: Herkunft der Stunden fehlt");
-  contains(html, "noch 3,0 h bis zur Zielfahrt", "plan: Lücke zum Ziel fehlt");
-  // the weekly plan is present but folded - it is not the point of the page
-  ok(/class="more planfold"/.test(html), "plan: Wochenplan nicht eingeklappt");
-  ok(!/<details class="more planfold" open/.test(html), "plan: Wochenplan vorab geöffnet");
-  ok((html.match(/class="pweek /g) || []).length === 4, "plan: nicht alle Wochen");
-  contains(html, "Entlastung", "plan: Entlastungswoche nicht markiert");
-  contains(html, "langer Tag", "plan: langer Tag fehlt");
-  // the sources travel with it, folded
-  contains(html, "keinen Unterschied", "plan: Blockperiodisierung falsch dargestellt");
-  contains(html, "Konvention, kein Studienergebnis", "plan: Wachstumsregel nicht eingeordnet");
-  contains(html, "Einbruch schlägt jeden Plan", "plan: Vorrang des Zustands fehlt");
+  ok(!/class="pweek /.test(html), "plan: Wochenplan steht wieder oben");
+  ok(!/Die nächsten Wochen/.test(html), "plan: Wochenvorschau steht wieder oben");
+  ok(!/Zeitbudget trägt/.test(html), "plan: Budgetwarnung steht wieder oben");
+  ok(html.length < 1400, `plan: Kopf zu umfangreich (${html.length} Zeichen)`);
 
-  // opening a week shows the sessions with their reasons
-  ok(!html.includes("Durchgehend essen"), "plan: Details ungefragt ausgebreitet");
-  p._planOpen = "1";
-  const open = p.rGoal(p._goal);
-  clean(open, "plan Woche offen");
-  contains(open, "Durchgehend essen", "plan: Verpflegungshinweis fehlt");
-  contains(open, "Fettoxidation", "plan: Begründung der langen Einheit fehlt");
-  p._planOpen = null;
-
-  // a weekly budget that cannot carry the goal must SAY so
-  p._goal = F.goal("knapp");
-  const tight = p.rGoal(p._goal);
-  clean(tight, "plan knapp");
-  contains(tight, "Das Zeitbudget trägt dieses Ziel nicht", "plan: Warnung fehlt");
-  contains(tight, "nicht aufzubauen", "plan: Rechnung nicht genannt");
-  contains(tight, "vom Wochenbudget gedeckelt", "plan: Deckelung nicht markiert");
-  ok(/class="cmpverdict worse/.test(tight), "plan: Warnung nicht als Warnung gezeigt");
   p._goal = null;
   clean(p.rGoal(null), "ziel ohne Daten");
+}
+
+/* ── Einheiten für heute ──────────────────────────────────────────────── */
+{
+  const rdFix = F.readiness();
+  p._workouts = F.workouts();
+  const html = p.rTrainer(F.coach("ready"), rdFix);
+  clean(html, "einheiten");
+  contains(html, "Einheiten für heute", "einheiten");
+  // ONE per kind - not three base rides. The choice must be between different
+  // KINDS of training, which is what makes it a choice at all.
+  const families = ["Grundlage", "SweetSpot", "Tempo", "Schwelle", "VO2max", "Regeneration"];
+  for (const family of families) contains(html, family, `einheiten: ${family} fehlt`);
+  ok((html.match(/class="wofam"/g) || []).length === 6, "einheiten: nicht sechs Arten");
+  ok((html.match(/class="wocard/g) || []).length === 6, "einheiten: nicht sechs Karten");
+  contains(html, "passt heute", "einheiten: kein Tagesurteil");
+  contains(html, "Was du machst, entscheidest du", "einheiten: Entscheidung nicht beim Athleten");
+  contains(html, "215 W", "einheiten: FTP nicht genannt");
+  contains(html, "237 W", "einheiten: Wattzahlen der Blöcke fehlen");   // 110 % von 215
+  contains(html, "166–180 bpm", "einheiten: Pulsfenster fehlt");
+  ok((html.match(/class="wob"/g) || []).length >= 20, "einheiten: Struktur nicht gezeichnet");
+  ok((html.match(/data-act="plan"/g) || []).length === 12, "einheiten: Kalenderknöpfe unvollständig");
+
+  // In a rebound the hard kinds must stay VISIBLE, marked and explained.
+  // Filtering them away leaves three base rides and no decision to make -
+  // that was the defect this release exists to fix.
+  p._workouts = F.workouts("einbruch");
+  const rebound = p.rTrainer(F.coach("rebound"), rdFix);
+  clean(rebound, "einheiten rebound");
+  for (const family of families) contains(rebound, family, `einheiten rebound: ${family} verschwunden`);
+  contains(rebound, "heute nicht", "einheiten rebound: kein abratendes Urteil");
+  contains(rebound, "möglich, kostet aber", "einheiten rebound: keine Zwischenstufe");
+  contains(rebound, "tragen noch keinen harten Reiz", "einheiten rebound: Urteil ohne Begründung");
+  ok((rebound.match(/class="wocard/g) || []).length === 6,
+     "einheiten rebound: Auswahl wurde gefiltert statt bewertet");
+
+  ok(!html.includes("Protokollnamen sind keine Verschreibungen"),
+     "einheiten: Belege stehen ungefragt als Textwand da");
+  p._woOpen = "vo2_4x4";
+  const open = p.rTrainer(F.coach("ready"), rdFix);
+  clean(open, "einheiten aufgeklappt");
+  contains(open, "Protokollnamen sind keine Verschreibungen", "einheiten: Grenze fehlt");
+  contains(open, "Erwartetes DFA", "einheiten: erwarteter DFA-Bereich fehlt");
+  p._woOpen = null;
+
+  p._workouts = F.workouts("ohneFTP");
+  const noftp = p.rTrainer(F.coach("ready"), rdFix);
+  clean(noftp, "einheiten ohne FTP");
+  ok(!noftp.includes("undefined W"), "einheiten: erfundene Wattzahlen ohne FTP");
+  p._workouts = F.workouts("leer");
+  clean(p.rTrainer(F.coach("ready"), rdFix), "einheiten leer");
+  p._workouts = null;
+  clean(p.rTrainer(F.coach("ready"), rdFix), "einheiten null");
+  p._workouts = F.workouts();
 }
 
 /* ── Signale ───────────────────────────────────────────────────────────── */

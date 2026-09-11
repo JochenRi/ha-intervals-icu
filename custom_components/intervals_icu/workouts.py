@@ -326,40 +326,119 @@ def scaled(entry: dict[str, Any], ftp: float | None, aerobic_hr: int | None) -> 
     return out
 
 
+# One entry per FAMILY, so the choice is between different kinds of training
+# rather than between three base rides. Within a family the variant is picked
+# to fit the athlete and the day.
+FAMILIES: list[tuple[str, str, list[str]]] = [
+    ("recovery", "Regeneration", ["recovery_40"]),
+    ("endurance", "Grundlage", ["z2_90", "z2_60"]),
+    ("tempo", "Tempo", ["tempo_2x20"]),
+    ("sweetspot", "SweetSpot", ["sweetspot_2x20"]),
+    ("threshold", "Schwelle", ["threshold_4x10", "threshold_3x12"]),
+    ("vo2max", "VO2max", ["vo2_4x4", "vo2_5x4", "vo2_3030", "vo2_3015", "vo2_4x8"]),
+    ("return", "Wiedereinstieg", ["return_45"]),
+]
+
+# What each state can carry. Not a filter - a verdict per family, so every kind
+# of session stays visible and says what it would cost today.
+FIT_BY_STATE: dict[str, dict[str, str]] = {
+    "slump":      {"recovery": "ok", "return": "maybe", "endurance": "no", "tempo": "no",
+                   "sweetspot": "no", "threshold": "no", "vo2max": "no"},
+    "recovering": {"recovery": "ok", "return": "ok", "endurance": "maybe", "tempo": "no",
+                   "sweetspot": "no", "threshold": "no", "vo2max": "no"},
+    "rebound":    {"recovery": "ok", "return": "ok", "endurance": "ok", "tempo": "maybe",
+                   "sweetspot": "maybe", "threshold": "no", "vo2max": "no"},
+    "strained":   {"recovery": "ok", "return": "ok", "endurance": "ok", "tempo": "maybe",
+                   "sweetspot": "maybe", "threshold": "no", "vo2max": "no"},
+    "ready":      {"recovery": "ok", "return": "ok", "endurance": "ok", "tempo": "ok",
+                   "sweetspot": "ok", "threshold": "ok", "vo2max": "ok"},
+    "elevated":   {"recovery": "ok", "return": "ok", "endurance": "ok", "tempo": "maybe",
+                   "sweetspot": "maybe", "threshold": "no", "vo2max": "no"},
+    "unknown":    {"recovery": "ok", "return": "ok", "endurance": "ok", "tempo": "maybe",
+                   "sweetspot": "maybe", "threshold": "maybe", "vo2max": "maybe"},
+}
+
+FIT_REASON = {
+    "slump": "Der Einbruch ist akut — ein harter Reiz trifft heute auf ein System, das ihn "
+             "nicht verarbeitet.",
+    "recovering": "Noch im Einbruch. Intensität verlängert ihn, statt zu wirken.",
+    "rebound": "Die Erholung läuft, aber die letzten Tage tragen noch keinen harten Reiz.",
+    "strained": "Beansprucht — Umfang ja, Intensität kostet heute mehr, als sie bringt.",
+    "elevated": "Auffällig hohe Werte. Erst sehen, ob das morgen noch so ist.",
+    "unknown": "Zu wenige Daten für ein Urteil — nach Gefühl entscheiden.",
+}
+
+
+def _variant(keys: list[str], state: str, ftp: float | None, budget: float | None,
+             hard_days_last_7: int) -> str:
+    """Pick the variant of a family that fits this athlete today.
+
+    Within VO2max that is a real decision: 4x4 is the entry dose, 5x4 its
+    progression, 30/15 is for well-trained riders only. A second hard day in
+    the same week takes the biggest one off the table.
+    """
+    if len(keys) == 1:
+        return keys[0]
+    if budget is not None:
+        affordable = [k for k in keys if BY_KEY[k]["load"] <= budget]
+        if affordable:
+            keys = affordable
+    if hard_days_last_7 >= 1:
+        keys = sorted(keys, key=lambda k: BY_KEY[k]["load"])
+    return keys[0]
+
+
 def suggest(state: str, ftp: float | None = None, aerobic_hr: int | None = None,
             budget: float | None = None, hard_days_last_7: int = 0,
-            layoff_days: int | None = None, limit: int = 5, goal: str | None = None) -> list[dict[str, Any]]:
-    """Return concrete sessions for today, best first, each with a reason.
+            layoff_days: int | None = None, limit: int = 6,
+            goal: str | None = None) -> list[dict[str, Any]]:
+    """One session per family, each judged for today - never filtered away.
 
-    The order is not taste: after a break or in a slump the ladder decides, a
-    second hard day inside a week is filtered out (one hard aerobic session a
-    week is the conservative starting point the reviews name), and anything
-    clearly over the load budget is marked rather than hidden.
+    The earlier version filtered: in a rebound state everything hard vanished
+    and three base rides were left, which is not a choice. This keeps every
+    kind of session visible and attaches the verdict to it, because the
+    decision is the athlete's; the data's job is to say what it costs.
     """
-    keys = list(PRIORITY.get(state, PRIORITY["unknown"]))
-    # The goal reorders the shelf without emptying it: for a long-ride goal the
-    # hard session is garnish, so sweetspot and the long base rides come first
-    # and VO2max stays available but further down.
-    if goal == "long_ride":
-        front = ["z2_90", "z2_60", "sweetspot_2x20", "tempo_2x20"]
-        keys = [k for k in front if k in keys] + [k for k in keys if k not in front]
-    elif goal == "ftp":
-        front = ["threshold_4x10", "threshold_3x12", "sweetspot_2x20"]
-        keys = [k for k in front if k in keys] + [k for k in keys if k not in front]
-    elif goal == "health":
-        front = ["z2_60", "tempo_2x20", "recovery_40"]
-        keys = [k for k in front if k in keys] + [k for k in keys if k not in front]
-    if layoff_days is not None and layoff_days >= 4 and state != "slump":
-        keys = ["return_45", "z2_60", "recovery_40"]
-    if hard_days_last_7 >= 2:
-        keys = [k for k in keys if BY_KEY[k]["intensity"] < 80] or ["z2_60"]
+    fits = FIT_BY_STATE.get(state, FIT_BY_STATE["unknown"])
+    order = {
+        "long_ride": ["endurance", "sweetspot", "tempo", "threshold", "vo2max", "recovery", "return"],
+        "ftp": ["threshold", "sweetspot", "endurance", "vo2max", "tempo", "recovery", "return"],
+        "vo2max": ["vo2max", "threshold", "endurance", "sweetspot", "tempo", "recovery", "return"],
+        "health": ["endurance", "tempo", "recovery", "sweetspot", "threshold", "vo2max", "return"],
+    }.get(goal or "", ["endurance", "vo2max", "sweetspot", "threshold", "tempo", "recovery", "return"])
 
     out: list[dict[str, Any]] = []
-    for key in keys[:limit]:
-        entry = scaled(BY_KEY[key], ftp, aerobic_hr)
-        entry = dict(entry)
-        entry["fits_budget"] = None if budget is None else entry["load"] <= budget
+    for family in order:
+        match = next((f for f in FAMILIES if f[0] == family), None)
+        if not match:
+            continue
+        family_key, family_label, keys = match
+        # the graded return replaces the base ride after a real break
+        if family_key == "return" and not (layoff_days and layoff_days >= 4):
+            continue
+        if family_key == "endurance" and layoff_days and layoff_days >= 7:
+            continue
+
+        key = _variant(keys, state, ftp, budget, hard_days_last_7)
+        entry = dict(scaled(BY_KEY[key], ftp, aerobic_hr))
+        verdict = fits.get(family_key, "maybe")
+        # a second hard day inside the week downgrades, it does not hide
+        if verdict == "ok" and entry["intensity"] >= 80 and hard_days_last_7 >= 2:
+            verdict = "maybe"
+            reason = ("Zwei harte Tage liegen schon in dieser Woche. Zwei sind der Standard "
+                      "für Wochen dieser Größe; ein dritter ist die Ausnahme, nicht die Regel.")
+        else:
+            reason = "" if verdict == "ok" else FIT_REASON.get(state, "")
+        entry.update({
+            "family": family_key, "family_label": family_label,
+            "fit": verdict, "fit_reason": reason,
+            "fits_budget": None if budget is None else entry["load"] <= budget,
+            "alternatives": [{"key": k, "title": BY_KEY[k]["title"], "load": BY_KEY[k]["load"]}
+                             for k in keys if k != key],
+        })
         out.append(entry)
+        if len(out) >= limit:
+            break
     return out
 
 

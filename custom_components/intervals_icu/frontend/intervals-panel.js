@@ -811,13 +811,15 @@ class IntervalsIcuPanel extends HTMLElement {
 
     const cards = list.map((entry, index) => {
       const open = this._woOpen === entry.key;
-      const fit = entry.fits_budget == null ? ""
-        : badge(entry.fits_budget ? "green" : "amber",
-                entry.fits_budget ? "passt ins Budget" : `über Budget (${fmt(w.budget)})`);
+      const FIT = { ok: ["green", "passt heute"], maybe: ["amber", "möglich, kostet aber"],
+                    no: ["red", "heute nicht"] };
+      const [fitTone, fitWord] = FIT[entry.fit] || FIT.maybe;
+      const fit = badge(fitTone, fitWord);
       const hrw = entry.hr_window;
       return `<div class="wocard ${index === 0 ? "first" : ""}">
         <div class="wohead">
           <div>
+            <div class="wofam">${esc(entry.family_label || "")}</div>
             <div class="wotitle">${esc(entry.title)}</div>
             <div class="wometa">${esc(entry.purpose)} · ${entry.minutes} min · Last ${fmt(entry.load)}${
               hrw ? ` · ${hrw[0]}–${hrw[1]} bpm` : ""}</div>
@@ -828,6 +830,10 @@ class IntervalsIcuPanel extends HTMLElement {
         <div class="wosteps">${(entry.blocks_w || entry.blocks).map(([min, val, label]) =>
           `<span><b>${min}′</b> ${esc(label)} <em>${entry.blocks_w ? val + " W" : val + " %"}</em></span>`).join("")}</div>
         <p class="effect">${esc(entry.effect)}</p>
+        ${entry.fit_reason ? `<p class="fitwhy">${ico(entry.fit === "no" ? "warn" : "info",
+          entry.fit === "no" ? C.red : C.amber, 14)} ${esc(entry.fit_reason)}</p>` : ""}
+        ${entry.fits_budget === false ? `<p class="fitwhy">${ico("info", C.tx2, 14)}
+          Über dem Lastbudget für heute (${fmt(w.budget)}).</p>` : ""}
         <div class="worow">
           <button class="planbtn" data-act="plan" data-id="${esc(entry.key)}" data-when="${iso(0)}">
             ${ico("cal", null, 15)} heute in den Kalender</button>
@@ -846,9 +852,11 @@ class IntervalsIcuPanel extends HTMLElement {
       </div>`;
     }).join("");
 
-    return `<h3 class="secname">Konkrete Einheiten für heute
-      <span class="hint">— Watt aus deiner FTP${w.ftp ? ` (${fmt(w.ftp)} W)` : ""}, Puls aus deiner
-      gemessenen aeroben Schwelle${w.aerobic_hr ? ` (${w.aerobic_hr} bpm)` : ""}</span></h3>
+    return `<h3 class="secname">Einheiten für heute
+      <span class="hint">— eine je Art, jede für heute bewertet. Watt aus deiner
+      FTP${w.ftp ? ` (${fmt(w.ftp)} W)` : ""}, Puls aus deiner gemessenen aeroben
+      Schwelle${w.aerobic_hr ? ` (${w.aerobic_hr} bpm)` : ""}. Was du machst, entscheidest du —
+      hier steht, was es heute kostet.</span></h3>
       <div class="wogrid">${cards}</div>
       <p class="note">Ein Klick legt die Einheit als geplantes Workout in deinen
       Intervals-Kalender — mit allen Schritten, direkt auf die Uhr übertragbar. Das ist der
@@ -913,18 +921,9 @@ class IntervalsIcuPanel extends HTMLElement {
           <em>${esc(plan.target)}</em></button>
         <button class="gtile" data-act="goaledit">
           <small>ZEIT</small><b>${fmt(profile.days_per_week)} Tage pro Woche</b>
-          <em>${plan.hard_per_week} harte ${plan.hard_per_week === 1 ? "Einheit" : "Einheiten"} ·
-            ${fmt(plan.weeks && plan.weeks[0] ? plan.weeks[0].hours : 0, 1)} h ${esc(plan.hours_source || "")}</em></button>
-      </div>
-      ${note ? `<div class="cmpverdict worse">${ico("warn", C.amber, 18)}
-        <div><b>Das Zeitbudget trägt dieses Ziel nicht.</b><span>${esc(note.text)}</span></div></div>` : ""}
-      <details class="more planfold"><summary>Die nächsten Wochen — Muster ${esc(plan.pattern)}${
-        plan.gap_hours != null ? ` · noch ${fmt(plan.gap_hours, 1)} h bis zur Zielfahrt` : ""}</summary>
-        <div class="pweeks">${weeks}</div>
-        <p class="src">${esc(plan.hard_note)}</p>
-        <p class="src">${esc(plan.pattern_note)}</p>
-        <p class="src">${esc(plan.caveat)}</p>
-      </details>`;
+          <em>${plan.hard_per_week} harte ${plan.hard_per_week === 1 ? "Einheit" : "Einheiten"}
+            · ${esc(plan.hard_note ? "80/20 zählt Einheiten, nicht Minuten" : "")}</em></button>
+      </div>`;
   }
 
   _goalForm(g) {
@@ -2899,6 +2898,9 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
 .wogrid{display:grid;gap:12px}
 .wocard{background:${C.card};border:1px solid ${C.line};border-radius:12px;padding:14px}
 .wocard.first{border-color:${ROLE.series}66;box-shadow:0 0 0 1px ${ROLE.series}22}
+.wofam{color:${C.tx3};font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+.fitwhy{display:flex;gap:7px;align-items:flex-start;font-size:13px;color:${C.tx2};
+  margin:6px 0 0;line-height:1.45}
 .wohead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
 .wotitle{font-size:19px;font-weight:700}
 .wometa{color:${C.tx2};font-size:13px;margin-top:2px}

@@ -46,49 +46,65 @@ for entry in W.LIBRARY:
 keys = [entry["key"] for entry in W.LIBRARY]
 check(len(set(keys)) == len(keys), "1 doppelte Schlüssel in der Bibliothek")
 
-# --- 2  the picker respects the state -----------------------------------------
-easy = {"recovery_40", "return_45", "z2_60", "z2_90"}
+# --- 2  every kind stays visible, and is JUDGED ------------------------------
+# The earlier version filtered: in a rebound everything hard vanished and three
+# base rides were left, which is not a choice. Now each family appears once and
+# carries a verdict for today - the decision is the athlete's, the data's job
+# is to say what it costs.
+easy_families = {"recovery", "return", "endurance"}
 
+for state in ("slump", "recovering", "rebound", "strained", "ready"):
+    picks = W.suggest(state, ftp=215, aerobic_hr=157)
+    families = [entry["family"] for entry in picks]
+    check(len(families) == len(set(families)), f"2 {state}: dieselbe Art mehrfach ({families})")
+    check(len(picks) >= 4, f"2 {state}: nur {len(picks)} Arten zur Auswahl")
+    for entry in picks:
+        check(entry["fit"] in ("ok", "maybe", "no"), f"2 {state}: kein Urteil")
+        check(entry["fit"] == "ok" or entry["fit_reason"],
+              f"2 {state}: {entry['key']} abgeraten ohne Begründung")
+
+# in a slump nothing hard may be recommended - but it must still be THERE
 slump = W.suggest("slump", ftp=215, aerobic_hr=157)
-check(all(entry["key"] in easy for entry in slump),
-      f"2 Einbruch: harte Einheit empfohlen ({[e['key'] for e in slump]})")
-check(all(entry["intensity"] <= 60 for entry in slump), "2 Einbruch: zu intensiv")
+hard = [e for e in slump if e["intensity"] >= 75]
+check(hard, "2 Einbruch: harte Einheiten ganz verschwunden statt bewertet")
+check(all(e["fit"] == "no" for e in hard),
+      f"2 Einbruch: harte Einheit nicht abgeraten ({[(e['key'], e['fit']) for e in hard]})")
+check(any(e["fit"] == "ok" for e in slump), "2 Einbruch: gar nichts möglich")
+check(all(e["fit"] == "ok" for e in slump if e["family"] == "recovery"),
+      "2 Einbruch: Regeneration nicht empfohlen")
 
-recovering = W.suggest("recovering", ftp=215, aerobic_hr=157)
-check(all(entry["intensity"] < 70 for entry in recovering), "2 noch im Einbruch: zu intensiv")
+# in a rebound the middle kinds are possible, the hard ones are not
+rebound = W.suggest("rebound", ftp=215, aerobic_hr=157)
+by_family = {e["family"]: e for e in rebound}
+check(by_family.get("vo2max", {}).get("fit") == "no", "2 Erholung: VO2max nicht abgeraten")
+check(by_family.get("sweetspot", {}).get("fit") == "maybe", "2 Erholung: SweetSpot falsch gewertet")
+check(by_family.get("endurance", {}).get("fit") == "ok", "2 Erholung: Grundlage nicht empfohlen")
 
+# in a ready state everything is on the table
 ready = W.suggest("ready", ftp=215, aerobic_hr=157)
-check(any(entry["intensity"] >= 85 for entry in ready), "2 Normalbereich: kein harter Reiz angeboten")
-# Without a goal the ladder starts at the entry dose, not at the hardest
-# protocol: the recommended progression is 4x4 first, 5x4 after two weeks,
-# 30/15 only for well-trained riders.
-eq(ready[0]["key"], "vo2_4x4", "2 Normalbereich: nicht die Einstiegsdosis zuerst")
-check(len(ready) == 5, f"2 Normalbereich: {len(ready)} Vorschläge statt fünf")
-keys_ready = [e["key"] for e in ready]
-check("vo2_3015" in keys_ready or "vo2_5x4" in keys_ready,
-      "2 Normalbereich: keine Steigerung im Angebot")
-# the goal reorders without emptying the shelf
-long_goal = [e["key"] for e in W.suggest("ready", ftp=215, goal="long_ride")]
-check(long_goal[0].startswith("z2"), f"2 Langfahrt-Ziel: harte Einheit zuerst ({long_goal})")
-check(any(k.startswith("vo2") for k in long_goal),
-      "2 Langfahrt-Ziel: harte Einheit ganz verschwunden")
-ftp_goal = [e["key"] for e in W.suggest("ready", ftp=215, goal="ftp")]
-check(ftp_goal[0].startswith("threshold"), f"2 FTP-Ziel: keine Schwellenarbeit zuerst ({ftp_goal})")
+check(all(e["fit"] == "ok" for e in ready), "2 Normalbereich: etwas grundlos abgeraten")
+check(any(e["family"] == "vo2max" for e in ready), "2 Normalbereich: kein harter Reiz im Angebot")
+# ... and the VO2max variant offered is the entry dose, not the hardest protocol
+vo2 = next(e for e in ready if e["family"] == "vo2max")
+eq(vo2["key"], "vo2_4x4", "2 Normalbereich: nicht die Einstiegsdosis angeboten")
+check(vo2["alternatives"], "2 Normalbereich: keine Varianten der Art angeboten")
 
-# --- 3  a break overrides the state ------------------------------------------
+# --- 3  a break brings the graded return in ----------------------------------
 after_break = W.suggest("ready", ftp=215, aerobic_hr=157, layoff_days=7)
-check(all(entry["intensity"] < 70 for entry in after_break),
-      f"3 nach Pause: harte Einheit trotz Pause ({[e['key'] for e in after_break]})")
-eq(after_break[0]["key"], "return_45", "3 nach Pause: kein Wiedereinstieg zuerst")
-# ... but a slump still wins over the break ladder
-check(all(entry["key"] in easy for entry in W.suggest("slump", layoff_days=7)),
-      "3 Einbruch plus Pause: Einbruch wird überstimmt")
+keys_break = [e["key"] for e in after_break]
+check("return_45" in keys_break, f"3 nach Pause: kein Wiedereinstieg angeboten ({keys_break})")
+check("z2_90" not in keys_break, "3 nach Pause: lange Grundlage statt Wiedereinstieg")
+short_break = [e["key"] for e in W.suggest("ready", ftp=215, layoff_days=2)]
+check("return_45" not in short_break, "3 zwei Tage Pause gelten schon als Wiedereinstieg")
 
-# --- 4  two hard days in a week block a third --------------------------------
+# --- 4  a second hard day in the week downgrades, it does not hide ------------
 capped = W.suggest("ready", ftp=215, aerobic_hr=157, hard_days_last_7=2)
-check(all(entry["intensity"] < 80 for entry in capped),
-      f"4 zwei harte Tage: dritter angeboten ({[(e['key'], e['intensity']) for e in capped]})")
-check(capped, "4 zwei harte Tage: gar nichts mehr angeboten")
+hard_capped = [e for e in capped if e["intensity"] >= 80]
+check(hard_capped, "4 zwei harte Tage: harte Einheiten verschwunden statt abgestuft")
+check(all(e["fit"] == "maybe" for e in hard_capped),
+      "4 zwei harte Tage: dritter harter Tag unbesehen empfohlen")
+check(any("Standard für Wochen" in (e["fit_reason"] or "") for e in hard_capped),
+      "4 zwei harte Tage: Begründung nennt die Regel nicht")
 
 # --- 5  the athlete's own numbers ---------------------------------------------
 scaled = W.suggest("ready", ftp=215, aerobic_hr=157)[0]
@@ -96,7 +112,14 @@ check("blocks_w" in scaled, "5 keine Wattzahlen trotz FTP")
 first_block = scaled["blocks_w"][0]
 eq(first_block[1], round(215 * scaled["blocks"][0][1] / 100), "5 Watt falsch gerechnet")
 check(scaled["hr_window"][0] < scaled["hr_window"][1], "5 Pulsfenster verdreht")
-check(scaled["hr_window"][0] > 157, "5 Pulsfenster einer harten Einheit unter der Schwelle")
+# the first offer is now the base ride, whose window sits BELOW the threshold -
+# that is the point of it
+check(scaled["hr_window"][1] <= 157 or scaled["intensity"] >= 75,
+      f"5 Pulsfenster passt nicht zur Art ({scaled['key']}: {scaled['hr_window']})")
+hard_scaled = next(e for e in W.suggest("ready", ftp=215, aerobic_hr=157)
+                   if e["family"] == "vo2max")
+check(hard_scaled["hr_window"][0] > 157,
+      "5 Pulsfenster einer harten Einheit unter der aeroben Schwelle")
 bare = W.suggest("ready")[0]
 check("blocks_w" not in bare, "5 Wattzahlen ohne FTP erfunden")
 check(bare.get("hr_window") is None, "5 Pulsfenster ohne Anker erfunden")
@@ -104,7 +127,7 @@ check(bare.get("hr_window") is None, "5 Pulsfenster ohne Anker erfunden")
 # --- 6  budget is marked, not hidden ------------------------------------------
 tight = W.suggest("ready", ftp=215, aerobic_hr=157, budget=50)
 check(any(entry["fits_budget"] is False for entry in tight), "6 Budget: Überschreitung nicht markiert")
-check(len(tight) >= 2, "6 Budget: Vorschläge werden weggefiltert statt markiert")
+check(len(tight) >= 4, "6 Budget: Vorschläge werden weggefiltert statt markiert")
 loose = W.suggest("ready", ftp=215, aerobic_hr=157, budget=500)
 check(all(entry["fits_budget"] for entry in loose), "6 Budget: passende Einheit als zu groß markiert")
 nobudget = W.suggest("ready", ftp=215)
@@ -155,7 +178,13 @@ check(not run["description"].startswith("Vorgeschlagen"), "8 Notiz erfunden")
 for state in ("unknown", "elevated", "quatsch"):
     picks = W.suggest(state, ftp=215, aerobic_hr=157)
     check(picks, f"9 {state}: keine Vorschläge")
-    check(all(entry["intensity"] < 85 for entry in picks), f"9 {state}: harter Reiz geraten")
+    # an unclear state must not RECOMMEND a hard session - offering it with a
+    # reservation is fine, that is the whole point of judging instead of hiding
+    hard_unclear = [e for e in picks if e["intensity"] >= 85]
+    check(all(e["fit"] != "ok" for e in hard_unclear),
+          f"9 {state}: harter Reiz bei unklarer Lage empfohlen")
+    check(all(e["fit"] != "ok" or e["fit_reason"] == "" for e in picks),
+          f"9 {state}: Empfehlung mit Einschränkungstext")
 
 print(f"test_workouts: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:

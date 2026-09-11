@@ -558,6 +558,55 @@ function coach(kind) {
 
 /* the signal matrix as intervals_icu/signals returns it, including the real
  * September sequence: normal -> slump -> still down -> rebound */
+function workouts(kind) {
+  const mk = (key, family, familyLabel, title, minutes, load, intensity, blocks, text, hr, fit, reason) => ({
+    key, family, family_label: familyLabel, title, purpose: familyLabel,
+    minutes, load, intensity, blocks,
+    blocks_w: blocks.map(([m, pct, l]) => [m, Math.round(215 * pct / 100), l]),
+    text, hr_window: hr, fit, fit_reason: reason || "", fits_budget: load <= 95,
+    dfa: "unter 0,5 in den Blöcken",
+    effect: "Der Reiz, um den es bei dieser Art geht.",
+    evidence: "Rønnestad: 3 Sätze à 13×30 s / 15 s, signifikant größere Zuwächse.",
+    limit: "Protokollnamen sind keine Verschreibungen.",
+    alternatives: [{ key: "vo2_5x4", title: "VO2max 5×4 min", load: 92 }],
+  });
+  if (kind === "leer") return { ftp: null, aerobic_hr: null, budget: null, state: "unknown", workouts: [] };
+  const z2 = [[10, 55, "Einrollen"], [80, 68, "gleichmäßig"], [5, 50, "Ausrollen"]];
+  const vo2 = [[15, 55, "Einrollen"], [4, 110, "1"], [4, 50, "Pause"], [4, 110, "2"],
+               [4, 50, "Pause"], [4, 110, "3"], [4, 50, "Pause"], [4, 110, "4"], [11, 50, "Ausrollen"]];
+  const ss = [[12, 55, "Einrollen"], [20, 90, "Block 1"], [6, 55, "Pause"], [20, 90, "Block 2"], [8, 50, "Ausrollen"]];
+  if (kind === "ohneFTP") {
+    const w = mk("z2_60", "endurance", "Grundlage", "Grundlage 60 min", 60, 45, 62,
+      [[10, 55, "Einrollen"], [45, 68, "gleichmäßig"], [5, 50, "Ausrollen"]],
+      "- 10m 55%", null, "ok");
+    delete w.blocks_w; delete w.hr_window;
+    return { ftp: null, aerobic_hr: null, budget: null, state: "ready", workouts: [w] };
+  }
+  const soft = kind === "einbruch";
+  const why = "Die Erholung läuft, aber die letzten Tage tragen noch keinen harten Reiz.";
+  return {
+    ftp: 215, aerobic_hr: 157, budget: 95, state: soft ? "rebound" : "ready",
+    workouts: [
+      mk("z2_90", "endurance", "Grundlage", "Grundlage 90 min", 95, 72, 63, z2,
+         "- 10m 55% 85rpm\n- 80m 65-70% 85rpm\n- 5m 50%", [138, 152], "ok"),
+      mk("sweetspot_2x20", "sweetspot", "SweetSpot", "SweetSpot 2×20 min", 70, 78, 83, ss,
+         "- 12m 55%\n\n2x\n- 20m 88-93%\n- 6m 55%\n\n- 8m 50%", [160, 170],
+         soft ? "maybe" : "ok", soft ? why : ""),
+      mk("tempo_2x20", "tempo", "Tempo", "Tempo 2×20 min", 65, 62, 75, ss,
+         "- 12m 55%\n\n2x\n- 20m 78-82%\n- 5m 55%\n\n- 8m 50%", [152, 160],
+         soft ? "maybe" : "ok", soft ? why : ""),
+      mk("threshold_4x10", "threshold", "Schwelle", "Schwelle 4×10 min", 78, 78, 85, vo2,
+         "- 15m 55%\n\n4x\n- 10m 95-100%\n- 5m 50%\n\n- 8m 50%", [163, 174],
+         soft ? "no" : "ok", soft ? why : ""),
+      mk("vo2_4x4", "vo2max", "VO2max", "VO2max 4×4 min", 58, 82, 89, vo2,
+         "- 15m 55% 85rpm\n\n4x\n- 4m 106-110% 95rpm\n- 4m 50%\n\n- 11m 50%", [166, 180],
+         soft ? "no" : "ok", soft ? why : ""),
+      mk("recovery_40", "recovery", "Regeneration", "Regeneration 40 min", 40, 18, 45,
+         [[40, 50, "ganz locker"]], "- 40m 45-55% 80rpm", [113, 129], "ok"),
+    ],
+  };
+}
+
 function signals(kind) {
   const out = { days: [], swc: 0.5, bands: [],
     signals: {
@@ -606,40 +655,52 @@ function signals(kind) {
 }
 
 /* concrete sessions as intervals_icu/workouts returns them */
-function workouts(kind) {
-  const mk = (key, title, purpose, minutes, load, blocks, text, hr, fits) => ({
-    key, title, purpose, minutes, load, blocks,
-    blocks_w: blocks.map(([m, p, l]) => [m, Math.round(215 * p / 100), l]),
-    text, hr_window: hr, fits_budget: fits,
-    dfa: "unter 0,5 in den Blöcken", intensity: 90,
-    effect: "Hält dich länger nahe der maximalen Sauerstoffaufnahme.",
-    evidence: "Rønnestad: 3 Sätze à 13×30 s / 15 s, signifikant größere Zuwächse.",
-    limit: "Protokollnamen sind keine Verschreibungen.",
-  });
-  if (kind === "leer") return { ftp: null, aerobic_hr: null, budget: null, state: "unknown", workouts: [] };
-  if (kind === "ohneFTP") {
-    const w = mk("z2_60", "Grundlage 60 min", "Aerobe Basis", 60, 45,
-      [[10, 55, "Einrollen"], [45, 68, "gleichmäßig"], [5, 50, "Ausrollen"]],
-      "- 10m 55%\n- 45m 65-70%\n- 5m 50%", null, null);
-    delete w.blocks_w;
-    return { ftp: null, aerobic_hr: null, budget: null, state: "ready", workouts: [w] };
+function signals(kind) {
+  const out = { days: [], swc: 0.5, bands: [],
+    signals: {
+      hrv: { label: "Herzratenvariabilität", unit: "ms", read: "Höher als deine Basislinie heißt meist erholt.",
+             source: "Plews/Buchheit und Altini: 7-Tage-Mittel gegen ein 60-Tage-Band." },
+      rhr: { label: "Ruhepuls", unit: "bpm", read: "Niedriger ist besser, die Kurve ist gespiegelt.",
+             source: "Niederschwelliger Zusatzindikator, ersetzt die HRV nicht." },
+      sleep: { label: "Schlaf", unit: "h", read: "Ein kurzer Schlaf sagt wenig, mehrere sind ein Signal.",
+               source: "Dauer aus der Uhr geschätzt." },
+      form: { label: "Form (TSB)", unit: "", read: "Fitness minus Ermüdung.",
+              source: "Joe Friel; Faustregel, keine Wissenschaft." },
+    },
+    load_signals: {
+      acwr: { label: "Akut zu chronisch", unit: "", read: "Korridor 0,8–1,3.",
+              source: "Gabbett/Blanch, umstritten." },
+      load: { label: "Tageslast", unit: "", read: "Farbe zeigt die gefahrenen DFA-Bereiche.",
+              source: "Rogers/Gronwald." },
+    } };
+  if (kind === "leer") return { ...out, days: [] };
+  const N = kind === "kurz" ? 6 : 120;
+  let d = new Date("2026-05-15T00:00:00");
+  for (let i = 0; i < N; i++) {
+    const iso = d.toISOString().slice(0, 10);
+    const last = N - i;
+    let state = "ready", hrvZ = 0.2 + ((i * 7) % 9 - 4) / 10, rhrZ = 0.1, raw = { hrv: 50, rhr: 56, sleep: 7.4, form: 2 };
+    if (last <= 7 && last > 4) { state = "slump"; hrvZ = -2.6; rhrZ = -1.9; raw = { hrv: 31, rhr: 64, sleep: 6.3, form: 8 }; }
+    else if (last <= 4 && last > 2) { state = "recovering"; hrvZ = -0.4; rhrZ = 0.3; raw = { hrv: 46, rhr: 56, sleep: 10.1, form: 12 }; }
+    else if (last <= 2) { state = "rebound"; hrvZ = 1.9; rhrZ = 2.1; raw = { hrv: 63, rhr: 51, sleep: 9.5, form: 13 }; }
+    const holes = kind === "luecken" && i % 5 === 2;
+    const hasSession = !holes && i % 3 === 0 && last > 7;
+    out.days.push({
+      date: iso, state,
+      z: holes ? {} : { hrv: +hrvZ.toFixed(2), rhr: +rhrZ.toFixed(2), sleep: 0.3, form: -0.2 },
+      raw: holes ? {} : raw,
+      acwr: i < 28 ? null : 0.9 + ((i * 11) % 40) / 100,
+      load: hasSession ? 60 + (i % 4) * 20 : 0,
+      hard: hasSession && i % 9 === 0,
+      activities: hasSession ? [{ id: "a" + i, name: "volumen", group: "ride", sport: "Rad",
+        load: 60, intensity: i % 9 === 0 ? 88 : 62, minutes: 75,
+        dfa_bands: kind === "ohnedfa" ? null : [82, 12, 6],
+        hr: 140, watts: 135, decoupling: 1.2 }] : [],
+    });
+    d = new Date(d.getTime() + 864e5);
   }
-  return {
-    ftp: 215, aerobic_hr: 157, budget: 90, state: "ready",
-    workouts: [
-      mk("vo2_3015", "30/15 nach Rønnestad", "Maximale Sauerstoffaufnahme", 62, 98,
-         [[15, 55, "Einrollen"], [10, 112, "Satz 1"], [3, 45, "Satzpause"], [10, 112, "Satz 2"],
-          [3, 45, "Satzpause"], [10, 112, "Satz 3"], [8, 50, "Ausrollen"]],
-         "- 15m 55% 85rpm\n\n3x\n13x\n- 30s 110-115% 95rpm\n- 15s 55%\n\n- 3m 45%\n\n- 8m 50%",
-         [170, 185], false),
-      mk("sweetspot_2x20", "SweetSpot 2×20 min", "Schwellenleistung", 70, 78,
-         [[12, 55, "Einrollen"], [20, 90, "Block 1"], [6, 55, "Pause"], [20, 90, "Block 2"], [8, 50, "Ausrollen"]],
-         "- 12m 55% 85rpm\n\n2x\n- 20m 88-93% 88rpm\n- 6m 55%\n\n- 8m 50%", [160, 170], true),
-      mk("z2_60", "Grundlage 60 min", "Aerobe Basis", 60, 45,
-         [[10, 55, "Einrollen"], [45, 68, "gleichmäßig"], [5, 50, "Ausrollen"]],
-         "- 10m 55% 85rpm\n- 45m 65-70% 85rpm\n- 5m 50%", [138, 152], true),
-    ],
-  };
+  return out;
 }
 
+/* concrete sessions as intervals_icu/workouts returns them */
 module.exports = { TODAY, days, load, readiness, activities, streams, thresholds, calendar, pmc, laps, lapsWithBounds, steadyStream, night, context, goal, today, coach, signals, workouts };

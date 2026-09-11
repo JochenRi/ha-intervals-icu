@@ -1,6 +1,6 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 11.09.2026 · **Version:** 0.23.0 · **Status:** produktiv auf HEIMDALL,
+**Stand:** 11.09.2026 · **Version:** 0.24.0 · **Status:** produktiv auf HEIMDALL,
 Auslieferung über HACS aus `github.com/JochenRi/ha-intervals-icu`
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lokal
@@ -171,6 +171,35 @@ Werte liegt in der Anpassung der heutigen Einheit, nicht in der Planung der Woch
 
 Beim Umbau haben die alten Tests drei echte Regressionen gefangen: die Ampelfarbe ohne
 Wort (WCAG), der verschwundene Bullet-Graph und der fehlende Stand je Wert.
+
+### Bewerten statt filtern (0.24.0)
+
+**Der Fehler:** bei „Erholung nach Einbruch" blieben drei Grundlagenfahrten übrig, weil
+alles Härtere herausgefiltert wurde. Drei Varianten derselben Sache sind keine Auswahl.
+
+**Jetzt steht je Art genau eine Einheit da — und jede trägt ein Urteil für heute:**
+
+| | |
+|---|---|
+| **passt heute** | grün |
+| **möglich, kostet aber** | gelb, mit Begründung |
+| **heute nicht** | rot, mit Begründung |
+
+Sechs Arten: Grundlage · SweetSpot · Tempo · Schwelle · VO2max · Regeneration (dazu
+Wiedereinstieg nach einer Pause ab vier Tagen). Nichts verschwindet mehr — **die
+Entscheidung liegt beim Athleten, die Aufgabe der Daten ist zu sagen, was sie kostet.**
+
+Innerhalb einer Art wird die Variante gewählt, die zum Tag passt: bei VO2max ist das 4×4
+als Einstiegsdosis, 5×4 als Steigerung, 30/15 nur für gut Trainierte; liegt schon ein
+harter Tag in der Woche, rückt die kleinere Dosis nach vorn. Die übrigen Varianten stehen
+als Alternativen daneben.
+
+**Ein zweiter harter Tag stuft ab, er versteckt nicht:** bei zwei harten Tagen in der
+Woche wird die harte Einheit auf „möglich, kostet aber" gesetzt, mit dem Grund — zwei sind
+der Standard für Wochen dieser Größe, ein dritter die Ausnahme.
+
+**Oben nur noch zwei Kacheln.** Kein Wochenplan, keine Budgetwarnung, keine Vorschau: die
+Frage des Tages ist, welche Einheit — nicht, wie Woche 7 aussieht.
 
 ### Der Trainer in einem Bild (0.23.0)
 
