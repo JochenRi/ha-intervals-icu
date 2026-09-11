@@ -108,6 +108,45 @@ for name, node in functions.items():
     if any("websocket_command" in d for d in decorators):
         check(name in registered, f"{name} ist dekoriert, wird aber nie registriert")
 
+def check_eq(got, want, label):
+    check(got == want, f"{label}: {got!r} statt {want!r}")
+
+
+# --- the FTP has to be found where Intervals actually puts it -----------------
+# It sits on every activity as icu_ftp. Looking for it anywhere else returns
+# None, and every workout then falls back to percentages - which is the honest
+# answer when nothing is known and the wrong one when the number was in the
+# data all along. This cost three releases of "the percentages are gone" that
+# were not.
+import re as _re
+
+source = SOURCE if "SOURCE" in dir() else open(
+    Path(__file__).resolve().parents[1] / "custom_components" / "intervals_icu" / "websocket.py"
+).read()
+check("_latest_ftp" in source, "FTP: keine Suche in den Aktivitäten")
+check("icu_ftp" in source, "FTP: das Feld icu_ftp wird nicht gelesen")
+check("ftp = _latest_ftp(data)" in source,
+      "FTP: die Aktivitäten werden gar nicht befragt")
+if "ftp = _latest_ftp(data)" in source:
+    check(source.index("ftp = _latest_ftp(data)")
+          < source.index('for settings in (data.get("sport_settings")'),
+          "FTP: die Aktivitäten werden erst nach sport_settings befragt")
+
+namespace: dict = {}
+block = source[source.index("def _latest_ftp"):source.index("def _state_for_plan")]
+exec(block, {"Any": dict}, namespace)
+latest = namespace["_latest_ftp"]
+check_eq(latest({"activities": {
+    "a": {"start_date_local": "2026-09-01T09:00", "icu_ftp": 210},
+    "b": {"start_date_local": "2026-09-11T09:00", "icu_ftp": 215},
+    "c": {"start_date_local": "2026-08-01T09:00", "icu_ftp": 200},
+}}), 215.0, "FTP: nicht die neueste genommen")
+check_eq(latest({}), None, "FTP: aus dem Nichts erfunden")
+check_eq(latest({"activities": {"x": {"start_date_local": "2026-09-01", "icu_rolling_ftp": 192}}}),
+   192.0, "FTP: rollierender Wert nicht als Rückfall genutzt")
+check_eq(latest({"activities": {"x": {"start_date_local": "2026-09-01"}}}), None,
+   "FTP: Wert erfunden, wo keiner steht")
+
 print(f"test_websocket_registration: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

@@ -412,11 +412,18 @@ def websocket_workouts(hass, connection, msg) -> None:
     rec = coach_module.recommend(data, ready.get("budget"))
     anchors = rec.get("anchors") or {}
 
-    ftp = None
-    for settings in (data.get("sport_settings") or {}).values():
-        if isinstance(settings, dict) and settings.get("ftp"):
-            ftp = float(settings["ftp"])
-            break
+    # The FTP travels ON THE ACTIVITIES as icu_ftp - that is where Intervals
+    # puts it, and it is present on every ride. The earlier version looked in
+    # sport_settings, which this archive does not carry, so the FTP came back
+    # as None and every workout fell back to percentages. Percentages are the
+    # honest fallback when nothing is known; they are the wrong answer when the
+    # number was sitting in the data all along.
+    ftp = _latest_ftp(data)
+    if ftp is None:
+        for settings in (data.get("sport_settings") or {}).values():
+            if isinstance(settings, dict) and settings.get("ftp"):
+                ftp = float(settings["ftp"])
+                break
     if ftp is None:
         ftp = anchors.get("ftp")
 
@@ -515,6 +522,21 @@ def websocket_context(hass, connection, msg) -> None:
         msg["id"],
         coach_module.session_context(coordinator.archive.data, str(msg["activity_id"])),
     )
+
+
+def _latest_ftp(data: dict[str, Any]) -> float | None:
+    """The most recent FTP Intervals recorded on an activity."""
+    best_day, best = "", None
+    for activity in (data.get("activities") or {}).values():
+        day = str(activity.get("start_date_local") or "")[:10]
+        if not day or day < best_day:
+            continue
+        for field in ("icu_ftp", "icu_rolling_ftp"):
+            value = activity.get(field)
+            if value:
+                best_day, best = day, float(value)
+                break
+    return best
 
 
 def _state_for_plan(data: dict[str, Any]) -> dict[str, Any]:

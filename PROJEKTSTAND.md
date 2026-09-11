@@ -1,6 +1,6 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 11.09.2026 · **Version:** 0.28.0 · **Status:** produktiv auf HEIMDALL,
+**Stand:** 11.09.2026 · **Version:** 0.28.1 · **Status:** produktiv auf HEIMDALL,
 Auslieferung über HACS aus `github.com/JochenRi/ha-intervals-icu`
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lokal
@@ -533,6 +533,7 @@ der Test fehlschlägt.
 | 0.9.4 | **Integration startete nicht** | neuer Handler zwischen Dekoratoren und `def` des Nachbarn gesetzt → der Nachbar ging nackt raus. 544 grüne Prüfungen halfen nicht, weil keine davon den **Start** prüfte. Seitdem tut `test_websocket_registration.py` genau das |
 | 0.9.4 | Runden-Urteil verglich Aufwärmen mit Ausfahren („34 % Abfall") | ein Serienurteil darf nur Gleichartiges vergleichen — in der Simulation gefunden |
 | 0.11.0 | Zustandsbänder widersprachen dem Trainerurteil | Bänder nutzten den Tageswert, der Trainer das 3-Tage-Mittel |
+| 0.28.1 | Prozente statt Watt — trotz dreier Releases, die das Gegenteil behaupteten | Die FTP steht als `icu_ftp` **auf jeder Aktivität**; gesucht wurde sie in `sport_settings`, das dieses Archiv nicht führt. Ergebnis: `ftp = None`, und jede Einheit fiel auf Prozente zurück. Prozente sind die ehrliche Antwort, wenn nichts bekannt ist — und die falsche, wenn die Zahl die ganze Zeit in den Daten stand. Gefunden erst, als der Nutzer zum dritten Mal dasselbe meldete. **Lehre: bei „X erscheint nicht" zuerst prüfen, ob die Quelle überhaupt ankommt, statt die Anzeigestelle zu reparieren.** |
 | 0.19.0 | Einordnung nannte 2,0 % gegen Median 1,71 % „schlechter als sonst" | Urteil hing am Prozentrang; bei enger Verteilung ist Rang 62 kein Befund. Jetzt entscheidet das Verlassen der mittleren Hälfte — dasselbe Band, das gezeichnet wird |
 | 0.12.0 | `VO2max 4×8` behauptete 75 min, Blöcke ergaben 67 | Dauer und Last im Kalender wären falsch gewesen |
 | 0.16.0 | Überlagerte Blockkurven blieben unlesbar | die Konstruktion war theoriegerecht, die Daten aber zu verrauscht: vier Linien wurden zum Knäuel. Direktbeschriftung und Zoom milderten, behoben hat es erst das Weglassen — die Tabelle allein trägt die Aussage |
