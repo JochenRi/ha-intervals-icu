@@ -489,6 +489,7 @@ class IntervalsIcuPanel extends HTMLElement {
     this._sigMode = "stack";
     this._sigFocus = null;
     this._woOpen = null;
+    this._cmpFocus = null;
     this._booted = false;
   }
 
@@ -648,6 +649,9 @@ class IntervalsIcuPanel extends HTMLElement {
       }
       else if (act === "wodetail") {
         this._woOpen = (this._woOpen === id ? null : id); this._render();
+      }
+      else if (act === "cmpzoom") {
+        this._cmpFocus = (this._cmpFocus === id ? null : id); this._render();
       }
       else if (act === "sigfocus") {
         this._sigFocus = (this._sigFocus === id ? null : id); this._render();
@@ -1734,9 +1738,12 @@ class IntervalsIcuPanel extends HTMLElement {
       for (let k = 0; k <= 4; k++) {
         ticks.push({ i: Math.round((k / 4) * (n - 1)), t: hhmm(Math.round((k / 4) * secs)) });
       }
-      return `<div class="cmppanel">
-        <div class="cmplab" style="color:${d.c}">${d.l}${d.u ? ` <span class="sfu">${d.u}</span>` : ""}</div>
-        ${chart({ h: 150, n, y0, y1, xt: ticks, padL: 46,
+      const big = this._cmpFocus === d.k;
+      return `<div class="cmppanel ${big ? "big" : ""}" data-act="cmpzoom" data-id="${d.k}"
+          title="${big ? "kleiner" : "größer anzeigen"}">
+        <div class="cmplab" style="color:${d.c}">${d.l}${d.u ? ` <span class="sfu">${d.u}</span>` : ""}
+          <span class="zoomhint">${big ? "▾ kleiner" : "▸ größer"}</span></div>
+        ${chart({ h: big ? 340 : 150, n, y0, y1, xt: ticks, padL: big ? 54 : 46,
           yf: (v) => fmt(v, d.dec || 0),
           bands: d.dfa ? [{ a: 0.5, b: 0.75, c: C.amber, op: 0.09 },
                           { a: y0, b: 0.5, c: C.red, op: 0.09 }] : [],
@@ -1745,28 +1752,58 @@ class IntervalsIcuPanel extends HTMLElement {
       </div>`;
     }).join("");
 
-    // explicit encoding: every measure indexed to the first block
+    // Explicit encoding, second attempt. The first was a slope graph, where
+    // the information rides on the ANGLE of a line - and position judgements
+    // are 1.4-2.5x more accurate than length and about 2x more accurate than
+    // angle (Cleveland & McGill). With two blocks it degenerates into four
+    // straight lines saying nothing at all.
+    //
+    // So: deviation bars against a common baseline. The reader already knows
+    // the reference - it is the first block - so the absolute value is not
+    // what is wanted; the deviation is. Bars sit adjacent per measure,
+    // because adjacent bars are compared more accurately than separated ones.
     const base = work[0];
-    const idxRows = [
-      { l: "Leistung", c: ROLE.pow, get: (l) => l.avg_watts },
-      { l: "Herzfrequenz", c: ROLE.hr, get: (l) => l.avg_hr },
-      { l: "DFA alpha-1", c: ROLE.dfa, get: (l) => l.dfa_a1 },
-      { l: "Watt pro Herzschlag", c: C.blue, get: (l) => l.ef },
-    ].filter((r) => r.get(base) != null && work.every((l) => r.get(l) != null));
-    const idx = idxRows.map((r) => work.map((l) => r.get(l) / r.get(base) * 100));
-    const flatIdx = idx.flat();
-    const lo = Math.min(90, Math.floor(Math.min(...flatIdx) - 2));
-    const hi = Math.max(110, Math.ceil(Math.max(...flatIdx) + 2));
-    const slope = chart({
-      h: 190, n: work.length, y0: lo, y1: hi, padL: 52,
-      yf: (v) => fmt(v, 0) + " %",
-      hl: [{ y: 100, c: C.tx3, d: 1, t: "Block " + base.n + " = 100 %" }],
-      xt: work.map((l, i) => ({ i, t: "Block " + l.n })),
-      s: idxRows.flatMap((r, k) => [
-        { t: "line", v: idx[k], c: r.c, w: 2.2 },
-        { t: "dots", p: idx[k].map((v, i) => ({ i, v, c: r.c, r: 4 })), c: r.c },
-      ]),
-    });
+    // The BAR is normalised so the rows can be compared; the NUMBER is in the
+    // unit the rider thinks in. "+11 bpm" means something, "+6,5 %" does not.
+    const measures = [
+      { l: "Leistung", u: " W", dec: 0, c: ROLE.pow, get: (l) => l.avg_watts, good: "up" },
+      { l: "Herzfrequenz", u: " bpm", dec: 0, c: ROLE.hr, get: (l) => l.avg_hr, good: "down" },
+      { l: "DFA alpha-1", u: "", dec: 2, c: ROLE.dfa, get: (l) => l.dfa_a1, good: "up" },
+      { l: "Watt pro Herzschlag", u: "", dec: 2, c: C.blue, get: (l) => l.ef, good: "up" },
+    ].filter((m) => m.get(base) != null && work.some((l) => m.get(l) != null));
+
+    const devs = measures.map((m) => work.slice(1).map((l) => {
+      const v = m.get(l), b = m.get(base);
+      return (v == null || !b) ? null : (v - b) / b * 100;
+    }));
+    const span = Math.max(6, ...devs.flat().filter((v) => v != null).map((v) => Math.abs(v))) * 1.15;
+
+    const devRows = measures.map((m, k) => {
+      const bars = work.slice(1).map((l, i) => {
+        const v = devs[k][i];
+        if (v == null) return `<span class="devcell"><i class="devbar"></i><b class="mut">–</b></span>`;
+        const better = m.good === "up" ? v > 0 : v < 0;
+        const col = Math.abs(v) < 1.5 ? C.tx3 : (better ? C.green : C.amber);
+        const w = Math.min(50, Math.abs(v) / span * 50);
+        const left = v < 0 ? 50 - w : 50;
+        const absDelta = m.get(l) - m.get(base);
+        return `<span class="devcell" title="Block ${l.n}: ${sign(Math.round(v * 10) / 10, 1)} % gegenüber Block ${base.n}">
+          <i class="devbar"><s style="left:${left}%;width:${w}%;background:${col}"></s></i>
+          <b class="tn" style="color:${col}">${sign(absDelta, m.dec)}${m.u}</b>
+          <em>Block ${l.n} · ${sign(Math.round(v * 10) / 10, 1)} %</em></span>`;
+      }).join("");
+      return `<div class="devrow">
+        <span class="devlab"><i class="sw" style="background:${m.c}"></i>${esc(m.l)}
+          <em>${m.good === "up" ? "höher ist besser" : "niedriger ist besser"}</em></span>
+        <span class="devbars">${bars}</span></div>`;
+    }).join("");
+
+    const deviation = `<div class="devbox">
+      <div class="devhead">Abweichung gegenüber <b>Block ${base.n}</b>
+        <span class="hint">— die Zahl in ihrer eigenen Einheit, die Balkenlänge normiert, damit
+        die Zeilen vergleichbar bleiben. Rechts heißt mehr, links weniger; grün günstig,
+        gelb ungünstig.</span></div>
+      ${devRows}</div>`;
 
     // the verdict, in numbers that need no chart
     const last = work[work.length - 1];
@@ -1812,13 +1849,11 @@ class IntervalsIcuPanel extends HTMLElement {
       <div class="cmplegend">${work.map((l, i) =>
         `<span class="lg"><i class="sw" style="background:${ROLE.pow};opacity:${(0.34 + 0.66 * (i / Math.max(1, work.length - 1))).toFixed(2)}"></i>Block ${l.n}</span>`).join("")}
         <span class="hint">heller = früher in der Serie</span></div>
-      <h4 class="subname">Alles auf einer Achse
-        <span class="hint">— jeder Wert als Prozent des ${base.n}. Blocks (Indexierung nach Bertin:
-        drei Einheiten, eine Achse, deutlich weniger Ablesefehler)</span></h4>
-      <div class="card2 pad0">${slope}
-        <div class="cmplegend">${idxRows.map((r) =>
-          `<span class="lg"><i class="sw" style="background:${r.c}"></i>${esc(r.l)}</span>`).join("")}</div>
-      </div>
+      <h4 class="subname">Was sich von Block zu Block geändert hat
+        <span class="hint">— Abweichung statt Absolutwert: die Bezugsgröße kennst du bereits,
+        und Länge an gemeinsamer Grundlinie liest sich nachweislich genauer als der Winkel
+        einer Linie</span></h4>
+      ${deviation}
       ${restBlock}`;
   }
 
@@ -2310,6 +2345,24 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
   .lrow>*:nth-child(5),.lrow>*:nth-child(6),.lrow>*:nth-child(7),.lrow>*:nth-child(8){display:none}
 }
 /* Blockvergleich */
+.cmppanel{cursor:zoom-in}
+.cmppanel.big{grid-column:1 / -1;cursor:zoom-out}
+.cmppanel:hover{outline:1px solid ${C.line}}
+.zoomhint{float:right;color:${C.tx3};font-weight:400;font-size:11.5px;margin-right:8px}
+.devbox{background:${C.card2};border-radius:10px;padding:12px 14px}
+.devhead{font-size:13.5px;color:${C.tx2};margin-bottom:10px}
+.devrow{display:grid;grid-template-columns:210px 1fr;gap:14px;align-items:center;
+  padding:7px 0;border-top:1px solid ${C.line}44}
+.devrow:first-of-type{border-top:none}
+.devlab{font-size:13.5px;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.devlab em{font-style:normal;color:${C.tx3};font-size:11.5px}
+.devbars{display:flex;gap:14px;flex-wrap:wrap}
+.devcell{display:grid;grid-template-columns:1fr;gap:2px;min-width:120px;flex:1 1 120px}
+.devbar{position:relative;display:block;height:14px;background:#0006;border-radius:3px}
+.devbar::before{content:"";position:absolute;left:50%;top:-2px;bottom:-2px;width:1.5px;background:${C.tx3}}
+.devbar s{position:absolute;top:2px;bottom:2px;border-radius:2px;display:block}
+.devcell b{font-size:14px}
+.devcell em{font-style:normal;color:${C.tx3};font-size:11px}
 .cmpverdict{display:flex;gap:11px;align-items:flex-start;border-radius:10px;padding:11px 13px;
   margin:0 2px 12px;font-size:14px;line-height:1.5}
 .cmpverdict.worse{background:${C.amber}12;border:1px solid ${C.amber}44}

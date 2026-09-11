@@ -296,10 +296,9 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
     contains(html, "4 gleichartige Blöcke übereinandergelegt", "blockvergleich: Anzahl fehlt");
 
     // superposition: ONE panel per channel, all blocks inside it
-    ok((html.match(/class="cmppanel"/g) || []).length === 3,
+    ok((html.match(/class="cmppanel /g) || []).length === 3,
        "blockvergleich: nicht drei Kanal-Felder");
-    const powerPanel = html.slice(html.indexOf('class="cmppanel"'),
-                                  html.indexOf("Herzfrequenz"));
+    const powerPanel = html.split('class="cmppanel').slice(1)[0];
     const lines = (powerPanel.match(/<path d="M[^"]+" fill="none"/g) || []).length;
     ok(lines === 4, `blockvergleich: ${lines} Linien im Leistungsfeld statt vier Blöcke`);
 
@@ -316,11 +315,46 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
     const amp = Math.max(...yy) - Math.min(...yy);
     ok(amp > 8, `blockvergleich: Kurve ist ein Strich (${amp.toFixed(1)} px) - das Feld zeigt nichts`);
 
-    // explicit encoding: everything indexed to the first block
-    contains(html, "Indexierung nach Bertin", "blockvergleich: Indexierung nicht benannt");
-    contains(html, "= 100 %", "blockvergleich: Bezugslinie fehlt");
-    contains(html, "Watt pro Herzschlag", "blockvergleich: EF nicht im Index");
-    ok((html.match(/Block \d/g) || []).length >= 5, "blockvergleich: Blockachse unvollständig");
+    // zoom: a click makes one panel full width instead of opening a window
+    ok((html.match(/data-act="cmpzoom"/g) || []).length === 3,
+       "blockvergleich: Felder nicht anklickbar");
+    p._cmpFocus = "watts";
+    const zoomed = p.rAkt(acts, acts[0]);
+    clean(zoomed, "blockvergleich vergrößert");
+    ok(/class="cmppanel big"/.test(zoomed), "blockvergleich: Vergrößern wirkt nicht");
+    ok((zoomed.match(/class="cmppanel big"/g) || []).length === 1,
+       "blockvergleich: mehr als ein Feld vergrößert");
+    const bigPanel = zoomed.split('class="cmppanel big')[1];
+    ok(/viewBox="0 0 \d+ 340"/.test(bigPanel),
+       "blockvergleich: vergrößertes Feld ist nicht höher gezeichnet");
+    p._cmpFocus = null;
+
+    // explicit encoding: deviation bars against a common baseline, NOT a slope graph
+    contains(html, "Abweichung gegenüber", "blockvergleich: Abweichungsdarstellung fehlt");
+    contains(html, "höher ist besser", "blockvergleich: Richtung nicht benannt");
+    contains(html, "niedriger ist besser", "blockvergleich: Richtung des Pulses nicht benannt");
+    ok((html.match(/class="devrow"/g) || []).length === 4,
+       "blockvergleich: nicht alle vier Kennzahlen als Abweichung");
+    ok((html.match(/class="devcell"/g) || []).length === 12,
+       "blockvergleich: nicht je Block und Kennzahl ein Balken");
+    ok(!html.includes("Block 2 = 100 %"), "blockvergleich: Steigungsdiagramm noch da");
+    // the direction must be encoded, not just the amount - and checked INSIDE
+    // the deviation block, where green appears nowhere else
+    const devBox = html.slice(html.indexOf('class="devbox"'));
+    const devColours = new Set([...devBox.matchAll(/background:(#[0-9a-f]{6})"/g)].map((m) => m[1]));
+    ok(devColours.size >= 2,
+       `blockvergleich: alle Abweichungen in derselben Farbe (${[...devColours]}) - günstig und ungünstig nicht unterschieden`);
+    // falling power (unfavourable) and rising heart rate (unfavourable) must
+    // BOTH read as the warning colour, while the same sign means the opposite
+    // for the two measures - that is the whole point of "good: up/down"
+    const powerRow = devBox.slice(devBox.indexOf("Leistung"), devBox.indexOf("Herzfrequenz"));
+    const hrRow = devBox.slice(devBox.indexOf("Herzfrequenz"), devBox.indexOf("DFA"));
+    ok(/#fbbf24/.test(powerRow), "blockvergleich: fallende Leistung nicht als ungünstig markiert");
+    ok(/#fbbf24/.test(hrRow), "blockvergleich: steigender Puls nicht als ungünstig markiert");
+    // numbers in their own unit, percentages only as the small print
+    ok(/-10 W/.test(powerRow), 'blockvergleich: Leistungsabweichung nicht in Watt');
+    ok(/\+11 bpm/.test(hrRow), 'blockvergleich: Pulsabweichung nicht in Schlägen');
+    ok(/%/.test(hrRow), 'blockvergleich: normierter Prozentwert fehlt ganz');
 
     // the verdict must name the direction and the numbers
     contains(html, "Die Serie hat abgebaut", "blockvergleich: fallende Serie nicht benannt");
@@ -359,7 +393,7 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
     p._streams[acts[0].id] = hronly.stream;
     const onlyhr = p.rAkt(acts, acts[0]);
     clean(onlyhr, "blockvergleich nur HF");
-    ok((onlyhr.match(/class="cmppanel"/g) || []).length === 1,
+    ok((onlyhr.match(/class="cmppanel /g) || []).length === 1,
        "blockvergleich: leere Felder für fehlende Kanäle");
 
     p._streams[acts[0].id] = { error: "HTTP 500" };
