@@ -574,6 +574,71 @@ check("alleinige Verankerung nicht" in anc["source"],
       "28 anker: Quellzeile ohne den Trend-Vorbehalt")
 
 
+# --- 29 · Basislinien-Primitive: ein Rechenweg, vier Aufrufer -----------------
+# Bis 0.36.1 rechnete state() die HRV-Basislinie roh, die Verlaufsbänder im
+# Log — Trainerurteil und Bänder konnten am selben Tag verschieden ausfallen.
+# Der Wächter prüft die Aufrufer per AST, der Nachweis eine Fixture, die den
+# Unterschied sichtbar macht: heute -2,6 SD im Log, aber nur -1,5 SD roh.
+import ast  # noqa: E402
+
+_COACH_SRC = (Path(__file__).resolve().parents[1] / "custom_components"
+              / "intervals_icu" / "coach.py").read_text(encoding="utf-8")
+_COACH_TREE = ast.parse(_COACH_SRC)
+
+
+def _callers_of(name: str) -> set[str]:
+    found: set[str] = set()
+    for node in ast.walk(_COACH_TREE):
+        if isinstance(node, ast.FunctionDef):
+            for sub in ast.walk(node):
+                if (isinstance(sub, ast.Call) and isinstance(sub.func, ast.Name)
+                        and sub.func.id == name):
+                    found.add(node.name)
+    return found
+
+
+_band_callers = _callers_of("_band")
+eq(_band_callers, {"_norm_band", "night_after"},
+   "29 primitive: _band wird außerhalb von _norm_band/night_after gerufen — "
+   "eine Basislinie rechnet am Rechenweg vorbei")
+_norm_callers = _callers_of("_norm_band")
+for required in ("state", "_z_series", "_night_z", "_signal_bands"):
+    check(required in _norm_callers,
+          f"29 primitive: {required} ruft _norm_band nicht — eigener Rechenweg")
+
+# Log-Nachweis: 55×50 ms und 5×110 ms Vorgeschichte, heute 30 ms. Roh ist das
+# -1,51 SD (kein Treffer), im Log -2,65 SD (Treffer). Ruhepuls springt am
+# selben Tag — das Infektmuster feuert also NUR, wenn state() im Log rechnet.
+_lw = {}
+for _i in range(60):
+    _d = (TODAY - timedelta(days=60 - _i)).isoformat()
+    _lw[_d] = {"id": _d, "hrv": 110.0 if _i % 12 == 0 else 50.0,
+               "restingHR": 56.0 + ((_i * 7) % 5 - 2) * 0.2,
+               "sleepSecs": 7.5 * 3600}
+_lw[TODAY.isoformat()] = {"id": TODAY.isoformat(), "hrv": 30.0,
+                          "restingHR": 66.0, "sleepSecs": 7.5 * 3600}
+_ldata = {"wellness": _lw, "activities": {}, "dfa": {}}
+_lst = coach.state(_ldata)
+eq(_lst["state"], "slump",
+   "29 log: Infektmuster (HRV -2,6 SD log / -1,5 SD roh + Ruhepuls) "
+   "löst nicht aus — state() rechnet die HRV nicht im Log")
+_lser = coach.state_series(_ldata)
+eq(_lser[-1]["state"], "slump",
+   "29 log: Verlaufsband widerspricht dem Trainerurteil am selben Tag")
+
+# week_z ist das Mittel der ln-Werte gegen das Log-Band — unabhängig nachgerechnet.
+import math as _math  # noqa: E402
+_st29 = coach.state(build())
+_w = build()["wellness"]
+_hd = sorted(d for d in _w if _w[d].get("hrv"))
+_base_vals = [_math.log(_w[d]["hrv"]) for d in _hd if d < _hd[-1]][-60:]
+_bmean = sum(_base_vals) / len(_base_vals)
+_bsd = (sum((v - _bmean) ** 2 for v in _base_vals) / len(_base_vals)) ** 0.5
+_wk = [_math.log(_w[d]["hrv"]) for d in _hd[-7:]]
+_expected = (sum(_wk) / len(_wk) - _bmean) / _bsd
+check(_st29["week_z"] is not None and _st29["week_z"] == round(_expected, 2),
+      f"29 log: week_z {_st29['week_z']} statt ln-Rechnung {round(_expected, 2)}")
+
 print(f"test_coach: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

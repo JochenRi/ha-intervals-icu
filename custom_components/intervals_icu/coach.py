@@ -40,6 +40,7 @@ Sources, once, so the rules below can refer to them:
 
 from __future__ import annotations
 
+import math
 from datetime import date, timedelta
 from statistics import mean, median, pstdev
 from typing import Any
@@ -79,6 +80,42 @@ def _band(values: list[float]) -> tuple[float, float]:
     return (mean(values), pstdev(values) if len(values) > 1 else 0.0)
 
 
+def _norm_band(raw: list[float], *, log: bool) -> tuple[float, float] | None:
+    """THE baseline of a wellness signal - the only place it is computed.
+
+    One primitive instead of four hand-rolled copies: `state()`,
+    `_z_series()`, `_night_z()` and `_signal_bands()` all call this, so the
+    scale (HRV on the log scale, the published ln(rMSSD) comparison), the
+    20-value floor and the flat-band rejection cannot drift apart again.
+    Until 0.36.1 `state()` computed the HRV band on the RAW scale while the
+    series ran on logs - the trainer verdict and the history bands could
+    disagree on the same day. A guard in test_coach.py checks the callers.
+
+    Returns (base, spread) on the (possibly log) scale, or None when the
+    history is too thin to mean anything.
+    """
+    values = [math.log(v) for v in raw if v > 0] if log else list(raw)
+    if len(values) < 20:
+        return None
+    base, spread = _band(values)
+    if spread <= 0:
+        return None
+    return (base, spread)
+
+
+def _z_at(value: float | None, band: tuple[float, float] | None, *,
+          log: bool, sign: int = 1) -> float | None:
+    """A value's distance from its band, on the band's own scale."""
+    if value is None or band is None:
+        return None
+    if log:
+        if value <= 0:
+            return None
+        value = math.log(value)
+    base, spread = band
+    return sign * (value - base) / spread
+
+
 # --- state --------------------------------------------------------------------
 def state(data: dict[str, Any]) -> dict[str, Any]:
     """Classify today, distinguishing an acute slump from creeping fatigue.
@@ -101,19 +138,15 @@ def state(data: dict[str, Any]) -> dict[str, Any]:
 
     hrv_days = sorted(hrv)
     base_days = [d for d in hrv_days if d < today][-60:]
-    hrv_base, hrv_sd = _band([hrv[d] for d in base_days])
+    hrv_band = _norm_band([hrv[d] for d in base_days], log=True)
     rhr_base_days = [d for d in sorted(rhr) if d < today][-60:]
-    rhr_base, rhr_sd = _band([rhr[d] for d in rhr_base_days])
+    rhr_band = _norm_band([rhr[d] for d in rhr_base_days], log=False)
 
     def z_hrv(day: str) -> float | None:
-        if day not in hrv or hrv_sd <= 0:
-            return None
-        return (hrv[day] - hrv_base) / hrv_sd
+        return _z_at(hrv.get(day), hrv_band, log=True)
 
     def z_rhr(day: str) -> float | None:
-        if day not in rhr or rhr_sd <= 0:
-            return None
-        return (rhr[day] - rhr_base) / rhr_sd
+        return _z_at(rhr.get(day), rhr_band, log=False)
 
     # An acute departure needs more than one lonely number: either BOTH
     # signals leave the band on the same day (the infection pattern), or ONE
@@ -144,9 +177,11 @@ def state(data: dict[str, Any]) -> dict[str, Any]:
     now_hrv = mean(last3) if last3 else None
     now_rhr = mean(last3_rhr) if last3_rhr else None
 
-    # 7-day mean against the 60-day band, the published comparison (PLEWS)
-    week = [hrv[d] for d in hrv_days[-7:]]
-    week_z = ((mean(week) - hrv_base) / hrv_sd) if (week and hrv_sd > 0) else None
+    # 7-day mean against the 60-day band, the published comparison (PLEWS).
+    # The mean of ln(rMSSD), on the same log scale as the band itself.
+    week = [math.log(hrv[d]) for d in hrv_days[-7:] if hrv[d] > 0]
+    week_z = (((mean(week) - hrv_band[0]) / hrv_band[1])
+              if (week and hrv_band is not None) else None)
     swc = 0.5  # half a standard deviation, the usual smallest worthwhile change
 
     if slump_day is not None:
@@ -543,27 +578,14 @@ def _z_series(values: dict[str, float], days: list[str], window: int = 60,
     The baseline trails the day it judges, so today is never part of its own
     normal - otherwise a slow drift would erase itself.
     """
-    import math
     out: dict[str, float] = {}
     ordered = [d for d in days if d in values]
     for index, day in enumerate(ordered):
         history = ordered[max(0, index - window):index]
-        if len(history) < 20:
-            continue
-        raw = [values[d] for d in history]
-        if log:
-            raw = [math.log(v) for v in raw if v > 0]
-        if len(raw) < 20:
-            continue
-        base, spread = _band(raw)
-        if spread <= 0:
-            continue
-        current = values[day]
-        if log:
-            if current <= 0:
-                continue
-            current = math.log(current)
-        out[day] = sign * (current - base) / spread
+        band = _norm_band([values[d] for d in history], log=log)
+        z = _z_at(values[day], band, log=log, sign=sign)
+        if z is not None:
+            out[day] = z
     return out
 
 
@@ -749,7 +771,6 @@ NIGHT_FIELDS = (
 
 def _night_z(data: dict[str, Any], day: str) -> dict[str, Any]:
     """Each wellness field of one night, as a z-score against the 60 days before."""
-    import math
     wellness = data.get("wellness") or {}
     days = sorted(d for d in wellness if d < day)[-60:]
     out: dict[str, Any] = {}
@@ -759,20 +780,20 @@ def _night_z(data: dict[str, Any], day: str) -> dict[str, Any]:
             value = _f((wellness.get(d) or {}).get(field))
             if value is None or value <= 0:
                 continue
-            raw.append(math.log(value) if use_log else value)
+            raw.append(value)
         current = _f((wellness.get(day) or {}).get(field))
-        if current is None or current <= 0 or len(raw) < 20:
+        band = _norm_band(raw, log=use_log)
+        z = _z_at(current if current and current > 0 else None, band,
+                  log=use_log, sign=direction)
+        if z is None:
             continue
-        base, spread = _band(raw)
-        if spread <= 0:
-            continue
-        value = math.log(current) if use_log else current
+        base, _spread = band
         scale = 1 / 3600 if field == "sleepSecs" else 1
         out[key] = {
             "label": label, "unit": unit,
             "value": round(current * scale, 2),
             "baseline": round((math.exp(base) if use_log else base) * scale, 2),
-            "z": round(direction * (value - base) / spread, 2),
+            "z": round(z, 2),
         }
     return out
 
@@ -1005,7 +1026,6 @@ def session_context(data: dict[str, Any], activity_id: str) -> dict[str, Any]:
 # page does not pretend to reach further.
 def _signal_bands(data: dict[str, Any], day: str) -> dict[str, Any]:
     """Baseline and the SD thresholds, converted back into real units."""
-    import math
     wellness = data.get("wellness") or {}
     days = sorted(d for d in wellness if d <= day)[-60:]
     out: dict[str, Any] = {}
@@ -1015,12 +1035,11 @@ def _signal_bands(data: dict[str, Any], day: str) -> dict[str, Any]:
             value = _f((wellness.get(d) or {}).get(field))
             if value is None or value <= 0:
                 continue
-            raw.append(math.log(value) if use_log else value)
-        if len(raw) < 20:
+            raw.append(value)
+        band = _norm_band(raw, log=use_log)
+        if band is None:
             continue
-        base, spread = _band(raw)
-        if spread <= 0:
-            continue
+        base, spread = band
         scale = 1 / 3600 if field == "sleepSecs" else 1
 
         def at(sd: float) -> float:
