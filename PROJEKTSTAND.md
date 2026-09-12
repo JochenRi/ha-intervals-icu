@@ -1,13 +1,13 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 12.09.2026 · **Version:** 0.34.0 · **Status:** produktiv auf HEIMDALL,
+**Stand:** 12.09.2026 · **Version:** 0.35.0 · **Status:** produktiv auf HEIMDALL,
 Auslieferung über HACS aus `github.com/JochenRi/ha-intervals-icu`
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lokal
 archiviert, auswertet und in einem eigenen Seitenleisten-Panel darstellt.
 
 **Umfang:** ~9.100 Zeilen, davon 3.137 Frontend · 21 WebSocket-Befehle · 15 Einheiten in
-8 Familien · 14 Testdateien mit rund 2.090 Einzelprüfungen · 34 Releases.
+8 Familien · 15 Testdateien mit **2.354** gezählten Einzelprüfungen · 35 Releases.
 
 ---
 
@@ -192,6 +192,22 @@ Recherche:
 
 ## 7. Fehler und was sie gelehrt haben
 
+**0.35.0 — zwei Funde beim Aufräumen, beide aus bekannten Klassen:**
+
+| Fund | Klasse | Fix |
+|---|---|---|
+| **`test_plan.py` hatte zwei Summary-Abschnitte** — dieselbe Falle wie `test_workouts.py` in 0.34.0. Hinter der Zusammenfassung lief der **Stundenvertrag** mit, also genau die Prüfung, die nach dem 0.31.0-Budgetfehler geschrieben wurde: 193 Prüfungen, weder gezählt noch meldefähig. Gegenprobe: fünf echte Fehler eingebaut → die Datei druckte „188 Prüfungen, 0 Fehler" und endete mit 1. | Prüfstand meldet nicht, was er prüft | Summary ans Dateiende (188 → 405 gezählt). Und die **Fehlerklasse entfernt** statt nur den Fall: neuer Wächter `test_suite_hygiene.py` — eine Summary je Datei, keine gezählte Prüfung dahinter, Fehlerliste wird gedruckt, Exit-Code trägt das Urteil |
+| **Ein Zielprofil aus der Zeit vor 0.33.0 bekam nie einen Kalenderanker.** Das Archiv füllt Schlüssel späterer Versionen nur auf der **obersten Ebene** auf; das verschachtelte `goal` behielt seine alte Form ohne `plan_start`. Der Plan fiel auf „Montag dieser Woche" zurück — stabil innerhalb der Woche, wandernd ab Montag. Simulation über 90 Tage: **14 verschiedene Anker, die Entlastungswoche 14-mal verschoben.** Geheilt hätte das nur ein zufälliges Neuspeichern des Ziels. | Migration fehlt (Verwandter von Fehlerklasse 1: der Wert steht nicht da, wo gesucht wird) | `plan.migrate_goal()` repariert den Datensatz beim Laden des Archivs und speichert einmal; ohne Ziel wird **kein** Anker erfunden. Die Montagsregel liegt jetzt einmal in `plan.anchor_stamp()`, `set_goal` rechnet sie nicht mehr selbst — Quelltext-Wächter gegen die Rückkehr beider Kopien. Nach der Migration: **ein** Anker über 90 Tage, Entlastungswochen auf festen Daten (28.09., 26.10., 23.11., 21.12.) |
+
+**Die Lehre aus den Gegenproben dieser Runde:** zwei der vier Mutationen ließen
+den Test *abstürzen* statt melden — `TypeError` auf `None`, `ValueError` bei
+einem fehlenden Substring. Ein Absturz überspringt jede folgende Prüfung der
+Datei und erzeugt genau die Lage, die oben repariert wurde: Exit-Code 1, aber
+„0 Fehler" gedruckt. **Eine Gegenprobe gilt erst als bestanden, wenn der Fehler
+gezählt und benannt erscheint** — nicht, wenn er irgendwie auffällt. Beide
+Tests wurden entsprechend gehärtet (`.get()` statt `[...]`, Existenzprüfung vor
+`index()`).
+
 **0.34.0 — Paket 3, Zustandsmaschine + Quellen (`coach.py`, `workouts.py`), plus zwei Prüfstand-Lehren:**
 
 | Fund | Klasse | Fix |
@@ -297,7 +313,7 @@ den Non-Responder-Befund (Manresa-Rocamora 2021).
 
 ## 9. Prüfstand
 
-**Vierzehn Dateien, rund 2.090 Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
+**Fünfzehn Dateien, 2.354 gezählte Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
 HA-Instanz oder einen Browser.
 
 | Datei | prüft | Umfang |
@@ -309,15 +325,18 @@ HA-Instanz oder einen Browser.
 | `test_setup_simulation.py` | Entity-Aufbau, Übersetzungen, unique_ids | |
 | `test_laps.py` | Runden-Normalisierung | 34 |
 | `test_coach.py` | Zustandsregeln, Trigger-Schärfung, Infektverlauf, Nachtreaktion, Einordnung, Bereiche | 201 |
-| `test_plan.py` | Zielprofil, Wochenmuster, Zeitbudget, Progressions- und Kalender-Anker-Vertrag | 188 |
+| `test_plan.py` | Zielprofil, Wochenmuster, Zeitbudget, Progressions- und Kalender-Anker-Vertrag, Profil-Migration | 405 |
 | `test_workouts.py` | Einheitenauswahl, HF-Klemme, Infektleiter, Wattumrechnung, Intervals-Syntax | 575 |
-| `test_websocket_registration.py` | Registrierung, Dekoratoren, FTP-Quelle | 140 |
+| `test_websocket_registration.py` | Registrierung, Dekoratoren, FTP-Quelle, eine Ankerregel | 146 |
+| `test_suite_hygiene.py` | der Prüfstand prüft sich selbst: eine Summary je Datei, nichts Gezähltes dahinter, Fehler werden gedruckt | 43 |
 | `test_panel_views.js` | alle Ansichten gegen volle, leere, löchrige, entartete Daten | 724 |
 | `test_panel_fixes.js` | je ein Nachweis pro behobenem Fehler | 177 |
 | `test_panel_design.js` | Gestaltungsregeln als Zusicherung | 49 |
 
 **Das Prinzip:** Ein Test, der den alten Fehler nicht nachweislich findet, ist kein Test. Bei
-den kritischen Fixes wurde der Fix zurückgedreht und geprüft, dass der Test fehlschlägt.
+den kritischen Fixes wurde der Fix zurückgedreht und geprüft, dass der Test fehlschlägt —
+und zwar **gezählt und benannt**: ein Test, der bei der Mutation abstürzt, überspringt alles
+Folgende und meldet am Ende „0 Fehler".
 Diese Gegenproben haben mehrfach gezeigt, dass ein Test *nicht* scharf war — dann wurde er
 geschärft, nicht der Code gelobt.
 
@@ -435,6 +454,15 @@ Kalender-Anker-Vertrag (Entlastungswoche erreicht ihr festes Datum aus vier
 Blickdaten), Livefall-Simulation (4 Tage, 5,5 h, Ziel 6 h). Gegenproben: alte
 hard-Regel, Anker aus, Progression aus, Duplikat statt Variation — jeder Vertrag
 findet seinen Fehler.
+
+### Erledigt in 0.35.0: Prüfstand-Hygiene und Profil-Migration
+
+Kein Reiter-Audit, sondern zwei Altlasten (§7, 0.35.0) — und der **Ausbauplan
+für die nächsten drei Pakete liegt jetzt im Repo**: `docs/ausbau.md` (A: DFA-Tab
+mit Brushing, Zeitraumwahl und Sprung in die Aktivität, Datumsachse in den
+Signalkarten · B: Tageskontext mit Etiketten und Gewichten · C: Vergleichsgruppe
+über Caliper statt fester Prozentzahl). Jedes Paket mit Muster, Quelle, Grenze,
+Datenmodell und den Gegenproben, die beißen müssen.
 
 ### Erledigt in 0.34.0: Paket 3 — Zustandsmaschine + Quellen
 

@@ -284,10 +284,6 @@ bad_date = P.plan(profile(goal="long_ride", target_hours=6, days_per_week=4,
 check(bad_date["ready"], "9 kaputtes Datum verhindert den Plan")
 check(bad_date["weeks_left"] is None, "9 kaputtes Datum ergibt Wochenzahl")
 
-print(f"test_plan: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
-for failure in FAILURES:
-    print("   ✗ " + failure)
-
 # --- the hours contract: sessions never exceed the week ----------------------
 # 0.31.0 dealt 4.5 h of sessions into a 3.6 h recovery week: a 1.0 h floor
 # inflated small weeks, and the recovery shortening of the long day happened
@@ -315,5 +311,75 @@ for label, profile, state in (
             check(s["hours"] >= 0.5,
                   f"stunden {label} W{week['index']}: Einheit unter 30 min ({s['hours']} h)")
 
+
+# --- 10  the calendar anchor survives an old archive --------------------------
+# Records written before 0.33.0 carry no plan_start, and the archive fills in
+# missing keys at the TOP level only - so the anchor never appeared, the plan
+# fell back to "Monday of this week", and the 3:1 recovery week stayed four
+# weeks away for good. Nothing told the athlete. migrate_goal repairs the
+# record when the archive is loaded.
+LEGACY = {"goal": "long_ride", "target_hours": None, "target_date": None,
+          "days_per_week": 4, "hours_per_week": None, "longest_day_hours": None,
+          "hard_days": [], "long_day": None, "indoor_only": False, "notes": ""}
+SAT = "2026-09-12"      # a Saturday; its Monday is the 7th
+NEXT = "2026-09-21"     # the Monday nine days later
+
+fixed = P.migrate_goal(LEGACY, SAT)
+# An abort here would skip every check below it and still print "0 Fehler" -
+# the very defect this release removes. So the failure is counted, not raised.
+check(isinstance(fixed, dict), "10 Altprofil: Migration liefert kein Profil")
+fixed = fixed if isinstance(fixed, dict) else {}
+eq(fixed.get("plan_start"), "2026-09-07", "10 Altprofil: Anker nicht auf den Montag gestempelt")
+eq(fixed.get("days_per_week"), 4, "10 Altprofil: Antwort beim Migrieren verloren")
+eq(LEGACY.get("plan_start"), None, "10 Migration schreibt ins übergebene Profil zurück")
+
+# nothing to repair, nothing returned - the archive must not save on every load
+eq(P.migrate_goal(fixed, SAT), None, "10 gestempeltes Profil wird erneut migriert")
+eq(P.migrate_goal({**LEGACY, "plan_start": "2026-08-31"}, SAT), None,
+   "10 fremder gültiger Anker wird überschrieben")
+
+# no goal, no anchor: stamping an empty profile invents a plan start
+eq(P.migrate_goal({}, SAT), None, "10 leeres Profil bekommt einen Anker")
+eq(P.migrate_goal({"goal": None, "days_per_week": 4}, SAT), None,
+   "10 Profil ohne Ziel bekommt einen Anker")
+eq(P.migrate_goal(None, SAT), None, "10 None ergibt ein Profil")
+eq(P.migrate_goal("kein profil", SAT), None, "10 Text ergibt ein Profil")
+
+# a broken anchor drifts exactly like a missing one, so it is replaced
+eq((P.migrate_goal({**LEGACY, "plan_start": "kein-datum"}, SAT) or {}).get("plan_start"),
+   "2026-09-07", "10 kaputter Anker bleibt kaputt")
+eq((P.migrate_goal({**LEGACY, "plan_start": ""}, SAT) or {}).get("plan_start"),
+   "2026-09-07", "10 leerer Anker bleibt leer")
+
+# keys the record does not know yet are filled, unknown ones survive
+eq((P.migrate_goal({"goal": "ftp", "extra": 7}, SAT) or {}).get("extra"), 7,
+   "10 Migration wirft unbekannte Felder weg")
+check("indoor_only" in (P.migrate_goal({"goal": "ftp"}, SAT) or {}),
+      "10 Migration füllt neue Schlüssel nicht auf")
+
+# one rule for which Monday - anchor_stamp is the only place that decides
+eq(P.anchor_stamp("2026-09-07"), "2026-09-07", "10 Montag verschoben")
+eq(P.anchor_stamp("2026-09-13"), "2026-09-07", "10 Sonntag auf den falschen Montag")
+eq(P.anchor_stamp("2026-09-14"), "2026-09-14", "10 neuer Montag nicht erkannt")
+check(P.has_anchor({"plan_start": "2026-09-07"}), "10 gültiger Anker nicht erkannt")
+check(not P.has_anchor({"plan_start": "kein-datum"}), "10 kaputter Anker gilt als gültig")
+check(not P.has_anchor({}), "10 fehlender Anker gilt als gültig")
+check(not P.has_anchor(None), "10 None gilt als Anker")
+
+# the symptom itself: with the anchor the recovery week stops moving, without
+# it the plan restarts every Monday. The second check keeps this test honest -
+# if the drift ever disappears on its own, the migration is being duplicated
+# somewhere and this file has to say so.
+STATE = {"typical_hours": 5.5, "longest_ride_hours": 5.5}
+kept = {P.plan(fixed, STATE, weeks=8, today=day).get("anchor") for day in (SAT, NEXT)}
+eq(len(kept), 1, f"10 migrierter Anker wandert trotzdem: {sorted(kept)}")
+drift = {P.plan(LEGACY, STATE, weeks=8, today=day).get("anchor") for day in (SAT, NEXT)}
+eq(len(drift), 2, "10 Gegenprobe: Altprofil wandert nicht mehr - der Test ist stumpf")
+eq(P.plan(fixed, STATE, weeks=8, today=NEXT).get("weeks_since_start"), 2,
+   "10 Wochen seit Planstart falsch gezählt")
+
+print(f"test_plan: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
+for failure in FAILURES:
+    print("   ✗ " + failure)
 print("FEHLER: keine" if not FAILURES else "")
 sys.exit(1 if FAILURES else 0)

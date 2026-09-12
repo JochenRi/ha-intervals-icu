@@ -147,6 +147,53 @@ def _monday(day: date) -> date:
     return day - timedelta(days=day.weekday())
 
 
+def anchor_stamp(today: date | str | None = None) -> str:
+    """The Monday a plan is counted from, as ISO text.
+
+    ONE place decides which Monday. set_goal used to compute it inline and the
+    migration below would have been a second copy of the same rule - the error
+    class that cost 0.11.0 and 0.27.0 a release each.
+    """
+    day = date.fromisoformat(today) if isinstance(today, str) else (today or date.today())
+    return _monday(day).isoformat()
+
+
+def has_anchor(profile: Any) -> bool:
+    """True when the profile carries a calendar anchor that actually parses."""
+    if not isinstance(profile, dict):
+        return False
+    try:
+        date.fromisoformat(str(profile.get("plan_start") or ""))
+    except ValueError:
+        return False
+    return True
+
+
+def migrate_goal(profile: Any, today: date | str | None = None) -> dict[str, Any] | None:
+    """Bring a stored goal record up to the current shape.
+
+    Returns the repaired record, or None when nothing had to change.
+
+    Why this exists: the archive fills in keys added by later versions at the
+    TOP level only, so a goal profile written before 0.33.0 keeps its old shape
+    forever - no `plan_start`. The plan then falls back to the Monday of the
+    current week, which is stable within the week and moves every Monday, so
+    the 3:1 recovery week stays four weeks away for good. Nothing tells the
+    athlete; the only cure was re-saving the goal by chance.
+
+    A record without a goal is left alone: stamping an anchor onto an empty
+    profile would invent a plan start for someone who never set a goal.
+    """
+    if not isinstance(profile, dict) or not profile.get("goal"):
+        return None
+    merged = {**default_goal(), **profile}
+    if not has_anchor(merged):
+        # Missing, empty or unparsable - all three leave the plan drifting, so
+        # all three get today's Monday, the same rule set_goal applies.
+        merged["plan_start"] = anchor_stamp(today)
+    return merged if merged != profile else None
+
+
 def plan(profile: dict[str, Any], state: dict[str, Any] | None = None,
          weeks: int = 8, today: str | None = None) -> dict[str, Any]:
     """Build the coming weeks from the goal, the available time and the state.

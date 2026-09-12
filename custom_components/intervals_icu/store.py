@@ -13,7 +13,7 @@ from typing import Any
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
-from . import importer
+from . import importer, plan
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
@@ -42,6 +42,14 @@ class IntervalsArchive:
             base = importer.empty_data(self.athlete_id)
             base.update(stored)
             self.data = base
+            # ...but update() only reaches the TOP level. A goal profile
+            # written before 0.33.0 keeps its old shape and carries no
+            # calendar anchor, so the 3:1 plan silently restarts every
+            # Monday. Repair it once, here, instead of waiting for the
+            # athlete to re-save the goal by chance.
+            if (repaired := plan.migrate_goal(self.data.get("goal"))) is not None:
+                self.data["goal"] = repaired
+                self.schedule_save()
         _LOGGER.debug("archive loaded: %s", importer.archive_stats(self.data))
 
     @property

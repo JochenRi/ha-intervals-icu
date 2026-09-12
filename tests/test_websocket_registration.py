@@ -165,6 +165,32 @@ check("icu_training_load" in state_block,
 check('row.get("load")' not in state_block,
       "wochenlast: liest wieder wellness.load (Fehlerklasse 1)")
 
+
+# --- one rule for the calendar anchor ----------------------------------------
+# set_goal used to compute "the Monday of this week" itself. The moment the
+# archive migration needed the same rule, that inline arithmetic became a
+# second copy - error class 3, the one that cost 0.11.0 and 0.27.0 a release.
+# The rule now lives in plan.anchor_stamp, and these two checks keep it there.
+check("weekday()" not in source,
+      "anker: websocket rechnet sich den Montag wieder selbst aus")
+check("plan_lib.anchor_stamp(" in source,
+      "anker: set_goal benutzt die gemeinsame Ankerregel nicht")
+check("plan_lib.has_anchor(" in source,
+      "anker: set_goal prüft den Anker nicht über die gemeinsame Regel")
+
+# The repair itself has to be wired into the load path, or an old archive keeps
+# its drifting plan until the athlete happens to re-save the goal.
+STORE = MODULE.parent / "store.py"
+store_src = STORE.read_text()
+check("plan.migrate_goal(" in store_src,
+      "anker: das Archiv migriert das Zielprofil beim Laden nicht")
+if "plan.migrate_goal(" in store_src and "base.update(stored)" in store_src:
+    at = store_src.index("plan.migrate_goal(")
+    check(store_src.index("base.update(stored)") < at,
+          "anker: migriert wird, bevor die Altdaten übernommen sind")
+    check("schedule_save()" in store_src[at:at + 400],
+          "anker: die Reparatur wird nie gespeichert")
+
 print(f"test_websocket_registration: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)
