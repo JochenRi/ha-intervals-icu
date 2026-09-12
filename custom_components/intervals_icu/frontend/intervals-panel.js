@@ -628,7 +628,7 @@ class IntervalsIcuPanel extends HTMLElement {
     if (this._err && !this._rd) {
       html = `<div class="card pad err">Daten konnten nicht geladen werden: ${esc(this._err)}</div>`;
     } else if (this._tab === "trainer") {
-      html = this.rGoal(this._goal) + this.rTrainer(this._coach, this._rd);
+      html = this.rGoal(this._goal) + this.rTrainer(this._coach, this._rd) + this.rPlanWeeks(this._goal);
     }
     else if (this._tab === "signale") html = this.rSignale(this._signals);
     else if (this._tab === "heute") html = this.rHeute(this._today);
@@ -805,7 +805,7 @@ class IntervalsIcuPanel extends HTMLElement {
     return `<div class="wobar">${segs}</div>`;
   }
 
-  rWorkouts(w) {
+  rWorkouts(w, forTomorrow) {
     if (!w) return "";
     const list = w.workouts || [];
     if (!list.length) return "";
@@ -822,8 +822,12 @@ class IntervalsIcuPanel extends HTMLElement {
     if (pick < 0) pick = list.findIndex((e) => e.fit === "ok");
     const cards = list.map((entry, index) => {
       const open = this._woOpen === entry.key;
-      const FIT = { ok: ["green", "passt heute"], maybe: ["amber", "möglich, kostet aber"],
-                    no: ["red", "heute nicht"] };
+      // trained today -> the verdicts speak for tomorrow, from today's state
+      const FIT = forTomorrow
+        ? { ok: ["green", "passt"], maybe: ["amber", "möglich, kostet aber"],
+            no: ["red", "eher nicht"] }
+        : { ok: ["green", "passt heute"], maybe: ["amber", "möglich, kostet aber"],
+            no: ["red", "heute nicht"] };
       let [fitTone, fitWord] = FIT[entry.fit] || FIT.maybe;
       // the budget is part of the same verdict, not a second one next to it
       if (entry.fit === "ok" && entry.fits_budget === false) {
@@ -876,7 +880,9 @@ class IntervalsIcuPanel extends HTMLElement {
     const lead = pick >= 0 ? list[pick] : null;
     const leadCard = lead ? `<div class="leadrec">
       <div class="leadhead">${ico("ok", C.green, 16)}
-        <span>HEUTE EMPFOHLEN — aus deinem Zustand, den letzten Tagen und deinem Ziel</span></div>
+        <span>${forTomorrow
+          ? "FÜR MORGEN EMPFOHLEN — heute ist schon trainiert; bewertet nach dem Zustand von heute"
+          : "HEUTE EMPFOHLEN — aus deinem Zustand, den letzten Tagen und deinem Ziel"}</span></div>
       <div class="leadtitle">${esc(lead.title)}</div>
       <div class="leadmeta">${esc(lead.family_label)} · ${lead.minutes} min · Last ${fmt(lead.load)}${
         lead.hr_window ? ` · ${lead.hr_window[0]}–${lead.hr_window[1]} bpm` : ""}${
@@ -884,9 +890,10 @@ class IntervalsIcuPanel extends HTMLElement {
           Math.max(...lead.blocks_w.map((b) => b[1]))} W` : ""}</div>
       <p class="leadwhy">${esc(lead.effect)}</p>
       <div class="worow">
-        <button class="planbtn" data-act="plan" data-id="${esc(lead.key)}" data-when="${iso(0)}">
+        <button class="planbtn${forTomorrow ? " ghost" : ""}" data-act="plan" data-id="${esc(lead.key)}" data-when="${iso(0)}">
           ${ico("cal", null, 15)} heute in den Kalender</button>
-        <button class="planbtn ghost" data-act="plan" data-id="${esc(lead.key)}" data-when="${iso(1)}">morgen</button>
+        <button class="planbtn${forTomorrow ? "" : " ghost"}" data-act="plan" data-id="${esc(lead.key)}" data-when="${iso(1)}">${
+          forTomorrow ? `${ico("cal", null, 15)} morgen in den Kalender` : "morgen"}</button>
       </div>
       <p class="src">Warum diese: von allen Arten unten ist sie die erste, die zu deinem
       heutigen Zustand passt. Die anderen stehen darunter — mit dem, was sie heute kosten
@@ -896,8 +903,9 @@ class IntervalsIcuPanel extends HTMLElement {
     const conflict = w.conflict ? `<div class="warnrow">${ico("warn", C.amber, 16)}
       <span>${esc(w.conflict.text)}</span></div>` : "";
 
-    return `${conflict}${leadCard}<h3 class="secname">Alle Einheiten für heute
-      <span class="hint">— eine je Art, jede für heute bewertet. Watt aus deiner
+    return `${conflict}${leadCard}<h3 class="secname">Alle Einheiten für ${forTomorrow ? "morgen" : "heute"}
+      <span class="hint">— eine je Art, jede ${forTomorrow
+        ? "nach dem heutigen Zustand bewertet" : "für heute bewertet"}. Watt aus deiner
       FTP${w.ftp ? ` (${fmt(w.ftp)} W)` : ""}, Puls aus deiner gemessenen aeroben
       Schwelle${w.aerobic_hr ? ` (${w.aerobic_hr} bpm)` : ""}. Was du machst, entscheidest du —
       hier steht, was es heute kostet.</span></h3>
@@ -934,16 +942,39 @@ class IntervalsIcuPanel extends HTMLElement {
         <button class="planbtn" data-act="goaledit">Angaben ergänzen</button></div>`;
     }
 
+    return `
+      <div class="goalbar">
+        <button class="gtile" data-act="goaledit">
+          <small>ZIEL</small><b>${esc(goalInfo.label || plan.goal_label)}</b>
+          <em>${esc(plan.target)}</em></button>
+        <button class="gtile" data-act="goaledit">
+          <small>ZEIT</small><b>${fmt(profile.days_per_week)} Tage pro Woche</b>
+          <em>${plan.hard_per_week} harte ${plan.hard_per_week === 1 ? "Einheit" : "Einheiten"}
+            · ${esc(plan.hard_note ? "80/20 zählt Einheiten, nicht Minuten" : "")}</em></button>
+      </div>`;
+  }
+
+  /* The weeks themselves. They live BELOW the day's question, not above it:
+     the trainer head answers "what do I ride today", this answers "where is
+     this going". The big day is marked as the exception it is, and the
+     budget note explains the rhythm instead of demanding weekly hours the
+     athlete does not have. */
+  rPlanWeeks(g) {
+    if (!g) return "";
+    const plan = g.plan || {};
+    if (!plan.ready || !(plan.weeks || []).length) return "";
+
     const note = plan.budget_note;
-    const weeks = (plan.weeks || []).map((w) => {
+    const weeks = plan.weeks.map((w) => {
       const open = this._planOpen === String(w.index);
-      return `<div class="pweek ${w.kind}" data-act="planweeks" data-id="${w.index}">
+      return `<div class="pweek ${w.kind}${w.big_day ? " bigday" : ""}" data-act="planweeks" data-id="${w.index}">
         <div class="pwhead">
           <span class="pwno">W${w.index}</span>
-          <span class="pwphase">${esc(w.phase_label)}${w.kind === "recovery" ? " · Entlastung" : ""}</span>
+          <span class="pwphase">${esc(w.phase_label)}${w.kind === "recovery" ? " · Entlastung" : ""}${
+            w.big_day ? " · großer Tag" : ""}</span>
           <span class="pwh tn">${fmt(w.hours, 1)} h</span>
-          ${w.long_day_hours ? `<span class="pwlong tn">langer Tag ${fmt(w.long_day_hours, 1)} h${
-            w.long_day_capped ? " <em>(vom Wochenbudget gedeckelt)</em>" : ""}</span>` : ""}
+          ${w.long_day_hours ? `<span class="pwlong tn">${w.big_day ? "großer Tag" : "langer Tag"} ${
+            fmt(w.long_day_hours, 1)} h${w.big_day ? " <em>(die Ausnahme, die wächst)</em>" : ""}</span>` : ""}
         </div>
         ${open ? `<div class="pwbody">
           <p class="hint">${esc(w.phase_note)}</p>
@@ -958,16 +989,12 @@ class IntervalsIcuPanel extends HTMLElement {
       </div>`;
     }).join("");
 
-    return `
-      <div class="goalbar">
-        <button class="gtile" data-act="goaledit">
-          <small>ZIEL</small><b>${esc(goalInfo.label || plan.goal_label)}</b>
-          <em>${esc(plan.target)}</em></button>
-        <button class="gtile" data-act="goaledit">
-          <small>ZEIT</small><b>${fmt(profile.days_per_week)} Tage pro Woche</b>
-          <em>${plan.hard_per_week} harte ${plan.hard_per_week === 1 ? "Einheit" : "Einheiten"}
-            · ${esc(plan.hard_note ? "80/20 zählt Einheiten, nicht Minuten" : "")}</em></button>
-      </div>`;
+    return `<h3 class="secname">Die nächsten Wochen
+        <span class="hint">— ${esc(plan.pattern)} an Kalenderwochen verankert; der große Tag
+        wächst, die Wochen dazwischen bleiben gewöhnlich</span></h3>
+      ${note ? `<div class="warnrow">${ico("info", C.amber, 16)} <span>${esc(note.text)}</span></div>` : ""}
+      <div class="pweeks">${weeks}</div>
+      <p class="src">${esc(plan.caveat || "")}</p>`;
   }
 
   _goalForm(g) {
@@ -1004,11 +1031,11 @@ class IntervalsIcuPanel extends HTMLElement {
       <div class="daypick">
         ${[2, 3, 4, 5, 6, 7].map((n) => `<button class="dopt ${d.days_per_week === n ? "on" : ""}"
           data-act="goaldays" data-id="${n}"><b>${n}</b><span>Tage</span>
-          <em>${n <= 3 ? "1 hart" : n <= 6 ? "2 hart" : "3 hart"}</em></button>`).join("")}
+          <em>${n <= 4 ? "1 hart" : n <= 6 ? "2 hart" : "3 hart"}</em></button>`).join("")}
       </div>
       <p class="hint">Die harte Einheit pro Woche folgt aus der Tageszahl: die 80/20-Verteilung
-        zählt Einheiten, nicht Minuten. Bei fünf Fahrtagen vier lockere und eine harte; zwei
-        harte sind der Standard für Wochen von 8 bis 14 Stunden.</p>
+        zählt Einheiten, nicht Minuten. Bis vier Fahrtage eine harte, die übrigen locker;
+        zwei harte sind der Standard für Wochen von 8 bis 14 Stunden.</p>
       <div class="worow">
         <button class="planbtn" data-act="goalsave" ${d.days_per_week ? "" : "disabled"}>
           ${d.days_per_week ? "Plan erstellen" : "Tage wählen"}</button>
@@ -1273,7 +1300,7 @@ class IntervalsIcuPanel extends HTMLElement {
       ${c.trained_today ? `<p class="note">${ico("ok", C.green, 14)} Heute liegt schon eine
         Einheit im Archiv — die Karten unten gelten damit eher für morgen.</p>` : ""}
 
-      ${this.rWorkouts(this._workouts)}
+      ${this.rWorkouts(this._workouts, !!c.trained_today)}
 
       <h3 class="secname">Deine gemessenen Anker <span class="hint">— keine Prozente einer Maximalherzfrequenz</span></h3>
       <div class="card ancgrid">
@@ -2869,6 +2896,7 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
 .pweek{background:${C.card};border:1px solid ${C.line};border-radius:10px;padding:10px 13px;cursor:pointer}
 .pweek:hover{border-color:${ROLE.series}55}
 .pweek.recovery{background:${C.card2};border-style:dashed}
+.pweek.bigday{border-color:${ROLE.series}88}
 .pwhead{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
 .pwno{color:${C.tx3};font-size:12.5px;font-weight:700;min-width:26px}
 .pwphase{font-size:14.5px;font-weight:650}

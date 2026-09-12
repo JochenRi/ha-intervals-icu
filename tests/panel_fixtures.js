@@ -359,11 +359,11 @@ function goal(kind) {
   if (kind === "neu") {
     return { profile: { goal: null, hard_days: [] }, state, goals, plan: { ready: false, missing: ["goal"] } };
   }
-  const week = (index, kindOf, hours, long, capped, phase) => ({
-    index, start: "2026-09-" + (12 + 7 * (index - 1)), kind: kindOf,
+  const week = (index, kindOf, hours, long, big, phase) => ({
+    index, start: "2026-09-" + String(7 + 7 * (index - 1)).padStart(2, "0"), kind: kindOf,
     phase: phase || "base", phase_label: phase === "specific" ? "Spezifisch" : "Grundlage",
     phase_note: "Umfang und aerobe Basis.", weeks_left: 30 - index,
-    hours, long_day_hours: long, long_day_capped: !!capped,
+    hours, long_day_hours: long, big_day: !!big,
     sessions: [
       { role: "long", title: `Langer Tag — ${long} h`, workout: "z2_90",
         detail: phase === "specific" ? "Die letzten 30–40 Minuten mit 2×10 min zügig." : "Noch ohne harte Anteile.",
@@ -384,23 +384,25 @@ function goal(kind) {
       ready: true, goal: "long_ride", goal_label: "Lange Fahrten durchstehen",
       target: "Durability — Ermüdungswiderstand",
       why: "Maunder: Zeitpunkt und Ausmaß der Verschlechterung während langer Belastung.",
-      key_session: "der lange Tag", pattern: "3:1", hard_per_week: 2,
-      hard_note: "2 harte Einheiten pro Woche. Die 80/20-Verteilung zählt Einheiten, nicht Minuten. Einschränkung: ein Review von 2023 fand keinen Beleg, dass ein Modell immer gewinnt.",
+      key_session: "der große Tag", pattern: "3:1", hard_per_week: 1,
+      hard_note: "1 harte Einheit pro Woche. Die 80/20-Verteilung zählt Einheiten, nicht Minuten. Einschränkung: ein Review von 2023 fand keinen Beleg, dass ein Modell immer gewinnt.",
       hours_source: "aus deinen letzten Wochen gerechnet",
       pattern_note: "Lastgleich verglichen fanden zwölf Wochen keinen Unterschied zwischen Block und traditionell.",
       longest_now: 3.5, target_hours: 6.5, gap_hours: 3.0, weeks_left: 33,
+      anchor: "2026-09-07", weeks_since_start: 0,
       budget_note: null,
-      weeks: [week(1, "load", 11, 3.9), week(2, "load", 11, 4.4),
-              week(3, "load", 11, 4.9, false, "specific"), week(4, "recovery", 7.2, 3.4)],
-      caveat: "Der Zuwachs von rund 12 % je Belastungswoche ist eine Konvention, kein Studienergebnis. Ein Einbruch schlägt jeden Plan.",
+      weeks: [week(1, "load", 11, 3.5), week(2, "load", 11, 3.5),
+              week(3, "load", 11.4, 3.9, true, "specific"), week(4, "recovery", 7.2, 2.5)],
+      caveat: "Der große Tag alle paar Wochen mit rund 12 % Zuwachs je Schritt ist eine Konvention, kein Studienergebnis. Ein Einbruch schlägt jeden Plan.",
     },
   };
   if (kind === "knapp") {
     return { ...base, plan: { ...base.plan,
-      budget_note: { kind: "too_little_time", needed_hours: 11, have_hours: 8,
-        reachable_long_day: 4.8,
-        text: "Mit 8 Stunden pro Woche ist eine 6.5-Stunden-Fahrt nicht aufzubauen." },
-      weeks: [week(1, "load", 8, 4.8, true), week(2, "load", 8, 4.8, true)] } };
+      budget_note: { kind: "big_day_exception", target_hours: 6.5, typical_hours: 8,
+        cycle_weeks: 4, big_week_hours: 10.5,
+        text: "Die 6.5-Stunden-Fahrt ist der einzelne große Tag: alle 4 Wochen einer, die Woche läuft dann auf bis zu 10.5 Stunden — als bewusste Ausnahme (Audax-Praxis, eine Konvention)." },
+      weeks: [week(1, "load", 8, 4.0), week(2, "load", 8, 4.0),
+              week(3, "load", 10.5, 6.5, true), week(4, "recovery", 5.2, 2.8)] } };
   }
   return base;
 }

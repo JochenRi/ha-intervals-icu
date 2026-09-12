@@ -1,13 +1,13 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 12.09.2026 · **Version:** 0.32.0 · **Status:** produktiv auf HEIMDALL,
+**Stand:** 12.09.2026 · **Version:** 0.33.0 · **Status:** produktiv auf HEIMDALL,
 Auslieferung über HACS aus `github.com/JochenRi/ha-intervals-icu`
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lokal
 archiviert, auswertet und in einem eigenen Seitenleisten-Panel darstellt.
 
-**Umfang:** ~8.900 Zeilen, davon 3.130 Frontend · 21 WebSocket-Befehle · 15 Einheiten in
-8 Familien · 14 Testdateien mit rund 1.930 Einzelprüfungen · 32 Releases.
+**Umfang:** ~9.000 Zeilen, davon 3.134 Frontend · 21 WebSocket-Befehle · 15 Einheiten in
+8 Familien · 14 Testdateien mit rund 2.030 Einzelprüfungen · 33 Releases.
 
 ---
 
@@ -192,6 +192,19 @@ Recherche:
 
 ## 7. Fehler und was sie gelehrt haben
 
+**0.33.0 — Paket 2, der Plan-Umbau (`plan.py`), plus ein Fund beim Hinsehen:**
+
+| Fund | Klasse | Fix |
+|---|---|---|
+| `hard_per_week` lieferte bei 4 Fahrtagen 2 harte Einheiten (50 % der Einheiten hart) — `hard_note` und Formular predigten das Gegenteil. | Code widerspricht dem eigenen Text | Regel: ≤ 4 Tage → 1 hart, 5–6 → 2, 7 → 3; Formular und Note angeglichen; zweite Qualitätseinheit variiert (long_ride: SweetSpot + Tempo statt 2× SweetSpot) |
+| `LONG_DAY_SHARE = 0.6` als Wochenregel verbot mathematisch jede Fahrt über 60 % des Wochenbudgets → 8 identische „3,3 h gedeckelt"-Wochen, Ziel-Default `longest × 1.6 = 9 h` mit „brauchst 15 Wochenstunden"-Note. | Regel modelliert die Praxis falsch | Langstrecken-Rhythmus: einzelner **großer Tag** je Zyklus (letzte Belastungswoche vor der Entlastung, alle 3–4 Wochen), wächst ~12 %/Schritt (als Konvention gekennzeichnet), Deckel nur am Ziel. Die Woche des großen Tages ist offen eine größere Woche (`big_day`-Flag). Ziel-Default = 6 h (das Ziel selbst), Budget-Note erklärt die Ausnahme statt Stunden zu fordern |
+| Der Plan startete bei jedem Öffnen „ab heute" — die Entlastungswoche war immer „Woche 4 ab jetzt" und kam nie. | Zustand ohne Anker | `plan_start` (Montag) wird bei `set_goal` im Archiv persistiert, Wochen sind an Kalenderwochen gebunden; Kalender-Anker-Vertrag in `test_plan` (Entlastungswoche erreicht ein festes Datum, aus vier Blickdaten geprüft) |
+| `rGoal` baute `weeks` und `budget_note` in Konstanten — und setzte beides nie ins Template ein. Die Planwochen waren im Panel **unsichtbar**. | „berechnet, aber nie verbaut" — zweiter Frontend-Fall nach 0.32.0 | Eigene Sektion `rPlanWeeks` unten im Trainer-Tab (die Tagesfrage bleibt oben, wie der Views-Test es erzwingt); Quelltext-Wächter in `test_panel_fixes` Block 16 |
+
+Dazu Rest von Trainer-Befund 10: bei `trained_today` sagen Leitkarte, Kartenliste und
+Kalenderknopf jetzt explizit „für morgen" (Block 15) — vorher stand der Hinweis über
+Karten, die zwei Zeilen tiefer „HEUTE EMPFOHLEN" behaupteten.
+
 **0.32.0 — vier Funde aus dem Trainer-Audit, drei davon bekannte Fehlerklassen:**
 
 | Fund | Klasse | Fix |
@@ -266,7 +279,7 @@ den Non-Responder-Befund (Manresa-Rocamora 2021).
 
 ## 9. Prüfstand
 
-**Vierzehn Dateien, rund 1.900 Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
+**Vierzehn Dateien, rund 2.030 Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
 HA-Instanz oder einen Browser.
 
 | Datei | prüft | Umfang |
@@ -278,11 +291,11 @@ HA-Instanz oder einen Browser.
 | `test_setup_simulation.py` | Entity-Aufbau, Übersetzungen, unique_ids | |
 | `test_laps.py` | Runden-Normalisierung | 34 |
 | `test_coach.py` | Zustandsregeln, Infektverlauf, Nachtreaktion, Einordnung, Bereiche | 141 |
-| `test_plan.py` | Zielprofil, Wochenmuster, Zeitbudget | 117 |
+| `test_plan.py` | Zielprofil, Wochenmuster, Zeitbudget, Progressions- und Kalender-Anker-Vertrag | 188 |
 | `test_workouts.py` | Einheitenauswahl, Wattumrechnung, Intervals-Syntax | 545 |
 | `test_websocket_registration.py` | Registrierung, Dekoratoren, FTP-Quelle | 135 |
-| `test_panel_views.js` | alle Ansichten gegen volle, leere, löchrige, entartete Daten | 707 |
-| `test_panel_fixes.js` | je ein Nachweis pro behobenem Fehler | 140 |
+| `test_panel_views.js` | alle Ansichten gegen volle, leere, löchrige, entartete Daten | 724 |
+| `test_panel_fixes.js` | je ein Nachweis pro behobenem Fehler | 169 |
 | `test_panel_design.js` | Gestaltungsregeln als Zusicherung | 49 |
 
 **Das Prinzip:** Ein Test, der den alten Fehler nicht nachweislich findet, ist kein Test. Bei
@@ -387,28 +400,23 @@ bzw. ein Reiter je Chat.
 
 | Reiter | Status |
 |---|---|
-| **Trainer** | ✅ auditiert 12.09. — 14 Befunde; Paket 1 (Befunde 1–6) als **0.32.0 ausgeliefert und am System verifiziert** (Konfliktwächter feuert live mit 68 %) |
+| **Trainer** | ✅ auditiert 12.09. — 14 Befunde; Paket 1 (Befunde 1–6) als **0.32.0 ausgeliefert und am System verifiziert** (Konfliktwächter feuert live mit 68 %); Paket 2 (Plan-Umbau + Rest Befund 10) als **0.33.0 gebaut**, Verifikation am System steht aus |
 | Belastung | ⏳ nächster Audit-Kandidat (seit 0.6.0 unangetastet, am weitesten hinter der Studienlage) |
 | Heute, Kalender, Fitness, Aktivitäten, DFA, Signale | offen |
 
-### Offen: Paket 2 — Plan-Umbau (`plan.py`, ein Chat)
+### Erledigt in 0.33.0: Paket 2 — Plan-Umbau (`plan.py`)
 
-1. **`hard_per_week` an den eigenen Text angleichen:** Code liefert bei 4 Fahrtagen
-   2 harte Einheiten (= 50 % der Einheiten), `hard_note` und Formular predigen
-   „bei fünf Fahrtagen eine harte". Ziel: ≤ 4 Tage → 1 hart; zweite Qualitätseinheit
-   (falls überhaupt) **variieren** statt 2× identisches `sweetspot_2x20`.
-   (0.32.0 deckelt bereits über `remaining // 1.2` — der Fix gehört trotzdem in die
-   Regel, nicht in den Nebeneffekt.)
-2. **Long-Ride-Progression real machen:** aktuell zeigt der Plan 8 identische Wochen
-   („langer Tag 3,3 h, gedeckelt") — `LONG_DAY_SHARE = 0.6` als Wochenregel ersetzen
-   durch den etablierten Langstrecken-Weg: einzelner großer Tag alle 2–4 Wochen
-   (Audax-Praxis), der wirklich wächst; Ziel-Default an das echte Ziel koppeln
-   (6 h+) statt `longest × 1.6 = 9 h` mit demotivierender Budget-Note.
-3. **3:1 am Kalender verankern:** Plan startet bei jedem Öffnen neu „ab heute",
-   die Entlastungswoche ist immer „Woche 4 ab jetzt" und kommt nie. Startdatum
-   persistieren (Archiv, wie das Goal-Profil), Wochen an Kalenderwochen binden.
-4. Rest von Befund 10: `trained_today` wird seit 0.32.0 angezeigt — offen ist, die
-   Empfehlung dann explizit „für morgen" auszuweisen.
+Alle vier Punkte umgesetzt (Details im Fehlerkapitel §7): `hard_per_week` ≤ 4 → 1
+mit variierter zweiter Qualitätseinheit · großer Tag je Zyklus statt
+`LONG_DAY_SHARE`-Wochenregel, Ziel-Default 6 h, Budget-Note als Ausnahme-Erklärung ·
+`plan_start` persistiert, Wochen an Kalenderwochen · „für morgen"-Auszeichnung bei
+`trained_today`. Dazu (Fund beim Umbau): die Planwochen wurden nie gerendert —
+jetzt `rPlanWeeks` unten im Trainer-Tab. Neue Verträge in `test_plan`:
+Progressions-Vertrag (großer Tag wächst über die Zyklen, Routinewoche wächst NICHT),
+Kalender-Anker-Vertrag (Entlastungswoche erreicht ihr festes Datum aus vier
+Blickdaten), Livefall-Simulation (4 Tage, 5,5 h, Ziel 6 h). Gegenproben: alte
+hard-Regel, Anker aus, Progression aus, Duplikat statt Variation — jeder Vertrag
+findet seinen Fehler.
 
 ### Offen: Paket 3 — Zustandsmaschine + Quellen (`coach.py`, ein Chat)
 

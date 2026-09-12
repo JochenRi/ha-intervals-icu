@@ -54,7 +54,9 @@ check(from_data["target_hours"] and from_data["target_hours"] > 3.5,
 eq(from_data["hours_source"], "aus deinen letzten Wochen gerechnet", "1 Herkunft der Stunden unklar")
 
 # the number of hard sessions follows from the days - 80/20 counts SESSIONS
-for days, expect in ((2, 1), (3, 1), (4, 2), (5, 2), (6, 2), (7, 3)):
+# up to FOUR days it is ONE hard session - the code has to say what its own
+# note says (0.32.x said two at four days: half the sessions hard)
+for days, expect in ((2, 1), (3, 1), (4, 1), (5, 2), (6, 2), (7, 3)):
     result = P.plan(profile(goal="ftp", days_per_week=days), {"typical_hours": 9},
                     weeks=2, today=TODAY)
     got = result["hard_per_week"]
@@ -86,38 +88,68 @@ few = P.plan(profile(goal="long_ride", target_hours=5, days_per_week=3,
                      hours_per_week=6, longest_day_hours=2.5), weeks=6, today=TODAY)
 eq(few["pattern"], "2:1", "2 Muster bei wenigen Tagen nicht angepasst")
 
-# --- 3  the long day grows, but only in loading weeks -------------------------
+# --- 3  the PROGRESSION contract: the big day grows, the routine week does not
+# The long-distance rhythm: one big day per cycle (the last loading week
+# before recovery) that grows ~12% per step and is capped at the target;
+# the routine weekly long ride stays put, the recovery week shortens it.
 longs = [w["long_day_hours"] for w in built["weeks"]]
-check(longs[1] > longs[0], f"3 langer Tag wächst nicht ({longs})")
+bigs = [w["long_day_hours"] for w in built["weeks"] if w["big_day"]]
+check(len(bigs) >= 2, f"3 kein großer Tag je Zyklus geplant ({bigs})")
+check(bool(bigs) and (all(b2 > b1 for b1, b2 in zip(bigs, bigs[1:])) or bigs[-1] == 6.5),
+      f"3 der große Tag wächst nicht über die Zyklen ({bigs})")
+steps = [round(b2 / b1, 2) for b1, b2 in zip(bigs, bigs[1:]) if b1]
+check(all(s <= 1.2 for s in steps), f"3 Sprung des großen Tages zu groß ({steps})")
+check(max(longs) <= 6.5 + 0.01, f"3 großer Tag übersteigt das Ziel ({max(longs)})")
+check(bool(bigs) and bigs[0] > built["longest_now"],
+      f"3 erster großer Tag wächst nicht über das bisher Gefahrene ({bigs[:1]})")
 rec_index = kinds.index("recovery")
-check(longs[rec_index] < longs[rec_index - 1],
+check(longs[rec_index] < longs[0],
       f"3 Entlastungswoche verkürzt den langen Tag nicht ({longs})")
-check(max(longs) <= 6.5 + 0.01, f"3 langer Tag übersteigt das Ziel ({max(longs)})")
-# Each step is a growth convention, not a leap. Compared LOADING week against
-# LOADING week: the recovery week deliberately shortens the long day, so the
-# step back out of it is not a jump in the progression.
-load_longs = [longs[i] for i, kind in enumerate(kinds) if kind == "load"]
-steps = [round(load_longs[i + 1] / load_longs[i], 2)
-         for i in range(len(load_longs) - 1) if load_longs[i]]
-check(all(s <= 1.2 for s in steps), f"3 Sprung im langen Tag zu groß ({steps})")
-check(any(s > 1.0 for s in steps), f"3 langer Tag wächst über die Belastungswochen nicht ({steps})")
+routine = [w["long_day_hours"] for w in built["weeks"]
+           if w["kind"] == "load" and not w["big_day"]]
+check(len(set(routine)) == 1,
+      f"3 der wöchentliche lange Tag soll NICHT wachsen — der große Tag wächst ({routine})")
+# the big-day week is openly a bigger week, not a lie about the budget
+big_weeks = [w for w in built["weeks"] if w["big_day"]]
+for w in big_weeks:
+    check(w["hours"] >= w["long_day_hours"],
+          f"3 Woche des großen Tages kleiner als der große Tag selbst (W{w['index']})")
+# the default target follows the GOAL (six hours and more), not longest x 1.6
+default_target = P.plan(profile(goal="long_ride", days_per_week=4),
+                        {"typical_hours": 5.5, "longest_ride_hours": 5.5},
+                        weeks=8, today=TODAY)
+eq(default_target["target_hours"], 6.0,
+   "3 Ziel-Default folgt nicht dem Ziel (6 h), sondern einer Hochrechnung")
+tall = P.plan(profile(goal="long_ride", days_per_week=4),
+              {"typical_hours": 9.0, "longest_ride_hours": 7.2}, weeks=4, today=TODAY)
+check(tall["target_hours"] >= 7.2, "3 Ziel-Default unter dem bereits Gefahrenen")
 
-# --- 4  a week that cannot carry the goal has to SAY so -----------------------
+# --- 4  a target beyond the weekly budget is an EXCEPTION, not an impossibility
+# The old note demanded target/0.6 weekly hours ("you need 15 hours a week").
+# The honest statement: the big day does not have to fit the week - it has to
+# fit ONE week per cycle, and that week is openly larger.
+# one growth step per CYCLE (not per week) - the horizon has to be long
+# enough to see the progression pass the old 60% ceiling
 tight = P.plan(profile(goal="long_ride", target_hours=6.5, days_per_week=4,
-                       hours_per_week=8, longest_day_hours=3.5), weeks=8, today=TODAY)
+                       hours_per_week=8, longest_day_hours=3.5), weeks=20, today=TODAY)
 note = tight["budget_note"]
-check(note is not None, "4 zu knappes Zeitbudget nicht gemeldet")
-check(note["kind"] == "too_little_time", "4 falsche Art der Meldung")
-check(note["reachable_long_day"] < 6.5, "4 erreichbare Dauer nicht genannt")
-check(note["needed_hours"] > 8, "4 benötigte Wochenzeit nicht genannt")
-# ... and the printed long day must never exceed what the week can carry
-for week in tight["weeks"]:
-    check(week["long_day_hours"] <= week["hours"] * P.LONG_DAY_SHARE + 0.05,
-          f"4 langer Tag ({week['long_day_hours']}) über dem Wochenbudget ({week['hours']})")
-check(any(w["long_day_capped"] for w in tight["weeks"]), "4 Deckelung nicht markiert")
-# with enough hours, no warning and the target is reached
+check(note is not None, "4 Ausnahme-Mechanik nicht erklärt")
+check(note["kind"] == "big_day_exception", "4 falsche Art der Meldung")
+check(note["cycle_weeks"] in (3, 4), "4 Zyklus nicht genannt")
+check(note["big_week_hours"] > 8, "4 Umfang der Ausnahme-Woche nicht genannt")
+check("Ausnahme" in note["text"], "4 der große Tag nicht als Ausnahme erklärt")
+check("Konvention" in note["text"], "4 Audax-Rhythmus nicht als Konvention benannt")
+check("nicht aufzubauen" not in note["text"],
+      "4 die alte Unmöglichkeits-Botschaft steht noch da")
+# the plan itself still GROWS toward the target instead of capping at 60%
+tight_bigs = [w["long_day_hours"] for w in tight["weeks"] if w["big_day"]]
+check(bool(tight_bigs) and tight_bigs[-1] > tight_bigs[0],
+      f"4 großer Tag wächst trotz kleinem Wochenbudget nicht ({tight_bigs})")
+check(bool(tight_bigs) and max(tight_bigs, default=0) > 8 * 0.6,
+      f"4 großer Tag weiter von der alten 60-Prozent-Regel gedeckelt ({tight_bigs})")
+# with a big weekly budget the target fits the ordinary rhythm - no note
 roomy = P.plan(profile(goal="long_ride", target_hours=6.5, days_per_week=5,
-                       hours_per_week=13, longest_day_hours=3.5), weeks=14, today=TODAY)
+                       hours_per_week=13, longest_day_hours=3.5), weeks=26, today=TODAY)
 check(roomy["budget_note"] is None, "4 Warnung trotz ausreichender Zeit")
 check(max(w["long_day_hours"] for w in roomy["weeks"]) >= 6.4,
       "4 Ziel trotz ausreichender Zeit nicht erreicht")
@@ -143,6 +175,78 @@ for week in built["weeks"]:
     check(len(hard) <= 2, f"6 Woche {week['index']}: {len(hard)} harte Einheiten")
     if week["kind"] == "recovery":
         eq(len(hard), 0, f"6 Entlastungswoche {week['index']} enthält Qualität")
+
+# --- 6b  a second quality session VARIES instead of duplicating ---------------
+for goal_key in ("long_ride", "ftp", "vo2max"):
+    two = P.plan(profile(goal=goal_key, days_per_week=6, hours_per_week=12,
+                         target_hours=6.0 if goal_key == "long_ride" else None),
+                 {"longest_ride_hours": 4.0}, weeks=3, today=TODAY)
+    for week in two["weeks"]:
+        hard = [s["workout"] for s in week["sessions"] if s["role"] == "quality"]
+        check(len(hard) == len(set(hard)),
+              f"6b {goal_key} W{week['index']}: doppelte Qualitätseinheit ({hard})")
+
+# --- 6c  the CALENDAR anchor contract -----------------------------------------
+# With a persisted plan_start the recovery week reaches a FIXED date: viewed
+# on any day, the week starting 2026-09-28 (abs week 4 of a 3:1 cycle from
+# Monday 2026-09-07) is the recovery week. Without the anchor the plan slid
+# forward daily and the recovery week never arrived.
+anchored = profile(goal="long_ride", target_hours=6.0, days_per_week=4,
+                   hours_per_week=10, longest_day_hours=4.0,
+                   plan_start="2026-09-07")
+kind_by_date = {}
+for view_day in ("2026-09-08", "2026-09-12", "2026-09-16", "2026-09-25"):
+    viewed = P.plan(anchored, {}, weeks=8, today=view_day)
+    eq(viewed["anchor"], "2026-09-07", f"6c Anker verrutscht ({view_day})")
+    for week in viewed["weeks"]:
+        prior = kind_by_date.get(week["start"])
+        check(prior is None or prior == week["kind"],
+              f"6c Wochenart für {week['start']} wechselt je nach Blickdatum "
+              f"({prior} vs {week['kind']})")
+        kind_by_date[week["start"]] = week["kind"]
+eq(kind_by_date.get("2026-09-28"), "recovery",
+   "6c Entlastungswoche erreicht ihr festes Datum nicht")
+# week starts are calendar weeks (Mondays), not "today plus n*7"
+from datetime import date as _date
+for day_iso, kind in kind_by_date.items():
+    check(_date.fromisoformat(day_iso).weekday() == 0,
+          f"6c Wochenstart {day_iso} ist kein Montag")
+# a plan_start mid-cycle: the FIRST shown week may already be the recovery
+# week - that is the point of the anchor
+late_view = P.plan(anchored, {}, weeks=4, today="2026-09-29")
+eq(late_view["weeks"][0]["kind"], "recovery",
+   "6c laufende Entlastungswoche beim Öffnen nicht erkannt")
+# an anchor in the future or garbage falls back to the current week
+odd = P.plan({**anchored, "plan_start": "kein-datum"}, {}, weeks=2, today=TODAY)
+check(odd["ready"], "6c kaputter Anker verhindert den Plan")
+future = P.plan({**anchored, "plan_start": "2027-01-04"}, {}, weeks=2, today=TODAY)
+eq(future["weeks_since_start"], 0, "6c Anker in der Zukunft nicht abgefangen")
+
+# --- 6d  the live case, end to end --------------------------------------------
+# 4 riding days, ~5.5 h typical, longest ride 5.5 h, goal long_ride 6 h+.
+# The old plan showed eight identical capped 3.3 h weeks and demanded 15
+# weekly hours. Now: routine weeks stay ~5.5 h, ONE hard session, and the
+# big day reaches the 6 h target as the marked exception.
+live = P.plan(profile(goal="long_ride", days_per_week=4),
+              {"typical_hours": 5.5, "longest_ride_hours": 5.5},
+              weeks=8, today=TODAY)
+check(live["ready"], "6d Livefall ergibt keinen Plan")
+eq(live["hard_per_week"], 1, "6d Livefall: mehr als eine harte Einheit")
+eq(live["target_hours"], 6.0, "6d Livefall: Ziel nicht 6 h")
+live_longs = [w["long_day_hours"] for w in live["weeks"]]
+check(len(set(live_longs)) > 1,
+      f"6d Livefall: wieder acht identische Wochen ({live_longs})")
+check(max(live_longs) >= 6.0, f"6d Livefall: großer Tag erreicht 6 h nicht ({live_longs})")
+live_note = live["budget_note"]
+check(live_note is not None and live_note["kind"] == "big_day_exception",
+      "6d Livefall: Ausnahme-Mechanik nicht erklärt")
+check("15" not in (live_note or {}).get("text", ""),
+      "6d Livefall: die 15-Stunden-Forderung steht noch da")
+for week in live["weeks"]:
+    if week["big_day"]:
+        check(week["hours"] > 5.5 + 0.05,
+              f"6d Livefall: Woche des großen Tages nicht als größere Woche geführt "
+              f"(W{week['index']}: {week['hours']} h)")
 
 # --- 7  different goals produce different weeks -------------------------------
 vo2 = P.plan(profile(goal="vo2max", days_per_week=4, hours_per_week=8), weeks=4, today=TODAY)

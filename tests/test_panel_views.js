@@ -164,7 +164,7 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   contains(html, "Lange Fahrten durchstehen", "plan: Ziel nicht genannt");
   contains(html, "Durability", "plan: Zielgröße nicht genannt");
   contains(html, "4 Tage pro Woche", "plan: Zeitangabe fehlt");
-  contains(html, "2 harte Einheiten", "plan: Folge der Tageszahl fehlt");
+  contains(html, "1 harte Einheit", "plan: Folge der Tageszahl fehlt");
   ok((html.match(/class="gtile"/g) || []).length === 2,
      "plan: Kopf ist nicht auf zwei Kacheln reduziert");
   ok(!/class="pweek /.test(html), "plan: Wochenplan steht wieder oben");
@@ -174,6 +174,31 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
 
   p._goal = null;
   clean(p.rGoal(null), "ziel ohne Daten");
+
+  // The weeks live BELOW the trainer, in their own section - visible again
+  // after living as computed-but-never-rendered dead code in rGoal.
+  p._goal = F.goal();
+  const pw = p.rPlanWeeks(p._goal);
+  clean(pw, "wochen");
+  ok(/class="pweek /.test(pw), "wochen: Wochenliste fehlt");
+  contains(pw, "Die nächsten Wochen", "wochen: Abschnitt ohne Titel");
+  contains(pw, "Kalenderwochen verankert", "wochen: Kalenderanker nicht benannt");
+  // the big day is marked as the exception, and it grows
+  contains(pw, "großer Tag", "wochen: großer Tag nicht ausgewiesen");
+  contains(pw, "die Ausnahme, die wächst", "wochen: Ausnahme-Charakter fehlt");
+  ok(/pweek load bigday/.test(pw), "wochen: Woche des großen Tages nicht markiert");
+  // the caveat travels with the weeks: convention, not finding
+  contains(pw, "kein Studienergebnis", "wochen: Konvention nicht als solche benannt");
+  // the recovery week is visible as such
+  contains(pw, "Entlastung", "wochen: Entlastungswoche nicht benannt");
+  // tight budget: the note explains the exception instead of demanding hours
+  const knapp = p.rPlanWeeks(F.goal("knapp"));
+  contains(knapp, "bewusste Ausnahme", "wochen: Budget-Note erklärt die Ausnahme nicht");
+  ok(!/nicht aufzubauen/.test(knapp), "wochen: alte Unmöglichkeits-Botschaft ist zurück");
+  // no plan, no section - and no crash on empty input
+  ok(p.rPlanWeeks(F.goal("neu")) === "", "wochen: Sektion trotz fehlendem Plan");
+  ok(p.rPlanWeeks(null) === "", "wochen: Sektion ohne Daten");
+  p._goal = null;
 }
 
 /* ── Trainer: Kopf, Empfehlung, Zustand ───────────────────────────────── */

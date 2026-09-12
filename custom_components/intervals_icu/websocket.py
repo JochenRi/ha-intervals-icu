@@ -622,6 +622,17 @@ async def websocket_set_goal(hass, connection, msg) -> None:
     for key in profile:
         if key in incoming:
             profile[key] = incoming[key]
+    # The calendar anchor for the 3:1 cycle. A plan counted "from today"
+    # keeps the recovery week forever four weeks away - so the start Monday
+    # is persisted with the profile. It survives edits to the same goal and
+    # resets only when the goal itself changes.
+    if not profile.get("plan_start"):
+        prior = coordinator.archive.data.get("goal") or {}
+        if prior.get("goal") == profile.get("goal") and prior.get("plan_start"):
+            profile["plan_start"] = prior["plan_start"]
+        else:
+            today = date.today()
+            profile["plan_start"] = (today - timedelta(days=today.weekday())).isoformat()
     coordinator.archive.data["goal"] = profile
     await coordinator.archive.async_save_now()
     state = _state_for_plan(coordinator.archive.data)

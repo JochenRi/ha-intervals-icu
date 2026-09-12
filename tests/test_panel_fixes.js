@@ -266,4 +266,40 @@ const acts = F.activities(), thr = F.thresholds();
      "14 nichts gefahren: Hinweis trotzdem da");
 }
 
+/* ── 15  trained today → the recommendation says FOR TOMORROW ──────────────
+   0.32.0 added the note above the cards; the cards and the lead still said
+   "HEUTE EMPFOHLEN". Half a fix: the reader saw the note, the recommendation
+   contradicted it two lines further down. */
+{
+  const tomorrow = p.rWorkouts(F.workouts(), true);
+  contains(tomorrow, "FÜR MORGEN EMPFOHLEN", "15 für morgen: Leitkarte sagt weiter heute");
+  contains(tomorrow, "Alle Einheiten für morgen", "15 für morgen: Kartenliste sagt weiter heute");
+  ok(!/HEUTE EMPFOHLEN/.test(tomorrow), "15 für morgen: HEUTE-Kopf steht noch da");
+  ok(!/passt heute/.test(tomorrow), "15 für morgen: Tagesurteil behauptet heute");
+  contains(tomorrow, "morgen in den Kalender", "15 für morgen: Kalenderknopf zielt nicht auf morgen");
+  const today = p.rWorkouts(F.workouts());
+  contains(today, "HEUTE EMPFOHLEN", "15 heute: Kopf verstellt");
+  ok(!/FÜR MORGEN/.test(today), "15 heute: fälschlich für morgen");
+  // and the trainer view passes the flag through - the note and the cards
+  // must agree, one source, one verdict
+  const trained = p.rTrainer(F.coach("trained"), rd);
+  ok(/schon eine/.test(trained) === /FÜR MORGEN EMPFOHLEN/.test(trained) || !trained.includes("leadhead"),
+     "15 trainer: Hinweis und Leitkarte widersprechen sich");
+}
+
+/* ── 16  the plan weeks are RENDERED, not just computed ────────────────────
+   rGoal built the weeks and the budget note into consts and inserted
+   neither - the frontend variant of 0.9.4, same class as the orphaned
+   rTrainer blocks of 0.32.0. Checked rendered AND at source level. */
+{
+  const pw = p.rPlanWeeks(F.goal());
+  ok(/class="pweek /.test(pw), "16 wochen: nicht gerendert");
+  const source = String(p.rGoal);
+  ok(!/plan\.weeks/.test(source), "16 rGoal berechnet weiter Wochen, die es nicht rendert");
+  ok(!/budget_note/.test(source), "16 rGoal berechnet weiter die Note, die es nicht rendert");
+  const assembly = H.source();
+  ok(assembly.includes("this.rPlanWeeks(this._goal)"),
+     "16 rPlanWeeks wird nirgends in eine Ansicht eingesetzt");
+}
+
 report("test_panel_fixes");
