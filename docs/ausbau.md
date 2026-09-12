@@ -174,7 +174,7 @@ Etikett. Das Etikett ist die Regel, die Zahl die Ausnahme.
 
 ### B3 · Die Trennung, an der so etwas sonst kippt
 
-Zwei Verwendungen, strikt getrennt:
+**Entschieden am 12.09.2026.** Drei Ebenen, strikt getrennt:
 
 1. **Basislinie und Referenz** (60-Tage-Mittel, Standardabweichung): hier wird
    gewichtet. Gewichtetes Mittel und gewichtete Streuung, Mindestbelegung
@@ -184,6 +184,20 @@ Zwei Verwendungen, strikt getrennt:
    Nutzen der Morgenwerte ist (September 2026: −2,7 / +3,7 SD). Stattdessen
    trägt der Tag ein Merkmal „erklärt": ein −2-SD-Tag nach Nachtschicht löst
    keinen Einbruch aus, bleibt aber sichtbar und wird benannt.
+
+3. **Last, ACWR, Monotonie, Lastbudget: unberührt.** Die Last ist kein Messwert
+   unter schwankenden Bedingungen, sondern ein Ereignisprotokoll — die 129 Last
+   vom 04.09. sind gefahren, gleich wie die Nacht davor war. Die Definitionen
+   von ACWR (Gabbett/Blanch) und Monotonie (Foster) beruhen auf **rohen**
+   Lastsummen; eine gewichtete Last macht beide bedeutungslos. Dazu ein
+   Sicherheitsargument: das Lastbudget rechnet „7 × chronisch × Ziel − letzte
+   sechs Tage" — eine kleingerechnete Last **erlaubt mehr**, nicht weniger.
+   Genau die falsche Richtung.
+
+   Dass eine Nachtschicht den Vorschlag beeinflusst, bleibt richtig — aber über
+   den **Zustand**, nicht über die Last. Der Weg ist: Kontext → Bereitschaft →
+   Einheitenurteil („heute Nachtschicht, harte Einheit verschieben"), nie eine
+   heimlich gekürzte Wochenlast.
 
 Tage mit `w = 0` werden weiter gezeichnet, nur hohl — dasselbe Muster wie die
 dünnen DFA-Messungen. Konsistenz spart Erklärung.
@@ -201,10 +215,15 @@ Gewichtung. Erst bauen, wenn B2/B3 stehen.
 - **Erfassung dort, wo der Tag entsteht:** Klick auf die Tagesspalte in „Woher
   das kommt" (Heute) und auf den Tag im Kalender öffnet ein Popover mit Chips.
   Ein Klick, kein Formular.
-- **Dauerhaftes Schichtmuster** als Feld im Zielprofil (z. B. Früh/Spät/Nacht
-  rotierend): setzt Vorschläge automatisch, bleibt überschreibbar. **Nie still
-  setzen, immer vorschlagen** — ein automatisch gesetztes Etikett, das niemand
-  bestätigt hat, ist eine erfundene Messbedingung.
+- **Kein Schichtmuster im Profil, keine Automatik — entschieden am 12.09.2026.**
+  Die Etiketten werden von Hand gepflegt. Ein automatisch gesetztes Etikett, das
+  niemand bestätigt hat, ist eine erfundene Messbedingung, und die landet als
+  harte Zahl in der Basislinie. Ein früher erwogenes Profilfeld „Schichtmuster"
+  entfällt ersatzlos; abgeleitet wird **nichts**.
+- Damit Handpflege keine Klickarbeit wird, zwei Hilfen, die nichts raten:
+  **Mehrfachauswahl** im Kalender (Zeitraum ziehen, ein Etikett auf mehrere
+  Tage) und **„letztes Etikett wiederholen"** als Kurzweg. Eine Nachtschicht-
+  woche kostet dann zwei Handgriffe statt sieben.
 - **Eigene Kachel auf Heute**, in der Form der Signalkarten (HFV, Ruhepuls,
   Schlafdauer):
   - Großwert „1,0" bzw. „0,0 · Nachtschicht", Referenz rechts „Standard 1,0".
@@ -235,9 +254,12 @@ lokal, nichts geht an Intervals.
   wieder auseinander.
 - `test_plan.py`/`test_import.py`: Archiv ohne `day_context` lädt (Altbestand),
   Migration legt den Block leer an.
+- **Wächter: die Last bleibt roh.** Ein Test, der beweist, dass `analytics`
+  (ACWR, Monotonie, Budget) die Gewichte nicht liest — sonst wandert die
+  Gewichtung beim nächsten Umbau still in die Lastrechnung.
 - Gegenproben: Gewichtung in der Warnlampe aktivieren (der Infekt-Fall muss
-  dann durchfallen), Mindestbelegung entfernen, Etikett still automatisch
-  setzen.
+  dann durchfallen), Mindestbelegung entfernen, Gewichte in die Lastsumme
+  ziehen — jede Mutation muss gezählt und benannt melden.
 
 ---
 
