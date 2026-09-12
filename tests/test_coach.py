@@ -639,6 +639,47 @@ _expected = (sum(_wk) / len(_wk) - _bmean) / _bsd
 check(_st29["week_z"] is not None and _st29["week_z"] == round(_expected, 2),
       f"29 log: week_z {_st29['week_z']} statt ln-Rechnung {round(_expected, 2)}")
 
+# --- 30 · Eingefrorene Referenz: der No-op-Anker für Paket B ------------------
+# Diese Werte wurden NACH der Log-Angleichung (d99fd8f) und VOR der ersten
+# Zeile Gewichtung festgeschrieben. Ein Archiv ganz ohne Etiketten muss sie
+# exakt reproduzieren — sonst hat die Gewichtung den Bestand verändert, bevor
+# je ein Etikett gesetzt wurde. Die Sammel-Prüfsumme ist das weite Netz, die
+# benannten Felder davor sagen, WAS sich bewegt hat.
+import hashlib  # noqa: E402
+import json  # noqa: E402
+from collections import Counter  # noqa: E402
+
+_f30 = build()
+_st30 = coach.state(_f30)
+_ser30 = coach.state_series(_f30)
+_td30 = coach.today(_f30)
+eq(_st30["state"], "ready", "30 referenz: state")
+eq(_st30["week_z"], 0.0, "30 referenz: week_z")
+eq(_st30["recent_hrv_z"], 0.47, "30 referenz: recent_hrv_z")
+eq(_st30["recent_rhr_z"], -0.47, "30 referenz: recent_rhr_z")
+eq(len(_ser30), 120, "30 referenz: Serienlänge")
+eq(dict(Counter(r["state"] for r in _ser30)),
+   {"unknown": 20, "strained": 40, "ready": 60}, "30 referenz: Zustandszählung")
+eq([r["state"] for r in _ser30[-5:]],
+   ["strained", "ready", "ready", "strained", "ready"], "30 referenz: letzte fünf Tage")
+eq([(s["key"], s["value"], s["baseline"], s["z"]) for s in _td30["signals"]],
+   [("hrv", 51.0, 49.98, 0.71), ("rhr", 55.8, 56.0, 0.71)],
+   "30 referenz: Signalkarten (Wert, Basislinie, z)")
+eq(_td30["bands"].get("hrv"),
+   {"baseline": 49.98, "noise": [49.28, 50.69], "usual": [48.59, 51.41],
+    "slump": 47.23, "unit": "ms"}, "30 referenz: HRV-Band in echten Einheiten")
+eq(_td30["bands"].get("rhr"),
+   {"baseline": 56.0, "noise": [55.86, 56.14], "usual": [55.72, 56.28],
+    "slump": 56.57, "unit": "bpm"}, "30 referenz: Ruhepuls-Band in echten Einheiten")
+_trio30 = {"state": _st30, "series": _ser30,
+           "today_sig": [(s["key"], s["value"], s["baseline"], s["z"])
+                         for s in _td30["signals"]],
+           "bands": _td30["bands"]}
+_sha30 = hashlib.sha256(json.dumps(_trio30, sort_keys=True,
+                                   ensure_ascii=False).encode()).hexdigest()
+eq(_sha30, "058c4fc791eb105fb27277db28217180c1fb17970e5cef710b01f7223edb457c",
+   "30 referenz: Prüfsumme — etwas außerhalb der benannten Felder hat sich bewegt")
+
 print(f"test_coach: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)
