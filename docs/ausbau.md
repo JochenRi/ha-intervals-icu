@@ -136,6 +136,59 @@ aufgeht, ist sie ein Diagramm und braucht eine Achse.
 
 ---
 
+## Was Paket A über diese Spezifikation gelehrt hat
+
+**Nachgetragen am 12.09.2026, nach 0.36.0/0.36.1.** Die Bau-Session hat acht
+Widersprüche zwischen dieser Datei und dem Quelltext gemeldet, statt darüber
+hinwegzubauen. Vier davon sind Muster, keine Einzelfälle — sie gelten für B und
+C genauso, und die nächste Session liest sie, bevor sie der Spezifikation
+glaubt.
+
+**1 · „Berührt nur das Frontend" war falsch — prüf es am Feld, nicht am Text.**
+A5 sollte laut Spezifikation ohne Backend auskommen. Tatsächlich war
+`today.history` eine reine Werteliste über *die vorhandenen* Wellness-Tage: eine
+Achse nach „heute minus n" wäre ab der ersten Lücke falsch gewesen. Es brauchte
+`history_days` mit Datum, Last und Zustand je Tag. **Für B heißt das:** vor dem
+ersten Handgriff nachsehen, welche Felder überhaupt ein Datum tragen. Der
+Tageskontext ist datumsindiziert, die Signalreihen waren es nicht.
+
+**2 · Eine vorgeschriebene Prüfung ist erst eine Prüfung, wenn die Fixture sie
+unterscheidbar macht.** Zwei der vier Fallen aus Paket A schlugen zunächst
+überhaupt nicht an: die Fixture ließ die Schwelle in jedem Fenster zwischen 150
+und 171 kreisen, eine fensterweise skalierte Achse hätte identisch ausgesehen.
+Und alle relativen Fenster enden „jetzt", haben also dieselben letzten fünf
+Messungen — die Fensterunabhängigkeit der Leitzahl zeigt sich erst an einem
+**eingefrorenen** Zeitraum. Jede Zusicherung in B und C braucht deshalb den
+Nachweis, dass die Fixture zwei unterscheidbare Fälle enthält.
+
+**3 · Aussagen über DOM-Verhalten gehören simuliert, nicht gegrept.** Der
+`scrollIntoView`-Rat aus A1 stand so in dieser Datei und war falsch: bei
+`:host{overflow-y:auto}` scrollt er den ganzen Panel-Container, der Graph floh
+vor dem Zeiger (0.36.1). Eine Quelltextsperre hätte drei der sechs
+Kausalpfade nie gesehen — erst der echte `pointermove` über einem
+aufzeichnenden DOM zeigte es. **Für B:** jede Behauptung über Fokus, Scrollen
+oder Neuaufbau beim Setzen eines Etiketts wird am simulierten Ereignis geprüft.
+
+**4 · Kennzahlen des Prüfstands gegen die Tabelle halten, nicht gegen den
+Fließtext.** Der PROJEKTSTAND sprach von 15 Testdateien, es waren 14 — ein
+Zählfehler aus 0.35.0. Schwerer: fünf Dateien liefen 187 Prüfungen, **ohne sie
+zu melden**, und der Hygiene-Wächter ließ das durch, weil „höchstens eine
+Summary" auch null erlaubt. Die Kennzahl 2.354 deckte 9 von 14 Dateien ab.
+Beides in 0.36.0 behoben (jetzt 2.778 über 14 Dateien). **Regel:** eine Datei
+ohne gemeldete Zahl im Suite-Lauf ist ein Befund, kein Schönheitsfehler.
+
+### Was daraus für das Archiv in Paket B folgt
+
+`importer.empty_data()` legt das Grundgerüst an: `wellness`, `activities`,
+`dfa`, `unavailable`, `goal`, `last_import` und die Versionsmarken. **`day_context`
+muss dort hinein** — sonst wiederholt sich exakt die Lücke, die 0.35.0
+repariert hat: `store.async_load` füllt fehlende Schlüssel nur auf der obersten
+Ebene auf, und ein Block, den das Grundgerüst nicht kennt, entsteht bei
+Altbeständen nie. Dazu gehört eine Migration in der Bauart von
+`plan.migrate_goal()` samt Gegenprobe.
+
+---
+
 ## Paket B — Tageskontext (Etiketten und Gewichte)
 
 ### B1 · Was die Forschung macht
