@@ -988,4 +988,164 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   ok(M.esc('<b>&"') === "&lt;b&gt;&amp;&quot;", "format: esc");
 }
 
-report("test_panel_views");
+/* ── Tagesbeschriftung (Paket B5): Chips, Marker, Dialog ────────────────── */
+{
+  const q = new M.Panel();
+  q._nowIso = F.TODAY;
+  q._dayctx = F.dayContext();
+
+  // Heute: jede Tagesspalte ist klickbar, beschriftete Tage tragen den Marker
+  const page = q.rHeute(F.today());
+  clean(page, "beschriftung heute");
+  ok((page.match(/class="tday [^"]*" data-act="daylabel"/g) || []).length === 7,
+     "beschriftung: nicht jede Tagesspalte klickbar");
+  contains(page, "klicken zum Beschriften", "beschriftung: keine Einladung im Titel");
+  contains(page, "Etikett: Nachtschicht", "beschriftung: Etikett fehlt im Tagestitel");
+  ok((page.match(/class="ctxmark"/g) || []).length >= 1,
+     "beschriftung: beschrifteter Tag ohne Marker");
+
+  // Rückfall-Hinweis: nur wenn das Backend ihn liefert, und dann mit Zahlen
+  const note = "Basislinie auf ungewichtet zurückgefallen — nur 25 belastbare Tage von 30 nötigen, 6 Tage sind etikettiert";
+  const withNote = q.rHeute({ ...F.today(), context_note: note });
+  contains(withNote, "25 belastbare", "beschriftung: Hinweis ohne Zahlen");
+  ok(/class="ctxnote"/.test(withNote), "beschriftung: Hinweiszeile fehlt");
+  ok(!/class="ctxnote"/.test(page), "beschriftung: Hinweis ohne Anlass");
+
+  // Kalender: Vergangenheit klickbar, Zukunft nicht, Marker in der Kopfzeile
+  const cellPast = q._dayCell({ date: "2026-09-10", weekday: 3, week: "2026-W37" }, F.TODAY);
+  ok(/data-act="daylabel"/.test(cellPast), "beschriftung: Kalenderzelle nicht klickbar");
+  ok(/class="ctxmark"/.test(cellPast), "beschriftung: Kalendermarker fehlt");
+  contains(cellPast, "Etikett: Nachtschicht", "beschriftung: Markertitel ohne Etikettname");
+  const cellFut = q._dayCell({ date: "2026-09-20", weekday: 6, week: "2026-W38", future: true }, F.TODAY);
+  ok(!/data-act="daylabel"/.test(cellFut),
+     "beschriftung: Zukunftstag klickbar — ein Etikett beschreibt eine Messung, keinen Plan");
+
+  // Der Dialog: fest zentriert, Chips aus dem Vokabular, Entfernen ist anders
+  q._ctxDlg = "2026-09-10";
+  const dlg = q._ctxPopover();
+  clean(dlg, "beschriftung dialog");
+  ok((dlg.match(/class="ctxchip[ "]/g) || []).length === 7,
+     "beschriftung: nicht alle sieben Etiketten als Chip");
+  for (const lbl of ["Normal", "Nachtschicht", "Spätschicht", "Alkohol", "Reise", "Krank", "Uhr nicht getragen"]) {
+    contains(dlg, lbl, `beschriftung: Chip „${lbl}“ fehlt`);
+  }
+  ok((dlg.match(/data-act="ctxset"/g) || []).length === 7, "beschriftung: Chips ohne Schreibweg");
+  contains(dlg, "Gewicht 0,5", "beschriftung: Chip ohne Gewichtsangabe");
+  // Auswahl trägt Form UND Wort: Klasse on, Haken, "gewählt"
+  ok(/class="ctxchip on"/.test(dlg), "beschriftung: aktueller Chip nicht markiert");
+  contains(dlg, "gewählt", "beschriftung: Auswahl ohne Wort");
+  // Entfernen: eigene Zeile, eigener Schreibweg, als Rücknahme erklärt
+  ok(/class="ctxremove"/.test(dlg) && /data-act="ctxdel"/.test(dlg),
+     "beschriftung: kein Löschweg");
+  contains(dlg, "Etikett entfernen", "beschriftung: Löschweg unbenannt");
+  contains(dlg, "Rücknahme, keine Aussage", "beschriftung: Löschen nicht von „normal“ unterschieden");
+  ok(!/ctxremove[^>]*--cc/.test(dlg),
+     "beschriftung: Entfernen trägt eine Kategorienfarbe — es ist keine Kategorie");
+  // Quellenblock nach Auflage A: belegt, Setzung, B4 — und der Erklärtext (Auflage B)
+  contains(dlg, "Sensors 2021", "beschriftung: Altini/Plews fehlt");
+  contains(dlg, "PLOS ONE 2013", "beschriftung: Boudreau/Boivin fehlt");
+  contains(dlg, "Setzung", "beschriftung: Setzungen nicht als Setzung benannt");
+  contains(dlg, "B4", "beschriftung: die saubere Lösung ist nicht benannt");
+  contains(dlg, "Messbedingung, nicht dein Zustand", "beschriftung: Erklärtext fehlt");
+  contains(dlg, "gesehen, benannt", "beschriftung: was „erklärt“ heißt, fehlt");
+  // ohne Eintrag: kein Löschweg, nichts vorgewählt
+  q._ctxDlg = "2026-09-09";
+  const dlg2 = q._ctxPopover();
+  ok(!/ctxremove/.test(dlg2), "beschriftung: Löschweg ohne Eintrag");
+  ok(!/class="ctxchip on"/.test(dlg2), "beschriftung: Vorauswahl ohne Eintrag");
+  q._ctxDlg = null;
+
+  // fester Dialog, kein am Klickpunkt schwebender Kasten (0.9.x-Klasse):
+  // keine Inline-Koordinaten am Dialog, Position kommt aus dem Stylesheet
+  ok(!/ctxdlg" style=/.test(dlg), "beschriftung: Dialog mit Inline-Position");
+  const css = H.source();
+  ok(/\.ctxdlg\{position:fixed/.test(css), "beschriftung: Dialog nicht fest positioniert");
+  ok(/\.ctxback\{position:fixed/.test(css), "beschriftung: kein Backdrop");
+  ok(/\.ctxremove\{[^}]*dashed/.test(css), "beschriftung: Entfernen nicht sichtbar anders (gestrichelt)");
+  // Zukunftssperre sitzt im Klickweg
+  ok(/id <= this\._now\(\)/.test(css), "beschriftung: Zukunftssperre fehlt im Klickweg");
+
+  // Hohle Punkte: w=0-Tage bleiben gezeichnet, zählen sichtbar nicht
+  const t = F.today();
+  const hd = t.history_days.slice();
+  hd[hd.length - 2] = { ...hd[hd.length - 2], context: { tag: "nachtschicht", weight: 0 } };
+  const tCtx = { ...t, history_days: hd };
+  q._sigOpen = "hrv";
+  const open = q.rHeute(tCtx);
+  ok(/fill="none" stroke="[^"]+" stroke-width="1.6"/.test(open),
+     "beschriftung: w=0-Tag nicht hohl gezeichnet");
+  contains(open, "Hohle Punkte", "beschriftung: Hohlpunkte unerklärt");
+  contains(open, "zählen nicht in die Basislinie", "beschriftung: Bedeutung der Hohlpunkte fehlt");
+  const xl = q._grp.tsig_hrv && q._grp.tsig_hrv.xl;
+  ok(xl && xl(hd.length - 2).includes("Etikett: Nachtschicht"),
+     "beschriftung: Ablesestreifen nennt das Etikett nicht");
+  ok(xl && !xl(0).includes("Etikett"), "beschriftung: Ablesestreifen etikettiert unbeschriftete Tage");
+  q._sigOpen = null;
+}
+
+/* ── Schreibweg: Scroll-Erhalt, Neuladen, Fehlerweg (async) ─────────────── */
+(async () => {
+  const q = new M.Panel();
+  q._nowIso = F.TODAY;
+  q._weeks = 8;
+  q._sigDays = 120;
+  q._dayctx = F.dayContext();
+
+  let scroll = 640, renders = 0;
+  Object.defineProperty(q, "scrollTop", { get: () => scroll, set: (v) => { scroll = v; } });
+  const calls = [];
+  q._ws = async (type, extra) => {
+    calls.push([type, extra || null]);
+    if (type === "set_day_context") return { date: extra.date, entry: extra.tag ? { tag: extra.tag } : null };
+    if (type === "day_context") return F.dayContext();
+    if (type === "days") return F.days();
+    if (type === "today") return F.today();
+    if (type === "coach") return F.coach();
+    if (type === "signals") return F.signals();
+    return {};
+  };
+  // innerHTML wirft die Scroll-Lage mit den alten Knoten weg — genau das
+  // simuliert der Render-Stummel, und der Schreibweg muss sie restaurieren.
+  q._render = () => { renders++; scroll = 0; };
+
+  q._ctxDlg = "2026-09-10";
+  await q._ctxWrite("2026-09-10", "krank");
+  ok(scroll === 640, `beschriftung schreiben: Scroll-Lage verloren (${scroll} statt 640)`);
+  ok(renders === 1, "beschriftung schreiben: kein Re-Render");
+  ok(q._ctxDlg === null, "beschriftung schreiben: Dialog bleibt offen");
+  const sent = calls.find(([t]) => t === "set_day_context");
+  ok(!!sent && sent[1].date === "2026-09-10" && sent[1].tag === "krank",
+     "beschriftung schreiben: falscher Schreibaufruf");
+  for (const need of ["today", "days", "day_context", "coach"]) {
+    ok(calls.some(([t]) => t === need), `beschriftung schreiben: ${need} nicht neu geladen`);
+  }
+  ok(!calls.some(([t]) => t === "signals"),
+     "beschriftung schreiben: signals geladen, obwohl der Reiter nie offen war");
+
+  // mit geladenen Signalen wird auch die Signale-Ansicht aufgefrischt
+  calls.length = 0; q._signals = F.signals(); q._ctxDlg = "2026-09-07";
+  await q._ctxWrite("2026-09-07", null);
+  const del = calls.find(([t]) => t === "set_day_context");
+  ok(!!del && del[1].tag === null, "beschriftung löschen: tag=null wird nicht gesendet");
+  ok(calls.some(([t]) => t === "signals"), "beschriftung löschen: Signale nicht aufgefrischt");
+
+  // Fehlerweg: Dialog bleibt offen, Fehler wird gezeigt, nichts stürzt
+  calls.length = 0; renders = 0; scroll = 300;
+  q._ws = async () => { throw new Error("unbekanntes Etikett: 'erfunden'"); };
+  q._ctxDlg = "2026-09-10";
+  await q._ctxWrite("2026-09-10", "erfunden");
+  ok(q._ctxDlg === "2026-09-10", "beschriftung fehler: Dialog verschwindet mit dem Fehler");
+  ok(String(q._ctxErr || "").includes("unbekanntes Etikett"),
+     "beschriftung fehler: Meldung erreicht den Dialog nicht");
+  ok(renders === 1, "beschriftung fehler: Fehlanzeige ohne Re-Render");
+
+  // Sperre gegen Doppelklick: während busy wird nicht erneut geschrieben
+  let writes = 0;
+  q._ws = async (type) => { if (type === "set_day_context") writes++; return {}; };
+  q._ctxBusy = true;
+  await q._ctxWrite("2026-09-10", "krank");
+  ok(writes === 0, "beschriftung: Doppelklick schreibt doppelt");
+  q._ctxBusy = false;
+
+  report("test_panel_views");
+})();

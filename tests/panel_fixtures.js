@@ -736,4 +736,40 @@ function signals(kind) {
 }
 
 /* concrete sessions as intervals_icu/workouts returns them */
-module.exports = { TODAY, days, load, readiness, activities, streams, thresholds, calendar, pmc, laps, lapsWithBounds, steadyStream, night, context, goal, today, coach, signals, workouts };
+/* The day_context read payload, mirroring websocket_day_context: entries,
+ * the vocabulary, and the source-block texts (Auflage A/B). */
+function dayContext(extra) {
+  const days = Object.assign({
+    "2026-09-10": { tag: "nachtschicht", weight: 0.0, note: "", set_at: "2026-09-10" },
+    "2026-09-07": { tag: "alkohol", weight: 0.5, note: "", set_at: "2026-09-08" },
+  }, extra || {});
+  return {
+    days,
+    tags: {
+      normal: { label: "Normal", weight: 1.0, read: "voller Beitrag zur Basislinie" },
+      nachtschicht: { label: "Nachtschicht", weight: 0.0, read: "Tagschlaf ist eine andere Messbedingung" },
+      spaetschicht: { label: "Spätschicht", weight: 0.5, read: "verschobener, aber nächtlicher Schlaf" },
+      alkohol: { label: "Alkohol", weight: 0.5, read: "belegter akuter Stressor" },
+      reise: { label: "Reise", weight: 0.5, read: "akuter Stressor" },
+      krank: { label: "Krank", weight: 0.0, read: "für die Basislinie null — für die Warnlampe voll" },
+      uhr_nicht_getragen: { label: "Uhr nicht getragen", weight: 0.0, read: "Messfehler, kein Zustand" },
+    },
+    valid_weights: [0, 0.25, 0.5, 0.75, 1],
+    min_weight_sum: 30,
+    sources: {
+      belegt: [
+        { text: "Etikettieren und bedingtes Vergleichen", source: "Altini/Plews, Sensors 2021, 21:7932" },
+        { text: "Tagschlaf ist eine andere Messbedingung", source: "Boudreau/Boivin, PLOS ONE 2013; gestützt von van Amelsvoort 2001" },
+      ],
+      setzung: [
+        "Die Gewichtszahlen je Etikett sind eine Setzung, keine Studienzahl.",
+        "Die Schwelle Σw ≥ 30 ist eine Setzung.",
+        "Die 15 Tage bis B4 sind eine Setzung.",
+      ],
+      fix: "Die saubere Lösung heißt B4. Zyklus fehlt noch als Etikett.",
+      read: "Nach einer Nachtschicht sieht der Wert oft schlechter aus. Das ist die Messbedingung, nicht dein Zustand. „Erklärt“ heißt: gesehen, benannt, nicht verschwunden.",
+    },
+  };
+}
+
+module.exports = { TODAY, days, load, readiness, activities, streams, thresholds, calendar, pmc, laps, lapsWithBounds, steadyStream, night, context, goal, today, coach, signals, workouts, dayContext };

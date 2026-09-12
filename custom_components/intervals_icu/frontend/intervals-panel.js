@@ -78,6 +78,7 @@ const IC = {
   bolt: '<path d="M13 3L5 13.5h5L11 21l8-10.5h-5z"/>',
   cal:  '<rect x="4" y="5.5" width="16" height="14.5" rx="2"/><path d="M4 9.5h16M8.5 3.5v3.6M15.5 3.5v3.6"/>',
   chev: '<path d="M9.5 6.5l5.5 5.5-5.5 5.5"/>',
+  tag:  '<path d="M4 5.5h6.8l8.7 8.7-6.3 6.3-8.7-8.7z"/><circle cx="8.2" cy="9.4" r="1.3"/>',
 };
 
 function ico(name, color, size) {
@@ -625,6 +626,15 @@ const FIELD_LABEL = {
   goal: "das Ziel", days_per_week: "Tage pro Woche", hours_per_week: "Stunden pro Woche",
   target_hours: "die Zieldauer",
 };
+/* Etiketten sind Kategorien, keine Urteile - sie tragen ausschließlich das
+   Kategorienregister (Blau/Violett/Cyan/Magenta/Schiefer + deep/grey).
+   Grün/Gelb/Rot bleiben den Zuständen vorbehalten; ein "krank"-Chip in Rot
+   wäre ein Urteil, wo nur eine Messbedingung gemeint ist. */
+const CTX_COLOR = {
+  normal: C.slate, nachtschicht: C.violet, spaetschicht: C.blue,
+  reise: C.cyan, alkohol: C.magenta, krank: C.deep, uhr_nicht_getragen: C.grey,
+};
+
 const STATE_WORD = {
   slump: "Einbruch", recovering: "noch im Einbruch", rebound: "Erholung nach Einbruch",
   strained: "beansprucht", ready: "Normalbereich", unknown: "keine Daten",
@@ -656,6 +666,10 @@ class IntervalsIcuPanel extends HTMLElement {
     this._goalEdit = false;
     this._goalDraft = null;
     this._ctx = {};
+    this._dayctx = null;   // Etiketten-Archiv + Vokabular + Quellenblock (B5/B6)
+    this._ctxDlg = null;   // ISO-Datum, dessen Beschriftungsdialog offen ist
+    this._ctxErr = null;
+    this._ctxBusy = false;
     this._booted = false;
     // one window state per view, so Fitness and Belastung can join later
     this._win = { dfa: winRecall("dfa") || { id: WIN_DEFAULT } };
@@ -683,15 +697,57 @@ class IntervalsIcuPanel extends HTMLElement {
     );
   }
 
+  /* Etikett eines Tages aus dem geladenen Archiv, mit Anzeigename aus dem
+     Vokabular - EINE Quelle (der day_context-Leseweg), damit Chips, Marker
+     und Titel nie auseinanderlaufen. */
+  _ctxOf(date) {
+    const dc = this._dayctx;
+    const entry = dc && dc.days && dc.days[date];
+    if (!entry) return null;
+    const meta = (dc.tags || {})[entry.tag] || {};
+    return { tag: entry.tag, weight: entry.weight,
+             label: meta.label || entry.tag, note: entry.note || "" };
+  }
+
+  async _ctxWrite(date, tag) {
+    if (!date || this._ctxBusy) return;
+    this._ctxBusy = true;
+    try {
+      await this._ws("set_day_context", { date, tag });
+      // Alles neu laden, was von Gewichten abhängt - und die Scroll-Lage
+      // VOR dem Re-Render sichern: innerHTML wirft sie sonst mit den alten
+      // Knoten weg, und die Ansicht springt unter der Hand nach oben
+      // (die 0.9.x-Fehlerklasse, nur am Scroll statt am Ablesekasten).
+      const scroll = this.scrollTop;
+      const wanted = [
+        this._ws("today"), this._ws("days", { weeks: this._weeks }),
+        this._ws("day_context"), this._ws("coach"),
+        this._signals ? this._ws("signals", { days: this._sigDays }) : null,
+      ];
+      const [today, days, dayctx, coachData, signals] = await Promise.all(wanted);
+      this._today = today; this._days = days; this._dayctx = dayctx;
+      this._coach = coachData;
+      if (signals) this._signals = signals;
+      this._ctxDlg = null; this._ctxErr = null;
+      this._render();
+      this.scrollTop = scroll;
+    } catch (err) {
+      this._ctxErr = String((err && err.message) || err);
+      this._render();
+    } finally { this._ctxBusy = false; }
+  }
+
   async _boot() {
     this.shadowRoot.innerHTML = this._skeleton();
     this._view = this.shadowRoot.getElementById("view");
     this._attach();
     try {
-      const [status, rd, days, load, coachData] = await Promise.all([
+      const [status, rd, days, load, coachData, dayctx] = await Promise.all([
         this._ws("status"), this._ws("readiness"),
         this._ws("days", { weeks: this._weeks }), this._ws("load"), this._ws("coach"),
+        this._ws("day_context"),
       ]);
+      this._dayctx = dayctx;
       this._ws("workouts").then((w) => { this._workouts = w; if (this._tab === "trainer") this._render(); });
       this._status = status; this._rd = rd; this._days = days; this._load = load;
       this._coach = coachData;
@@ -800,6 +856,7 @@ class IntervalsIcuPanel extends HTMLElement {
     else if (this._tab === "akt") html = this.rAkt(this._acts, this._sel);
     else if (this._tab === "belastung") html = this.rBelastung(this._load);
     else if (this._tab === "dfa") html = this.rDfa(this._thr, this._dfaSport);
+    if (this._ctxDlg) html += this._ctxPopover();
     this._view.innerHTML = html;
     // the strip must carry the newest values before anyone moves a mouse -
     // and on a touch screen nobody ever does
@@ -827,6 +884,14 @@ class IntervalsIcuPanel extends HTMLElement {
       }
       else if (act === "act") this._openAct(id);
       else if (act === "close") { this._sel = null; this._render(); }
+      else if (act === "daylabel") {
+        // nur Vergangenheit und heute - ein Etikett beschreibt eine Messung,
+        // die es gibt, keinen Plan
+        if (id && id <= this._now()) { this._ctxDlg = id; this._ctxErr = null; this._render(); }
+      }
+      else if (act === "ctxclose") { this._ctxDlg = null; this._ctxErr = null; this._render(); }
+      else if (act === "ctxset") this._ctxWrite(this._ctxDlg, id);
+      else if (act === "ctxdel") this._ctxWrite(this._ctxDlg, null);
       else if (act === "dfasport") { this._dfaSport = id; this._render(); }
       else if (act === "sigdays") {
         this._sigDays = +id; this._signals = null;
@@ -1865,7 +1930,10 @@ class IntervalsIcuPanel extends HTMLElement {
             if (dts.length) {
               this._grp[grp] = {
                 n: series.length,
-                xl: (i) => `${dMed(dts[i])}${(track[i] || {}).load ? " · Training" : ""}`,
+                xl: (i) => `${dMed(dts[i])}${(track[i] || {}).load ? " · Training" : ""}${
+                  (track[i] || {}).context
+                    ? " · Etikett: " + ((this._ctxOf(dts[i]) || {}).label || track[i].context.tag)
+                    : ""}`,
                 rows: [
                   { l: s.label, c: scol, u: s.unit, dec, vals: series },
                   { l: "Tageslast", c: C.tx2, vals: track.map((r) => r.load || 0) },
@@ -1888,13 +1956,23 @@ class IntervalsIcuPanel extends HTMLElement {
               { y: band.baseline, c: C.tx3, d: 1, t: `Basislinie ${fmt(band.baseline, dec)}` },
               { y: band.slump, c: C.amber, d: 1, t: `${s.key === "rhr" ? "auffällig hoch" : "Einbruch ab"} ${fmt(band.slump, dec)}` },
             ] : [{ y: s.baseline, c: C.tx3, d: 1, t: "Basislinie" }];
+            // Ebene 1 sichtbar gemacht: Tage mit Gewicht 0 zählen nicht in
+            // die Basislinie, bleiben aber gezeichnet - als HOHLE Punkte.
+            // Form statt Farbe (WCAG 1.4.1, dieselbe Regel wie beim Auswahlring).
+            const hollow = track.map((r, i) =>
+              (r && r.context && r.context.weight === 0 && series[i] != null)
+                ? { i, v: series[i], f: false, r: 4 } : null).filter(Boolean);
             const plot = chart({ h: 200, n: Math.max(2, series.length), y0: lo, y1: hi,
               yf: (v) => fmt(v, dec), bands, hl: lines,
               grp: dts.length ? grp : null,
               xt: ax.labels, xtick: ax.ticks,
-              s: [{ t: "line", v: series, c: scol, w: 2 }] });
+              s: [{ t: "line", v: series, c: scol, w: 2 },
+                  ...(hollow.length ? [{ t: "dots", c: scol, p: hollow }] : [])] });
             if (!dts.length) return plot;
-            return `<div data-grp="${grp}">${readout(grp)}${plot}${this._eventTrack(track, grp)}</div>`;
+            return `<div data-grp="${grp}">${readout(grp)}${plot}${this._eventTrack(track, grp)}${
+              hollow.length ? `<p class="src">Hohle Punkte sind etikettierte Tage mit
+                Gewicht 0 — sie zählen nicht in die Basislinie, bleiben aber
+                gezeichnet und lösen die Warnung weiter aus.</p>` : ""}</div>`;
           })()}
           ${(t.bands || {})[s.key] ? `<p class="src"><b>Die Bereiche:</b> das dunkle Band ist
             ±0,5 Standardabweichungen um deine Basislinie — was darin liegt, ist Rauschen.
@@ -1921,12 +1999,15 @@ class IntervalsIcuPanel extends HTMLElement {
       const names = (d.sessions || []).map((s) => s.name || s.type).filter(Boolean);
       const isToday = d.date === new Date().toISOString().slice(0, 10);
       const state = STATE_WORD[d.state] || "";
-      return `<div class="tday ${isToday ? "now" : ""}"
+      const dctx = this._ctxOf(d.date);
+      return `<div class="tday ${isToday ? "now" : ""}" data-act="daylabel" data-id="${esc(d.date)}"
           title="${esc(dMed(d.date))}: Last ${d.load}${
             names.length ? " · " + esc(names.join(", ")) : " · kein Training"}${
-            state ? " · " + esc(state) : ""}">
+            state ? " · " + esc(state) : ""}${
+            dctx ? " · Etikett: " + esc(dctx.label) : ""} · klicken zum Beschriften">
         <span class="tbarbox"><i style="height:${height.toFixed(0)}%;background:${dcol}"></i></span>
-        <span class="tdate">${esc(dShort(d.date))}</span>
+        <span class="tdate">${esc(dShort(d.date))}${
+          dctx ? `<span class="ctxmark" style="color:${CTX_COLOR[dctx.tag] || C.slate}">${ico("tag", CTX_COLOR[dctx.tag] || C.slate, 11)}</span>` : ""}</span>
         <b class="tload tn">${d.load || "–"}</b>
         <em class="tdayn">${names.length ? esc(names[0].slice(0, 12)) + (
           names.length > 1 ? " +" + (names.length - 1) : "") : "frei"}</em>
@@ -1947,6 +2028,8 @@ class IntervalsIcuPanel extends HTMLElement {
       <h3 class="secname">Was sich bewegt hat
         <span class="hint">— jedes Signal einzeln, mit dem System, über das es etwas aussagt</span></h3>
       <div class="tsigs">${signals}</div>
+      ${t.context_note ? `<div class="ctxnote">${ico("info", C.tx2, 15)}
+        <span>${esc(t.context_note)}</span></div>` : ""}
 
       <h3 class="secname">Woher das kommt
         <span class="hint">— die letzten sieben Tage und die Nacht nach der letzten Einheit</span></h3>
@@ -1962,6 +2045,53 @@ class IntervalsIcuPanel extends HTMLElement {
           <p class="src">${esc(t.method)}</p></details>
         <details class="more"><summary>Warum nur heute und nicht die Woche</summary>
           <p class="src">${esc(t.horizon)}</p></details>
+      </div>`;
+  }
+
+  /* Beschriftungsdialog: ein FESTER, zentrierter Kasten mit Backdrop.
+     Bewusst kein am Klickpunkt schwebender Kasten - drei Releases (0.9.1
+     bis 0.9.3) haben an schwebender Positionierung gedreht, bis der feste
+     Platz die Fehlerklasse beendet hat. Chips, Texte und Quellen kommen
+     komplett aus dem day_context-Leseweg: eine Quelle, kein Drift. */
+  _ctxPopover() {
+    const date = this._ctxDlg;
+    const dc = this._dayctx || {};
+    const tags = dc.tags || {};
+    const cur = (dc.days || {})[date] || null;
+    const srcs = dc.sources || {};
+    const wfmt = (w) => String(w == null ? 1 : w).replace(".", ",");
+    const chips = Object.entries(tags).map(([slug, meta]) => {
+      const on = !!(cur && cur.tag === slug);
+      const col = CTX_COLOR[slug] || C.slate;
+      // Auswahl trägt Form UND Wort UND Farbe: Ring, Haken, "gewählt"
+      return `<button class="ctxchip ${on ? "on" : ""}" style="--cc:${col}"
+          data-act="ctxset" data-id="${esc(slug)}" title="${esc(meta.read || "")}">
+        ${ico("tag", col, 15)}<span class="cn">${esc(meta.label || slug)}</span>
+        <span class="cw tn">Gewicht ${wfmt(meta.weight)}</span>
+        ${on ? `<span class="csel">${ico("ok", col, 14)} gewählt</span>` : ""}
+      </button>`;
+    }).join("");
+    const belegt = (srcs.belegt || []).map((b) =>
+      `<li>${esc(b.text)} <em class="qq">${esc(b.source)}</em></li>`).join("");
+    const setz = (srcs.setzung || []).map((s) => `<li>${esc(s)}</li>`).join("");
+    return `<div class="ctxback" data-act="ctxclose"></div>
+      <div class="ctxdlg" role="dialog" aria-modal="true" aria-label="Tag beschriften">
+        <div class="ctxhead"><b>Tag beschriften — ${esc(dMed(date))}</b>
+          <button class="ctxx" data-act="ctxclose" title="schließen">${ico("stop", C.tx2, 18)}</button></div>
+        ${cur ? `<p class="ctxcur">Aktuell: <b>${esc((tags[cur.tag] || {}).label || cur.tag)}</b>
+          · Gewicht ${wfmt(cur.weight)}</p>` : ""}
+        <div class="ctxchips">${chips}</div>
+        ${cur ? `<button class="ctxremove" data-act="ctxdel">
+          <span class="cn"><b>Etikett entfernen</b> — Rücknahme, keine Aussage: der Tag
+          rechnet danach, als wäre er nie beschriftet worden.</span></button>` : ""}
+        ${this._ctxErr ? `<div class="ctxerr">${ico("warn", C.amber, 15)}<span>${esc(this._ctxErr)}</span></div>` : ""}
+        ${srcs.read ? `<p class="ctxwhy">${esc(srcs.read)}</p>` : ""}
+        <details class="more"><summary>Belegt oder Setzung — woher die Regeln kommen</summary>
+          <div class="src">
+            <p><b>Belegt:</b></p><ul>${belegt}</ul>
+            <p><b>Setzung:</b></p><ul>${setz}</ul>
+            <p>${esc(srcs.fix || "")}</p>
+          </div></details>
       </div>`;
   }
 
@@ -2032,6 +2162,7 @@ class IntervalsIcuPanel extends HTMLElement {
 
   _dayCell(d, today) {
     if (!d) return `<div class="day off"></div>`;
+    const dctx = this._ctxOf(d.date);
     const wln = [];
     if (d.sleep_hours != null) wln.push(`<span title="Schlaf">${ico("moon", C.tx3, 13)}${fmt(d.sleep_hours, 1)}</span>`);
     if (d.hrv != null) wln.push(`<span title="HRV">${ico("heart", C.tx3, 13)}${fmt(d.hrv)}</span>`);
@@ -2039,8 +2170,11 @@ class IntervalsIcuPanel extends HTMLElement {
     if (d.steps != null) wln.push(`<span title="Schritte">${ico("steps", C.tx3, 13)}${fmt(Math.round(d.steps / 100) / 10, 1)}k</span>`);
     const chips = (d.activities || []).map((a) => this._chip(a)).join("") +
       (d.planned || []).map((p) => this._planChip(p, d, today)).join("");
-    return `<div class="day ${d.today ? "is-today" : ""} ${d.future ? "is-fut" : ""}">
-      <div class="dhead"><span>${dShort(d.date)}</span>${d.load ? `<span class="dload tn" title="Tageslast">${fmt(d.load)}</span>` : ""}</div>
+    return `<div class="day ${d.today ? "is-today" : ""} ${d.future ? "is-fut" : ""}"${
+        d.future ? "" : ` data-act="daylabel" data-id="${esc(d.date)}" title="klicken zum Beschriften"`}>
+      <div class="dhead"><span>${dShort(d.date)}${
+        dctx ? `<span class="ctxmark" title="Etikett: ${esc(dctx.label)}">${ico("tag", CTX_COLOR[dctx.tag] || C.slate, 12)}</span>` : ""}</span>${
+        d.load ? `<span class="dload tn" title="Tageslast">${fmt(d.load)}</span>` : ""}</div>
       ${wln.length ? `<div class="wln tn">${wln.join("")}</div>` : ""}
       ${chips}
     </div>`;
@@ -3293,6 +3427,40 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
 .lb{display:flex;align-items:center;gap:7px}
 .lbar{flex:1;height:8px;background:#0006;border-radius:4px;overflow:hidden;display:block;min-width:34px}
 .lbar s{display:block;height:100%}
+/* Tagesbeschriftung (B5): fester Dialog, Kategorien-Chips, Marker */
+.tday[data-act]{cursor:pointer}
+.day[data-act]{cursor:pointer}
+.ctxmark{display:inline-flex;margin-left:4px;vertical-align:middle;opacity:.9}
+.ctxnote{display:flex;gap:8px;align-items:flex-start;margin:10px 2px 0;padding:9px 12px;
+  background:#0006;border:1px solid ${C.line};border-radius:9px;color:${C.tx2};font-size:13px}
+.ctxback{position:fixed;inset:0;background:#000a;z-index:40}
+.ctxdlg{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:41;
+  width:min(560px,calc(100vw - 28px));max-height:min(82vh,700px);overflow-y:auto;
+  background:${C.card};border:1px solid ${C.line};border-radius:14px;padding:16px 18px;
+  box-shadow:0 18px 60px #000c}
+.ctxhead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px}
+.ctxhead b{font-size:15.5px}
+.ctxx{background:none;border:none;cursor:pointer;padding:4px;display:inline-flex;opacity:.8}
+.ctxx:hover{opacity:1}
+.ctxcur{margin:2px 0 8px;color:${C.tx2};font-size:13.5px}
+.ctxchips{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px;margin:8px 0}
+.ctxchip{display:flex;align-items:center;gap:8px;padding:9px 11px;border-radius:10px;
+  background:#0005;border:1px solid ${C.line};border-left:3px solid var(--cc);
+  color:${C.tx};font-family:inherit;font-size:13.5px;cursor:pointer;text-align:left}
+.ctxchip:hover{background:#0008}
+.ctxchip .cn{flex:1;font-weight:600}
+.ctxchip .cw{color:${C.tx3};font-size:12px}
+.ctxchip.on{outline:2px solid var(--cc);outline-offset:1px;background:#0008}
+.ctxchip .csel{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:700}
+/* Entfernen ist RÜCKNAHME, keine Kategorie: gestrichelt, ohne Kategorienfarbe,
+   eigene Zeile - sichtbar etwas anderes als der normal-Chip */
+.ctxremove{display:flex;width:100%;align-items:flex-start;gap:8px;margin:6px 0 2px;
+  padding:10px 12px;border-radius:10px;background:none;border:1.5px dashed ${C.tx3};
+  color:${C.tx2};font-family:inherit;font-size:13px;cursor:pointer;text-align:left}
+.ctxremove:hover{border-color:${C.tx2};color:${C.tx}}
+.ctxerr{display:flex;gap:8px;align-items:flex-start;margin:8px 0;padding:9px 12px;
+  background:#0006;border:1px solid ${C.amber}66;border-radius:9px;color:${C.tx2};font-size:13px}
+.ctxwhy{margin:10px 0 6px;color:${C.tx2};font-size:13.5px;line-height:1.55}
 @media(max-width:980px){
   .lhead{display:none}
   .lrow{grid-template-columns:30px 1fr 70px 74px;}

@@ -204,4 +204,34 @@ const acts = F.activities();
   contains(open, "Trainingstag", "spur: keine Direktbeschriftung");
 }
 
+/* ── Etiketten-Chips: Kategorienregister, nie das Urteilsregister ────────── */
+{
+  // Etiketten sind Kategorien (Messbedingungen), keine Urteile. Ein
+  // "krank"-Chip in Urteilsrot wäre eine Diagnose, wo nur eine Bedingung
+  // gemeint ist. Die zwei Register mischen sich nie.
+  const judgment = [M.C.green, M.C.amber, M.C.red];
+  const cats = Object.entries(M.CTX_COLOR);
+  ok(cats.length === 7, `register: ${cats.length} statt 7 Etikettenfarben`);
+  for (const [slug, col] of cats) {
+    ok(!judgment.includes(col), `register: Etikett ${slug} trägt eine Urteilsfarbe`);
+  }
+  ok(new Set(cats.map(([, c]) => c)).size === cats.length,
+     "register: zwei Etiketten teilen sich eine Farbe");
+
+  // Die Auswahl im Dialog trägt Form UND Wort neben der Farbe (WCAG 1.4.1,
+  // dieselbe Regel wie überall sonst im Panel).
+  const q = new M.Panel();
+  q._nowIso = F.TODAY;
+  q._dayctx = F.dayContext();
+  q._ctxDlg = "2026-09-10";
+  const dlg = q._ctxPopover();
+  ok(/class="ctxchip on"/.test(dlg) && /gewählt/.test(dlg),
+     "register: Auswahl ohne Wort neben der Farbe");
+  ok(/class="csel"><svg/.test(dlg.replace(/\s+/g, "")) || /csel">\s*<svg/.test(dlg),
+     "register: Auswahl ohne Form (Haken)");
+  // und der Marker in den Tageszellen ist eine FORM (Etikett-Icon), kein Punkt
+  const cell = q._dayCell({ date: "2026-09-10", weekday: 3, week: "2026-W37" }, F.TODAY);
+  ok(/ctxmark[^>]*>\s*<svg/.test(cell), "register: Tagesmarker ohne eigene Form");
+}
+
 report("test_panel_design");
