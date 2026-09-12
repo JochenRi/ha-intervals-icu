@@ -70,8 +70,13 @@ for path in py_files:
     counted = positions(lines, COUNTING)
     name = path.name
 
-    # 1 - at most one summary, and no counted check behind it
-    check(len(summaries) <= 1, f"{name}: {len(summaries)} Summary-Zeilen statt höchstens einer")
+    # 1 - exactly one summary, and no counted check behind it.
+    #     "<= 1" used to be the rule, which let a file with NO summary through:
+    #     its checks ran, printed PASS and carried the exit code, but never
+    #     appeared in the suite's count - five files sat that way until 0.36.0.
+    #     With "== 1" the ordering rule below can no longer be skipped either.
+    check(len(summaries) == 1, f"{name}: {len(summaries)} Summary-Zeilen statt genau einer")
+    check(len(counted) > 0, f"{name}: Summary ohne eine einzige gezählte Prüfung")
     if summaries and counted:
         last_check, summary = max(counted), summaries[-1]
         check(
@@ -100,6 +105,7 @@ for path in js_files:
     counted = positions(lines, COUNTING)
     name = path.name
     check(len(summaries) == 1, f"{name}: {len(summaries)} report()-Aufrufe statt genau einem")
+    check(len(counted) > 0, f"{name}: report() ohne eine einzige gezählte Prüfung")
     if summaries and counted:
         # report() itself matches COUNTING via none of its names, so the last
         # counted line must sit above it.

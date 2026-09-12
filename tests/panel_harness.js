@@ -58,7 +58,8 @@ function load() {
   // eslint-disable-next-line no-eval
   eval(src + `
     ;Object.assign(exported, {
-      C, ROLE, SPORT, ST, chart, spark, ring, bullet, monthTicks, domainOf,
+      C, ROLE, SPORT, ST, chart, spark, ring, bullet, monthTicks, dayAxis, domainOf,
+      WINDOWS, WIN_DEFAULT, winDef, winRange, winApply, winChips, isoMinus,
       tickVals, movAvg, rollMedian, median, meanOf, fmt, sign, dur, hhmm,
       dShort, dMed, dLong, groupKey, sportOf, esc,
     });`);

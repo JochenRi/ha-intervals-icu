@@ -238,14 +238,23 @@ async def websocket_streams(hass, connection, msg) -> None:
     {
         vol.Required("type"): "intervals_icu/thresholds",
         vol.Optional("athlete_id"): str,
+        vol.Optional("since"): str,
     }
 )
 @callback
 def websocket_thresholds(hass, connection, msg) -> None:
-    """Return the aerobic threshold read off each activity."""
+    """Return the aerobic threshold read off each activity.
+
+    The panel filters the window in the client - 57 readings arrive in one
+    go anyway. `since` exists so that at 500 readings this is a parameter,
+    not a rebuild.
+    """
     if (coordinator := _require(hass, connection, msg)) is None:
         return
-    connection.send_result(msg["id"], importer.threshold_series(coordinator.archive.data))
+    connection.send_result(
+        msg["id"],
+        importer.threshold_series(coordinator.archive.data, since=msg.get("since")),
+    )
 
 
 @websocket_api.websocket_command(

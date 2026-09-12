@@ -450,6 +450,53 @@ check(all(v is None or 10 < v < 200 for v in history["hrv"]), "23 verlauf: unpla
 check(all(v is None or 3 < v < 14 for v in history.get("sleep", [])),
       "23 verlauf: Schlaf nicht in Stunden umgerechnet")
 
+# --- 23b  the same 42 days, but NAMED, with load and state --------------------
+# The enlarged signal card draws a diagram, and a diagram needs an axis. The
+# frontend cannot build that axis itself: these are the wellness days that
+# EXIST, not 42 consecutive calendar days. "Today minus n" is wrong from the
+# first gap onwards - the same defect class as reading a number off the wrong
+# source. So the dates travel with the values.
+raw_hdays = today_view.get("history_days")
+check(isinstance(raw_hdays, list) and bool(raw_hdays),
+      "23b spur: history_days fehlt oder ist leer")
+# Everything below runs off a list that EXISTS, so a missing key produces a
+# counted failure instead of a traceback. A test that dies on the mutation
+# skips the rest of the file and reports "0 Fehler" - that was the most
+# expensive find of 0.35.0, and it does not get to happen in its own fix.
+hdays = [r for r in raw_hdays if isinstance(r, dict)] if isinstance(raw_hdays, list) else []
+hist_hrv = (history or {}).get("hrv") or []
+eq(len(hdays), len(hist_hrv), "23b spur: andere Länge als der Werteverlauf")
+check(all({"date", "load", "state"} <= set(r) for r in hdays),
+      "23b spur: Zeile ohne Datum, Last oder Zustand")
+hd_dates = [r.get("date") for r in hdays]
+check(hdays and all(isinstance(d, str) and len(d) == 10 for d in hd_dates),
+      "23b spur: Datum nicht als ISO-Tag")
+check(hd_dates == sorted(hd_dates, key=str), "23b spur: Tage nicht aufsteigend")
+check(len(set(hd_dates)) == len(hd_dates), "23b spur: Tag doppelt")
+check(all(isinstance(r.get("load"), (int, float)) and r.get("load") >= 0 for r in hdays),
+      "23b spur: Last fehlt oder ist negativ")
+check(any((r.get("load") or 0) > 0 for r in hdays), "23b spur: kein einziger Trainingstag")
+check(hdays and all(isinstance(r.get("state"), str) and r.get("state") for r in hdays),
+      "23b spur: Zustand leer")
+# ONE way to the day's load: the 7-day strip and the 42-day track must agree
+by_date = {r.get("date"): r.get("load") for r in hdays}
+check(bool(hdays) and all(by_date.get(row["date"]) == row["load"]
+                          for row in today_view.get("recent") or []),
+      "23b spur: Last weicht von der 7-Tage-Leiste ab — zwei Rechenwege")
+# and the decisive one: punch a hole in the archive. The dates must JUMP over
+# it, not silently renumber - that is what "today minus n" would get wrong.
+gapped = night_history()
+for row in gapped["wellness"].values():
+    row.pop("load", None)
+missing = sorted(gapped["wellness"])[-20]
+del gapped["wellness"][missing]
+gap_rows = coach.today(gapped, None).get("history_days") or []
+gap_days = [r.get("date") for r in gap_rows if isinstance(r, dict)]
+check(bool(gap_days) and missing not in gap_days,
+      "23b spur: gelöschter Tag taucht im Verlauf auf")
+check(gap_days == sorted(gapped["wellness"])[-42:],
+      "23b spur: Tage folgen nicht den vorhandenen Wellness-Tagen")
+
 # --- 24  the bands, in the signal's own unit ----------------------------------
 # A rider recognises 41 ms; -1.5 SD means nothing at a glance. So the
 # thresholds the rules already use are converted back into real units - and for

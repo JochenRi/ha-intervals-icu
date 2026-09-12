@@ -10,13 +10,21 @@ sichtbarer Fehlermeldung.
 
 | Paket | Inhalt | berührt | Aufwand |
 |---|---|---|---|
-| **A** | DFA-Tab: Brushing, Zeitraumwahl, Sprung in die Aktivität · Signalkarten: Datumsachse | nur Frontend | mittel |
+| **A** | DFA-Tab: Brushing, Zeitraumwahl, Sprung in die Aktivität · Signalkarten: Datumsachse | Frontend **+ drei additive Backend-Felder** (siehe unten) | mittel |
 | **B** | Tageskontext: Etiketten, Gewichte, zweite Basislinie, eigene Kachel | Archiv + `coach.py` + WebSocket + Frontend | groß |
 | **C** | Vergleichsgruppe: Caliper statt fester Prozentzahl | `workouts.py`/`analytics.py` + Frontend | klein |
 
 ---
 
 ## Paket A — DFA-Tab und Signalkarten
+
+> **Korrektur beim Bauen (0.36.0):** „nur Frontend" hielt nicht. Die Datumsachse aus A5
+> braucht Daten, die das Panel nicht hat — `today.history` war eine reine Werteliste, und
+> die 42 Einträge sind die *vorhandenen* Wellness-Tage, nicht 42 Kalendertage. Die Spalten
+> aus A3 hätten gegen eine auf 300 Einheiten begrenzte Aktivitätenliste gejoint werden
+> müssen und wären älter still leer geblieben. Ergänzt wurden daher `coach.history_days`,
+> fünf Felder an `importer.threshold_series` und ein optionaler `since`-Parameter — alles
+> additiv, nichts Bestehendes geändert.
 
 ### A1 · Graph und Liste verbinden (Brushing & Linking)
 

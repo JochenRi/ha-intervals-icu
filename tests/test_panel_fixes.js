@@ -10,6 +10,10 @@ const { ok, clean, contains, report } = H;
 const M = H.load();
 const p = new M.Panel();
 p._status = { activities: 238, wellness_days: 487, dfa_done: 56, importing: false, athlete: "Test" };
+// Pin "today". A window that asks the wall clock makes this suite go red on
+// its own some months from now, and a test that fails for calendar reasons
+// teaches nothing about the code.
+p._nowIso = F.TODAY;
 
 const days = F.days(), load = F.load({ spike: true }), rd = F.readiness();
 const acts = F.activities(), thr = F.thresholds();
@@ -318,6 +322,87 @@ const acts = F.activities(), thr = F.thresholds();
   ok(!src.includes("Gegen Gasaustausch validiert, aber"), "17 dfa: alte Pauschal-Quellzeile lebt noch");
   ok(src.includes("weite Übereinstimmungsgrenzen"), "17 dfa: Validierungslage nicht benannt");
   ok((src.match(/alleinige Verankerung nicht/g) || []).length >= 2, "17 dfa: Trend-Vorbehalt fehlt in einer der beiden Quellzeilen");
+}
+
+/* ── 18  Paket A: ein Nachweis je Befund ───────────────────────────────────
+   The eight contradictions found while reading for 0.36.0. Each one gets a
+   check that would have failed before the fix - several of them on the SOURCE
+   as well as on the output, because a computed-but-never-inserted block
+   renders fine and is still dead (0.32.0). */
+{
+  const src = H.source();
+  const q = new M.Panel();
+  q._nowIso = F.TODAY;
+
+  // W7 - the disabled second chart in the enlarged signal card. A block
+  // behind `false ?` is the dormant form of "computed, never inserted".
+  ok(!src.includes("${false ?"), "18 W7: stillgelegter Block steht wieder im Quelltext");
+
+  // W5 - no view may ask the wall clock for its window. One "now" per panel,
+  // injectable, or the suite goes red for calendar reasons some months on.
+  ok(src.includes("_now()"), "18 W5: kein zentrales Jetzt");
+  ok(!/_win\.dfa[\s\S]{0,120}new Date\(\)/.test(src), "18 W5: Fenster liest die Wanduhr direkt");
+  ok(new M.Panel()._now().length === 10, "18 W5: Jetzt nicht als ISO-Tag");
+
+  // W6 - localStorage must never be able to take the panel down. It does not
+  // exist in this runtime at all, which is the point of the check.
+  ok(typeof localStorage === "undefined", "18 W6: Testumgebung hat plötzlich localStorage");
+  ok((src.match(/typeof localStorage === "undefined"/g) || []).length >= 2,
+     "18 W6: Zugriff auf localStorage ohne Existenzprüfung");
+  ok((src.match(/catch \(err\) \{/g) || []).length >= 2, "18 W6: kein Schutz gegen werfendes Schreiben");
+  ok(JSON.stringify(new M.Panel()._win) === '{"dfa":{"id":"3m"}}',
+     "18 W6: Vorauswahl überlebt fehlendes localStorage nicht");
+
+  // W1/A5 - the axis dates come from the payload, never from "today minus n".
+  // 42 wellness days are not 42 calendar days, and the fixture has the gap.
+  const hd = F.today().history_days;
+  const span = (Date.parse(hd[hd.length - 1].date) - Date.parse(hd[0].date)) / 864e5 + 1;
+  ok(span > hd.length, "18 W1: Fixture ohne Lücke — der Fehlerfall wäre nicht prüfbar");
+  ok(!/history_days[\s\S]{0,200}isoMinus/.test(src), "18 W1: Spur rechnet sich Daten selbst aus");
+  q._sigOpen = "hrv";
+  const open = String(q.rHeute(F.today()));
+  const labels = (open.match(/class="ax">(\d\d)\.(\d\d)\.?</g) || []);
+  ok(labels.length >= 2, "18 W1: zu wenige Datumsbeschriftungen");
+  ok(labels.every((l) => open.includes(l)), "18 W1: Beschriftung ohne Bezug");
+  q._sigOpen = null;
+
+  // W2 - the list is no longer nailed to fifteen rows, and the cap speaks
+  ok(!src.includes("rows.slice(-15)"), "18 W2: Liste wieder auf 15 Zeilen genagelt");
+  ok(src.includes("const CAP = 50"), "18 W2: keine benannte Kappung");
+
+  // W3 - the sport moves the headline, and the source line says which sport
+  const ride = String(q.rDfa(F.thresholds(), "ride"));
+  const all = String(q.rDfa(F.thresholds(), "all"));
+  ok(/Median der letzten 5 belastbaren Messungen · Rad/.test(ride),
+     "18 W3: Quellzeile verschweigt die Sportart");
+  ok(/Median der letzten 5 belastbaren Messungen · alle Sportarten/.test(all),
+     "18 W3: Quellzeile ohne Sportangabe bei allen Sportarten");
+
+  // W4 - the median line is LEFT OUT below five solid readings, not thinned.
+  // A faint wrong line is still a wrong line.
+  const thin = F.thresholds().map((x) => ({ ...x, samples: 2 }));
+  const r = new M.Panel();
+  r._nowIso = F.TODAY;
+  r._win.dfa = { id: "all" };
+  const thinHtml = String(r.rDfa(thin, "all"));
+  ok(!/stroke-width="2.4"/.test(thinHtml), "18 W4: Medianlinie bei dünner Lage gezeichnet");
+  ok(!/stroke-dasharray[^>]*stroke-width="2.4"/.test(thinHtml), "18 W4: Medianlinie dünn gezeichnet statt weggelassen");
+  ok(thinHtml.includes("keine Medianlinie"), "18 W4: Weglassen wird nicht begründet");
+
+  // W8 - no threshold reading may be dated in the future
+  ok(F.thresholds().every((x) => x.date <= F.TODAY), "18 W8: Fixture erzeugt wieder Zukunftsdaten");
+
+  // A4 - a jump that cannot land says so instead of doing nothing
+  const s = new M.Panel();
+  s._nowIso = F.TODAY;
+  s._aktMiss = "act9999";
+  const missHtml = String(s.rAkt(F.activities(), null));
+  clean(missHtml, "18 A4 Sprung ins Leere");
+  ok(missHtml.includes("act9999") && /älter als der geladene Bereich/.test(missHtml),
+     "18 A4: verfehlter Sprung bleibt stumm");
+  s._aktMiss = null;
+  ok(!String(s.rAkt(F.activities(), null)).includes("älter als der geladene Bereich"),
+     "18 A4: Hinweis erscheint ohne verfehlten Sprung");
 }
 
 report("test_panel_fixes");

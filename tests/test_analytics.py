@@ -9,9 +9,12 @@ sys.path.insert(0, str(COMP))
 import analytics  # noqa: E402
 
 failures = []
+CHECKS = 0
 
 
 def check(label, got, expected):
+    global CHECKS
+    CHECKS += 1
     ok = got == expected
     print(f"{'PASS' if ok else 'FAIL'}  {label}: {got!r}" + ("" if ok else f"  (erwartet {expected!r})"))
     if not ok:
@@ -264,5 +267,6 @@ check("leeres Raster hat trotzdem Tage", len(leer["days"]) > 14, True)
 check("leeres Raster ohne Wochenlast", leer["max_week_load"], 0)
 
 print()
+print(f"test_analytics: {CHECKS} Prüfungen, {len(failures)} Fehler")
 print("FEHLER:", failures if failures else "keine")
 sys.exit(1 if failures else 0)

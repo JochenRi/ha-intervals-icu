@@ -30,9 +30,12 @@ derive = _load("derive")
 importer = _load("importer")
 
 failures = []
+CHECKS = 0
 
 
 def check(label, got, expected):
+    global CHECKS
+    CHECKS += 1
     ok = got == expected
     print(f"{'PASS' if ok else 'FAIL'}  {label}: {got!r}" + ("" if ok else f"  (erwartet {expected!r})"))
     if not ok:
@@ -238,7 +241,39 @@ async def main():
     check("Statistik: offene DFA", stats["dfa_pending"], 0)
     check("Statistik: nicht abrufbar", stats["unavailable"], 8)
 
+    # --- threshold series: the join key and the session's own numbers --------
+    # The DFA tab keys its selection on the activity_id, jumps into the
+    # activity with it, and shows the session's duration/load/HR next to the
+    # reading. All of that has to arrive with the reading itself.
+    series = importer.threshold_series(data)
+    check("Schwellenreihe: nicht leer", bool(series), True)
+    keys = set(data["activities"])
+    check("Schwellenreihe: activity_id trifft den Archivschlüssel",
+          all(row.get("activity_id") in keys for row in series), True)
+    check("Schwellenreihe: aufsteigend nach Datum",
+          [r["date"] for r in series] == sorted(r["date"] for r in series), True)
+    for field in ("name", "moving_time", "load", "avg_hr", "decoupling"):
+        check(f"Schwellenreihe: Feld {field} vorhanden",
+              all(field in row for row in series), True)
+    joined = [r for r in series
+              if r.get("moving_time") == (data["activities"][r["activity_id"]] or {}).get("moving_time")]
+    check("Schwellenreihe: Dauer stammt aus derselben Aktivität",
+          len(joined), len(series))
+
+    # since is an inclusive lower bound with NO upper bound: a reading dated
+    # in the future (watch with a wrong clock) must not vanish silently
+    if series:
+        cut = series[len(series) // 2]["date"]
+        later = importer.threshold_series(data, since=cut)
+        check("Schwellenreihe: since schneidet unten ab",
+              all(row["date"] >= cut for row in later), True)
+        check("Schwellenreihe: since behält alles ab dem Stichtag",
+              len(later), len([r for r in series if r["date"] >= cut]))
+        check("Schwellenreihe: since=None ändert nichts",
+              importer.threshold_series(data, since=None) == series, True)
+
     print()
+    print(f"test_import: {CHECKS} Prüfungen, {len(failures)} Fehler")
     print("FEHLER:", failures if failures else "keine")
     return 1 if failures else 0
 

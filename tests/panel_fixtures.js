@@ -156,9 +156,37 @@ function streams(n) {
   };
 }
 
+/* 42 wellness days ending on TODAY, with two days simply absent - an archive
+ * has gaps, and an axis that assumes it does not is wrong from the first one.
+ * The newest seven rows carry the same dates, loads and states as `recent`. */
+function historyDays() {
+  const RECENT = [
+    ["2026-09-05", 0, "slump"], ["2026-09-06", 0, "slump"],
+    ["2026-09-07", 0, "recovering"], ["2026-09-08", 0, "recovering"],
+    ["2026-09-09", 9, "rebound"], ["2026-09-10", 0, "rebound"],
+    ["2026-09-11", 38, "ready"],
+  ];
+  const GAPS = new Set([20, 21]);          // days back from TODAY that are missing
+  const out = [];
+  for (let back = 7; out.length < 42 - RECENT.length; back++) {
+    if (GAPS.has(back)) continue;
+    const d = new Date(Date.parse(TODAY + "T00:00:00") - back * 864e5);
+    const iso = d.toISOString().slice(0, 10);
+    const load = back % 4 === 1 ? 60 + (back % 3) * 25 : (back % 7 === 3 ? 22 : 0);
+    const state = back % 11 === 4 ? "slump" : back % 5 === 0 ? "strained" : "ready";
+    out.push({ date: iso, load, state });
+  }
+  out.reverse();
+  for (const [date, load, state] of RECENT) out.push({ date, load, state });
+  return out;
+}
+
 function thresholds() {
   const out = [];
-  let d = new Date("2026-05-01T00:00:00");
+  // 56 readings in three-day steps ENDING on TODAY. Running them forward from
+  // a fixed start date put the newest a month into the future - a threshold
+  // measured tomorrow does not exist, and it made every relative window lie.
+  let d = new Date(Date.parse(TODAY + "T00:00:00") - 55 * 3 * 864e5);
   for (let i = 0; i < 56; i++) {
     out.push({
       date: d.toISOString().slice(0, 10), activity_id: "act" + i,
@@ -320,6 +348,12 @@ function today(kind) {
       rhr: Array.from({ length: 42 }, (_, i) => 56 + ((i * 5) % 6) - 3),
       sleep: Array.from({ length: 42 }, (_, i) => 7.2 + ((i * 3) % 5) / 10),
     },
+    // The named twin of `history`, index for index. Deliberately NOT 42
+    // consecutive days: two wellness days are missing, which is what an
+    // archive really looks like and what breaks any axis reconstructed from
+    // "today minus n". The last seven rows are the same days as `recent`,
+    // with the same loads - one way to the day's load, not two.
+    history_days: historyDays(),
     night: { available: true, headline: "Die Nacht sah aus wie sonst nach solchen Einheiten.",
              detail: "Verglichen mit 13 früheren Einheiten ähnlicher Last." },
     anchors: { aerobic_hr: 157, aerobic_watts: 158 },

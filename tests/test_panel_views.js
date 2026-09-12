@@ -10,6 +10,10 @@ const { ok, clean, contains, report } = H;
 const M = H.load();
 const p = new M.Panel();
 p._status = { activities: 238, wellness_days: 487, dfa_done: 56, importing: false, athlete: "Test" };
+// Pin "today". A window that asks the wall clock makes this suite go red on
+// its own some months from now, and a test that fails for calendar reasons
+// teaches nothing about the code.
+p._nowIso = F.TODAY;
 
 const days = F.days(), gappy = F.days({ holes: true });
 const load = F.load(), rd = F.readiness(), acts = F.activities();
@@ -706,6 +710,245 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   clean(p.rDfa(null, "all"), "dfa null");
   clean(p.rDfa(thr.map((x) => ({ ...x, samples: 2 })), "all"), "dfa nur dünne messungen");
   clean(p.rDfa(thr.map((x) => ({ ...x, power: null })), "all"), "dfa ohne leistung");
+}
+
+/* ── A2  Zeitfenster: vier Fallen, jede einzeln ────────────────────────── */
+{
+  const WINS = ["42d", "3m", "6m", "12m", "all"];
+  const render = (win, pick) => {
+    const q = new M.Panel();
+    q._nowIso = F.TODAY;
+    q._win.dfa = win;
+    if (pick) q._dfaPick = pick;
+    return q.rDfa(thr, "all");
+  };
+  const lead = (h) => (String(h).match(/lead1[^>]*>([^<]*)</) || [])[1] || "";
+  const rowsOf = (h) => (String(h).match(/data-act="dfapick"/g) || []).length;
+  // only the Y labels: they are the ones that must not move. The X labels are
+  // month ticks and OF COURSE change with the window - matching them too made
+  // this check fail for the right reason at the wrong place.
+  const yAxis = (h) => (String(h).match(/text-anchor="end" class="ax">[^<]*</g) || []).join(",");
+
+  // the picker itself
+  const base = render({ id: "3m" });
+  clean(base, "dfa fenster");
+  contains(base, 'role="radiogroup"', "fenster: keine Radiogruppe");
+  for (const label of ["42 T", "3 M", "6 M", "12 M", "alles", "eigener Zeitraum"]) {
+    contains(base, ">" + label + "<", "fenster: Chip " + label);
+  }
+  contains(base, "verschiebt sich täglich", "fenster: relativ nicht als relativ gekennzeichnet");
+  ok(/\d+ von \d+ Einheiten im Fenster/.test(base), "fenster: Zähler n von N fehlt");
+  ok(/aria-checked="true"[\s\S]{0,90}data-id="3m"/.test(base), "fenster: 3 M nicht vorausgewählt");
+
+  // FALLE 1 - the headline must not depend on the window.
+  // Relative windows all END at now, so their last five solid readings are
+  // the SAME five - comparing only those cannot show the defect. A frozen
+  // range that ends in the past can, and that is the case that decides it.
+  const PAST = { id: "custom", from: "2026-04-01", to: "2026-06-01" };
+  const leads = WINS.map((id) => lead(render({ id }))).concat(lead(render(PAST)));
+  ok(new Set(leads).size === 1 && leads[0].trim() !== "",
+     "FALLE 1: Leitzahl ändert sich mit dem Fenster (" + leads.join(" | ") + ")");
+  // the same for the power and the change beside it
+  const side = (h) => (String(h).match(/small2[^>]*>([^<]*)</g) || []).join("|");
+  ok(new Set(WINS.concat([0]).map((id, i) => side(render(i === WINS.length ? PAST : { id })))
+       .map((s) => s.split("|").slice(0, 2).join("|"))).size === 1,
+     "FALLE 1: Schwellenleistung oder Veränderung hängen am Fenster");
+  // and the contrast: the count of readings SHOULD follow the window, or the
+  // card would claim a sample size it is not showing
+  ok(/belastbar im Fenster/.test(base), "FALLE 1: Messungszahl nicht als Fensterzahl gekennzeichnet");
+  contains(base, "über den gesamten Bestand, nicht über das Fenster",
+           "FALLE 1: Quellzeile sagt nicht, worüber gerechnet wird");
+  contains(base, "Median der letzten 5 belastbaren Messungen",
+           "FALLE 1: Rechenweg der Leitzahl nicht benannt");
+  // the sport DOES move it - and the source line has to say which sport
+  contains(p.rDfa(thr, "ride"), "Rad", "FALLE 1: Sportart nicht in der Quellzeile");
+
+  // FALLE 2 - no median line under five solid readings, left out not thinned
+  const thin = thr.map((x) => ({ ...x, samples: 2 }));
+  const thinHtml = (() => { const q = new M.Panel(); q._nowIso = F.TODAY; q._win.dfa = { id: "all" }; return q.rDfa(thin, "all"); })();
+  clean(thinHtml, "dfa dünn im Fenster");
+  contains(thinHtml, "keine Medianlinie gezeichnet", "FALLE 2: dünne Lage ohne Hinweis");
+  ok((String(thinHtml).match(/<path d="M[^"]*" fill="none"/g) || []).length === 0,
+     "FALLE 2: Medianlinie trotz unter fünf belastbaren Messungen gezeichnet");
+  ok(!render({ id: "all" }).includes("keine Medianlinie gezeichnet"),
+     "FALLE 2: Hinweis auch bei ausreichender Lage");
+  ok((String(render({ id: "all" })).match(/<path d="M[^"]*" fill="none"/g) || []).length > 0,
+     "FALLE 2: keine Medianlinie bei ausreichender Lage");
+
+  // FALLE 3 - the y axis is scaled over the stock, not per window.
+  // The plain fixture cannot show this defect: its thresholds cycle through
+  // the same 150-171 band, so every window has the same span and a per-window
+  // axis looks identical. A test that cannot fail is not a test - so this one
+  // runs against a series that TRENDS, where early and late differ by 55 bpm.
+  const trending = thr.map((x, i) => ({ ...x, hr: 130 + i, power: 140 + i, samples: 12 }));
+  const trendAxis = (id) => {
+    const q = new M.Panel();
+    q._nowIso = F.TODAY;
+    q._win.dfa = { id };
+    return yAxis(q.rDfa(trending, "all"));
+  };
+  const axes = WINS.map(trendAxis);
+  ok(new Set(axes).size === 1 && axes[0].length > 0,
+     "FALLE 3: Y-Achse wird je Fenster neu skaliert (" + axes.map((a) => a.length).join(",") + ")");
+  // and the axis really does span the whole stock, not just the newest window.
+  // Checked on the LOWEST tick actually drawn, not on a label that happens to
+  // exist: tickVals picks round steps, so "there is a 130 somewhere" can be
+  // false while the axis is perfectly correct. Inside 42 T the readings start
+  // at 171 - an axis scaled per window could not reach down to 160.
+  const trendHtml = (id) => {
+    const q = new M.Panel();
+    q._nowIso = F.TODAY;
+    q._win.dfa = { id };
+    return String(q.rDfa(trending, "all"));
+  };
+  const lowTick = (id) => {
+    const vals = (trendHtml(id).match(/text-anchor="end" class="ax">([\d.]+)</g) || [])
+      .map((s) => parseFloat(s.replace(/.*>/, "")));
+    return vals.length ? Math.min(...vals) : NaN;
+  };
+  ok(lowTick("42d") <= 160,
+     "FALLE 3: enges Fenster reicht auf der Achse nicht unter seine eigenen Werte (tiefster Tick "
+     + lowTick("42d") + ", das Fenster selbst beginnt bei 171)");
+  ok(lowTick("42d") === lowTick("all"),
+     "FALLE 3: tiefster Tick unterscheidet sich zwischen engem und vollem Fenster");
+  // the flat fixture must not move either, for the same reason
+  ok(new Set(WINS.map((id) => yAxis(render({ id })))).size === 1,
+     "FALLE 3: Y-Achse wandert schon bei gleichförmiger Lage");
+
+  // FALLE 4 - the list follows the window
+  const counts = WINS.map((id) => rowsOf(render({ id })));
+  ok(counts.every((c, i) => i === 0 || c >= counts[i - 1]),
+     "FALLE 4: Liste folgt dem Fenster nicht (" + counts.join(",") + ")");
+  ok(counts[0] < counts[counts.length - 1], "FALLE 4: enges und weites Fenster gleich lang");
+  ok(counts[0] > 0, "FALLE 4: engstes Fenster leer");
+
+  // a frozen range says so, and an empty one speaks instead of showing nothing
+  const cu = render({ id: "custom", from: "2026-06-01", to: "2026-07-01" });
+  clean(cu, "dfa eigener zeitraum");
+  contains(cu, "eingefroren", "fenster: eigener Zeitraum nicht als eingefroren benannt");
+  ok(rowsOf(cu) > 0 && rowsOf(cu) < rowsOf(render({ id: "all" })),
+     "fenster: eigener Zeitraum filtert nicht");
+  const none = render({ id: "custom", from: "2020-01-01", to: "2020-02-01" });
+  clean(none, "dfa leeres fenster");
+  contains(none, "Keine Messung in diesem Zeitraum", "fenster: leeres Fenster schweigt");
+
+  // capped, and the cap is spoken
+  const many = Array.from({ length: 200 }, (_, i) => ({
+    date: `2026-0${1 + (i % 9)}-${String(1 + (i % 28)).padStart(2, "0")}`,
+    activity_id: "m" + i, type: "Ride", hr: 150 + (i % 10), power: 140, samples: 12,
+  }));
+  const capped = (() => { const q = new M.Panel(); q._nowIso = F.TODAY; q._win.dfa = { id: "all" }; return q.rDfa(many, "all"); })();
+  clean(capped, "dfa gekappt");
+  ok(rowsOf(capped) === 50, "Kappung: nicht auf 50 Zeilen gekappt (" + rowsOf(capped) + ")");
+  contains(capped, "Zeilen gezeigt", "Kappung: schweigt über die Kappung");
+
+  // window filtering is pure: same input, same answer
+  ok(JSON.stringify(M.winApply(thr, { id: "3m" }, F.TODAY).rows)
+     === JSON.stringify(M.winApply(thr, { id: "3m" }, F.TODAY).rows), "fenster: Filter nicht deterministisch");
+  // relative windows have NO upper bound - a reading dated tomorrow stays
+  const future = thr.concat([{ date: "2099-01-01", activity_id: "future", type: "Ride",
+                               hr: 152, power: 150, samples: 12 }]);
+  ok(M.winApply(future, { id: "42d" }, F.TODAY).rows.some((r) => r.activity_id === "future"),
+     "fenster: zukunftsdatierte Messung verschwindet wortlos");
+}
+
+/* ── A1  Brushing & Linking: ein Auswahlzustand, beide Richtungen ──────── */
+{
+  // pick from the NEWEST readings: the list is capped at 50, so the oldest
+  // entries have a point but no row - which is correct, and would make this
+  // check fail for a reason that has nothing to do with brushing
+  const solid = thr.slice(-10).find((x) => x.samples >= 5 && x.hr > 0);
+  const weak = thr.slice(-10).find((x) => x.samples < 5) || thr.find((x) => x.samples < 5);
+  const q = new M.Panel();
+  q._nowIso = F.TODAY;
+  q._win.dfa = { id: "all" };
+  const plain = q.rDfa(thr, "all");
+  q._dfaPick = solid.activity_id;
+  const marked = q.rDfa(thr, "all");
+  clean(marked, "dfa mit Auswahl");
+
+  // graph side: every pickable point carries its activity_id
+  ok((String(plain).match(/data-dot="/g) || []).length > 0, "A1: kein Punkt trägt eine activity_id");
+  contains(plain, `data-dot="${solid.activity_id}"`, "A1: belastbarer Punkt nicht markierbar");
+  ok(!String(plain).includes(`data-dot="${weak.activity_id}"`),
+     "A1: dünne Messung ist markierbar, obwohl sie hohl gezeichnet ist");
+  // list side: the row carries the same key, and the key is the activity_id -
+  // not the index and not the date, because one day can hold two sessions
+  contains(plain, `data-aid="${solid.activity_id}"`, "A1: Zeile trägt keine activity_id");
+  ok(!String(plain).includes('data-aid=""'), "A1: Zeile ohne Schlüssel");
+  // fixed selection is rendered, and it is undoable
+  ok(String(marked).includes("brushed"), "A1: feste Auswahl wird nicht gerendert");
+  ok(!String(plain).includes("brushed"), "A1: Markierung ohne Auswahl");
+  contains(marked, "Auswahl aufheben", "A1: kein Weg aus der Auswahl");
+  contains(marked, 'data-act="dfaclear"', "A1: Aufheben ohne Handler");
+  // and the selected session is named, not just highlighted
+  contains(marked, "Ausgewählt:", "A1: Auswahl nicht benannt");
+  // a selection that no longer exists in the window must not break the view
+  q._dfaPick = "gibtesnicht";
+  clean(q.rDfa(thr, "all"), "dfa Auswahl ohne Treffer");
+  q._dfaPick = null;
+}
+
+/* ── A3/A4  Spalten und Sprung in die Einheit ──────────────────────────── */
+{
+  const q = new M.Panel();
+  q._nowIso = F.TODAY;
+  const html = q.rDfa(thr, "all");
+  for (const col of ["Δ Median", "Dauer", "Last", "Ø HF", "Entkopplung", "Güte"]) {
+    contains(html, ">" + col + "<", "A3: Spalte " + col);
+  }
+  // the deviation is the number the tab is about - in bpm, with a sign
+  ok(/[+-]\d+ bpm/.test(html), "A3: keine Abweichung mit Vorzeichen in bpm");
+  // A4: the row offers the jump, and the jump carries the activity_id
+  contains(html, 'data-act="gotoact"', "A4: kein Sprung in die Einheit");
+  ok(/data-act="gotoact" data-id="act\d+"/.test(html), "A4: Sprung ohne activity_id");
+  // a payload from an older backend has none of the new fields - the columns
+  // must read "–" rather than "undefined"
+  const bare = thr.map((x) => ({ date: x.date, activity_id: x.activity_id, type: x.type,
+                                 hr: x.hr, power: x.power, samples: x.samples }));
+  clean(q.rDfa(bare, "all"), "dfa ohne die neuen Felder");
+}
+
+/* ── A5  die aufgeklappte Signalkarte bekommt eine Achse ───────────────── */
+{
+  const q = new M.Panel();
+  q._nowIso = F.TODAY;
+  const closed = q.rHeute(F.today());
+  clean(closed, "heute zugeklappt");
+  ok(!String(closed).includes("evtrack"), "A5: Ereignisspur auch zugeklappt");
+  q._sigOpen = "hrv";
+  const open = q.rHeute(F.today());
+  clean(open, "heute aufgeklappt");
+  contains(open, "evtrack", "A5: keine Ereignisspur in der aufgeklappten Karte");
+  contains(open, 'data-rdo="tsig_hrv"', "A5: keine feste Ableseleiste");
+  ok(/class="ax">\d\d\.\d\d\.</.test(open), "A5: keine Datumsbeschriftung mit Monat");
+  contains(open, "Trainingstag", "A5: Spur ohne Direktbeschriftung");
+  // degrade honestly: without dates, no axis and no track - never an invented one
+  const noDates = { ...F.today() };
+  delete noDates.history_days;
+  const bare = q.rHeute(noDates);
+  clean(bare, "heute ohne history_days");
+  ok(!String(bare).includes("evtrack"), "A5: Spur ohne Datumsquelle gezeichnet");
+  ok(!String(bare).includes('data-rdo="tsig_hrv"'), "A5: leere Ableseleiste ohne Datumsquelle");
+  q._sigOpen = null;
+}
+
+/* ── dayAxis: die Regel selbst ─────────────────────────────────────────── */
+{
+  const days = Array.from({ length: 42 }, (_, i) =>
+    new Date(Date.parse("2026-09-11T00:00:00Z") - (41 - i) * 864e5).toISOString().slice(0, 10));
+  const ax = M.dayAxis(days);
+  ok(ax.ticks.includes(41), "dayAxis: der neueste Tag trägt keinen Tick");
+  ok(ax.ticks.length >= 6, "dayAxis: zu wenige Ticks (" + ax.ticks.length + ")");
+  ok(ax.labels.length < ax.ticks.length, "dayAxis: jeder Tick beschriftet");
+  ok(ax.labels.some((l) => /^\d\d\.\d\d\.$/.test(l.t)), "dayAxis: kein Monatswechsel beschriftet");
+  // a month change is always labelled, even off the 14-day grid
+  const crossing = ["2026-07-30", "2026-07-31", "2026-08-01", "2026-08-02"];
+  const cax = M.dayAxis(crossing, { every: 3, label: 99 });
+  ok(cax.labels.some((l) => l.t === "01.08."), "dayAxis: Monatswechsel ohne Beschriftung");
+  ok(M.dayAxis([]).ticks.length === 0, "dayAxis: leere Liste erzeugt Ticks");
+  ok(M.dayAxis(null).ticks.length === 0, "dayAxis: null erzeugt Ticks");
+  ok(M.dayAxis(["kaputt", "2026-09-11"]).ticks.length >= 1, "dayAxis: Schrottdatum wirft");
 }
 
 

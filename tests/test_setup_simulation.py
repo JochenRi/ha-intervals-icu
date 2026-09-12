@@ -21,9 +21,12 @@ import derive  # noqa: E402
 from fixtures import ATHLETE, EVENTS, WELLNESS  # noqa: E402
 
 failures = []
+CHECKS = 0
 
 
 def check(label, got, expected):
+    global CHECKS
+    CHECKS += 1
     ok = got == expected
     print(f"{'PASS' if ok else 'FAIL'}  {label}: {got!r}" + ("" if ok else f"  (erwartet {expected!r})"))
     if not ok:
@@ -116,5 +119,6 @@ for name in ("sensor.py", "calendar.py"):
 check("keine Methode ueberschreibt ein Basis-Attribut", clashes, [])
 
 print()
+print(f"test_setup_simulation: {CHECKS} Prüfungen, {len(failures)} Fehler")
 print("FEHLER:", failures if failures else "keine")
 sys.exit(1 if failures else 0)

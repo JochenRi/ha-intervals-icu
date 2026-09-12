@@ -195,6 +195,40 @@ function tickVals(a, b, m) {
   }
   return out;
 }
+/* Day axis for a short window (six weeks), where month boundaries alone leave
+ * one or two labels on the whole axis. Anchored on the NEWEST day, because
+ * that is the one a reader looks for first - counting from the left would put
+ * the tick anywhere as soon as the series grows by a day.
+ *
+ * Tick every `every` days, label every `label` days, and a month change is
+ * always labelled with its month: "12." without a month is not a date. Gaps in
+ * the archive are counted as positions, not as calendar days - the dates are
+ * the ones that exist, which is exactly why they travel with the values. */
+function dayAxis(dates, o) {
+  o = o || {};
+  const every = o.every || 7, label = o.label || 14;
+  const ticks = [], labels = [];
+  const list = dates || [];
+  const last = list.length - 1;
+  for (let i = last; i >= 0; i--) {
+    const iso = String(list[i] || "");
+    if (iso.length < 10) continue;
+    const k = last - i;
+    const prev = String(list[i - 1] || "");
+    const newMonth = i > 0 && prev.length >= 7 && prev.slice(0, 7) !== iso.slice(0, 7);
+    const isTick = k % every === 0 || newMonth;
+    if (!isTick) continue;
+    ticks.push(i);
+    if (k % label === 0 || newMonth) {
+      const p = iso.slice(0, 10).split("-");
+      labels.push({ i, t: newMonth || k === 0 ? `${p[2]}.${p[1]}.` : `${p[2]}.` });
+    }
+  }
+  ticks.reverse();
+  labels.reverse();
+  return { ticks, labels };
+}
+
 /* x ticks on calendar month boundaries. Spacing by point index put two ticks
  * inside the same month whenever the series was denser there - the axis then
  * read "05.2026  05.2026". Returns at most `max` labels, thinned evenly. */
@@ -284,7 +318,17 @@ function chart(o) {
     } else if (s.t === "dots") {
       for (const p of (s.p || [])) {
         if (p.v == null) continue;
-        g += `<circle cx="${X(p.i)}" cy="${Y(p.v)}" r="${p.r || 3.4}" fill="${p.f === false ? "none" : (p.c || s.c)}" stroke="${p.c || s.c}" stroke-width="1.6" opacity="${p.op == null ? 1 : p.op}"/>`;
+        const r = p.r || 3.4, op = p.op == null ? 1 : p.op;
+        // A point that carries an id can be brushed. The handlers reach it
+        // through these attributes instead of rebuilding the view on every
+        // pointer move - a re-render would fight the pointer it follows.
+        const tag = p.id ? ` data-dot="${esc(String(p.id))}" data-r="${r}" data-op="${op}"` : "";
+        g += `<circle cx="${X(p.i)}" cy="${Y(p.v)}" r="${r}" fill="${p.f === false ? "none" : (p.c || s.c)}" stroke="${p.c || s.c}" stroke-width="1.6" opacity="${op}"${tag}/>`;
+        // the ring is a shape, not a second colour - WCAG 1.4.1, and the same
+        // rule that gives every state its own icon form
+        if (p.ring) {
+          g += `<circle class="pickring" cx="${X(p.i)}" cy="${Y(p.v)}" r="${r + 4}" fill="none" stroke="${p.c || s.c}" stroke-width="1.8" opacity="0.95"/>`;
+        }
       }
     } else {
       const col = s.c || C.tx2;
@@ -310,6 +354,11 @@ function chart(o) {
       }
       g += `<path d="${dPath}" fill="none" stroke="${col}" stroke-width="${s.w || 2}" ${s.d ? `stroke-dasharray="${s.d}"` : ""} opacity="${s.lop == null ? 1 : s.lop}" stroke-linejoin="round" stroke-linecap="round"/>${singles ? `<g opacity="${s.lop == null ? 1 : s.lop}">${singles}</g>` : ""}`;
     }
+  }
+  // short marks on the baseline: a label every other tick reads as a scale,
+  // a label on every tick reads as a wall of numbers
+  for (const i of (o.xtick || [])) {
+    g += `<line x1="${X(i)}" x2="${X(i)}" y1="${padT + ph}" y2="${padT + ph + 4}" stroke="${C.line}" stroke-width="1"/>`;
   }
   for (const x of (o.xt || [])) {
     g += `<text x="${X(x.i)}" y="${h - 6}" text-anchor="middle" class="ax">${x.t}</text>`;
@@ -383,6 +432,103 @@ function spark(vals, o) {
 function readout(group) {
   return `<div class="rdo" data-rdo="${group}">
     <span class="rdox">—</span><span class="rdov"></span>
+  </div>`;
+}
+
+/* ------------------------------------------------------------------ */
+/* Time window - a component, not a DFA special case. Fitness and       */
+/* Belastung want the same picker, and a second copy of this logic      */
+/* would be a second way to answer "which readings am I looking at".    */
+/*                                                                      */
+/* The pattern is Grafana's: a handful of relative quick ranges plus one */
+/* explicit range in YYYY-MM-DD. Relative is not absolute, and the card  */
+/* says so - a chip means "now minus three months", and that moves every */
+/* night, while a typed range is frozen.                                 */
+/* ------------------------------------------------------------------ */
+const WIN_VERSION = "v1";                       // bump when the shape changes
+const WIN_DEFAULT = "3m";
+const WINDOWS = [
+  { id: "42d", label: "42 T", days: 42, word: "die letzten 42 Tage" },
+  { id: "3m", label: "3 M", days: 91, word: "die letzten drei Monate" },
+  { id: "6m", label: "6 M", days: 182, word: "die letzten sechs Monate" },
+  { id: "12m", label: "12 M", days: 365, word: "die letzten zwölf Monate" },
+  { id: "all", label: "alles", days: null, word: "der gesamte Bestand" },
+  { id: "custom", label: "eigener Zeitraum", days: null, word: "ein fester Zeitraum" },
+];
+function winDef(id) {
+  return WINDOWS.find((w) => w.id === id) || WINDOWS.find((w) => w.id === WIN_DEFAULT);
+}
+function isoMinus(iso, days) {
+  const t = Date.parse(String(iso).slice(0, 10) + "T00:00:00Z");
+  if (Number.isNaN(t)) return null;
+  return new Date(t - days * 864e5).toISOString().slice(0, 10);
+}
+/* The bounds of a window. Relative windows have NO upper bound on purpose: a
+   reading dated tomorrow - a watch with a wrong clock - would otherwise drop
+   out of every view without a word, and silent disappearance is the defect
+   that cost 0.30.0 a release. */
+function winRange(win, nowIso) {
+  const def = winDef(win && win.id);
+  if (def.id === "custom") return { from: (win && win.from) || null, to: (win && win.to) || null };
+  if (def.days == null) return { from: null, to: null };
+  return { from: isoMinus(nowIso, def.days), to: null };
+}
+/* Filter rows (each with a .date) to the window. Returns the kept rows plus
+   the counts, because "14 von 49" is what makes a filtered list honest. */
+function winApply(rows, win, nowIso) {
+  const list = rows || [];
+  const { from, to } = winRange(win, nowIso);
+  const kept = list.filter((r) => {
+    const d = String((r && r.date) || "").slice(0, 10);
+    if (!d) return false;
+    if (from && d < from) return false;
+    if (to && d > to) return false;
+    return true;
+  });
+  return { rows: kept, from, to, kept: kept.length, total: list.length };
+}
+/* localStorage is a convenience, never a requirement: Safari's private mode
+   throws on WRITE, a panel rendered outside a browser has no localStorage at
+   all, and neither may take the view down with it. */
+function winRemember(view, win) {
+  try {
+    if (typeof localStorage === "undefined" || !localStorage) return;
+    localStorage.setItem(`intervals_icu.window.${WIN_VERSION}.${view}`, JSON.stringify(win));
+  } catch (err) { /* nothing remembered, everything still works */ }
+}
+function winRecall(view) {
+  try {
+    if (typeof localStorage === "undefined" || !localStorage) return null;
+    const raw = localStorage.getItem(`intervals_icu.window.${WIN_VERSION}.${view}`);
+    if (!raw) return null;
+    const win = JSON.parse(raw);
+    return win && winDef(win.id).id === win.id ? win : null;
+  } catch (err) { return null; }
+}
+/* Radio group, not six buttons: one tab stop, arrows move the choice. That is
+   what a set of mutually exclusive options is, and screen readers read it as
+   one control instead of six unrelated ones. */
+function winChips(view, win, nowIso) {
+  const cur = winDef(win && win.id);
+  const { from, to } = winRange(win, nowIso);
+  const chips = WINDOWS.map((w) => `<button role="radio" class="chipbtn ${w.id === cur.id ? "on" : ""}"
+      aria-checked="${w.id === cur.id}" tabindex="${w.id === cur.id ? 0 : -1}"
+      data-act="win" data-view="${esc(view)}" data-id="${w.id}">${w.label}</button>`).join("");
+  const note = cur.id === "custom"
+    ? `fester Zeitraum ${from ? dMed(from) : "offen"} – ${to ? dMed(to) : "offen"}, eingefroren`
+    : cur.days == null
+      ? "der gesamte Bestand"
+      : `${cur.word}, also ab ${dMed(from)} — relativ, verschiebt sich täglich`;
+  const fields = cur.id === "custom"
+    ? `<span class="winfields">
+        <input type="date" class="wind" data-act="winfrom" data-view="${esc(view)}" value="${from || ""}">
+        <span class="mut">bis</span>
+        <input type="date" class="wind" data-act="winto" data-view="${esc(view)}" value="${to || ""}">
+      </span>` : "";
+  return `<div class="winpick">
+    <div class="chips" role="radiogroup" aria-label="Zeitraum" data-winview="${esc(view)}">${chips}</div>
+    ${fields}
+    <span class="winnote">${esc(note)}</span>
   </div>`;
 }
 
@@ -511,6 +657,18 @@ class IntervalsIcuPanel extends HTMLElement {
     this._goalDraft = null;
     this._ctx = {};
     this._booted = false;
+    // one window state per view, so Fitness and Belastung can join later
+    this._win = { dfa: winRecall("dfa") || { id: WIN_DEFAULT } };
+    this._dfaPick = null;    // fixed selection (click)
+    this._dfaHover = null;   // transient selection (pointer)
+    this._nowIso = null;     // tests pin "today"; production reads the clock
+  }
+
+  /* One "now" for the whole panel. The tests pin it, because a window that
+     asks the wall clock makes the suite go red on its own some months from
+     now - and a test that fails for calendar reasons teaches nothing. */
+  _now() {
+    return this._nowIso || new Date().toISOString().slice(0, 10);
   }
 
   set hass(h) {
@@ -542,6 +700,7 @@ class IntervalsIcuPanel extends HTMLElement {
       this._err = String(err && err.message || err);
     }
     this._render();
+    this._routeFromHash();
   }
 
   async _need(what) {
@@ -581,6 +740,10 @@ class IntervalsIcuPanel extends HTMLElement {
     this._tab = "akt";
     await this._need("akt");
     this._sel = (this._acts || []).find((a) => String(a.id) === String(id)) || null;
+    // The activity list reaches 300 sessions back; a threshold reading can be
+    // older. Silently landing on an unfiltered list would look like the click
+    // did nothing - say what happened instead.
+    this._aktMiss = this._sel ? null : String(id);
     this._render();
     if (this._sel && !this._streams[id]) {
       const [st, lp, ni, cx] = await Promise.allSettled([
@@ -641,6 +804,11 @@ class IntervalsIcuPanel extends HTMLElement {
     // the strip must carry the newest values before anyone moves a mouse -
     // and on a touch screen nobody ever does
     for (const name of Object.keys(this._grp)) this._fillReadout(name, null);
+    // innerHTML threw the marks away with the old nodes; the FIXED selection
+    // has to survive a re-render, or clicking a row would clear the very
+    // mark the click just set.
+    this._dfaHover = null;
+    this._paintDfa();
   }
 
   /* ---------------- events ---------------- */
@@ -716,13 +884,169 @@ class IntervalsIcuPanel extends HTMLElement {
       else if (act === "sigfocus") {
         this._sigFocus = (this._sigFocus === id ? null : id); this._render();
       }
+      else if (act === "win") this._setWin(el.dataset.view, { id });
+      // A fixed pick is a toggle, and it is undoable: the known weakness of
+      // brushing is that the selection is purely visual and the way out is
+      // not discoverable, so the card also carries a visible "Auswahl
+      // aufheben".
+      else if (act === "dfapick") {
+        this._dfaPick = (this._dfaPick === id ? null : id);
+        this._render();
+      }
+      else if (act === "dfaclear") { this._dfaPick = null; this._render(); }
+      else if (act === "gotoact") this._goActivity(id);
+    });
+    // typed range: the input event carries the value, not a data-id
+    root.addEventListener("change", (e) => {
+      const el = e.target.closest && e.target.closest("[data-act]");
+      if (!el) return;
+      const view = el.dataset.view;
+      if (el.dataset.act === "winfrom" || el.dataset.act === "winto") {
+        const cur = this._win[view] || { id: WIN_DEFAULT };
+        const next = { id: "custom", from: cur.from || null, to: cur.to || null };
+        next[el.dataset.act === "winfrom" ? "from" : "to"] = el.value || null;
+        this._setWin(view, next);
+      }
+    });
+    // arrow keys inside the radio group - that is what a radio group is
+    root.addEventListener("keydown", (e) => {
+      const group = e.target.closest && e.target.closest("[role=radiogroup][data-winview]");
+      if (!group) return;
+      const step = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1
+        : e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 0;
+      if (!step) return;
+      e.preventDefault();
+      const view = group.dataset.winview;
+      const cur = WINDOWS.findIndex((w) => w.id === winDef((this._win[view] || {}).id).id);
+      const next = WINDOWS[(cur + step + WINDOWS.length) % WINDOWS.length];
+      this._setWin(view, { id: next.id });
     });
     root.addEventListener("pointermove", (e) => {
+      // a row under the pointer brushes its point in the graph
+      const row = e.target.closest && e.target.closest("[data-aid]");
+      if (row) { this._brush(row.dataset.aid); return; }
       const g = e.target.closest && e.target.closest("[data-grp]");
-      if (!g) { this._xhHide(); return; }
-      this._xhMove(g, e);
+      if (!g) { this._xhHide(); this._brush(null); return; }
+      const idx = this._xhMove(g, e);
+      if (g.dataset.grp === "dfa") {
+        if (this._drag) this._dragTo(g, idx);
+        else this._brush(this._dfaIdToIdx(idx));
+      }
     });
-    root.addEventListener("pointerleave", () => this._xhHide(), true);
+    root.addEventListener("pointerleave", () => { this._xhHide(); this._brush(null); }, true);
+    // Dragging a range in the graph is the cheapest route to a free window and
+    // needs no date-picker widget. Double click puts it back.
+    root.addEventListener("pointerdown", (e) => {
+      const g = e.target.closest && e.target.closest('[data-grp="dfa"]');
+      if (!g) return;
+      const idx = this._xhMove(g, e);
+      if (idx == null) return;
+      this._drag = { from: idx, to: idx };
+      this._dragTo(g, idx);
+    });
+    root.addEventListener("pointerup", () => {
+      const drag = this._drag;
+      this._drag = null;
+      if (!drag || Math.abs(drag.to - drag.from) < 2) { this._dragPaint(null); return; }
+      const rows = this._dfaRows || [];
+      const a = rows[Math.min(drag.from, drag.to)], b = rows[Math.max(drag.from, drag.to)];
+      if (!a || !b) { this._dragPaint(null); return; }
+      this._setWin("dfa", { id: "custom", from: a.date, to: b.date });
+    });
+    root.addEventListener("dblclick", (e) => {
+      const g = e.target.closest && e.target.closest('[data-grp="dfa"]');
+      if (g) this._setWin("dfa", { id: WIN_DEFAULT });
+    });
+    // the back button and a shared link, for one listener
+    try {
+      if (typeof window !== "undefined" && window && window.addEventListener) {
+        window.addEventListener("hashchange", () => this._routeFromHash());
+      }
+    } catch (err) { /* no browser, no routing - the panel still works */ }
+  }
+
+  _setWin(view, win) {
+    if (!view) return;
+    this._win[view] = win;
+    winRemember(view, win);
+    this._render();
+  }
+
+  /* transient selection: DOM only, never a re-render. A pointer move that
+     rebuilds the view would fight the pointer it is following. */
+  _brush(id) {
+    if (this._dfaHover === id) return;
+    this._dfaHover = id;
+    this._paintDfa();
+  }
+
+  _dfaIdToIdx(idx) {
+    const rows = this._dfaRows || [];
+    const row = idx == null ? null : rows[idx];
+    // a reading without a usable value is drawn hollow and stays unpickable
+    return row && row.pickable ? row.activity_id : null;
+  }
+
+  /* Transient marking only. The FIXED pick is rendered (see rDfa), so this
+     handles the hover and puts everything back to the rendered state when the
+     pointer leaves - the values to go back to travel on the element itself. */
+  _paintDfa() {
+    const root = this.shadowRoot;
+    if (!root || !root.querySelectorAll) return;
+    const mark = this._dfaHover;
+    const dots = root.querySelectorAll("[data-dot]");
+    (dots.forEach ? dots : []).forEach((el) => {
+      const rendered = { r: el.dataset.r || "4", op: el.dataset.op || "1" };
+      const hit = mark && el.dataset.dot === mark;
+      el.setAttribute("opacity", !mark ? rendered.op : (hit ? "1" : "0.35"));
+      el.setAttribute("r", hit ? String(+rendered.r + 2) : rendered.r);
+      el.setAttribute("stroke-width", hit ? "2.6" : "1.6");
+    });
+    const rows = root.querySelectorAll("[data-aid]");
+    (rows.forEach ? rows : []).forEach((el) => {
+      const hit = mark && el.dataset.aid === mark;
+      if (el.classList) el.classList.toggle("hovered", !!hit);
+      if (hit && el.scrollIntoView) el.scrollIntoView({ block: "nearest" });
+    });
+  }
+
+  _dragTo(g, idx) {
+    if (!this._drag || idx == null) return;
+    this._drag.to = idx;
+    this._dragPaint(this._drag);
+  }
+
+  _dragPaint(drag) {
+    const root = this.shadowRoot;
+    if (!root || !root.querySelectorAll) return;
+    const sels = root.querySelectorAll(".dragsel");
+    (sels.forEach ? sels : []).forEach((el) => {
+      if (!drag) { el.setAttribute("opacity", "0"); return; }
+      const n = Math.max(2, (this._dfaRows || []).length);
+      const padL = 48, padR = 14, w = 880, pw = w - padL - padR;
+      const x1 = padL + (Math.min(drag.from, drag.to) / (n - 1)) * pw;
+      const x2 = padL + (Math.max(drag.from, drag.to) / (n - 1)) * pw;
+      el.setAttribute("x", String(x1));
+      el.setAttribute("width", String(Math.max(0, x2 - x1)));
+      el.setAttribute("opacity", "0.18");
+    });
+  }
+
+  /* A hash route costs one state variable and buys the back button plus a
+     shareable link; Kalender and Heute can use the same road later. */
+  _goActivity(id) {
+    try {
+      if (typeof location !== "undefined" && location) location.hash = `#activities/${id}`;
+    } catch (err) { /* no browser - the call below still opens the tab */ }
+    this._openAct(id);
+  }
+
+  _routeFromHash() {
+    try {
+      if (typeof location === "undefined" || !location) return;
+      const m = /^#activities\/(.+)$/.exec(location.hash || "");
+      if (m) this._openAct(decodeURIComponent(m[1]));
+    } catch (err) { /* nothing to route */ }
   }
 
   _xhHide() {
@@ -755,11 +1079,13 @@ class IntervalsIcuPanel extends HTMLElement {
     }
   }
 
+  /* Returns the index under the pointer, so brushing and range dragging read
+     the same position as the cursor line instead of computing their own. */
   _xhMove(g, e) {
     const name = g.dataset.grp, meta = this._grp[name];
-    if (!meta) return;
+    if (!meta) return null;
     const svg = g.querySelector("svg.ch");
-    if (!svg) return;
+    if (!svg) return null;
     const rect = svg.getBoundingClientRect();
     const W = +svg.dataset.w, padL = +svg.dataset.padl, padR = +svg.dataset.padr;
     const localX = (e.clientX - rect.left) * (W / rect.width);
@@ -772,6 +1098,7 @@ class IntervalsIcuPanel extends HTMLElement {
     });
     this._fillReadout(name, idx);
     this._xhOn = true;
+    return idx;
   }
 
   _toast(text) {
@@ -1377,6 +1704,50 @@ class IntervalsIcuPanel extends HTMLElement {
     return null;
   }
 
+  /* Event track under an enlarged signal curve: one short stroke per training
+     day, height by load, plus a marker on the days the trainer called a slump.
+     That puts "HRV falls two days after the long ride" on one screen instead
+     of behind a tab change.
+
+     Two registers, kept apart: training is a CATEGORY and gets slate, the
+     state is a JUDGMENT and gets amber/red - and each state carries its own
+     shape as well as its colour, so the track survives without colour vision.
+     Geometry is the chart's (880 / 48 / 14), or the cursor would sit next to
+     the stroke it names instead of on it. */
+  _eventTrack(track, grp) {
+    const w = 880, padL = 48, padR = 14, h = 34, base = 22;
+    const rows = track || [];
+    const n = Math.max(2, rows.length);
+    const X = (i) => padL + (i / (n - 1)) * (w - padL - padR);
+    const maxLoad = Math.max(1, ...rows.map((r) => (r && r.load) || 0));
+    let g = "";
+    rows.forEach((r, i) => {
+      const load = (r && r.load) || 0;
+      if (load > 0) {
+        const hgt = 3 + (load / maxLoad) * 11;
+        g += `<line x1="${X(i).toFixed(1)}" x2="${X(i).toFixed(1)}" y1="${base}"
+          y2="${(base - hgt).toFixed(1)}" stroke="${C.slate}" stroke-width="2.2" opacity="0.95"/>`;
+      }
+      const st = r && r.state;
+      if (st === "slump") {
+        // triangle: the shape says "slump" even where the red does not
+        const x = X(i);
+        g += `<path d="M${(x - 3.2).toFixed(1)} ${base + 8}L${(x + 3.2).toFixed(1)} ${base + 8}L${x.toFixed(1)} ${base + 2.6}Z" fill="${C.red}"/>`;
+      } else if (st === "recovering" || st === "rebound" || st === "strained") {
+        g += `<rect x="${(X(i) - 2.4).toFixed(1)}" y="${base + 3.4}" width="4.8" height="4.8" rx="1" fill="${C.amber}"/>`;
+      }
+    });
+    return `<svg class="ch evtrack" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"
+        data-n="${n}" data-w="${w}" data-padl="${padL}" data-padr="${padR}">
+      <line x1="${padL}" x2="${w - padR}" y1="${base}" y2="${base}" stroke="${C.line}"/>
+      ${g}
+      <line class="xh" x1="-9" x2="-9" y1="2" y2="${h - 2}" stroke="${C.tx2}" stroke-width="1" stroke-dasharray="3 3" opacity="0"/>
+    </svg>
+    <p class="hint evleg"><i class="evb" style="background:${C.slate}"></i>Trainingstag (Höhe = Last)
+      <i class="evt" style="border-bottom-color:${C.red}"></i>Einbruch
+      <i class="evs" style="background:${C.amber}"></i>beansprucht / Erholung</p>`;
+  }
+
   /* date of the newest actual value in a series - a wellness row fills up
      over the day, so a card's number is often yesterday's. Saying which day
      it belongs to is the difference between a reading and a guess. */
@@ -1474,6 +1845,25 @@ class IntervalsIcuPanel extends HTMLElement {
             const band = (t.bands || {})[s.key];
             const series = (t.history && t.history[s.key]) || [s.baseline, s.value];
             const vals = series.filter((v) => v != null);
+            // The small curve is a sparkline and may go without an axis. Once
+            // it opens up it is a diagram, and a diagram needs one. The dates
+            // come from the payload: these are the wellness days that exist,
+            // not 42 consecutive ones, so "today minus n" would be wrong from
+            // the first gap.
+            const track = (t.history_days || []);
+            const dts = track.length === series.length ? track.map((r) => r.date) : [];
+            const ax = dayAxis(dts);
+            const grp = `tsig_${s.key}`;
+            if (dts.length) {
+              this._grp[grp] = {
+                n: series.length,
+                xl: (i) => `${dMed(dts[i])}${(track[i] || {}).load ? " · Training" : ""}`,
+                rows: [
+                  { l: s.label, c: scol, u: s.unit, dec, vals: series },
+                  { l: "Tageslast", c: C.tx2, vals: track.map((r) => r.load || 0) },
+                ],
+              };
+            }
             // the axis has to CONTAIN the threshold line, or it is drawn
             // outside the plot and silently disappears
             const marks = band ? [band.slump, band.usual[0], band.usual[1], band.baseline] : [s.baseline];
@@ -1490,16 +1880,14 @@ class IntervalsIcuPanel extends HTMLElement {
               { y: band.baseline, c: C.tx3, d: 1, t: `Basislinie ${fmt(band.baseline, dec)}` },
               { y: band.slump, c: C.amber, d: 1, t: `${s.key === "rhr" ? "auffällig hoch" : "Einbruch ab"} ${fmt(band.slump, dec)}` },
             ] : [{ y: s.baseline, c: C.tx3, d: 1, t: "Basislinie" }];
-            return chart({ h: 200, n: Math.max(2, series.length), y0: lo, y1: hi,
+            const plot = chart({ h: 200, n: Math.max(2, series.length), y0: lo, y1: hi,
               yf: (v) => fmt(v, dec), bands, hl: lines,
+              grp: dts.length ? grp : null,
+              xt: ax.labels, xtick: ax.ticks,
               s: [{ t: "line", v: series, c: scol, w: 2 }] });
+            if (!dts.length) return plot;
+            return `<div data-grp="${grp}">${readout(grp)}${plot}${this._eventTrack(track, grp)}</div>`;
           })()}
-          ${false ? chart({ h: 190, n: Math.max(2, (t.history && t.history[s.key] || []).length || 2),
-            y0: Math.min(...((t.history && t.history[s.key] || [s.baseline, s.value]).filter((v) => v != null)), s.baseline) * 0.94,
-            y1: Math.max(...((t.history && t.history[s.key] || [s.baseline, s.value]).filter((v) => v != null)), s.baseline) * 1.06,
-            yf: (v) => fmt(v, dec),
-            hl: [{ y: s.baseline, c: C.tx3, d: 1, t: "Basislinie" }],
-            s: [{ t: "line", v: (t.history && t.history[s.key]) || [s.baseline, s.value], c: scol, w: 2 }] }) : ""}
           ${(t.bands || {})[s.key] ? `<p class="src"><b>Die Bereiche:</b> das dunkle Band ist
             ±0,5 Standardabweichungen um deine Basislinie — was darin liegt, ist Rauschen.
             Das hellere ist deine gewohnte Schwankung (±1 SD). Die gelbe Linie markiert
@@ -1743,6 +2131,10 @@ class IntervalsIcuPanel extends HTMLElement {
   rAkt(list, sel) {
     if (!list) return `<div class="card pad">Aktivitäten werden geladen …</div>`;
     if (!list.length) return `<div class="card pad">Noch keine Aktivitäten im Archiv.</div>`;
+    const miss = !sel && this._aktMiss
+      ? `<div class="card pad err">Die Einheit <b>${esc(this._aktMiss)}</b> liegt nicht in den
+         zuletzt geladenen ${fmt(list.length)} Einheiten — sie ist älter als der geladene Bereich.
+         Die Schwellenmessung dazu steht weiterhin im DFA-Reiter.</div>` : "";
     const detail = sel ? this._aktDetail(sel) : "";
     const rows = list.slice(0, 120).map((a) => {
       const sp = sportOf(a.type);
@@ -1766,7 +2158,7 @@ class IntervalsIcuPanel extends HTMLElement {
         <span class="tn">${thr}</span>
       </button>`;
     }).join("");
-    return `${detail}
+    return `${miss}${detail}
       <div class="card pad0">
         <div class="ahead">
           <span></span><span>Einheit</span><span>Dauer</span><span>Distanz</span><span>Last</span><span>Ø HF</span><span>Entkopplung</span><span>DFA-Verteilung</span><span>Schwelle</span>
@@ -2473,6 +2865,15 @@ class IntervalsIcuPanel extends HTMLElement {
   }
 
   /* ---------------- DFA ---------------- */
+  /* The DFA tab: a scatter of threshold readings over a graph, the same
+     readings as a table below, and ONE selection state across both.
+
+     Four traps sit in the time window, and all four are the same mistake in
+     different clothes - letting the view change a number it must not change:
+     the headline stays window-independent, a median line needs five solid
+     readings or it is not drawn, the y axis is scaled over the whole stock
+     rather than per window, and the list follows the window or a point in
+     the graph has no row. */
   rDfa(thr, sportFilter) {
     if (!thr) return `<div class="card pad">DFA-Daten werden geladen …</div>`;
     // Ride and VirtualRide are both "Rad" - filtering on the raw type listed
@@ -2482,50 +2883,116 @@ class IntervalsIcuPanel extends HTMLElement {
       const g = groupKey(x.type);
       if (g && !groups.includes(g)) groups.push(g);
     }
-    const rows = thr.filter((x) => sportFilter === "all" || groupKey(x.type) === sportFilter);
-    const solid = rows.filter((x) => (x.samples || 0) >= 5 && x.hr != null && x.hr > 0);
-    if (!rows.length) return `<div class="card pad">Noch keine Schwellen-Messungen${sportFilter !== "all" ? " für diese Sportart" : ""}.</div>`;
+    const sportName = sportFilter === "all" ? "alle Sportarten" : (SPORT[sportFilter] || {}).l || sportFilter;
+    // The sport is a different axis from the window, and it MAY move the
+    // headline - the aerobic threshold on foot is not the one on the bike.
+    // What must not happen is that it moves it silently, so the source line
+    // below names the sport it was computed from.
+    const all = thr.filter((x) => sportFilter === "all" || groupKey(x.type) === sportFilter);
+    if (!all.length) return `<div class="card pad">Noch keine Schwellen-Messungen${sportFilter !== "all" ? " für diese Sportart" : ""}.</div>`;
+
+    const isSolid = (x) => (x.samples || 0) >= 5 && x.hr != null && x.hr > 0;
+    const solidAll = all.filter(isSolid);
+    // TRAP 1: the headline is computed over the whole stock, never over the
+    // window. Otherwise the aerobic threshold changes because somebody
+    // zoomed - two ways to answer one question, the defect class that has
+    // cost this project four releases.
+    const cur = median(solidAll.slice(-5).map((x) => x.hr));
+    const first = median(solidAll.slice(0, 5).map((x) => x.hr));
+    const curW = median(solidAll.slice(-5).map((x) => x.power).filter((v) => v != null));
+    // the deviation column reads against a rolling median over the whole
+    // stock as well, for the same reason
+    const rollAll = rollMedian(all.map((x) => (isSolid(x) ? x.hr : null)), 5);
+    const rollBy = {};
+    all.forEach((x, i) => { rollBy[x.activity_id] = rollAll[i]; });
+
+    const win = this._win.dfa || { id: WIN_DEFAULT };
+    const w = winApply(all, win, this._now());
+    const rows = w.rows;
+    const solid = rows.filter(isSolid);
     const n = rows.length;
-    const hrVals = rows.map((x) => ((x.samples || 0) >= 5 && x.hr > 0) ? x.hr : null);
-    const roll = rollMedian(hrVals, 5);
-    const cur = median(solid.slice(-5).map((x) => x.hr));
-    const first = median(solid.slice(0, 5).map((x) => x.hr));
-    const curW = median(solid.slice(-5).map((x) => x.power).filter((v) => v != null));
+    const winLabel = `${fmt(w.kept)} von ${fmt(w.total)} Einheiten im Fenster`;
+    const picker = winChips("dfa", win, this._now());
+
+    if (!n) {
+      return `${this._dfaExplain()}
+        ${this._dfaBar(groups, sportFilter, picker)}
+        <div class="card pad">Keine Messung in diesem Zeitraum — von ${fmt(w.total)} insgesamt.
+        Ein anderes Fenster wählen oder auf den Graphen doppelklicken.</div>`;
+    }
+
     const avgAll = meanOf(solid.map((x) => x.hr));
-    // A zero threshold is a recording artefact, and a single-sample reading
-    // off a walk is not a threshold either: both used to stretch the axis
-    // from 0 to 160 and squash the real range into a line. The axis follows
-    // the readings that carry weight; the rest is clamped into view.
-    const solidHr = solid.map((x) => x.hr).filter((v) => v != null && v > 0);
+    // TRAP 3: the y axis is built from the SOLID readings of the whole stock,
+    // not of the window - otherwise every window looks equally dramatic. A
+    // zero threshold is a recording artefact and a single-sample reading off
+    // a walk is not a threshold either: both used to stretch the axis from 0
+    // to 160 and squash the real range into a line.
+    const solidHr = solidAll.map((x) => x.hr).filter((v) => v != null && v > 0);
     let [y0a, y1a] = solidHr.length >= 2
       ? domainOf([{ v: solidHr }], 0.14)
-      : domainOf([{ v: rows.map((x) => x.hr).filter((v) => v > 0) }]);
+      : domainOf([{ v: all.map((x) => x.hr).filter((v) => v > 0) }]);
     if (!(y1a > y0a)) { y0a = 100; y1a = 180; }
     const xt = monthTicks(rows.map((x) => x.date));
     let clamped = 0;
+    // The fixed pick is part of the RENDER, the hover is not. That is the
+    // flüchtig/fest split of the pattern, and it means the marked state
+    // survives a re-render and can be checked without a browser.
+    // De-emphasis beats emphasis at fifty points: dim the others rather than
+    // brighten the hit - and the ring is a SHAPE, so the mark does not rest
+    // on colour alone.
+    const pick = this._dfaPick;
     const pts = rows.map((x, i) => {
       if (x.hr == null || x.hr <= 0) return null;
       const solidPt = (x.samples || 0) >= 5;
       const v = Math.max(y0a, Math.min(y1a, x.hr));
       if (v !== x.hr) clamped++;
+      const hit = !!pick && x.activity_id === pick;
+      const baseR = solidPt ? 4 : 3;
+      const baseOp = solidPt ? 1 : 0.6;
+      // hollow points carry no usable reading and stay unpickable
       return { i, v, c: solidPt ? ROLE.series : C.grey,
-               f: solidPt, r: solidPt ? 4 : 3, op: solidPt ? 1 : 0.6 };
+               f: solidPt, r: hit ? baseR + 2 : baseR,
+               op: pick ? (hit ? 1 : 0.35) : baseOp,
+               ring: hit,
+               id: solidPt ? x.activity_id : null };
     }).filter(Boolean);
+    // the row list the pointer handlers index into - same order as the graph
+    this._dfaRows = rows.map((x) => ({
+      date: x.date, activity_id: x.activity_id, pickable: isSolid(x),
+    }));
+
+    // TRAP 2: a median line needs five solid readings. A trend through three
+    // points is the 0.13.0 mistake in new clothes - and it is LEFT OUT, not
+    // drawn thin: a faint wrong line is still a wrong line.
+    const enoughForMedian = solid.length >= 5;
+    const roll = enoughForMedian
+      ? rollMedian(rows.map((x) => (isSolid(x) ? x.hr : null)), 5) : null;
+    const series = [{ t: "dots", p: pts, c: ROLE.series }];
+    if (roll) series.push({ t: "line", v: roll, c: ROLE.series, w: 2.4 });
+
     const mainCh = chart({
       h: 260, n, y0: y0a, y1: y1a, xt, grp: "dfa",
+      extra: `<rect class="dragsel" x="0" y="0" width="0" height="100%" fill="${ROLE.series}" opacity="0"/>`,
       hl: avgAll != null ? [{ y: avgAll, c: C.tx3, d: 1, t: "Schnitt " + fmt(avgAll) }] : [],
-      s: [{ t: "dots", p: pts, c: ROLE.series }, { t: "line", v: roll, c: ROLE.series, w: 2.4 }],
+      s: series,
       label: "Schwellen-Herzfrequenz (bpm)", labelc: ROLE.series,
-    }) + (clamped ? `<p class="hint">${ico("warn", C.amber, 13)} ${clamped} Messung(en) außerhalb des dargestellten Bereichs — an der Achse geklemmt, damit der belastbare Bereich lesbar bleibt.</p>` : "");
-    const powRows = rows.map((x) => (x.samples || 0) >= 5 ? x.power : null);
+    })
+      + (enoughForMedian ? "" : `<p class="hint">${ico("warn", C.amber, 13)} Nur ${solid.length} belastbare Messung(en) in diesem Fenster — unter fünf wird keine Medianlinie gezeichnet.</p>`)
+      + (clamped ? `<p class="hint">${ico("warn", C.amber, 13)} ${clamped} Messung(en) außerhalb des dargestellten Bereichs — an der Achse geklemmt, damit der belastbare Bereich lesbar bleibt.</p>` : "");
+
+    const powRows = rows.map((x) => ((x.samples || 0) >= 5 ? x.power : null));
     let powCh = "";
     if (powRows.some((v) => v != null)) {
-      const [p0, p1] = domainOf([{ v: powRows }]);
+      const [p0, p1] = domainOf([{ v: all.map((x) => (isSolid(x) ? x.power : null)) }]);
       powCh = chart({
         h: 130, n, y0: p0, y1: p1, grp: "dfa",
         s: [
-          { t: "dots", p: rows.map((x, i) => powRows[i] != null ? { i, v: powRows[i], c: ROLE.pow, r: 3.4 } : null).filter(Boolean), c: ROLE.pow },
-          { t: "line", v: rollMedian(powRows, 5), c: ROLE.pow, w: 2 },
+          { t: "dots", p: rows.map((x, i) => (powRows[i] != null
+              ? { i, v: powRows[i], c: ROLE.pow, r: pick && x.activity_id === pick ? 5.4 : 3.4,
+                  op: pick ? (x.activity_id === pick ? 1 : 0.35) : 1,
+                  ring: !!pick && x.activity_id === pick,
+                  id: isSolid(x) ? x.activity_id : null } : null)).filter(Boolean), c: ROLE.pow },
+          ...(enoughForMedian ? [{ t: "line", v: rollMedian(powRows, 5), c: ROLE.pow, w: 2 }] : []),
         ],
         label: "Schwellen-Leistung (W) — eigenes Feld statt zweiter Achse", labelc: ROLE.pow,
       });
@@ -2538,42 +3005,92 @@ class IntervalsIcuPanel extends HTMLElement {
         { l: "Messpunkte", c: C.tx2, vals: rows.map((x) => x.samples) },
       ],
     };
-    const tableRows = rows.slice(-15).reverse().map((x) => {
+
+    // TRAP 4: the list follows the window, or A1 breaks - a point in the
+    // graph without a row. Capped at 50 with the cap SPOKEN: a list that
+    // stops at fifteen without saying so was half the trap, and one that
+    // silently renders four hundred rows is the other half.
+    const CAP = 50;
+    const shown = rows.slice(-CAP).reverse();
+    const capped = w.kept > CAP;
+    const tableRows = shown.map((x) => {
       const weak = (x.samples || 0) < 5;
       const sp = sportOf(x.type);
-      return `<div class="trow ${weak ? "weak" : ""}">
+      const base = rollBy[x.activity_id];
+      const dev = (!weak && x.hr != null && base != null) ? x.hr - base : null;
+      const devCls = dev == null ? "mut" : Math.abs(dev) >= 3 ? "warncol" : "okcol";
+      const dec = x.decoupling;
+      const decCls = dec == null ? "mut" : dec > 5 ? "warncol" : "okcol";
+      const marked = this._dfaPick === x.activity_id;
+      return `<button class="trow ${weak ? "weak" : ""} ${marked ? "brushed" : ""}"
+          data-aid="${esc(x.activity_id)}" data-act="dfapick" data-id="${esc(x.activity_id)}"
+          title="${esc(x.name || sportOf(x.type).l)} — klicken markiert, Doppelpfeil öffnet die Einheit">
         <span>${dMed(x.date)}</span>
         <span style="color:${sp.c}">${ico(sp.ic, sp.c, 15)}${sp.l}</span>
         <span class="tn">${fmt(x.hr)} bpm</span>
+        <span class="tn ${devCls}">${dev == null ? "–" : sign(Math.round(dev)) + " bpm"}</span>
         <span class="tn">${x.power ? fmt(x.power) + " W" : "–"}</span>
+        <span class="tn">${dur(x.moving_time)}</span>
+        <span class="tn">${x.load != null ? fmt(x.load) : "–"}</span>
+        <span class="tn">${x.avg_hr ? fmt(x.avg_hr) + " bpm" : "–"}</span>
+        <span class="tn ${decCls}">${dec != null ? fmt(dec, 1) + " %" : "–"}</span>
         <span>${weak ? badge("amber", x.samples + " Punkte — dünn") : badge("green", x.samples + " Punkte")}</span>
-      </div>`;
+        <span class="gobox"><i class="go" data-act="gotoact" data-id="${esc(x.activity_id)}"
+          title="Einheit öffnen">${ico("chev", C.tx2, 16)}</i></span>
+      </button>`;
     }).join("");
+
+    const pickRow = this._dfaPick ? all.find((x) => x.activity_id === this._dfaPick) : null;
+    const clearBar = pickRow
+      ? `<div class="bar pickbar">${ico("dot", ROLE.series, 12)}
+          <span>Ausgewählt: <b>${esc(pickRow.name || sportOf(pickRow.type).l)}</b> vom ${dMed(pickRow.date)}</span>
+          <button class="chipbtn" data-act="dfaclear">Auswahl aufheben</button>
+          <button class="chipbtn" data-act="gotoact" data-id="${esc(pickRow.activity_id)}">Einheit öffnen</button>
+        </div>` : "";
+
     return `
-      <div class="card explain">
+      ${this._dfaExplain()}
+      ${this._dfaBar(groups, sportFilter, picker)}
+      <div class="statgrid card lead">
+        <div class="stat wide"><small>Aktuelle aerobe Schwelle</small>
+          <b class="tn lead1" style="color:${ROLE.series}">${cur ? fmt(cur) : "–"} <span class="unit">bpm</span></b>
+          <span class="mut">Median der letzten 5 belastbaren Messungen · ${esc(sportName)} · über den gesamten Bestand, nicht über das Fenster</span></div>
+        <div class="sidestats">
+          <div class="stat"><small>bei Leistung</small><b class="tn small2">${curW ? fmt(curW) : "–"} <span class="unit">W</span></b></div>
+          <div class="stat"><small>Veränderung</small><b class="tn small2">${cur != null && first != null ? sign(Math.round(cur - first)) : "–"} <span class="unit">bpm</span></b></div>
+          <div class="stat"><small>Messungen</small><b class="tn small2">${solid.length}</b><span class="mut">belastbar im Fenster · ${n - solid.length} dünn</span></div>
+        </div>
+      </div>
+      ${clearBar}
+      <div class="card pad0" data-grp="dfa">${readout("dfa")}${mainCh}${powCh}
+        <p class="hint pad">${winLabel}. Ziehen im Graphen wählt einen eigenen Zeitraum, Doppelklick setzt zurück.</p></div>
+      <div class="card pad0">
+        <div class="thead dfahead"><span>Datum</span><span>Sport</span><span>Schwelle</span>
+          <span title="Abweichung gegen den rollierenden Median über den gesamten Bestand">Δ Median</span>
+          <span>Leistung</span><span>Dauer</span><span>Last</span><span>Ø HF</span>
+          <span>Entkopplung</span><span>Güte</span><span></span></div>
+        ${tableRows}
+        ${capped ? `<p class="hint pad">${fmt(CAP)} von ${fmt(w.kept)} Zeilen gezeigt — die neuesten. Ein engeres Fenster zeigt den Rest.</p>` : ""}
+      </div>`;
+  }
+
+  _dfaExplain() {
+    return `<div class="card explain">
         <p><b>DFA alpha-1</b> beschreibt, wie geordnet dein Herzschlagmuster ist. Der Wert sinkt mit der Intensität:
         bei <b style="color:${C.green}">0,75</b> liegt die aerobe Schwelle, bei <b style="color:${C.red}">0,5</b> die anaerobe.
         Unten steht, bei welcher Herzfrequenz deine Kurve in jeder Einheit durch 0,75 fällt — deine aerobe Schwelle, aus dem Training selbst gemessen, ohne Labortest.</p>
         <details class="more"><summary>Quelle und Grenzen</summary><p class="src">Rogers und Gronwald, gegen Spiroergometrie geprüft: die Übereinstimmung an der aeroben Schwelle ist schwach (weite Grenzen, fitnessabhängiger Bias), an der anaeroben robuster — als Trend brauchbar, als alleinige Verankerung nicht. Empfindlich für Artefakte und Aufzeichnungsgerät — deshalb zählen nur Messungen mit genügend Punkten im Schwellenfenster voll (ausgefüllte Punkte); dünne Messungen sind hohl und grau.</p></details>
-      </div>
-      <div class="bar">
+      </div>`;
+  }
+
+  _dfaBar(groups, sportFilter, picker) {
+    return `<div class="bar">
         <div class="chips">
           <button class="chipbtn ${sportFilter === "all" ? "on" : ""}" data-act="dfasport" data-id="all">Alle Sportarten</button>
           ${groups.map((g) => `<button class="chipbtn ${sportFilter === g ? "on" : ""}" data-act="dfasport" data-id="${esc(g)}">${SPORT[g].l}</button>`).join("")}
         </div>
       </div>
-      <div class="statgrid card lead">
-        <div class="stat wide"><small>Aktuelle aerobe Schwelle</small>
-          <b class="tn lead1" style="color:${ROLE.series}">${cur ? fmt(cur) : "–"} <span class="unit">bpm</span></b>
-          <span class="mut">Median der letzten 5 belastbaren Messungen</span></div>
-        <div class="sidestats">
-          <div class="stat"><small>bei Leistung</small><b class="tn small2">${curW ? fmt(curW) : "–"} <span class="unit">W</span></b></div>
-          <div class="stat"><small>Veränderung</small><b class="tn small2">${cur != null && first != null ? sign(Math.round(cur - first)) : "–"} <span class="unit">bpm</span></b></div>
-          <div class="stat"><small>Messungen</small><b class="tn small2">${solid.length}</b><span class="mut">belastbar · ${rows.length - solid.length} dünn</span></div>
-        </div>
-      </div>
-      <div class="card pad0" data-grp="dfa">${readout("dfa")}${mainCh}${powCh}</div>
-      <div class="card pad0"><div class="thead"><span>Datum</span><span>Sport</span><span>Schwelle</span><span>Leistung</span><span>Güte</span></div>${tableRows}</div>`;
+      <div class="bar">${picker}</div>`;
   }
 
   /* ---------------- Plan ---------------- */
@@ -2623,6 +3140,14 @@ details.more summary:hover,details.calc summary:hover{color:${C.tx}}
 .src.pre{white-space:pre-wrap}
 svg.ch{display:block;width:100%;height:auto}
 .ax{font:11.5px ui-sans-serif,system-ui,sans-serif;fill:${C.tx3}}
+svg.evtrack{margin-top:-2px}
+.evleg{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:2px 0 8px;padding:0 10px}
+.evleg i{display:inline-block;margin-left:10px}
+.evleg i:first-child{margin-left:0}
+.evb{width:3px;height:11px;border-radius:1px}
+.evs{width:8px;height:8px;border-radius:2px}
+.evt{width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;
+  border-bottom-width:8px;border-bottom-style:solid}
 .pl{font:12px ui-sans-serif,system-ui,sans-serif;font-weight:600}
 .rdo{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:7px 10px 8px;
   margin:2px 4px 6px;border-bottom:1px solid ${C.line};min-height:34px}
@@ -3112,6 +3637,22 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
 .stat .unit{font-size:13px;color:${C.tx3}}
 .stat .mut{display:block;font-size:12px;margin-top:2px}
 .thead,.trow{display:grid;grid-template-columns:110px 140px 110px 110px 1fr;gap:10px;align-items:center;padding:8px 14px;font-size:13.5px}
+.thead.dfahead,.card .trow{grid-template-columns:92px 116px 92px 88px 86px 78px 62px 84px 100px 1fr 28px;gap:8px}
+.winpick{display:flex;align-items:center;gap:12px;flex-wrap:wrap;width:100%}
+.winnote{color:${C.tx3};font-size:12.5px}
+.winfields{display:inline-flex;align-items:center;gap:7px}
+.wind{background:${C.bg2};color:${C.tx};border:1px solid ${C.line};border-radius:7px;
+  padding:4px 7px;font:inherit;font-size:12.5px}
+.pickbar{gap:10px;align-items:center}
+/* An INNER bar, not a border: a border adds its own width and shifts the row
+   sideways the moment it is marked. */
+.trow.brushed{background:${C.bg2};box-shadow:inset 3px 0 0 0 ${ROLE.series}}
+.trow.hovered{background:${C.bg2}88;box-shadow:inset 3px 0 0 0 ${C.tx3}}
+.trow{border:0;width:100%;text-align:left;background:none;color:inherit;
+  font-family:inherit;font-size:13.5px;cursor:pointer}
+.gobox{display:flex;justify-content:flex-end}
+.go{display:inline-flex;opacity:.55}
+.trow:hover .go{opacity:1}
 .thead{color:${C.tx3};font-size:12px;font-weight:600;border-bottom:1px solid ${C.line}}
 .trow{border-bottom:1px solid ${C.line}44}
 .trow.weak{opacity:.55}

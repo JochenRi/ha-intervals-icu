@@ -286,16 +286,24 @@ def activity_list(
     return items[:limit] if limit else items
 
 
-def threshold_series(data: dict[str, Any]) -> list[dict[str, Any]]:
+def threshold_series(
+    data: dict[str, Any], since: str | None = None
+) -> list[dict[str, Any]]:
     """Return the aerobic threshold read off each activity, oldest first.
 
     Only activities with enough samples inside the DFA threshold window carry
     a meaningful reading, so the sample count travels with the value.
+
+    `since` is an inclusive lower bound on the date (YYYY-MM-DD) and has no
+    upper bound on purpose: a reading dated in the future - a watch with a
+    wrong clock - must not disappear without a word.
     """
     series: list[dict[str, Any]] = []
     for key, activity in data["activities"].items():
         summary = data["dfa"].get(key)
         if not summary or not summary.get("threshold_samples"):
+            continue
+        if since and str(activity.get("start_date_local") or "")[:10] < since:
             continue
         series.append(
             {
@@ -305,6 +313,16 @@ def threshold_series(data: dict[str, Any]) -> list[dict[str, Any]]:
                 "hr": summary.get("hr_at_threshold"),
                 "power": summary.get("power_at_threshold"),
                 "samples": summary.get("threshold_samples"),
+                # The session's own numbers travel with the reading. Joining
+                # them in the frontend against the activity list would work
+                # only as far back as that list reaches (300 rows), and an
+                # older reading would show empty columns without saying why -
+                # a missing source dressed up as a missing value.
+                "name": activity.get("name"),
+                "moving_time": activity.get("moving_time"),
+                "load": activity.get("icu_training_load"),
+                "avg_hr": activity.get("average_heartrate"),
+                "decoupling": activity.get("decoupling"),
             }
         )
     series.sort(key=lambda item: item["date"])

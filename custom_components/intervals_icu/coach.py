@@ -1078,16 +1078,22 @@ def today(data: dict[str, Any], budget: dict[str, Any] | None = None) -> dict[st
         if key:
             by_day.setdefault(key, []).append(activity)
 
-    recent = []
-    for day_key in days[-7:]:
-        row = wellness.get(day_key) or {}
+    def _day_load(day_key: str) -> float:
+        """One way to the day's load, used by both the 7-day strip and the
+        42-day event track. Two callers computing this separately is exactly
+        the defect class that produced "0 load in seven days"."""
         sessions = by_day.get(day_key, [])
         load = sum(_f(a.get("icu_training_load")) or 0 for a in sessions)
         if not load:
-            load = _f(row.get("load")) or 0
+            load = _f((wellness.get(day_key) or {}).get("load")) or 0
+        return load
+
+    recent = []
+    for day_key in days[-7:]:
+        sessions = by_day.get(day_key, [])
         recent.append({
             "date": day_key,
-            "load": round(load),
+            "load": round(_day_load(day_key)),
             "sessions": [{"name": a.get("name"), "type": a.get("type"),
                           "minutes": round((a.get("moving_time") or 0) / 60)}
                          for a in sessions],
@@ -1174,6 +1180,17 @@ def today(data: dict[str, Any], budget: dict[str, Any] | None = None) -> dict[st
                   for d in days[-42:]]
             for key, field, _log, _sign, _label, _unit in NIGHT_FIELDS
         },
+        # The SAME 42 days as "history", but named. The enlarged signal card
+        # draws a diagram, and a diagram needs an axis - and these are the
+        # wellness days that EXIST, not 42 consecutive calendar days, so the
+        # frontend cannot reconstruct them from "today minus n" without being
+        # wrong after the first gap. Load and state travel along so the card
+        # can carry an event track ("HRV drops two days after the long ride")
+        # without a tab change.
+        "history_days": [
+            {"date": d, "load": round(_day_load(d)), "state": series.get(d, "unknown")}
+            for d in days[-42:]
+        ],
         "moved": [s for s in signals if s["moved"]],
         "recent": recent,
         "week_load": round(week_load),

@@ -10,9 +10,12 @@ import derive  # noqa: E402
 from fixtures import ATHLETE, EVENTS, WELLNESS  # noqa: E402
 
 failures = []
+CHECKS = 0
 
 
 def check(label, got, expected):
+    global CHECKS
+    CHECKS += 1
     ok = got == expected
     print(f"{'PASS' if ok else 'FAIL'}  {label}: {got!r}" + ("" if ok else f"  (erwartet {expected!r})"))
     if not ok:
@@ -72,5 +75,6 @@ check("naechstes Workout Last", nxt["load"], 47)
 check("absolvierte Einheit uebersprungen", nxt["uid"], "134903156")
 
 print()
+print(f"test_derive: {CHECKS} Prüfungen, {len(failures)} Fehler")
 print("FEHLER:", failures if failures else "keine")
 sys.exit(1 if failures else 0)

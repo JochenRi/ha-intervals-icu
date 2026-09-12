@@ -1,13 +1,13 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 12.09.2026 · **Version:** 0.35.0 · **Status:** produktiv auf HEIMDALL,
+**Stand:** 12.09.2026 · **Version:** 0.36.0 · **Status:** produktiv auf HEIMDALL,
 Auslieferung über HACS aus `github.com/JochenRi/ha-intervals-icu`
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lokal
 archiviert, auswertet und in einem eigenen Seitenleisten-Panel darstellt.
 
-**Umfang:** ~9.100 Zeilen, davon 3.137 Frontend · 21 WebSocket-Befehle · 15 Einheiten in
-8 Familien · 15 Testdateien mit **2.354** gezählten Einzelprüfungen · 35 Releases.
+**Umfang:** ~9.700 Zeilen, davon 3.678 Frontend · 21 WebSocket-Befehle · 15 Einheiten in
+8 Familien · 14 Testdateien mit **2.751** gezählten Einzelprüfungen · 36 Releases.
 
 ---
 
@@ -239,6 +239,28 @@ Dazu Rest von Trainer-Befund 10: bei `trained_today` sagen Leitkarte, Kartenlist
 Kalenderknopf jetzt explizit „für morgen" (Block 15) — vorher stand der Hinweis über
 Karten, die zwei Zeilen tiefer „HEUTE EMPFOHLEN" behaupteten.
 
+**0.36.0 — Paket A (DFA-Reiter und Signalkarten), und drei stumpfe Tests:**
+
+| Fund | Klasse | Fix |
+|---|---|---|
+| **Der Prüfstand zählte fünf Dateien nicht mit.** `test_analytics`, `test_derive`, `test_dfa`, `test_import`, `test_setup_simulation` liefen 187 Prüfungen, druckten aber keine Summary — und `test_suite_hygiene` ließ das durch, weil `len(summaries) <= 1` auch **null** erlaubt und die Reihenfolge-Regel bei null Summaries gar nicht greift. Die Kennzahl „2.354 gezählte Prüfungen" deckte real 9 von 14 Dateien ab. | Prüfstand meldet nicht, was er prüft (dritter Fall) | Zähler und Summary in allen fünf Dateien. Regel auf `== 1` verschärft **und** die Spiegellücke geschlossen: eine Summary, die nichts zählt, ist auch eine Lüge (`len(counted) > 0`) |
+| **„Fünfzehn Testdateien" seit mindestens 0.33.0** — real waren es 13, dann 14. Die Tabelle in §9 listete die ganze Zeit die richtige Zahl, der Fließtext darüber nicht. `git log --diff-filter=D -- tests/` belegt: keine Datei verloren, reiner Erbfehler beim Hochzählen. | Doku | Zahl aus der Tabelle abgeleitet statt fortgeschrieben |
+| **Falle 3 war nicht prüfbar.** Die Prüfung „Y-Achse skaliert nicht je Fenster" lief gegen eine Fixture, deren Schwellen zwischen 150 und 171 kreisen — jedes Fenster hat dieselbe Spannweite, eine fensterweise skalierte Achse sähe identisch aus. Die Mutation schlug **gar nicht** an. | Fehlerklasse 2 (Test misst nur ein Ziel) | Eigene, trendende Reihe (130→185 bpm) für diese Prüfung; zusätzlich der tiefste tatsächlich gezeichnete Tick statt eines Labels, das `tickVals` nie erzeugt |
+| **Falle 1 war nicht prüfbar.** Verglichen wurden nur relative Fenster — die enden alle *jetzt*, also sind ihre letzten fünf belastbaren Messungen dieselben fünf. Eine fensterabhängige Leitzahl wäre unentdeckt geblieben. | Fehlerklasse 2 | Ein **eingefrorener** Zeitraum, der in der Vergangenheit endet, kam in den Vergleich. Die Mutation liefert jetzt `156 … 156 \| 163` |
+| **Der Ring deckte sich selbst.** Die Prüfung „Auswahl trägt eine Form" fragte nur, *ob* ein `pickring` existiert. Der Ring im Leistungsfeld deckte den fehlenden im HF-Feld, die Mutation schlüpfte durch. | Fehlerklasse 2 | Existenzprüfung durch **Zählung** ersetzt (`rings === 2`) |
+| **Und eine Gegenprobe, die abstürzte statt zu melden** — der neue `history_days`-Test griff mit `len(hdays)` auf `None` zu, als die Mutation den Schlüssel entfernte. Genau die Bauart, die in 0.35.0 am teuersten war. | Prüfstand meldet nicht, was er prüft | `.get()`, Existenzprüfung, Zugriff nur auf eine Liste, die es gibt. Bei jeder der 13 Mutationen bleibt die Zählung konstant — nichts wird übersprungen |
+
+**Und die Befunde aus dem Lesen, bevor gebaut wurde:**
+
+| Befund | warum es nicht „nur Frontend" blieb |
+|---|---|
+| `today.history[key]` war eine **reine Werteliste** über `days[-42:]` — ohne Datum. Die 42 Einträge sind die *vorhandenen* Wellness-Tage, nicht 42 zusammenhängende Kalendertage; eine Achse nach „heute minus n" wäre ab der ersten Lücke durchgehend verschoben. | Neuer Schlüssel `history_days` (`date`, `load`, `state`) in `coach.py`. Die Tageslast läuft über **eine** lokale Funktion, die auch die 7-Tage-Leiste speist — kein zweiter Rechenweg. Der Test stanzt ein Loch ins Archiv und verlangt, dass die Datumsliste darüber springt |
+| Die neuen Spalten (Dauer, Last, Ø HF, Entkopplung) hätte das Frontend gegen `_acts` joinen müssen — das reicht 300 Einheiten weit und hätte ältere Zeilen **still leer** gelassen. | `threshold_series()` liefert die Felder mit der Messung; `since` am WS-Befehl vorgesehen, damit das bei 500 Auswertungen kein Umbau wird — **ohne** Obergrenze, sonst verschwände ein zukunftsdatierter Wert wortlos |
+| Ein per `${false ?}` stillgelegter zweiter Chart in der aufgeklappten Signalkarte. | entfernt; Quelltext-Sperre dagegen in `test_panel_fixes` Block 18 |
+| Die Threshold-Fixture erzeugte Daten bis einen Monat **in die Zukunft**. | rückwärts von `TODAY` erzeugt |
+| Der Zeitbezug der Fenster hing an der Wanduhr — die Suite wäre in einigen Monaten von selbst rot geworden. | Ein `_now()` fürs ganze Panel, in den Tests gepinnt |
+| `localStorage` war nirgends in Benutzung, und das Harness stellt keins bereit. | Dreifach gekapselt: `typeof`-Prüfung, Falsy-Prüfung, `try/catch` — Safaris privater Modus wirft beim **Schreiben** |
+
 **0.32.0 — vier Funde aus dem Trainer-Audit, drei davon bekannte Fehlerklassen:**
 
 | Fund | Klasse | Fix |
@@ -313,25 +335,25 @@ den Non-Responder-Befund (Manresa-Rocamora 2021).
 
 ## 9. Prüfstand
 
-**Fünfzehn Dateien, 2.354 gezählte Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
+**Vierzehn Dateien, 2.751 gezählte Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
 HA-Instanz oder einen Browser.
 
 | Datei | prüft | Umfang |
 |---|---|---|
-| `test_derive.py` | Parselogik gegen echte Payloads | |
-| `test_dfa.py` | DFA-Auswertung, Bandgrenzen, Artefakte | |
-| `test_import.py` | vollständiger Import gegen einen Nachbau des Kontos | |
-| `test_analytics.py` | Trainingsmetriken gegen bekannte Ergebnisse | |
-| `test_setup_simulation.py` | Entity-Aufbau, Übersetzungen, unique_ids | |
+| `test_derive.py` | Parselogik gegen echte Payloads | 29 |
+| `test_dfa.py` | DFA-Auswertung, Bandgrenzen, Artefakte | 25 |
+| `test_import.py` | vollständiger Import gegen einen Nachbau des Kontos, Schwellenreihe und `since` | 46 |
+| `test_analytics.py` | Trainingsmetriken gegen bekannte Ergebnisse | 77 |
+| `test_setup_simulation.py` | Entity-Aufbau, Übersetzungen, unique_ids | 22 |
 | `test_laps.py` | Runden-Normalisierung | 34 |
-| `test_coach.py` | Zustandsregeln, Trigger-Schärfung, Infektverlauf, Nachtreaktion, Einordnung, Bereiche | 201 |
+| `test_coach.py` | Zustandsregeln, Trigger-Schärfung, Infektverlauf, Nachtreaktion, Einordnung, Bereiche, benannter 42-Tage-Verlauf | 213 |
 | `test_plan.py` | Zielprofil, Wochenmuster, Zeitbudget, Progressions- und Kalender-Anker-Vertrag, Profil-Migration | 405 |
 | `test_workouts.py` | Einheitenauswahl, HF-Klemme, Infektleiter, Wattumrechnung, Intervals-Syntax | 575 |
 | `test_websocket_registration.py` | Registrierung, Dekoratoren, FTP-Quelle, eine Ankerregel | 146 |
-| `test_suite_hygiene.py` | der Prüfstand prüft sich selbst: eine Summary je Datei, nichts Gezähltes dahinter, Fehler werden gedruckt | 43 |
-| `test_panel_views.js` | alle Ansichten gegen volle, leere, löchrige, entartete Daten | 724 |
-| `test_panel_fixes.js` | je ein Nachweis pro behobenem Fehler | 177 |
-| `test_panel_design.js` | Gestaltungsregeln als Zusicherung | 49 |
+| `test_suite_hygiene.py` | der Prüfstand prüft sich selbst: **genau eine** Summary je Datei, die etwas zählt, nichts Gezähltes dahinter, Fehler werden gedruckt | 61 |
+| `test_panel_views.js` | alle Ansichten gegen volle, leere, löchrige, entartete Daten; Zeitfenster, Brushing, Achsenregel | 847 |
+| `test_panel_fixes.js` | je ein Nachweis pro behobenem Fehler | 204 |
+| `test_panel_design.js` | Gestaltungsregeln als Zusicherung, Auswahl als Form, Achse im Aufklappen | 67 |
 
 **Das Prinzip:** Ein Test, der den alten Fehler nicht nachweislich findet, ist kein Test. Bei
 den kritischen Fixes wurde der Fix zurückgedreht und geprüft, dass der Test fehlschlägt —
@@ -439,7 +461,31 @@ bzw. ein Reiter je Chat.
 |---|---|
 | **Trainer** | ✅ auditiert 12.09. — 14 Befunde; Paket 1 (Befunde 1–6) als **0.32.0 ausgeliefert und am System verifiziert** (Konfliktwächter feuert live mit 68 %); Paket 2 (Plan-Umbau + Rest Befund 10) als **0.33.0 gebaut**, Verifikation am System steht aus |
 | Belastung | ⏳ nächster Audit-Kandidat (seit 0.6.0 unangetastet, am weitesten hinter der Studienlage) |
-| Heute, Kalender, Fitness, Aktivitäten, DFA, Signale | offen |
+| **DFA** | ✅ Paket A als **0.36.0 gebaut** — Brushing, Zeitfenster, Spalten, Sprung; Verifikation am System steht aus |
+| **Signale (aufgeklappte Karte in Heute)** | ✅ Datumsachse und Ereignisspur als Teil von Paket A |
+| Heute, Kalender, Fitness, Aktivitäten | offen |
+
+### Erledigt in 0.36.0: Paket A — DFA-Reiter und Signalkarten
+
+**Abweichung von der Spec, bewusst und einzeln freigegeben:** `docs/ausbau.md` führt Paket A
+als „berührt: nur Frontend". Das hielt nicht. Zwei Punkte brauchten das Backend, beide
+additiv, beide ohne Änderung an Bestehendem:
+
+- `coach.py` → `history_days` (A5: die Achse braucht Daten, die es im Frontend nicht gibt)
+- `importer.py` → fünf Felder an der Schwellenreihe, `websocket.py` → optionaler `since`
+  (A3: die Spalten hätten sonst jenseits von 300 Einheiten still leer gestanden)
+
+Geliefert: A1 Brushing & Linking über die `activity_id`, flüchtig per Zeiger und **fest im
+Render** (nicht nur im DOM — sonst überlebt „fest" kein Neuzeichnen und ist nicht prüfbar);
+A2 Zeitwähler als eigene Komponente mit allen vier Fallen; A3 elf Spalten inkl. Abweichung
+gegen den rollierenden Median in bpm; A4 Hash-Route `#activities/<id>` mit sichtbarem
+Scheitern, wenn die Einheit älter als der geladene Bereich ist; A5 Datumsachse und
+Ereignisspur in der aufgeklappten Signalkarte.
+
+Entscheidungen: Liste kappt bei **50** mit ausgesprochener Kappung (nicht stumm bei 15, nicht
+stumm bei 400). Die Leitzahl bleibt fensterunabhängig, folgt aber weiter dem **Sportfilter** —
+sachlich richtig, und die Quellzeile sagt jetzt, welcher Sport gemeint ist. Relative Fenster
+haben **keine Obergrenze**. 13 Gegenproben gefahren, 13 bestanden, keine abgestürzt.
 
 ### Erledigt in 0.33.0: Paket 2 — Plan-Umbau (`plan.py`)
 

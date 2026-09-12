@@ -13,6 +13,10 @@ const { ok, contains, report } = H;
 const M = H.load();
 const p = new M.Panel();
 p._status = { activities: 238, wellness_days: 487, dfa_done: 56, importing: false, athlete: "Test" };
+// Pin "today". A window that asks the wall clock makes this suite go red on
+// its own some months from now, and a test that fails for calendar reasons
+// teaches nothing about the code.
+p._nowIso = F.TODAY;
 const days = F.days(), load = F.load(), rd = F.readiness(), thr = F.thresholds();
 const acts = F.activities();
 
@@ -139,6 +143,65 @@ const acts = F.activities();
   const heute = p.rHeute(F.today());
   contains(heute, "Zielwahl je Ampelfarbe ist eine Setzung", "belege: Budget ohne Einschränkung");
   contains(p.rDfa(thr, "all"), "Rogers", "belege: DFA ohne Quelle");
+}
+
+/* ── die Auswahl trägt eine FORM, nicht nur eine Farbe ─────────────────── */
+{
+  const q = new M.Panel();
+  q._nowIso = F.TODAY;
+  q._win.dfa = { id: "all" };
+  const pickId = (thr.slice(-10).find((x) => x.samples >= 5 && x.hr > 0) || {}).activity_id;
+  const plain = q.rDfa(thr, "all");
+  q._dfaPick = pickId;
+  const marked = q.rDfa(thr, "all");
+
+  // WCAG 1.4.1: the mark may not rest on colour. It is a ring - an extra,
+  // unfilled circle - plus a larger radius.
+  ok(!/class="pickring"/.test(plain), "auswahl: Ring ohne Auswahl gezeichnet");
+  ok(/class="pickring"[^>]*fill="none"/.test(marked), "auswahl: kein Ring als eigene Form");
+  // BOTH fields carry the ring - HR and power. Counting instead of merely
+  // asking "is there one" matters: with a single existence check, the ring in
+  // the power field covered the loss of the ring in the HR field, and the
+  // mutation slipped through.
+  const rings = (String(marked).match(/class="pickring"/g) || []).length;
+  ok(rings === 2, "auswahl: Ring nicht in beiden Feldern (" + rings + " statt 2)");
+  const ringR = (String(marked).match(/class="pickring"[^>]*r="([\d.]+)"/) || [])[1];
+  ok(+ringR > 6, "auswahl: Ring nicht größer als der Punkt (r=" + ringR + ")");
+  const radii = (h) => (String(h).match(/<circle [^>]*data-dot="[^"]*"[^>]*r="([\d.]+)"/g) || []);
+  ok(radii(marked).length > 0, "auswahl: keine markierbaren Punkte");
+  ok(/r="6"/.test(marked), "auswahl: Treffer nicht vergrößert");
+  // de-emphasis, not emphasis: the OTHERS get dimmer
+  ok(/opacity="0.35"/.test(marked), "auswahl: übrige Punkte nicht abgedunkelt");
+  ok(!/opacity="0.35"/.test(plain), "auswahl: Punkte ohne Auswahl abgedunkelt");
+  // the ring uses the SAME colour as the point - colour carries nothing here
+  const ringCol = (String(marked).match(/class="pickring"[^>]*stroke="([^"]*)"/) || [])[1];
+  ok(ringCol === M.ROLE.series, "auswahl: Ring führt eine eigene Farbe ein");
+  // and the row says it in words, not only in pixels
+  contains(marked, "Ausgewählt:", "auswahl: nicht benannt");
+}
+
+/* ── aufgeklappt ist ein Diagramm und braucht eine Achse ───────────────── */
+{
+  const q = new M.Panel();
+  q._nowIso = F.TODAY;
+  const closed = q.rHeute(F.today());
+  q._sigOpen = "hrv";
+  const open = q.rHeute(F.today());
+  // the sparkline may go without an axis; the diagram may not
+  ok(!/class="ax">\d\d\.\d\d\.</.test(closed), "achse: Datumsachse schon in der Sparkline");
+  ok(/class="ax">\d\d\.\d\d\.</.test(open), "achse: aufgeklappte Karte ohne Datumsachse");
+  // fixed strip in the card head, never a floating box
+  contains(open, 'data-rdo="tsig_hrv"', "achse: kein fester Ablesestreifen");
+  ok(!/class="xhbox"/.test(open), "achse: schwebender Ablesekasten wieder da");
+  // the event track keeps the two registers apart: training is a CATEGORY
+  // (slate), a state is a JUDGMENT (amber/red) - and each state has its own
+  // shape as well, so the track works without colour vision
+  const track = (String(open).match(/<svg class="ch evtrack"[\s\S]*?<\/svg>/) || [""])[0];
+  ok(track.includes(M.C.slate), "spur: Trainingstage nicht im Kategorienregister");
+  ok(!track.includes(M.C.green), "spur: Urteilsgrün in der Kategorienspur");
+  ok(/<path d="M[^"]*Z" fill="/.test(track) || /<rect [^>]*rx="1"/.test(track),
+     "spur: Zustände ohne eigene Form");
+  contains(open, "Trainingstag", "spur: keine Direktbeschriftung");
 }
 
 report("test_panel_design");
