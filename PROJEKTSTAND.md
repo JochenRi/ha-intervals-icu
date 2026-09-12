@@ -328,6 +328,39 @@ geschärft, nicht der Code gelobt.
 
 ## 11. Betrieb
 
+### Auslieferungsweg (verbindlich, gilt für jede Version)
+
+Arbeitsteilung: **Claude baut, testet, committet, pusht und legt das Release an —
+Johannes aktualisiert über HACS und startet HA neu.** Claude fasst HA nie direkt an;
+HEIMDALL-Schreibtools (z. B. `ha_manage_hacs update_information`) nur nach einzelner
+Freigabe.
+
+1. Repo klonen: `git clone --depth 1 https://github.com/JochenRi/ha-intervals-icu`
+2. Ändern, **komplette Testsuite grün** (Python + Node, siehe §9), End-to-End-Simulation
+   mit realistischen Daten
+3. Version heben: `manifest.json` **und** `const.py PANEL_VERSION` (beide!)
+4. PROJEKTSTAND.md nachziehen (Fehlerkapitel + Kopf)
+5. Commit (user `JochenRi` / `JochenRi@users.noreply.github.com`), Tag `vX.Y.Z`,
+   Push von `main` **und** Tag
+6. **GitHub-Release zum Tag anlegen** (`POST /repos/.../releases`) — HACS liest
+   ausschließlich Releases (`version_or_commit: "version"`); ein nackter Tag ist für
+   HACS unsichtbar, egal wie oft man refresht. Das war der 0.32.0-Stolperer.
+7. `ha_manage_hacs(action="update_information", ...)` nach Freigabe — sonst sieht
+   HACS das Release erst nach ~48 h und ein Update installiert die alte Version neu
+8. Johannes: HACS-Update + **HA-Neustart** (ohne Neustart laufen die alten Module)
+9. Claude verifiziert am lebenden System: `intervals_icu/status` (Archivzähler),
+   Payload-Form der geänderten Kommandos — dabei **Erfolgs-Felder prüfen, nie
+   Key-Abwesenheit** (ein 502 während des Neustarts liefert leere Antworten, und ein
+   leeres Dict besteht jeden Abwesenheits-Check)
+
+**Token:** Johannes stellt den GitHub-Token je Session als Datei bereit
+(`GIT_Intervals.txt`, eine Zeile). Der Token bleibt in Shell-Variablen, wird nie in
+den Chat gedruckt; Ausgaben werden geschwärzt (`sed 's/gh[pousr]_.../[TOKEN]/'`).
+GitHub-REST von der Sandbox aus ist unauthentifiziert oft rate-limitiert (geteilte
+IP) — Refs verlässlich über `git ls-remote origin` prüfen, Repo-Details über
+`ha_get_hacs_info(action="info")` (nutzt den HACS-eigenen Token).
+
+
 **Update:** HACS → *Intervals.icu* → aktualisieren → HA neu starten → Browser **hart** neu
 laden. Der Service Worker des HA-Frontends bedient Module aus eigenem Speicher, an Strg+F5
 vorbei: F12 offen lassen, Rechtsklick auf Reload → „Cache leeren und vollständig
@@ -342,3 +375,62 @@ die Zahl zu erhöhen, sieht weiter die alte Fassung.
 
 **Datenhaltung:** Archiv in `.storage/intervals_icu.<athlet>`, API-Key und Zielprofil im
 Config-Entry bzw. Archiv. Beides überlebt ein Update.
+
+
+---
+
+## 12. Reiter-Audit — Hauptbuch
+
+Vereinbart 12.09.2026: jeder Reiter wird einzeln auditiert (Design, Darstellung,
+Berechnung, Studienlage 2024–2026), Befunde als nummerierte Fix-Pakete, ein Paket
+bzw. ein Reiter je Chat.
+
+| Reiter | Status |
+|---|---|
+| **Trainer** | ✅ auditiert 12.09. — 14 Befunde; Paket 1 (Befunde 1–6) als **0.32.0 ausgeliefert und am System verifiziert** (Konfliktwächter feuert live mit 68 %) |
+| Belastung | ⏳ nächster Audit-Kandidat (seit 0.6.0 unangetastet, am weitesten hinter der Studienlage) |
+| Heute, Kalender, Fitness, Aktivitäten, DFA, Signale | offen |
+
+### Offen: Paket 2 — Plan-Umbau (`plan.py`, ein Chat)
+
+1. **`hard_per_week` an den eigenen Text angleichen:** Code liefert bei 4 Fahrtagen
+   2 harte Einheiten (= 50 % der Einheiten), `hard_note` und Formular predigen
+   „bei fünf Fahrtagen eine harte". Ziel: ≤ 4 Tage → 1 hart; zweite Qualitätseinheit
+   (falls überhaupt) **variieren** statt 2× identisches `sweetspot_2x20`.
+   (0.32.0 deckelt bereits über `remaining // 1.2` — der Fix gehört trotzdem in die
+   Regel, nicht in den Nebeneffekt.)
+2. **Long-Ride-Progression real machen:** aktuell zeigt der Plan 8 identische Wochen
+   („langer Tag 3,3 h, gedeckelt") — `LONG_DAY_SHARE = 0.6` als Wochenregel ersetzen
+   durch den etablierten Langstrecken-Weg: einzelner großer Tag alle 2–4 Wochen
+   (Audax-Praxis), der wirklich wächst; Ziel-Default an das echte Ziel koppeln
+   (6 h+) statt `longest × 1.6 = 9 h` mit demotivierender Budget-Note.
+3. **3:1 am Kalender verankern:** Plan startet bei jedem Öffnen neu „ab heute",
+   die Entlastungswoche ist immer „Woche 4 ab jetzt" und kommt nie. Startdatum
+   persistieren (Archiv, wie das Goal-Profil), Wochen an Kalenderwochen binden.
+4. Rest von Befund 10: `trained_today` wird seit 0.32.0 angezeigt — offen ist, die
+   Empfehlung dann explizit „für morgen" auszuweisen.
+
+### Offen: Paket 3 — Zustandsmaschine + Quellen (`coach.py`, ein Chat)
+
+5. **Slump-Trigger schärfen:** aktuell reicht EIN Signal an EINEM Tag (OR ab 2 SD) —
+   der eigene Tension-Text nennt einen Einzeltag Rauschen. Ziel: HRV **und** RHR
+   gemeinsam, oder ein Signal an 2 Folgetagen (der September-Infekt −2,7/+3,7 SD
+   hätte weiter getriggert).
+6. **Einbruchsursache klassifizieren:** beide Signale extrem → Infektverdacht →
+   konservativere, symptomgeleitete Wiedereinstiegsleiter über mehrere lockere
+   Einheiten (RTP-Praxis: „above/below neck", Stufen nur ohne Symptomrückkehr).
+7. **DFA-Quellzeile aktualisieren:** „gegen Gasaustausch validiert" ist zu freundlich —
+   Validierungslage 2024–2026: HRVT1-Übereinstimmung schwach (weite LOA), fitness-
+   abhängiger Bias (bei Fitteren unterschätzt), HRVT2 robuster; als Trend brauchbar,
+   als alleinige Verankerung nicht. Perspektive: Anker triangulieren (DFA + LTHR aus
+   sport_settings + HF-Drift).
+8. Kleinkram: VO2max-HF-Fenster gegen max_hr klemmen oder streichen; Anker-Block auf
+   EINEN „jetzt"-Wert (Median letzte 5); `endurance`-Familie nie ausblenden
+   (layoff-Skip verletzt „nie filtern, nur bewerten"); Zahlformat Komma statt Punkt;
+   goalbar-Ternary; Zustandsfarben Rebound/Elevated vs. Farbregister klären.
+
+### Trainer-Restbefunde, erledigt in 0.32.0
+
+Verwaiste rTrainer-Blöcke (Infekt-Warnung!) · zweiter Empfehler · Anker-Konflikt-
+wächter · Budget-Lead · Entlastungs-Arithmetik · `weekly_load`-Quelle — Details im
+Fehlerkapitel (§7).
