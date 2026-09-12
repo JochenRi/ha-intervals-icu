@@ -89,6 +89,11 @@ def empty_data(athlete_id: str) -> dict[str, Any]:
         "unavailable": [],
         # the athlete's goal profile - written by the panel, never by the API
         "goal": None,
+        # hand-set measurement-condition labels per day (docs/ausbau.md B2).
+        # MUST live in this skeleton: async_load fills missing keys at the
+        # top level only, so a block the skeleton does not know never comes
+        # into being on an old archive - the exact gap 0.35.0 repaired.
+        "day_context": {},
         "last_import": None,
         "full_import_done": False,
         "dfa_version": DFA_ALGO_VERSION,

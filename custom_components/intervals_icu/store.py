@@ -13,7 +13,7 @@ from typing import Any
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
-from . import importer, plan
+from . import day_context, importer, plan
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
@@ -49,6 +49,12 @@ class IntervalsArchive:
             # athlete to re-save the goal by chance.
             if (repaired := plan.migrate_goal(self.data.get("goal"))) is not None:
                 self.data["goal"] = repaired
+                self.schedule_save()
+            # Same pattern for the day-context block: the empty_data() entry
+            # covers archives that never had one, the migration normalises
+            # entries a broken writer left behind.
+            if (ctx := day_context.migrate(self.data.get("day_context"))) is not None:
+                self.data["day_context"] = ctx
                 self.schedule_save()
         _LOGGER.debug("archive loaded: %s", importer.archive_stats(self.data))
 

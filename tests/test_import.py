@@ -272,6 +272,43 @@ async def main():
         check("Schwellenreihe: since=None ändert nichts",
               importer.threshold_series(data, since=None) == series, True)
 
+    # --- day_context (Paket B2): das Grundgerüst kennt den Block ------------
+    # 0.35.0-Lehre: async_load füllt fehlende Schlüssel nur auf der obersten
+    # Ebene auf. Ein Block, den empty_data() nicht kennt, entsteht bei
+    # Altbeständen NIE - deshalb hängt der Vertrag hier am Grundgerüst.
+    day_context = _load("day_context")
+    check("day_context im Grundgerüst", importer.empty_data("x").get("day_context"), {})
+    legacy = importer.empty_data("x")
+    del legacy["day_context"]  # ein Archiv aus 0.36.1
+    base = importer.empty_data("x")
+    base.update(legacy)  # exakt der async_load-Füllweg
+    check("Altbestand ohne day_context lädt mit leerem Block",
+          base.get("day_context"), {})
+    check("Altbestand: Migration meldet nichts zu tun",
+          day_context.migrate(base["day_context"]), None)
+    # Normalisierung: kaputte Einträge werden geklemmt statt Basislinien zu
+    # vergiften; ein UNBEKANNTES Etikett mit gültigem Gewicht überlebt
+    # (Downgrade-Schutz), Müll fliegt raus, krank bekommt sein Vorgabegewicht.
+    broken = {"2026-09-01": {"tag": "krank"},
+              "kaputt": 1,
+              "2026-09-02": "kein-dict",
+              "2026-09-03": {"tag": "zukunft", "weight": 0.25},
+              "2026-09-04": {"tag": "alkohol", "weight": 7.0}}
+    repaired = day_context.migrate(broken)
+    check("Migration: krank bekommt Vorgabegewicht 0,0",
+          repaired.get("2026-09-01", {}).get("weight"), 0.0)
+    check("Migration: ungültiger Datumsschlüssel entfernt", "kaputt" in repaired, False)
+    check("Migration: Nicht-dict-Eintrag entfernt", "2026-09-02" in repaired, False)
+    check("Migration: unbekanntes Etikett mit gültigem Gewicht überlebt",
+          repaired.get("2026-09-03", {}).get("weight"), 0.25)
+    check("Migration: Gewicht außerhalb 0-1 fällt auf die Etikett-Vorgabe",
+          repaired.get("2026-09-04", {}).get("weight"), 0.5)
+    check("Migration: reparierter Block wird beim zweiten Lauf nicht erneut migriert",
+          day_context.migrate(repaired), None)
+    store_src = (COMP / "store.py").read_text(encoding="utf-8")
+    check("store.async_load ruft die day_context-Migration",
+          "day_context.migrate" in store_src, True)
+
     print()
     print(f"test_import: {CHECKS} Prüfungen, {len(failures)} Fehler")
     print("FEHLER:", failures if failures else "keine")
