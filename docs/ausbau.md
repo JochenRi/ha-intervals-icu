@@ -41,8 +41,13 @@ Listen, die sich über das Datum suchen, sind Fehlerklasse 3 in klein.
 - `_dfaHover` (flüchtig, aus `pointermove`) und `_dfaPick` (fest, aus `click`).
   Die Trennung flüchtig/fest ist Teil des Musters, nicht Geschmack.
 - **Graph → Liste:** Randbalken (3 px, Sportfarbe) *innen* an der Zeile, leicht
-  hellerer Zeilenhintergrund, `scrollIntoView({block:"nearest"})`. Kein
-  `border`, sonst verschiebt sich die Zeile um die Randbreite.
+  hellerer Zeilenhintergrund. Kein `border`, sonst verschiebt sich die Zeile um
+  die Randbreite.
+  > **Korrektur 0.36.1:** hier stand ursprünglich, den Treffer ins Bild zu ziehen.
+  > Am lebenden Panel war das falsch — `:host` ist selbst der Scroll-Kasten und
+  > die Tabelle steht unter den Graphen, also bewegte jede Zeigerbewegung die
+  > ganze Seite und trug den Graphen aus dem Fenster. Eine flüchtige Markierung
+  > bewegt die Seite nicht, auf der sie gezeichnet wird.
 - **Liste → Graph:** nicht den Treffer aufhellen, sondern die übrigen Punkte
   abdunkeln (`opacity 0.35`), Treffer mit Ring und `r + 2`. Bei 49 Punkten
   liest sich De-Emphase besser als Hervorhebung. Zusätzlich die Cursor-Linie

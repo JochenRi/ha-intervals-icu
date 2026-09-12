@@ -989,7 +989,16 @@ class IntervalsIcuPanel extends HTMLElement {
 
   /* Transient marking only. The FIXED pick is rendered (see rDfa), so this
      handles the hover and puts everything back to the rendered state when the
-     pointer leaves - the values to go back to travel on the element itself. */
+     pointer leaves - the values to go back to travel on the element itself.
+
+     It marks, and it does NOTHING else. docs/ausbau.md asks for the matching
+     row to be pulled into view here; on the live panel that was wrong. The
+     host itself is the scrolling box (:host{overflow-y:auto}) and the table
+     sits below the charts, so pulling the row into view moved the whole page
+     and carried the chart out of the window - the view fled from the pointer
+     that was reading it. A transient mark must never move the page it is drawn
+     on. The row carries its bar; whoever wants to read it goes there, and a
+     fixed pick names the session in the bar above the charts anyway. */
   _paintDfa() {
     const root = this.shadowRoot;
     if (!root || !root.querySelectorAll) return;
@@ -1006,7 +1015,6 @@ class IntervalsIcuPanel extends HTMLElement {
     (rows.forEach ? rows : []).forEach((el) => {
       const hit = mark && el.dataset.aid === mark;
       if (el.classList) el.classList.toggle("hovered", !!hit);
-      if (hit && el.scrollIntoView) el.scrollIntoView({ block: "nearest" });
     });
   }
 

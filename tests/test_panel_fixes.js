@@ -403,6 +403,131 @@ const acts = F.activities(), thr = F.thresholds();
   s._aktMiss = null;
   ok(!String(s.rAkt(F.activities(), null)).includes("älter als der geladene Bereich"),
      "18 A4: Hinweis erscheint ohne verfehlten Sprung");
+  // 0.36.1 - the graph fled from the pointer. `scrollIntoView` on the brushed
+  // row scrolled the HOST (:host{overflow-y:auto}), so every pointer move over
+  // the chart pulled the chart out of the window. A transient mark must not
+  // move the page it is drawn on - and nothing in this panel may scroll on a
+  // pointermove at all.
+  ok(!src.includes("scrollIntoView"),
+     "18 Scroll: scrollIntoView steht wieder im Panel — der Graph scrollt sich selbst weg");
+  const paint = (src.match(/_paintDfa\(\) \{[\s\S]*?\n  \}/) || [""])[0];
+  ok(paint.length > 100, "18 Scroll: _paintDfa nicht gefunden");
+  ok(!/scroll/i.test(paint), "18 Scroll: die flüchtige Markierung scrollt");
+  ok(paint.includes("classList"), "18 Scroll: flüchtige Markierung setzt keine Klasse mehr");
+}
+
+/* ── 19  der Graph darf nicht vor dem Zeiger fliehen ───────────────────────
+   0.36.0 live: Zeiger über den DFA-Graphen → die Seite sprang zur Tabelle und
+   der Graph war weg. Ursache war `scrollIntoView` auf der markierten Zeile,
+   während :host selbst der Scroll-Kasten ist.
+
+   Eine Quelltextsperre allein reicht dafür nicht - sie fängt genau einen
+   Mechanismus. Also wird hier der ECHTE Zeiger-Pfad gefahren, gegen jede
+   Ursache einzeln, die eine Seite unter dem Zeiger bewegen kann:
+   1. eine Methode, die etwas ins Bild zieht (scrollIntoView / scrollTo /
+      focus - Fokus zieht implizit mit)
+   2. ein Neuaufbau des Views (innerHTML setzt die Scroll-Position zurück)
+   3. ein Layout-Sprung durch die Markierung selbst (Höhe/Rahmen/Polster)      */
+{
+  const moves = [];                       // jeder Aufruf, der etwas bewegen kann
+  const mkRow = (aid) => ({
+    dataset: { aid },
+    classList: { toggle() {} },
+    scrollIntoView: (...a) => moves.push(["scrollIntoView", aid, JSON.stringify(a)]),
+    focus: () => moves.push(["focus", aid]),
+  });
+  const mkDot = (id) => {
+    const attrs = {};
+    return { dataset: { dot: id, r: "4", op: "1" },
+             setAttribute: (k, v) => { attrs[k] = v; }, _attrs: attrs };
+  };
+  const mkLine = () => ({ setAttribute() {} });
+
+  const rowEls = ["act11", "act13", "act15"].map(mkRow);
+  const dotEls = ["act11", "act13", "act15"].map(mkDot);
+  const lineEls = [mkLine(), mkLine()];
+  const strip = { querySelector: () => ({ textContent: "", innerHTML: "" }) };
+
+  const q = new M.Panel();
+  q._nowIso = F.TODAY;
+  q._dfaRows = [
+    { date: "2026-08-01", activity_id: "act11", pickable: true },
+    { date: "2026-08-04", activity_id: "act13", pickable: false },  // dünn
+    { date: "2026-08-07", activity_id: "act15", pickable: true },
+  ];
+  q._grp.dfa = { n: 3, xl: (i) => String(i), rows: [{ l: "x", c: "#fff", vals: [1, 2, 3] }] };
+  q.shadowRoot.querySelectorAll = (sel) =>
+    sel === "[data-aid]" ? rowEls : sel === "[data-dot]" ? dotEls
+      : sel === ".xh" ? lineEls : sel === ".dragsel" ? [] : [];
+  q.shadowRoot.querySelector = (sel) => (/data-rdo/.test(sel) ? strip : null);
+  q.shadowRoot.scrollTo = (...a) => moves.push(["scrollTo", JSON.stringify(a)]);
+
+  // a real chart group under the pointer
+  const svg = {
+    dataset: { w: "880", padl: "48", padr: "14" },
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 880, height: 260 }),
+    querySelectorAll: () => lineEls,
+  };
+  const g = { dataset: { grp: "dfa" }, querySelector: (s) => (s === "svg.ch" ? svg : null),
+              querySelectorAll: () => lineEls };
+  const evAt = (x) => ({ clientX: x, clientY: 40,
+                         target: { closest: (sel) => (sel === "[data-grp]" ? g : null) } });
+
+  // count re-renders without touching the real one
+  let renders = 0;
+  const realRender = q._render.bind(q);
+  q._render = () => { renders++; };
+
+  q._attach();
+  const onMove = q.shadowRoot._listeners.pointermove;
+  ok(typeof onMove === "function", "19 sim: kein pointermove-Handler registriert");
+
+  // ── sweep the pointer across the whole chart, twice ────────────────────
+  for (let pass = 0; pass < 2; pass++) {
+    for (let x = 50; x <= 860; x += 10) onMove(evAt(x));
+  }
+  ok(moves.length === 0,
+     "19 sim: der Zeiger über dem Graphen bewegt die Seite (" + JSON.stringify(moves.slice(0, 3)) + ")");
+  ok(renders === 0, "19 sim: pointermove baut die Ansicht neu (" + renders + "x) — das setzt die Scroll-Position zurück");
+  // and it really did mark something, or the check above would be vacuous
+  ok(q._dfaHover !== null, "19 sim: gar keine Markierung gesetzt — die Prüfung wäre leer");
+  ok(dotEls.some((d) => d._attrs.opacity === "0.35"),
+     "19 sim: übrige Punkte werden beim Überfahren nicht abgedunkelt");
+
+  // ── the pointer over a LIST ROW must behave the same way ───────────────
+  const rowEv = { clientX: 0, clientY: 0,
+                  target: { closest: (sel) => (sel === "[data-aid]" ? { dataset: { aid: "act15" } } : null) } };
+  for (let i = 0; i < 20; i++) onMove(rowEv);
+  ok(moves.length === 0, "19 sim: der Zeiger über der Liste bewegt die Seite");
+  ok(renders === 0, "19 sim: Zeiger über der Liste baut die Ansicht neu");
+
+  // ── leaving must not move anything either ─────────────────────────────
+  const leave = q.shadowRoot._listeners.pointerleave;
+  if (typeof leave === "function") leave();
+  onMove({ clientX: 0, clientY: 0, target: { closest: () => null } });
+  ok(moves.length === 0, "19 sim: das Verlassen bewegt die Seite");
+  ok(renders === 0, "19 sim: das Verlassen baut die Ansicht neu");
+
+  // ── dritte Ursache: die Markierung selbst darf nichts umbrechen ────────
+  q._render = realRender;
+  const css = (H.source().match(/_css\(\) \{[\s\S]*$/) || [""])[0];
+  // NOT [^}]* : the stylesheet is a template string, so ${C.bg2} carries its
+  // own closing brace and the match stopped after "background:${C.bg2". Both
+  // layout checks below then ran on a truncated string and could not fail.
+  const ruleOf = (name) => ((css.match(new RegExp("\\.trow\\." + name + "\\{(.*)$", "m")) || [])[1] || "");
+  const hovered = ruleOf("hovered");
+  ok(/box-shadow/.test(hovered) && /background/.test(hovered),
+     "19 layout: .trow.hovered nicht vollständig gelesen — die Prüfung wäre leer");
+  for (const prop of ["height", "padding", "margin", "border:", "border-width", "font-size", "display"]) {
+    ok(!hovered.includes(prop),
+       "19 layout: .trow.hovered ändert " + prop + " — die Zeile ändert ihre Höhe und die Liste springt");
+  }
+  const brushed = ruleOf("brushed");
+  ok(brushed.includes("box-shadow:inset"),
+     "19 layout: feste Auswahl nutzt keinen Innenbalken — ein Rahmen verschiebt die Zeile um seine Breite");
+  for (const prop of ["height", "padding", "margin", "border:", "font-size"]) {
+    ok(!brushed.includes(prop), "19 layout: .trow.brushed ändert " + prop);
+  }
 }
 
 report("test_panel_fixes");

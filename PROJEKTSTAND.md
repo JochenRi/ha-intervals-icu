@@ -1,13 +1,13 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 12.09.2026 · **Version:** 0.36.0 · **Status:** produktiv auf HEIMDALL,
+**Stand:** 12.09.2026 · **Version:** 0.36.1 · **Status:** produktiv auf HEIMDALL,
 Auslieferung über HACS aus `github.com/JochenRi/ha-intervals-icu`
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lokal
 archiviert, auswertet und in einem eigenen Seitenleisten-Panel darstellt.
 
 **Umfang:** ~9.700 Zeilen, davon 3.678 Frontend · 21 WebSocket-Befehle · 15 Einheiten in
-8 Familien · 14 Testdateien mit **2.751** gezählten Einzelprüfungen · 36 Releases.
+8 Familien · 14 Testdateien mit **2.778** gezählten Einzelprüfungen · 37 Releases.
 
 ---
 
@@ -239,6 +239,23 @@ Dazu Rest von Trainer-Befund 10: bei `trained_today` sagen Leitkarte, Kartenlist
 Kalenderknopf jetzt explizit „für morgen" (Block 15) — vorher stand der Hinweis über
 Karten, die zwei Zeilen tiefer „HEUTE EMPFOHLEN" behaupteten.
 
+**0.36.1 — der Graph floh vor dem Zeiger:**
+
+| Fund | Klasse | Fix |
+|---|---|---|
+| **Zeiger über den DFA-Graphen → die Seite sprang zur Tabelle, der Graph war weg.** `scrollIntoView` zog die markierte Zeile ins Bild — nur ist `:host` selbst der Scroll-Kasten und die Tabelle steht unter den Graphen, also bewegte jede Zeigerbewegung die ganze Seite. Die Ansicht floh vor dem Zeiger, der sie gerade las. Steht so in `docs/ausbau.md` A1 und war trotzdem falsch: **der Code entscheidet, nicht das Papier.** | Muster aus der Spec ungeprüft übernommen | Ersatzlos entfernt. Eine flüchtige Markierung darf die Seite, auf der sie gezeichnet wird, niemals bewegen — die Zeile trägt weiter ihren Innenbalken, die feste Auswahl nennt die Einheit über den Graphen. Spec korrigiert |
+| **Die erste Sperre dagegen schlug auf dem reparierten Stand an** — mein eigener Erklärkommentar enthielt das gesperrte Wort. | Test prüft den Text, nicht die Sache | Begründung über die Methode gezogen, Rumpf frei von den gesperrten Begriffen |
+| **Und die Layout-Prüfung war leer:** `\.trow\.hovered\{([^}]*)\}` bricht an der `}` in `${C.bg2}` ab, lief also auf `background:${C.bg2` — die verbotenen Eigenschaften konnten darin gar nicht vorkommen. | Fehlerklasse 2 (Test kann nicht fehlschlagen) | Bis Zeilenende statt bis zur ersten Klammer, plus eine Prüfung, die zuerst verlangt, dass die Regel überhaupt vollständig gelesen wurde |
+
+**Statt einer Quelltextsperre eine Simulation.** Ein `grep` fängt genau einen
+Mechanismus; eine Seite kann sich aus mehreren Gründen unter dem Zeiger bewegen.
+Block 19 fährt daher den echten `pointermove`-Pfad über einem aufgezeichneten
+DOM — zwei volle Überstreichungen des Graphen, dann über die Liste, dann das
+Verlassen — und schließt jede Ursache einzeln aus: etwas ins Bild ziehen
+(`scrollIntoView`, `focus`, `scrollTo`), den View neu aufbauen (setzt die
+Scroll-Position zurück) und ein Layout-Sprung durch die Markierung selbst.
+Sechs Kausalpfade einzeln zurückgedreht, sechs gefangen, keiner abgestürzt.
+
 **0.36.0 — Paket A (DFA-Reiter und Signalkarten), und drei stumpfe Tests:**
 
 | Fund | Klasse | Fix |
@@ -335,7 +352,7 @@ den Non-Responder-Befund (Manresa-Rocamora 2021).
 
 ## 9. Prüfstand
 
-**Vierzehn Dateien, 2.751 gezählte Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
+**Vierzehn Dateien, 2.778 gezählte Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
 HA-Instanz oder einen Browser.
 
 | Datei | prüft | Umfang |
@@ -352,7 +369,7 @@ HA-Instanz oder einen Browser.
 | `test_websocket_registration.py` | Registrierung, Dekoratoren, FTP-Quelle, eine Ankerregel | 146 |
 | `test_suite_hygiene.py` | der Prüfstand prüft sich selbst: **genau eine** Summary je Datei, die etwas zählt, nichts Gezähltes dahinter, Fehler werden gedruckt | 61 |
 | `test_panel_views.js` | alle Ansichten gegen volle, leere, löchrige, entartete Daten; Zeitfenster, Brushing, Achsenregel | 847 |
-| `test_panel_fixes.js` | je ein Nachweis pro behobenem Fehler | 204 |
+| `test_panel_fixes.js` | je ein Nachweis pro behobenem Fehler, plus die Zeiger-Simulation | 231 |
 | `test_panel_design.js` | Gestaltungsregeln als Zusicherung, Auswahl als Form, Achse im Aufklappen | 67 |
 
 **Das Prinzip:** Ein Test, der den alten Fehler nicht nachweislich findet, ist kein Test. Bei
