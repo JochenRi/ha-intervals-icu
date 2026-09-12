@@ -12,8 +12,9 @@ from typing import Any
 import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.util import dt as dt_util
 
-from . import analytics, coach as coach_module, derive, importer, plan as plan_lib, workouts as workout_lib
+from . import analytics, coach as coach_module, day_context as day_context_lib, derive, importer, plan as plan_lib, workouts as workout_lib
 from .api import IntervalsError
 from .const import DOMAIN
 
@@ -77,6 +78,8 @@ def async_register(hass: HomeAssistant) -> None:
         websocket_load,
         websocket_readiness,
         websocket_days,
+        websocket_day_context,
+        websocket_set_day_context,
     ):
         websocket_api.async_register_command(hass, handler)
 
@@ -308,6 +311,74 @@ def websocket_load(hass, connection, msg) -> None:
 
 @websocket_api.websocket_command(
     {
+        vol.Required("type"): "intervals_icu/day_context",
+        vol.Optional("athlete_id"): str,
+    }
+)
+@callback
+def websocket_day_context(hass, connection, msg) -> None:
+    """Return the labelled days, the vocabulary and the source-block texts.
+
+    NOT named intervals_icu/context - that name has carried the coach's
+    session context since 0.31.0. One payload feeds chips, markers and the
+    source block, so vocabulary and rules cannot drift from day_context.py.
+    """
+    if (coordinator := _require(hass, connection, msg)) is None:
+        return
+    data = coordinator.archive.data
+    connection.send_result(msg["id"], {
+        "days": data.get("day_context") or {},
+        "tags": day_context_lib.TAGS,
+        "valid_weights": list(day_context_lib.VALID_WEIGHTS),
+        "min_weight_sum": day_context_lib.MIN_WEIGHT_SUM,
+        "sources": day_context_lib.SOURCES,
+    })
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "intervals_icu/set_day_context",
+        vol.Required("date"): str,
+        vol.Required("tag"): vol.Any(str, None),
+        vol.Optional("weight"): vol.Any(float, int, None),
+        vol.Optional("note"): str,
+        vol.Optional("athlete_id"): str,
+    }
+)
+@websocket_api.async_response
+async def websocket_set_day_context(hass, connection, msg) -> None:
+    """Store or remove one day's context label.
+
+    A local write only - nothing here is sent to intervals.icu. tag null
+    REMOVES the entry (a retraction, distinct from setting "normal", which
+    is a statement); the removed day computes as if never labelled.
+    """
+    coordinator = _pick(hass, msg.get("athlete_id"))
+    if coordinator is None:
+        connection.send_error(msg["id"], "not_found", "no Intervals.icu athlete loaded")
+        return
+    data = coordinator.archive.data
+    day = msg["date"]
+    if msg["tag"] is None:
+        removed = day_context_lib.remove_entry(data, day)
+        if removed:
+            await coordinator.archive.async_save_now()
+        connection.send_result(msg["id"], {"date": day, "entry": None,
+                                           "removed": removed})
+        return
+    try:
+        entry = day_context_lib.set_entry(
+            data, day, msg["tag"], msg.get("weight"),
+            msg.get("note", ""), set_at=dt_util.now().date().isoformat())
+    except ValueError as err:
+        connection.send_error(msg["id"], "invalid_format", str(err))
+        return
+    await coordinator.archive.async_save_now()
+    connection.send_result(msg["id"], {"date": day, "entry": entry})
+
+
+@websocket_api.websocket_command(
+    {
         vol.Required("type"): "intervals_icu/readiness",
         vol.Optional("athlete_id"): str,
     }
@@ -317,7 +388,21 @@ def websocket_readiness(hass, connection, msg) -> None:
     """Return the readiness traffic light and today's load budget."""
     if (coordinator := _require(hass, connection, msg)) is None:
         return
-    connection.send_result(msg["id"], analytics.readiness(coordinator.archive.data))
+    data = coordinator.archive.data
+    payload = analytics.readiness(data)
+    # The lamp computes UNWEIGHTED by design (level 3: analytics is
+    # context-free). When labelled days sit in its window the number can
+    # diverge from the weighted trainer baseline - that gets SAID, not
+    # silently accepted, and properly fixed by a per-condition baseline (B4).
+    labelled = [d for d in sorted(data.get("day_context") or {})
+                if d >= (dt_util.now().date() - timedelta(days=66)).isoformat()]
+    if payload and labelled:
+        payload["context_note"] = (
+            f"ungewichtet gerechnet — {len(labelled)} etikettierte "
+            f"{'Tag' if len(labelled) == 1 else 'Tage'} im Fenster; die "
+            "gewichtete Basislinie steht beim Trainerurteil, sauber trennt "
+            "das erst eine Basislinie je Bedingung (B4)")
+    connection.send_result(msg["id"], payload)
 
 
 @websocket_api.websocket_command(

@@ -85,6 +85,82 @@ def weight_for(data: dict[str, Any], day: str) -> float:
     return float(TAGS.get(entry.get("tag", ""), {}).get("weight", 1.0))
 
 
+# What the panel's source block says about this feature - ONE place, so the
+# panel cannot drift from the module that defines the rules (Auflage A:
+# belegt oder als Setzung gekennzeichnet, kein Drittes).
+SOURCES: dict[str, Any] = {
+    "belegt": [
+        {"text": "Etikettieren und bedingtes Vergleichen von Messungen "
+                 "(Training, Alkohol, Zyklus, Krankheit als Kontext-Tags, "
+                 "9 Mio. Nächte)",
+         "source": "Altini/Plews, Sensors 2021, 21:7932"},
+        {"text": "Tagschlaf ist eine andere Messbedingung: bei nicht "
+                 "adaptierten Nachtschichtlern ist das LF/HF-Verhältnis im "
+                 "Tagschlaf signifikant erhöht",
+         "source": "Boudreau/Boivin, PLOS ONE 2013; gestützt von "
+                    "van Amelsvoort 2001"},
+    ],
+    "setzung": [
+        "Die Gewichtszahlen je Etikett (0 / 0,5 / 1) sind eine Setzung, "
+        "keine Studienzahl.",
+        "Die Schwelle Σw ≥ 30 belastbare Tage im 60er-Fenster ist eine "
+        "Setzung — halbe Fensterbreite, damit die gewichtete Linie nicht "
+        "auf dünnem Bestand steht.",
+        "Ab etwa 15 etikettierten Tagen je Bedingung kann eine eigene "
+        "Basislinie je Bedingung stehen (Paket B4) — auch diese Zahl ist "
+        "eine Setzung.",
+    ],
+    "fix": "Die gewichtete Basislinie ist eine Brücke. Die saubere, belegte "
+           "Lösung heißt B4: getrennte Basislinien je Messbedingung, wie es "
+           "die HRV4Training-Arbeiten tun. Ein Zyklus-Etikett fehlt noch — "
+           "offener Punkt für die Veröffentlichung, nicht für diesen Stand.",
+    "read": "Nach einer Nachtschicht sieht der Wert oft schlechter aus. Das "
+            "ist die Messbedingung, nicht dein Zustand: die Schlafalgorithmen "
+            "sind für Nachtschlaf gebaut, und Tagschlaf misst sich anders. "
+            "Deshalb zählt so ein Tag nicht in deine Basislinie — aber er "
+            "wird nie weggerechnet: ein extremer Wert löst die Warnung "
+            "weiter aus und trägt dann sein Etikett. „Erklärt“ "
+            "heißt hier: gesehen, benannt, nicht verschwunden. Bei "
+            "regelmäßigen Nachtschichten steigt die Basislinie auf "
+            "deine guten Nächte — Tage nach der Schicht laufen dann "
+            "öfter als erklärte Ausreißer. Das ist gewollt "
+            "und sichtbar, kein Fehler.",
+}
+
+
+def set_entry(data: dict[str, Any], day: str, tag: str,
+              weight: Any = None, note: str = "",
+              set_at: str = "") -> dict[str, Any]:
+    """Validate and store one day's context. Writing is STRICT - the
+    tolerance of migrate() is for reading foreign data, not for producing
+    it. Raises ValueError with a reason the panel can show."""
+    if not _valid_day(day):
+        raise ValueError(f"kein gültiges Datum: {day!r}")
+    if tag not in TAGS:
+        raise ValueError(f"unbekanntes Etikett: {tag!r}")
+    if weight is None:
+        weight = TAGS[tag]["weight"]
+    if not isinstance(weight, (int, float)) or float(weight) not in VALID_WEIGHTS:
+        raise ValueError(f"Gewicht außerhalb {VALID_WEIGHTS}: {weight!r}")
+    if not isinstance(note, str):
+        raise ValueError("Notiz muss Text sein")
+    entry = {"tag": tag, "weight": float(weight),
+             "note": note[:NOTE_LIMIT], "set_at": set_at}
+    data.setdefault("day_context", {})[day] = entry
+    return entry
+
+
+def remove_entry(data: dict[str, Any], day: str) -> bool:
+    """Delete a day's context COMPLETELY. Removing is a retraction, not a
+    statement - the day must afterwards compute byte-identically to a day
+    that was never labelled, so no stub of any kind stays behind."""
+    block = data.get("day_context")
+    if isinstance(block, dict) and day in block:
+        del block[day]
+        return True
+    return False
+
+
 def migrate(block: Any) -> dict[str, Any] | None:
     """Bring a stored day_context block up to the current shape.
 

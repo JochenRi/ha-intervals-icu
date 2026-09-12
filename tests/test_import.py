@@ -309,6 +309,63 @@ async def main():
     check("store.async_load ruft die day_context-Migration",
           "day_context.migrate" in store_src, True)
 
+    # --- Schreibweg (Paket B6): strikt rein, rückstandsfrei raus ------------
+    box = {"day_context": {}}
+    entry = day_context.set_entry(box, "2026-09-11", "spaetschicht",
+                                  set_at="2026-09-11")
+    check("set_entry: Vorgabegewicht des Etiketts", entry["weight"], 0.5)
+    check("set_entry: Gewicht überschreibbar in Viertelschritten",
+          day_context.set_entry(box, "2026-09-11", "spaetschicht",
+                                weight=0.25, set_at="x")["weight"], 0.25)
+    for bad in [("2026-13-40", "normal", None), ("2026-09-11", "erfunden", None),
+                ("2026-09-11", "normal", 0.3)]:
+        try:
+            day_context.set_entry(box, bad[0], bad[1], weight=bad[2], set_at="x")
+            check(f"set_entry lehnt ab: {bad!r}", "durchgelassen", "ValueError")
+        except ValueError:
+            check(f"set_entry lehnt ab: {bad!r}", "ValueError", "ValueError")
+    check("set_entry: Notiz wird auf die Grenze gekürzt",
+          len(day_context.set_entry(box, "2026-09-10", "krank", note="x" * 999,
+                                    set_at="x")["note"]), day_context.NOTE_LIMIT)
+    # Löschen ist Rücknahme, keine Aussage: der Schlüssel verschwindet
+    # KOMPLETT — kein normal-Stummel, nichts. Byte-gleich zu nie etikettiert.
+    removed = day_context.remove_entry(box, "2026-09-10")
+    check("remove_entry: meldet die Löschung", removed, True)
+    check("remove_entry: kein Rückstand des Tages",
+          "2026-09-10" in box["day_context"], False)
+    day_context.remove_entry(box, "2026-09-11")
+    check("remove_entry: Archiv danach exakt wie nie etikettiert",
+          box["day_context"], {})
+    check("remove_entry: fehlender Tag ist kein Fehler",
+          day_context.remove_entry(box, "2026-01-01"), False)
+
+    # --- Auflage A und B: die Texte stehen im Modul, nicht in der Absicht ---
+    srcs = day_context.SOURCES
+    belege = " ".join(item["source"] for item in srcs["belegt"])
+    check("Quellenblock: Altini/Plews Sensors 2021 belegt",
+          "Sensors 2021" in belege and "Altini" in belege, True)
+    check("Quellenblock: Boudreau/Boivin PLOS ONE 2013 belegt",
+          "PLOS ONE 2013" in belege, True)
+    check("Quellenblock: van Amelsvoort als Stütze genannt",
+          "van Amelsvoort" in belege, True)
+    setzungen = " ".join(srcs["setzung"])
+    check("Quellenblock: Gewichte wörtlich als Setzung",
+          "Setzung" in setzungen and "Σw" in setzungen, True)
+    check("Quellenblock: die 15 Tage bis B4 als Setzung",
+          "15" in setzungen and "B4" in setzungen, True)
+    check("Quellenblock: B4 als die saubere Lösung benannt",
+          "B4" in srcs["fix"], True)
+    check("Quellenblock: Zyklus als offener Punkt",
+          "Zyklus" in srcs["fix"], True)
+    lese = srcs["read"]
+    check("Erklärtext: Messbedingung statt Zustand",
+          "Messbedingung" in lese and "nicht dein Zustand" in lese, True)
+    check("Erklärtext: erklärt heißt gesehen und benannt",
+          "gesehen" in lese and "benannt" in lese, True)
+    check("Erklärtext: die steigende Basislinie bei regelmäßigen "
+          "Nachtschichten ist gewollt und gesagt",
+          "regelmäßigen Nachtschichten" in lese and "gewollt" in lese, True)
+
     print()
     print(f"test_import: {CHECKS} Prüfungen, {len(failures)} Fehler")
     print("FEHLER:", failures if failures else "keine")

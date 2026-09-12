@@ -191,6 +191,40 @@ if "plan.migrate_goal(" in store_src and "base.update(stored)" in store_src:
     check("schedule_save()" in store_src[at:at + 400],
           "anker: die Reparatur wird nie gespeichert")
 
+# --- day_context (Paket B6): Lese- und Schreibweg -----------------------------
+SRC = MODULE.read_text()
+check("websocket_day_context" in registered, "day_context: Leseweg nicht registriert")
+check("websocket_set_day_context" in registered, "day_context: Schreibweg nicht registriert")
+check(commands.get("websocket_day_context") == "intervals_icu/day_context",
+      "day_context: falscher Kommandoname am Leseweg")
+check(commands.get("websocket_set_day_context") == "intervals_icu/set_day_context",
+      "day_context: falscher Kommandoname am Schreibweg")
+# Der Name intervals_icu/context ist seit 0.31.0 durch den Coach-Sitzungs-
+# kontext belegt — die neuen Wege dürfen ihn nicht anfassen.
+check(commands.get("websocket_context") == "intervals_icu/context",
+      "day_context: der belegte Name intervals_icu/context wurde verändert")
+_set_src = ast.get_source_segment(SRC, functions["websocket_set_day_context"]) or ""
+check("day_context_lib.set_entry" in _set_src,
+      "day_context: Schreibweg validiert nicht über das Modul")
+check("day_context_lib.remove_entry" in _set_src,
+      "day_context: tag=null löscht nicht über das Modul")
+check('msg["tag"] is None' in _set_src,
+      "day_context: der Löschweg über tag=null fehlt")
+check("async_save_now" in _set_src, "day_context: Schreibweg speichert nicht")
+check("invalid_format" in _set_src,
+      "day_context: Validierungsfehler erreichen den Aufrufer nicht")
+_read_src = ast.get_source_segment(SRC, functions["websocket_day_context"]) or ""
+for _need in ("day_context_lib.TAGS", "day_context_lib.SOURCES",
+              "day_context_lib.VALID_WEIGHTS", "day_context_lib.MIN_WEIGHT_SUM"):
+    check(_need in _read_src,
+          f"day_context: Leseweg liefert {_need.split('.')[-1]} nicht aus dem Modul")
+# Ampel-Herkunftsnotiz: die Divergenz wird gesagt, nicht geschluckt
+_ready_src = ast.get_source_segment(SRC, functions["websocket_readiness"]) or ""
+check("context_note" in _ready_src and "B4" in _ready_src,
+      "readiness: Herkunftsnotiz zur ungewichteten Ampel fehlt")
+check("ungewichtet gerechnet" in _ready_src,
+      "readiness: die Notiz benennt die ungewichtete Rechnung nicht")
+
 print(f"test_websocket_registration: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)
