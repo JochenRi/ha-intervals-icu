@@ -327,6 +327,54 @@ lokal, nichts geht an Intervals.
   dann durchfallen), Mindestbelegung entfernen, Gewichte in die Lastsumme
   ziehen — jede Mutation muss gezählt und benannt melden.
 
+### Präzisierungen aus dem Bau (0.37.0 — B2, B3, B6 plus Chips geliefert)
+
+Festgelegt beim Bauen, damit 0.38.0 nicht neu entscheidet, was schon
+entschieden ist:
+
+- **Datenschlüssel sind ASCII-Slugs** (`spaetschicht`, `uhr_nicht_getragen`),
+  die deutschen Anzeigenamen stehen im Vokabular `day_context.TAGS` — eine
+  Quelle für Speicher UND Anzeige. Die Migration lässt einen UNBEKANNTEN Slug
+  mit gültigem Gewicht überleben (Downgrade-Schutz: ein 0.38-Etikett darf ein
+  0.37-Laden nicht kosten); der Schreibweg dagegen ist strikt und kennt nur
+  das Vokabular.
+- **Löschen läuft über `tag: null`** am selben Kommando und ist eine
+  RÜCKNAHME, keine Aussage: sichtbar anders als „Normal" setzen (gestrichelte
+  eigene Zeile statt Kategorien-Chip), und der Schlüssel verschwindet
+  komplett — ein gelöschter Tag rechnet byte-gleich zu einem nie
+  etikettierten (Gegenprobe: ein `normal`-Stummel wird benannt gefangen).
+- **Hinweisregel:** die Rückfallregel (`Σw < 30` → ungewichtet) ist überall
+  dieselbe; der sichtbare Hinweis erscheint nur, wenn mindestens ein Tag mit
+  `w < 1` im Fenster liegt, und nennt dann die Zahlen („nur 25 belastbare
+  Tage von 30 nötigen, 35 Tage sind etikettiert"). Der Rückfallwert ist
+  bit-identisch zum ungewichteten Bestand — `_norm_band` delegiert in beiden
+  Fällen (kein Etikett / unter der Schwelle) direkt an `_band`, es gibt
+  keinen zweiten Rechenweg.
+- **Eine Primitive, fünf wären es fast gewesen:** `state()`, `_z_series()`,
+  `_night_z()` und `_signal_bands()` rechnen über `_norm_band`/`_z_at`
+  (AST-Wächter auf den Aufrufern). Dabei kam die Log-Diskrepanz von state()
+  ans Licht (§7) — behoben als eigener Commit VOR dem Einfrieren der
+  No-op-Referenzen. Die Mindestbelegung 20 gilt seitdem auch im
+  Trainerurteil. Das Peer-Band in `night_after` bleibt bewusst ungewichtet:
+  es aggregiert z-Werte, die bereits gegen gewichtete Basislinien gerechnet
+  sind.
+- **`analytics` bleibt komplett kontextfrei** — auch `hrv_status`, obwohl es
+  die Readiness-Ampel speist. Eine Tages-Gewichtung nur der Ampel-Basislinie
+  wäre halbrichtig (die rollenden 7-Tage-Mittel blieben kontaminiert). Die
+  Divergenz wird gesagt statt geschluckt: `websocket_readiness` hängt eine
+  Herkunftsnotiz an, wenn etikettierte Tage im Fenster liegen. Sauber trennt
+  das erst B4. Nebenfund: `ring()` und der `rd`-Parameter von `rTrainer`
+  sind im Panel derzeit toter Code — die Ampel rendert nur über Sensor und
+  Websocket, nicht im Panel.
+- **Der Beschriftungsdialog ist ein FESTER, zentrierter Kasten mit Backdrop**
+  — kein am Klickpunkt schwebender Kasten (die 0.9.1–0.9.3-Fehlerklasse).
+  Zukunftstage sind nicht beschriftbar: ein Etikett beschreibt eine Messung,
+  keinen Plan.
+- **Zyklus als Etikett:** offener Punkt für die Veröffentlichung (0.38+),
+  bewusst nicht in 0.37.0. Ebenso offen für 0.38.0: die Gewichtungs-Kachel,
+  Mehrfachauswahl, das Notizfeld in der Bedienung und der Kurzweg — der
+  Schreibweg (`note`-Feld inklusive) trägt sie bereits.
+
 ---
 
 ## Paket C — Vergleichsgruppe

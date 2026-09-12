@@ -1,13 +1,13 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 12.09.2026 · **Version:** 0.36.1 · **Status:** produktiv auf HEIMDALL,
+**Stand:** 12.09.2026 · **Version:** 0.37.0 · **Status:** produktiv auf HEIMDALL,
 Auslieferung über HACS aus `github.com/JochenRi/ha-intervals-icu`
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lokal
 archiviert, auswertet und in einem eigenen Seitenleisten-Panel darstellt.
 
-**Umfang:** ~9.700 Zeilen, davon 3.678 Frontend · 21 WebSocket-Befehle · 15 Einheiten in
-8 Familien · 14 Testdateien mit **2.778** gezählten Einzelprüfungen · 37 Releases.
+**Umfang:** ~10.100 Zeilen, davon ~3.850 Frontend · 23 WebSocket-Befehle · 15 Einheiten in
+8 Familien · 14 Testdateien mit **2.975** gezählten Einzelprüfungen · 38 Releases.
 
 ---
 
@@ -364,25 +364,25 @@ den Non-Responder-Befund (Manresa-Rocamora 2021).
 
 ## 9. Prüfstand
 
-**Vierzehn Dateien, 2.778 gezählte Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
+**Vierzehn Dateien, 2.975 gezählte Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
 HA-Instanz oder einen Browser.
 
 | Datei | prüft | Umfang |
 |---|---|---|
 | `test_derive.py` | Parselogik gegen echte Payloads | 29 |
 | `test_dfa.py` | DFA-Auswertung, Bandgrenzen, Artefakte | 25 |
-| `test_import.py` | vollständiger Import gegen einen Nachbau des Kontos, Schwellenreihe und `since` | 46 |
-| `test_analytics.py` | Trainingsmetriken gegen bekannte Ergebnisse | 77 |
+| `test_import.py` | vollständiger Import gegen einen Nachbau des Kontos, Schwellenreihe und `since`, day_context-Migration und Schreibweg, Quellenblock-Auflagen | 76 |
+| `test_analytics.py` | Trainingsmetriken gegen bekannte Ergebnisse, Ebene-3-Wächter (Last kennt keine Etiketten, Quelltext und Verhalten) | 86 |
 | `test_setup_simulation.py` | Entity-Aufbau, Übersetzungen, unique_ids | 22 |
 | `test_laps.py` | Runden-Normalisierung | 34 |
-| `test_coach.py` | Zustandsregeln, Trigger-Schärfung, Infektverlauf, Nachtreaktion, Einordnung, Bereiche, benannter 42-Tage-Verlauf | 213 |
+| `test_coach.py` | Zustandsregeln, Trigger-Schärfung, Infektverlauf, Nachtreaktion, Einordnung, Bereiche, benannter 42-Tage-Verlauf, Basislinien-Primitive mit AST-Wächter, eingefrorene No-op-Referenz, gewichtete Basislinie mit Fixture-Beweis | 261 |
 | `test_plan.py` | Zielprofil, Wochenmuster, Zeitbudget, Progressions- und Kalender-Anker-Vertrag, Profil-Migration | 405 |
 | `test_workouts.py` | Einheitenauswahl, HF-Klemme, Infektleiter, Wattumrechnung, Intervals-Syntax | 575 |
-| `test_websocket_registration.py` | Registrierung, Dekoratoren, FTP-Quelle, eine Ankerregel | 146 |
+| `test_websocket_registration.py` | Registrierung, Dekoratoren, FTP-Quelle, eine Ankerregel, day_context-Lese/Schreibweg, Ampel-Herkunftsnotiz | 172 |
 | `test_suite_hygiene.py` | der Prüfstand prüft sich selbst: **genau eine** Summary je Datei, die etwas zählt, nichts Gezähltes dahinter, Fehler werden gedruckt | 61 |
-| `test_panel_views.js` | alle Ansichten gegen volle, leere, löchrige, entartete Daten; Zeitfenster, Brushing, Achsenregel | 847 |
+| `test_panel_views.js` | alle Ansichten gegen volle, leere, löchrige, entartete Daten; Zeitfenster, Brushing, Achsenregel; Tagesbeschriftung mit Dialog, Schreibweg, Scroll-Erhalt | 917 |
 | `test_panel_fixes.js` | je ein Nachweis pro behobenem Fehler, plus die Zeiger-Simulation | 231 |
-| `test_panel_design.js` | Gestaltungsregeln als Zusicherung, Auswahl als Form, Achse im Aufklappen | 67 |
+| `test_panel_design.js` | Gestaltungsregeln als Zusicherung, Auswahl als Form, Achse im Aufklappen, Etiketten im Kategorienregister | 79 |
 
 **Das Prinzip:** Ein Test, der den alten Fehler nicht nachweislich findet, ist kein Test. Bei
 den kritischen Fixes wurde der Fix zurückgedreht und geprüft, dass der Test fehlschlägt —
@@ -491,8 +491,23 @@ bzw. ein Reiter je Chat.
 | **Trainer** | ✅ auditiert 12.09. — 14 Befunde; Paket 1 (Befunde 1–6) als **0.32.0 ausgeliefert und am System verifiziert** (Konfliktwächter feuert live mit 68 %); Paket 2 (Plan-Umbau + Rest Befund 10) als **0.33.0 gebaut**, Verifikation am System steht aus |
 | Belastung | ⏳ nächster Audit-Kandidat (seit 0.6.0 unangetastet, am weitesten hinter der Studienlage) |
 | **DFA** | ✅ Paket A als **0.36.0 gebaut** — Brushing, Zeitfenster, Spalten, Sprung; Verifikation am System steht aus |
-| **Signale (aufgeklappte Karte in Heute)** | ✅ Datumsachse und Ereignisspur als Teil von Paket A |
-| Heute, Kalender, Fitness, Aktivitäten | offen |
+| **Signale (aufgeklappte Karte in Heute)** | ✅ Datumsachse und Ereignisspur als Teil von Paket A; Hohlpunkte für w=0-Tage seit 0.37.0 |
+| **Heute, Kalender (Teilaspekt Tagesbeschriftung)** | ✅ Paket B (B2/B3/B6 + Chips) als **0.37.0 gebaut** — Verifikation am System steht aus; B5-Rest (Kachel, Mehrfachauswahl, Notizfeld, Kurzweg) und B4 offen für 0.38.0 |
+| Heute, Kalender (voller Audit), Fitness, Aktivitäten | offen |
+
+### Erledigt in 0.37.0: Paket B — Tageskontext (B2, B3, B6 plus Chips)
+
+Etiketten je Tag (`day_context`-Archivblock mit Migration), gewichtete
+Basislinie über die EINE Primitive (`Σw ≥ 30`, sonst bit-identischer
+Rückfall mit Zahlen-Hinweis), drei Ebenen strikt getrennt und bewacht
+(Basislinie gewichtet · Warnlampe schließt nie aus, erklärt-Merkmal ·
+Last kennt keine Etiketten), Websocket-Lese/Schreibweg (`tag: null`
+löscht rückstandsfrei), Beschriftungsdialog als fester Kasten mit
+Kategorien-Chips, Quellenblock nach Auflage A (belegt / Setzung / B4)
+und Erklärtext nach Auflage B. Präzisierungen in `docs/ausbau.md`;
+zwei Funde in §7 (Log-Diskrepanz in `state()`, fünfte HRV-Basislinie
+in `analytics.hrv_status`). Geliefert bewusst OHNE Automatik oder
+Schichtmuster-Ableitung (Entscheidung 12.09.2026).
 
 ### Erledigt in 0.36.0: Paket A — DFA-Reiter und Signalkarten
 
