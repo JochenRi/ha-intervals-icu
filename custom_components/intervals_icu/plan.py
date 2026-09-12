@@ -268,19 +268,36 @@ def plan(profile: dict[str, Any], state: dict[str, Any] | None = None,
 def _sessions(goal: dict[str, Any], goal_key: str, days: int, week_hours: float,
               long_day: float, kind: str, phase: str, profile: dict[str, Any],
               target_hours: float, hard_per_week: int = 2) -> list[dict[str, Any]]:
-    """The sessions of one week, fitted into the days that are available."""
+    """The sessions of one week, fitted into the days AND the hours available.
+
+    The arithmetic contract: the hours of the sessions returned here never
+    exceed week_hours (plus rounding). The earlier version broke it twice in
+    one function - a 1.0 h floor inflated small weeks, and the recovery-week
+    shortening of the long day happened AFTER the rest had already been
+    dealt out, so a 3.6 h week carried 4.5 h of sessions. Shorten first,
+    deal second, and drop a day instead of inventing hours for it.
+    """
     sessions: list[dict[str, Any]] = []
     remaining_hours = week_hours
     slots = days
 
     if goal_key == "long_ride" and slots > 0:
-        hours_long = min(long_day, week_hours * 0.6)
+        hours_long = min(long_day, week_hours * LONG_DAY_SHARE)
+        recovery_week = kind == "recovery"
+        if recovery_week:
+            # the long day stays in the rhythm, but shorter - and it is
+            # shortened BEFORE the remaining hours are dealt out
+            hours_long = round(hours_long * 0.7, 1)
         late_quality = phase in ("specific",) and kind == "load"
         sessions.append({
             "role": "long",
-            "title": f"Langer Tag — {hours_long:.1f} h",
+            "title": (f"Langer Tag (verkürzt) — {hours_long:.1f} h" if recovery_week
+                      else f"Langer Tag — {hours_long:.1f} h"),
             "workout": "z2_90",
             "detail": (
+                "Entlastungswoche: der lange Tag bleibt im Rhythmus, aber kürzer. "
+                "Der Zuwachs macht hier Pause."
+                if recovery_week else
                 "Gleichmäßig knapp unter der aeroben Schwelle. "
                 + ("Die letzten 30–40 Minuten mit 2×10 min zügig — Qualität im ermüdeten "
                    "Zustand ist genau das, was das Ziel verlangt."
@@ -300,13 +317,16 @@ def _sessions(goal: dict[str, Any], goal_key: str, days: int, week_hours: float,
                      "Einheiten."),
             "hours": round(hours_long, 1),
         })
-        remaining_hours -= hours_long
+        remaining_hours = max(0.0, remaining_hours - hours_long)
         slots -= 1
 
     quality_slots = 0 if kind == "recovery" else min(
         hard_per_week, max(0, slots - 1) if goal_key == "long_ride" else slots)
     if phase == "taper":
         quality_slots = min(1, quality_slots)
+    # a quality session needs its 1.2 h to exist - a week too small to carry
+    # one gets none instead of hours the budget does not hold
+    quality_slots = min(quality_slots, int(remaining_hours // 1.2))
 
     for number in range(quality_slots):
         if goal_key == "vo2max":
@@ -325,27 +345,29 @@ def _sessions(goal: dict[str, Any], goal_key: str, days: int, week_hours: float,
                     if goal_key == "long_ride" else goal["why"]),
             "hours": 1.2,
         })
-        remaining_hours -= 1.2
+        remaining_hours = max(0.0, remaining_hours - 1.2)
         slots -= 1
 
+    # base rides fill what is left. Under 45 minutes a ride is movement, not
+    # a stimulus (the catalogue says so itself) - such a slot is dropped, not
+    # padded up to a fantasy hour.
     while slots > 0:
-        hours_each = max(1.0, remaining_hours / slots) if slots else 1.0
+        hours_each = remaining_hours / slots
+        if hours_each < 0.75 and slots > 1:
+            slots -= 1
+            continue
+        if hours_each < 0.5:
+            break
+        hours_each = round(hours_each, 1)
         sessions.append({
             "role": "endurance",
             "title": f"Grundlage — {hours_each:.1f} h",
             "workout": "z2_60" if hours_each < 1.4 else "z2_90",
             "detail": "Gleichmäßig, DFA über 0,75. Kein Reiz, sondern Substanz.",
             "why": "Der Anteil, der im Dreizonenmodell 75–80 % der Einheiten ausmacht.",
-            "hours": round(hours_each, 1),
+            "hours": hours_each,
         })
-        remaining_hours -= hours_each
+        remaining_hours = max(0.0, remaining_hours - hours_each)
         slots -= 1
 
-    if kind == "recovery":
-        for session in sessions:
-            if session["role"] == "long":
-                session["hours"] = round(session["hours"] * 0.7, 1)
-                session["title"] = f"Langer Tag (verkürzt) — {session['hours']:.1f} h"
-                session["detail"] = ("Entlastungswoche: der lange Tag bleibt im Rhythmus, "
-                                     "aber kürzer. Der Zuwachs macht hier Pause.")
     return sessions

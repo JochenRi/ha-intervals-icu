@@ -219,5 +219,29 @@ for entry in W.LIBRARY:
 print(f"test_workouts: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)
+
+# --- anchor conflict: FTP watts vs the measured DFA threshold -----------------
+# The live case that motivated this: FTP 215, measured aerobic power 146 -
+# the base-ride watt window (140-150 W) sits ON the measured threshold, so a
+# base ride ridden by watts contradicts the "DFA above 0.75" printed next to
+# it. The guard has to fire there, stay silent on a sane pairing, and never
+# invent a verdict from missing numbers.
+conflict = W.anchor_conflict(215.0, 146.0)
+check(conflict is not None, "konflikt 215/146: nicht erkannt")
+check(conflict and conflict["share_pct"] == 68, f"konflikt: Anteil falsch ({conflict})")
+check(conflict and "215" in conflict["text"] and "146" in conflict["text"],
+      "konflikt: Zahlen fehlen im Text")
+check(conflict and "Herzfrequenz" in conflict["text"],
+      "konflikt: keine Handlungsanweisung")
+check(W.anchor_conflict(215.0, 175.0) is None, "konflikt 215/175: Fehlalarm")
+check(W.anchor_conflict(None, 146.0) is None, "konflikt: aus fehlender FTP erfunden")
+check(W.anchor_conflict(215.0, None) is None, "konflikt: aus fehlender Schwelle erfunden")
+check(W.anchor_conflict(0, 0) is None, "konflikt: aus Nullen erfunden")
+# the boundary: exactly at the z2 top plus tolerance stays quiet, just under fires
+check(W.anchor_conflict(200.0, 200.0 * 0.70 * 1.03 + 0.5) is None,
+      "konflikt: Toleranzgrenze feuert zu früh")
+check(W.anchor_conflict(200.0, 200.0 * 0.70) is not None,
+      "konflikt: an der Z2-Obergrenze stumm")
+
 print("FEHLER: keine" if not FAILURES else "")
 sys.exit(1 if FAILURES else 0)

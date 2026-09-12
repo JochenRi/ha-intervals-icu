@@ -815,8 +815,11 @@ class IntervalsIcuPanel extends HTMLElement {
 
     // One logic, not two. The list IS the recommendation: the first card that
     // fits today carries the mark, instead of a second block above computing
-    // its own answer that could quietly disagree with this one.
-    const pick = list.findIndex((e) => e.fit === "ok");
+    // its own answer that could quietly disagree with this one. And it must
+    // fit the BUDGET too - a lead card wearing "über dem Budget" as its own
+    // badge would contradict itself on screen.
+    let pick = list.findIndex((e) => e.fit === "ok" && e.fits_budget !== false);
+    if (pick < 0) pick = list.findIndex((e) => e.fit === "ok");
     const cards = list.map((entry, index) => {
       const open = this._woOpen === entry.key;
       const FIT = { ok: ["green", "passt heute"], maybe: ["amber", "möglich, kostet aber"],
@@ -890,7 +893,10 @@ class IntervalsIcuPanel extends HTMLElement {
       würden. Entscheiden tust du.</p>
     </div>` : "";
 
-    return `${leadCard}<h3 class="secname">Alle Einheiten für heute
+    const conflict = w.conflict ? `<div class="warnrow">${ico("warn", C.amber, 16)}
+      <span>${esc(w.conflict.text)}</span></div>` : "";
+
+    return `${conflict}${leadCard}<h3 class="secname">Alle Einheiten für heute
       <span class="hint">— eine je Art, jede für heute bewertet. Watt aus deiner
       FTP${w.ftp ? ` (${fmt(w.ftp)} W)` : ""}, Puls aus deiner gemessenen aeroben
       Schwelle${w.aerobic_hr ? ` (${w.aerobic_hr} bpm)` : ""}. Was du machst, entscheidest du —
@@ -1185,11 +1191,17 @@ class IntervalsIcuPanel extends HTMLElement {
   /* ---------------- Trainer ----------------
      The verdict first, then what to ride, then why - and the limits of the
      rule sit next to it rather than in a footnote. Every number here is
-     either measured from this athlete or carries the study it comes from. */
+     either measured from this athlete or carries the study it comes from.
+
+     One voice: the session recommendation lives in rWorkouts (the first
+     card that fits today IS the recommendation). This block carries the
+     state, its reasons, and the warnings. Every string built here is
+     inserted below - a computed block that never reaches the DOM is the
+     bug that silently dropped the infection warning in 0.31.0, and
+     test_panel_fixes now proves these render. */
   rTrainer(c, rd) {
     if (!c) return `<div class="card pad">Trainer wird geladen …</div>`;
-    const r = c.recommendation || {};
-    const st = r.state || {};
+    const st = c.state || {};
     const STATE_LOOK = {
       ready:      { c: C.green,  ic: "ok",    w: "im Normalbereich" },
       rebound:    { c: C.blue,   ic: "trend", w: "Erholung nach Einbruch" },
@@ -1200,41 +1212,16 @@ class IntervalsIcuPanel extends HTMLElement {
       unknown:    { c: C.grey,   ic: "na",    w: "keine Einschätzung" },
     };
     const look = STATE_LOOK[st.state] || STATE_LOOK.unknown;
-    const anc = r.anchors || {};
-    const hrw = r.hr_window, pw = r.power_window;
-
-    const zbar = (label, value, unit) => {
-      if (value == null) return "";
-      const pos = Math.max(-3, Math.min(3, value));
-      const col = pos < -0.5 ? C.amber : pos > 1.5 ? C.violet : C.green;
-      return `<div class="zrow"><span>${label}</span>
-        <i class="zline"><s class="zmid"></s>
-          <b style="left:${((pos + 3) / 6 * 100).toFixed(1)}%;background:${col}"></b></i>
-        <b class="tn">${sign(value, 2)}${unit ? " " + unit : ""}</b></div>`;
-    };
-
-    const fitBadge = r.fits_budget == null ? ""
-      : badge(r.fits_budget ? "green" : "amber",
-              r.fits_budget ? "passt ins Budget" : "über dem Budget");
-
-    const reasons = (r.reasons || []).map((x) => `<li><b>${esc(x.weil)}</b>
-      <span class="src">${esc(x.text)}</span>
-      <em class="qq">${esc(x.quelle)}</em></li>`).join("");
-    const warns = (r.warnings || []).map((w) =>
-      `<div class="warnrow">${ico("warn", C.amber, 16)}<span>${esc(w)}</span></div>`).join("");
-
-    const lay = r.layoff || {};
-    const dur = r.durability;
+    const anc = c.anchors || {};
+    const dur = c.durability;
     const trend = anc.trend_power;
-    const plan = (c.plan || []).map((d, i) => {
-      const hard = d.key === "sweetspot" || d.key === "vo2max";
-      return `<div class="pday ${i === 0 ? "on" : ""} ${hard ? "hard" : ""}">
-        <span class="pd">${dShort(d.date)}</span>
-        <b>${esc(d.title)}</b>
-        <small>${d.minutes ? d.minutes[0] + "–" + d.minutes[1] + " min" : "frei"}${
-          d.hr_window ? ` · ${d.hr_window[0]}–${d.hr_window[1]} bpm` : ""}</small>
-      </div>`;
-    }).join("");
+
+    const warns = (c.warnings || []).map((w) =>
+      `<div class="warnrow">${ico("warn", C.amber, 16)}<span>${esc(w)}</span></div>`).join("");
+    const reasons = (c.reasons || []).length ? `<ul class="reasons">${(c.reasons || []).map((x) =>
+      `<li><b>${esc(x.weil)}</b>
+        <span class="src">${esc(x.text)}</span>
+        <em class="qq">${esc(x.quelle)}</em></li>`).join("")}</ul>` : "";
 
     return `
       <section class="card hero" style="border-color:${look.c}55">
@@ -1279,7 +1266,12 @@ class IntervalsIcuPanel extends HTMLElement {
         ${st.since ? `<p class="hint">Einbruch erkannt am ${dMed(st.since)} — solange er im
           7-Tage-Fenster steckt, zieht er das Mittel nach unten, auch wenn die letzten Tage
           längst wieder darüber liegen.</p>` : ""}
+        ${warns}
+        ${reasons}
       </section>
+
+      ${c.trained_today ? `<p class="note">${ico("ok", C.green, 14)} Heute liegt schon eine
+        Einheit im Archiv — die Karten unten gelten damit eher für morgen.</p>` : ""}
 
       ${this.rWorkouts(this._workouts)}
 
@@ -3049,16 +3041,7 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
 .tslabel{font-size:27px;font-weight:700;line-height:1.1}
 .tsz{flex:1 1 340px;min-width:280px;display:grid;gap:5px}
 .zrow{display:grid;grid-template-columns:160px 1fr 74px;gap:10px;align-items:center;font-size:12.5px;color:${C.tx2}}
-.zline{position:relative;height:8px;background:#0006;border-radius:4px;display:block}
-.zline .zmid{position:absolute;left:50%;top:-3px;bottom:-3px;width:1.5px;background:${C.tx3};display:block}
-.zline b{position:absolute;top:-3px;width:9px;height:14px;border-radius:3px;transform:translateX(-50%)}
 .tdetail{color:${C.tx};font-size:15px;margin:12px 2px 0;max-width:900px}
-.rec{padding:16px}
-.rectitle{font-size:24px;font-weight:700;display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:2px 0 12px}
-.recgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:9px;margin-bottom:12px}
-.recgrid .kv{display:block}
-.recgrid .kv small{display:block;color:${C.tx3};font-size:11.5px;margin-bottom:2px}
-.recgrid .kv b{font-size:16px}
 .effect{color:${C.tx2};font-size:14px;line-height:1.55;max-width:900px;margin:4px 0 8px}
 .warnrow{display:flex;gap:9px;align-items:flex-start;background:${C.amber}12;border:1px solid ${C.amber}33;
   border-radius:9px;padding:9px 11px;margin:8px 0;font-size:13.5px;color:${C.tx2}}
@@ -3068,13 +3051,6 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
 .qq{display:block;color:${C.tx3};font-size:12px;font-style:normal}
 .ancgrid{display:grid;grid-template-columns:minmax(250px,1fr) 2fr;gap:22px;align-items:center}
 .durrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:14px;margin-bottom:6px}
-.planrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:8px;margin-bottom:14px}
-.pday{background:${C.card};border:1px solid ${C.line};border-radius:10px;padding:10px}
-.pday.on{border-color:${ROLE.series};box-shadow:0 0 0 1px ${ROLE.series}55}
-.pday.hard{background:${C.card2}}
-.pday .pd{display:block;color:${C.tx3};font-size:12px}
-.pday b{display:block;font-size:14px;margin:2px 0}
-.pday small{color:${C.tx2};font-size:12px}
 .catrow{display:grid;grid-template-columns:190px 110px 190px 1fr;gap:12px;align-items:baseline;
   padding:10px 14px;border-bottom:1px solid ${C.line}44;font-size:13px}
 @media(max-width:980px){

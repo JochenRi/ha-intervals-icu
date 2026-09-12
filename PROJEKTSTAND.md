@@ -1,13 +1,13 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 11.09.2026 · **Version:** 0.31.0 · **Status:** produktiv auf HEIMDALL,
+**Stand:** 12.09.2026 · **Version:** 0.32.0 · **Status:** produktiv auf HEIMDALL,
 Auslieferung über HACS aus `github.com/JochenRi/ha-intervals-icu`
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lokal
 archiviert, auswertet und in einem eigenen Seitenleisten-Panel darstellt.
 
 **Umfang:** ~8.900 Zeilen, davon 3.130 Frontend · 21 WebSocket-Befehle · 15 Einheiten in
-8 Familien · 14 Testdateien mit rund 1.900 Einzelprüfungen · 31 Releases.
+8 Familien · 14 Testdateien mit rund 1.930 Einzelprüfungen · 32 Releases.
 
 ---
 
@@ -191,6 +191,28 @@ Recherche:
 ---
 
 ## 7. Fehler und was sie gelehrt haben
+
+**0.32.0 — vier Funde aus dem Trainer-Audit, drei davon bekannte Fehlerklassen:**
+
+| Fund | Klasse | Fix |
+|---|---|---|
+| `rTrainer` baute Warnungen (u. a. den Infekt-Hinweis), Gründe und eine 7-Tage-Leiter — und setzte nichts davon ins Template ein. Die verwaisten CSS-Klassen verrieten den verlorenen Block aus dem 0.9-Neubau. | „berechnet, aber nie verbaut" — Frontend-Variante von 0.9.4 | Warnungen + Gründe werden gerendert; tote Blöcke und CSS entfernt; `test_panel_fixes` Block 11 prüft gerendert **und** auf Quelltextebene („const X ohne ${X}") |
+| Zweiter Empfehler: `coach.recommend()` wählte Einheiten parallel zu `workouts.suggest()` — live widersprachen sich beide (Leitempfehlung „Tempo" vs. Familie „maybe"), dazu eine dritte Lastschätzung. | Fehlerklasse 3 (zwei Rechenwege), vierter Fall | `coach.py` liefert nur noch die Bewertung (`assessment`): Zustand, Anker, Gründe, Warnungen. Einheitenwahl **nur** in `workouts.suggest`. AST-Wächter in `test_websocket_registration` |
+| `_state_for_plan` las die Wochenlast aus `wellness.load` → `weekly_load: 0` bei 239 Aktivitäten im Archiv. | Fehlerklasse 1 (richtige Zahl, falscher Ort), dritter Fall | Summe `icu_training_load` der letzten 28 Tage; Wächter gegen `row.get("load")` |
+| Entlastungswoche: 4,5 h Einheiten in 3,6 h Budget (1,0-h-Floor + nachträgliche Kürzung des langen Tags). | Arithmetik | Kürzen **vor** dem Verteilen, kein Floor — zu kleine Slots entfallen statt aufgefüllt zu werden. Stundenvertrag in `test_plan`: Summe ≤ Wochenbudget, für jede Woche jedes Plans |
+
+**Neu in 0.32.0 — der Anker-Konfliktwächter:** Watt kommen aus der FTP, Puls aus der
+DFA-Schwelle — zwei Anschläge, die nichts aufs selbe Maß zwingt. Liegt die gemessene
+Schwellenleistung im oder unter dem Grundlagen-Wattfenster (bei Johannes: 146 W bei
+FTP 215 → 68 %), zeigt das Panel den Widerspruch offen an, statt beide Zahlen
+kommentarlos nebeneinander zu drucken (`workouts.anchor_conflict`, Banner in
+`rWorkouts`). Hintergrund aus der Validierungslage 2024–2026: DFA-a1 unterschätzt
+Schwellen bei fitteren Athleten systematisch, die Übereinstimmung von HRVT1 mit
+VT1/LT1 ist schwach — als Trend brauchbar, als alleinige Watt-Verankerung nicht.
+Dazu: Lead-Karte muss ins Lastbudget passen; „heute schon gefahren" wird erkannt
+(`trained_today`) und über den Karten ausgewiesen; Evidence-Block nennt jetzt auch
+den Non-Responder-Befund (Manresa-Rocamora 2021).
+
 
 | Version | Fehler | Ursache und Lehre |
 |---|---|---|

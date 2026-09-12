@@ -147,6 +147,24 @@ check_eq(latest({"activities": {"x": {"start_date_local": "2026-09-01", "icu_rol
 check_eq(latest({"activities": {"x": {"start_date_local": "2026-09-01"}}}), None,
    "FTP: Wert erfunden, wo keiner steht")
 
+
+# --- one recommendation source, and the anchors must not disagree silently ----
+# 0.31.0 carried a second recommender (coach.recommend) whose verdict could
+# quietly contradict the workout list, plus a weekly load read from
+# wellness.load - the field that is not filled on every account. Both are the
+# documented error classes 3 and 1; these checks keep them out.
+check("coach_module.recommend" not in source,
+      "eine Quelle: websocket ruft den entfernten zweiten Empfehler auf")
+check('"conflict"' in source,
+      "anker: der Watt/DFA-Konfliktwächter fehlt im workouts-Payload")
+check("anchor_conflict" in source,
+      "anker: workouts.anchor_conflict wird nicht befragt")
+state_block = source[source.index("def _state_for_plan"):source.index("@websocket_api.websocket_command(\n    {\n        vol.Required(\"type\"): \"intervals_icu/goal\"")]
+check("icu_training_load" in state_block,
+      "wochenlast: nicht aus den Aktivitäten gelesen")
+check('row.get("load")' not in state_block,
+      "wochenlast: liest wieder wellness.load (Fehlerklasse 1)")
+
 print(f"test_websocket_registration: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

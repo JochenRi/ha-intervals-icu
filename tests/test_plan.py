@@ -183,5 +183,33 @@ check(bad_date["weeks_left"] is None, "9 kaputtes Datum ergibt Wochenzahl")
 print(f"test_plan: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)
+
+# --- the hours contract: sessions never exceed the week ----------------------
+# 0.31.0 dealt 4.5 h of sessions into a 3.6 h recovery week: a 1.0 h floor
+# inflated small weeks, and the recovery shortening of the long day happened
+# after the rest was already distributed. The contract now: for every week of
+# every plan, the session hours sum to at most the week's hours - including
+# the exact live case (4 days, 5.5 h typical, 5.5 h longest ride).
+for label, profile, state in (
+    ("livefall", {"goal": "long_ride", "days_per_week": 4},
+     {"typical_hours": 5.5, "longest_ride_hours": 5.5}),
+    ("kleine woche", {"goal": "long_ride", "days_per_week": 3},
+     {"typical_hours": 3.0, "longest_ride_hours": 2.0}),
+    ("grosse woche", {"goal": "long_ride", "days_per_week": 6, "hours_per_week": 14,
+                      "target_hours": 6.0}, {"longest_ride_hours": 4.0}),
+    ("ftp", {"goal": "ftp", "days_per_week": 4, "hours_per_week": 7}, {}),
+    ("health", {"goal": "health", "days_per_week": 3}, {"typical_hours": 4.0}),
+):
+    out = P.plan(profile, state, weeks=8, today="2026-09-11")
+    check(out["ready"], f"stunden {label}: Plan nicht bereit")
+    for week in out["weeks"]:
+        total = sum(s["hours"] for s in week["sessions"])
+        check(total <= week["hours"] + 0.05,
+              f"stunden {label} W{week['index']} ({week['kind']}): "
+              f"{total:.1f} h Einheiten in {week['hours']:.1f} h Budget")
+        for s in week["sessions"]:
+            check(s["hours"] >= 0.5,
+                  f"stunden {label} W{week['index']}: Einheit unter 30 min ({s['hours']} h)")
+
 print("FEHLER: keine" if not FAILURES else "")
 sys.exit(1 if FAILURES else 0)

@@ -532,3 +532,48 @@ def to_event(entry: dict[str, Any], day: str, sport: str = "Ride",
         "target": "POWER",
         "workout_doc": {},
     }
+
+
+# --- do the two anchors agree? -------------------------------------------------
+# The catalogue prescribes WATTS from FTP percentages and HEART RATE from the
+# athlete's measured DFA threshold. Those are two independent stops on the same
+# jig: nothing forces them to the same measurement. When the measured aerobic
+# threshold power sits at or below the top of the base-ride watt window
+# (65-70% FTP), a base ride ridden by watts lands ON the threshold and the
+# "DFA above 0.75" instruction printed next to it cannot hold. That is a
+# conflict the rider has to see - not a detail to silently average away.
+#
+# Which side is wrong is genuinely open: DFA alpha-1 shows a fitness-dependent
+# bias (it tends to UNDERestimate thresholds in fitter athletes) and wide
+# limits of agreement for the first threshold, while an FTP setting can simply
+# be stale. So the message names both and tells the rider what to steer by
+# until it is resolved.
+Z2_TOP = 0.70          # upper bound of the base-ride watt window, share of FTP
+CONFLICT_TOLERANCE = 1.03
+
+
+def anchor_conflict(ftp: float | None, aerobic_power: float | None) -> dict[str, Any] | None:
+    """Return a conflict record when FTP-derived watts collide with the DFA anchor."""
+    if not ftp or not aerobic_power or ftp <= 0 or aerobic_power <= 0:
+        return None
+    if aerobic_power > ftp * Z2_TOP * CONFLICT_TOLERANCE:
+        return None
+    share = round(aerobic_power / ftp * 100)
+    z2_low, z2_high = round(ftp * 0.65), round(ftp * Z2_TOP)
+    return {
+        "ftp": round(ftp),
+        "aerobic_power": round(aerobic_power),
+        "share_pct": share,
+        "z2_window": [z2_low, z2_high],
+        "text": (
+            f"Deine FTP ({round(ftp)} W) und deine gemessene aerobe Schwelle "
+            f"({round(aerobic_power)} W, DFA alpha-1 = 0,75) passen nicht zusammen: "
+            f"die Schwelle läge bei nur {share} % der FTP, und das Grundlagenfenster "
+            f"({z2_low}–{z2_high} W) reicht an sie heran oder darüber. Eine von beiden "
+            "Zahlen stimmt nicht — entweder ist die FTP in Intervals veraltet, oder die "
+            "DFA-Ablesung unterschätzt die Schwelle (das tut sie bei fitteren Athleten "
+            "systematisch, und ihre Übereinstimmung mit der ersten Schwelle ist in "
+            "neueren Validierungen schwach). Bis das geklärt ist: Grundlage nach "
+            "Herzfrequenz und DFA fahren, nicht nach diesen Watt."
+        ),
+    }

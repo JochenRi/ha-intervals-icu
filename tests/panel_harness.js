@@ -89,4 +89,9 @@ function report(title) {
   console.log("FEHLER: keine");
 }
 
-module.exports = { load, ok, clean, contains, report, stubElement };
+/* the raw panel source, for source-level locks (computed-but-never-inserted) */
+function source() {
+  return require("fs").readFileSync(PANEL, "utf8");
+}
+
+module.exports = { load, source, ok, clean, contains, report, stubElement };

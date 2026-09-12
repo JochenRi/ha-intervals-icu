@@ -319,151 +319,14 @@ def pattern_after_breaks(data: dict[str, Any]) -> dict[str, Any] | None:
             "hard_share": round(sum(1 for value in firsts if value >= 75) / len(firsts) * 100)}
 
 
-# --- the session menu ----------------------------------------------------------
-# Each entry states what it does to the body and what it should feel like in the
-# data - so the recommendation can be checked afterwards instead of believed.
-SESSIONS: dict[str, dict[str, Any]] = {
-    "rest": {
-        "title": "Ruhetag",
-        "effect": "Keine Anpassung, sondern die Bedingung dafür: Anpassung passiert in "
-                  "der Erholung, nicht im Reiz.",
-        "hr": None, "dfa": None, "load_factor": 0.0, "minutes": 0,
-    },
-    "recovery": {
-        "title": "Regeneration, ganz locker",
-        "effect": "Durchblutung ohne nennenswerten Reiz. Hält die Bewegung im Alltag, "
-                  "kostet nichts.",
-        "hr": (0.72, 0.82), "dfa": "durchgehend über 1,0", "load_factor": 0.20, "minutes": (30, 45),
-    },
-    "endurance": {
-        "title": "Grundlage, gleichmäßig",
-        "effect": "Der Reiz für Kapillarisierung, mitochondriale Dichte und Fettstoffwechsel. "
-                  "Wirkt über Dauer, nicht über Härte — Expertenkonsens nennt 60–90 Minuten "
-                  "als Schwelle, ab der die Signalwege wirklich anspringen.",
-        "hr": (0.88, 0.97), "dfa": "meist 0,75–1,0, selten darunter",
-        "load_factor": 0.55, "minutes": (60, 120),
-    },
-    "tempo": {
-        "title": "Zügige Dauerfahrt",
-        "effect": "Arbeitet knapp unter der aeroben Schwelle: verschiebt die Schwelle nach "
-                  "oben, ohne die Erholung eines harten Tages zu kosten.",
-        "hr": (0.97, 1.02), "dfa": "um 0,75, mit Ausschlägen darunter",
-        "load_factor": 0.80, "minutes": (50, 80),
-    },
-    "sweetspot": {
-        "title": "SweetSpot / Schwelle",
-        "effect": "Der wirksamste Reiz für die Leistung an der zweiten Schwelle (FTP) pro "
-                  "investierter Stunde. Kostet einen bis zwei Erholungstage.",
-        "hr": (1.02, 1.10), "dfa": "0,5–0,75 in den Blöcken, Erholung darüber",
-        "load_factor": 1.0, "minutes": (45, 75),
-    },
-    "vo2max": {
-        "title": "VO2max-Intervalle",
-        "effect": "Der stärkste Reiz auf die maximale Sauerstoffaufnahme und das "
-                  "Herzschlagvolumen. Nur auf ausgeruhten Beinen sinnvoll — ermüdet gefahren "
-                  "erzeugt er Last ohne den eigentlichen Reiz.",
-        "hr": (1.08, 1.20), "dfa": "unter 0,5 in den Intervallen",
-        "load_factor": 1.15, "minutes": (40, 70),
-    },
-}
-
-
-def _hr_window(anchor: int | None, span: tuple[float, float] | None) -> tuple[int, int] | None:
-    if anchor is None or span is None:
-        return None
-    return (round(anchor * span[0]), round(anchor * span[1]))
-
-
-def recommend(data: dict[str, Any], budget: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Pick the next session from the athlete's state, history and own anchors."""
-    st = state(data)
-    lay = layoff(data)
-    anc = anchors(data)
-    dur = durability(data)
-    habit = pattern_after_breaks(data)
-
-    reasons: list[dict[str, str]] = []
-    warnings: list[str] = []
-
-    # 1) the return-to-training ladder takes precedence over everything else
-    key = "endurance"
-    if st["state"] in ("slump", "recovering"):
-        key = "rest" if st["state"] == "slump" else "recovery"
-        reasons.append({"weil": st["label"], "quelle": "Plews/Altini, Javaloyes",
-                        "text": st["detail"]})
-    elif lay.get("phase") == "wiedereinstieg":
-        key = "endurance" if (lay["days"] or 0) <= 10 else "recovery"
-        reasons.append({"weil": f"{lay['days']} Tage ohne Einheit",
-                        "quelle": "Mujika/Coyle; Rückkehr nach Infekt",
-                        "text": lay["note"] or ""})
-        if st["state"] == "rebound":
-            reasons.append({"weil": "Erholung nach Einbruch", "quelle": "Plews",
-                            "text": "Die Werte sind zurück — das ist das Signal zum "
-                                    "Wiedereinstieg, nicht zur Intensität. Der erste Reiz "
-                                    "nach einer Pause wirkt ohnehin."})
-        warnings.append("Nach einem Infekt gilt: stufenweise aufbauen und bei "
-                        "wiederkehrenden Symptomen abbrechen. Systemische Infektion plus "
-                        "harte Belastung ist die eine Kombination mit ernstem Risiko.")
-        if habit and habit["hard_share"] >= 50:
-            warnings.append(
-                f"Dein eigenes Muster: nach {habit['n']} Pausen lag die erste Einheit im "
-                f"Median bei {habit['median_intensity']} % Intensität, "
-                f"{habit['hard_share']} % davon waren hart. Genau dieser Sprung von wenig "
-                "chronischer auf hohe akute Last ist das Muster, das Gabbett als riskant "
-                "beschreibt.")
-    elif st["state"] == "strained":
-        key = "endurance"
-        reasons.append({"weil": "7-Tage-Mittel unter dem Normalband", "quelle": "Javaloyes",
-                        "text": "Die Regel setzt an solchen Tagen Umfang statt Intensität an."})
-    elif st["state"] in ("ready", "rebound", "elevated"):
-        hard_recent = _hard_days_recent(data, 7)
-        if hard_recent >= 2:
-            key = "endurance"
-            reasons.append({"weil": f"{hard_recent} harte Tage in den letzten sieben",
-                            "quelle": "Seiler",
-                            "text": "Im Dreizonenmodell tragen 75–80 % der Einheiten den "
-                                    "lockeren Bereich. Zwei harte Tage in einer Woche sind "
-                                    "die übliche Obergrenze."})
-        else:
-            key = "sweetspot" if st["state"] == "ready" else "tempo"
-            reasons.append({"weil": st["label"], "quelle": "Javaloyes", "text": st["detail"]})
-
-    session = SESSIONS[key]
-    hr_window = _hr_window(anc.get("aerobic_hr"), session.get("hr"))
-    power_window = None
-    if anc.get("aerobic_power") and session.get("hr"):
-        low, high = session["hr"]
-        power_window = (round(anc["aerobic_power"] * low), round(anc["aerobic_power"] * high))
-
-    # 2) how much load that is, and whether it fits the budget
-    minutes = session.get("minutes")
-    est_load = None
-    if minutes:
-        typical = sum(minutes) / 2
-        est_load = round(typical * session["load_factor"] * 0.9)
-    fits = None
-    if est_load is not None and budget and budget.get("recommended") is not None:
-        fits = est_load <= budget["recommended"]
-
-    return {
-        "key": key,
-        "title": session["title"],
-        "minutes": minutes,
-        "hr_window": hr_window,
-        "power_window": power_window,
-        "expected_dfa": session.get("dfa"),
-        "effect": session["effect"],
-        "estimated_load": est_load,
-        "fits_budget": fits,
-        "state": st,
-        "layoff": lay,
-        "anchors": anc,
-        "durability": dur,
-        "habit": habit,
-        "reasons": reasons,
-        "warnings": warnings,
-    }
-
+# --- the assessment: one source for "how is this athlete today" ----------------
+# There used to be a second recommender here: its own session menu, its own
+# heart-rate windows, its own load estimate and a seven-day ladder. The panel
+# never rendered most of it, and where it overlapped with workouts.suggest()
+# the two could quietly disagree - the error class that already cost 0.11.0
+# and 0.27.0 a release each. Session choice now lives in ONE place
+# (workouts.suggest); this module only answers what state the athlete is in
+# and why, and hands over the measured anchors.
 
 def _hard_days_recent(data: dict[str, Any], days: int) -> int:
     wellness = data.get("wellness") or {}
@@ -479,65 +342,98 @@ def _hard_days_recent(data: dict[str, Any], days: int) -> int:
     return len(hard)
 
 
-def plan(data: dict[str, Any], budget: dict[str, Any] | None = None, days: int = 7) -> list[dict[str, Any]]:
-    """A week ahead, built from the recommendation and the return-to-training ladder.
-
-    Deliberately simple: after a break the load climbs in steps rather than
-    jumping back to where it was (GABBETT), hard days are separated, and the
-    week keeps the low-intensity share the three-zone model describes (SEILER).
-    """
-    first = recommend(data, budget)
+def _trained_today(data: dict[str, Any]) -> bool:
+    """Whether a real session (>= 15 min) is already on today's date."""
     wellness = data.get("wellness") or {}
     order = sorted(wellness)
-    today = order[-1] if order else date.today().isoformat()
-
-    ladder: list[str]
-    if first["key"] in ("rest", "recovery"):
-        ladder = ["recovery", "endurance", "recovery", "endurance", "tempo", "recovery", "endurance"]
-    elif first["layoff"].get("phase") == "wiedereinstieg":
-        # graded return: volume first, one moderate touch late in the week
-        ladder = ["endurance", "recovery", "endurance", "tempo", "recovery", "endurance", "sweetspot"]
-    elif first["key"] == "sweetspot":
-        ladder = ["sweetspot", "recovery", "endurance", "tempo", "recovery", "endurance", "endurance"]
-    else:
-        ladder = ["endurance", "recovery", "tempo", "endurance", "recovery", "sweetspot", "endurance"]
-
-    anc = first["anchors"]
-    out = []
-    for index in range(min(days, len(ladder))):
-        key = ladder[index] if index else first["key"]
-        session = SESSIONS[key]
-        out.append({
-            "date": _shift(today, index),
-            "key": key,
-            "title": session["title"],
-            "minutes": session.get("minutes"),
-            "hr_window": _hr_window(anc.get("aerobic_hr"), session.get("hr")),
-            "effect": session["effect"],
-        })
-    return out
+    if not order:
+        return False
+    today = order[-1]
+    for activity in (data.get("activities") or {}).values():
+        if str(activity.get("start_date_local") or "")[:10] != today:
+            continue
+        if (activity.get("moving_time") or 0) >= 900:
+            return True
+    return False
 
 
-def coach(data: dict[str, Any], budget: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Everything the trainer view needs, in one payload."""
-    rec = recommend(data, budget)
+def assessment(data: dict[str, Any]) -> dict[str, Any]:
+    """Everything that describes TODAY, with reasons and warnings - no session.
+
+    The reasons say why the state is what it is, each with its source. The
+    warnings are the safety-relevant part: they exist so the panel can show
+    them, and a payload that carries a warning nowhere visible is a bug, not
+    a style choice (see test_panel_fixes: warnings must reach the DOM).
+    """
+    st = state(data)
+    lay = layoff(data)
+    anc = anchors(data)
+    dur = durability(data)
+    habit = pattern_after_breaks(data)
+    hard_recent = _hard_days_recent(data, 7)
+
+    reasons: list[dict[str, str]] = []
+    warnings: list[str] = []
+
+    if st["state"] in ("slump", "recovering", "rebound", "strained", "ready", "elevated"):
+        source = {"slump": "Plews/Altini", "recovering": "Plews/Altini",
+                  "rebound": "Plews", "strained": "Javaloyes",
+                  "ready": "Javaloyes", "elevated": "Plews"}[st["state"]]
+        reasons.append({"weil": st["label"], "quelle": source, "text": st["detail"]})
+
+    if lay.get("phase") == "wiedereinstieg":
+        reasons.append({"weil": f"{lay['days']} Tage ohne Einheit",
+                        "quelle": "Mujika/Coyle; Rückkehr nach Infekt",
+                        "text": lay["note"] or ""})
+        warnings.append("Nach einem Infekt gilt: stufenweise aufbauen und bei "
+                        "wiederkehrenden Symptomen abbrechen. Systemische Infektion plus "
+                        "harte Belastung ist die eine Kombination mit ernstem Risiko.")
+        if habit and habit["hard_share"] >= 50:
+            warnings.append(
+                f"Dein eigenes Muster: nach {habit['n']} Pausen lag die erste Einheit im "
+                f"Median bei {habit['median_intensity']} % Intensität, "
+                f"{habit['hard_share']} % davon waren hart. Genau dieser Sprung von wenig "
+                "chronischer auf hohe akute Last ist das Muster, das Gabbett als riskant "
+                "beschreibt.")
+
+    if st["state"] in ("ready", "rebound", "elevated") and hard_recent >= 2:
+        reasons.append({"weil": f"{hard_recent} harte Tage in den letzten sieben",
+                        "quelle": "Seiler",
+                        "text": "Im Dreizonenmodell tragen 75–80 % der Einheiten den "
+                                "lockeren Bereich. Zwei harte Tage in einer Woche sind "
+                                "die übliche Obergrenze — heute spricht das für Umfang."})
+
     return {
-        "recommendation": rec,
-        "plan": plan(data, budget),
-        "sessions": {key: {"title": value["title"], "effect": value["effect"],
-                           "dfa": value.get("dfa"),
-                           "hr_window": _hr_window(rec["anchors"].get("aerobic_hr"), value.get("hr"))}
-                     for key, value in SESSIONS.items()},
-        "evidence": {
-            "rule": "Javaloyes 2019/2020, Vesterinen 2016 — HRV-gesteuerte Steuerung: "
-                    "harte Einheit nur, wenn das 7-Tage-Mittel im oder über dem Normalband liegt.",
-            "limit": "Düking 2021, Metaanalyse über 8 Studien und 198 Teilnehmer: mittlerer "
-                     "Effekt auf submaximale Werte, kleiner und nicht signifikanter Effekt "
-                     "auf die Spitzenleistung. Eine Zeitwahl-Hilfe, keine Garantie.",
-            "own_data": "Die Schwellen stammen aus deinen eigenen DFA-Messungen, nicht aus "
-                        "Prozenten einer Maximalherzfrequenz.",
-        },
+        "state": st,
+        "layoff": lay,
+        "anchors": anc,
+        "durability": dur,
+        "habit": habit,
+        "hard_days_last_7": hard_recent,
+        "trained_today": _trained_today(data),
+        "reasons": reasons,
+        "warnings": warnings,
     }
+
+
+def coach(data: dict[str, Any]) -> dict[str, Any]:
+    """Everything the trainer view needs, in one payload - and only one voice.
+
+    The session list itself comes from intervals_icu/workouts; this payload
+    deliberately carries no second recommendation next to it.
+    """
+    out = assessment(data)
+    out["evidence"] = {
+        "rule": "Javaloyes 2019/2020, Vesterinen 2016 — HRV-gesteuerte Steuerung: "
+                "harte Einheit nur, wenn das 7-Tage-Mittel im oder über dem Normalband liegt.",
+        "limit": "Düking 2021, Metaanalyse über 8 Studien und 198 Teilnehmer: mittlerer "
+                 "Effekt auf submaximale Werte, kleiner und nicht signifikanter Effekt "
+                 "auf die Spitzenleistung. Dafür weniger Non-Responder als unter festem "
+                 "Plan (Manresa-Rocamora 2021) — eine Zeitwahl-Hilfe, keine Garantie.",
+        "own_data": "Die Schwellen stammen aus deinen eigenen DFA-Messungen, nicht aus "
+                    "Prozenten einer Maximalherzfrequenz.",
+    }
+    return out
 
 
 # --- the signal matrix ---------------------------------------------------------

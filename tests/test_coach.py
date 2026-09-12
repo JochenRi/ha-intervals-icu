@@ -12,6 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "custom_components" / "intervals_icu"))
 
 import coach  # noqa: E402
+import workouts  # noqa: E402
 
 FAILURES: list[str] = []
 CHECKS = 0
@@ -65,15 +66,17 @@ data = build()
 st = coach.state(data)
 eq(st["state"], "ready", "1 normalzustand")
 check(st["week_z"] is not None, "1 normalzustand: kein Vergleichswert")
-rec = coach.recommend(data)
-check(rec["key"] in ("sweetspot", "endurance"), f"1 empfehlung unerwartet: {rec['key']}")
+out = coach.assessment(data)
+eq(out["state"]["state"], "ready", "1 assessment: Zustand")
+check(out["warnings"] == [], "1 assessment: Warnung ohne Anlass")
 
 # --- 2  an acute slump today is a slump, not "strained" -----------------------
 slump = build(overrides={day(0): {"hrv": 30.0, "restingHR": 66.0}})
 st = coach.state(slump)
 eq(st["state"], "slump", "2 einbruch")
 eq(st["since"], day(0), "2 einbruch: falscher Tag")
-eq(coach.recommend(slump)["key"], "rest", "2 einbruch: Empfehlung")
+slump_fits = [w["key"] for w in workouts.suggest("slump") if w["fit"] == "ok"]
+eq(slump_fits, ["recovery_40"], "2 einbruch: mehr als Regeneration freigegeben")
 
 # --- 3  Johannes' actual case: slump five days ago, values back ---------------
 # This is the case the old traffic light got wrong: the 7-day mean still
@@ -114,14 +117,15 @@ for index in range(0, 100, 3):
 back = build(activities=acts, overrides={
     day(-6): {"hrv": 30.0, "restingHR": 66.0}, day(-1): {"hrv": 63.0, "restingHR": 50.0},
     day(0): {"hrv": 63.0, "restingHR": 51.0}})
-rec = coach.recommend(back)
-eq(rec["state"]["state"], "rebound", "4 wiedereinstieg: Zustand")
-eq(rec["layoff"]["phase"], "wiedereinstieg", "4 wiedereinstieg: Phase")
-check(rec["key"] in ("endurance", "recovery"),
-      f"4 wiedereinstieg: empfiehlt {rec['key']} statt einer lockeren Einheit")
-check(any("Infekt" in w or "stufenweise" in w for w in rec["warnings"]),
+out = coach.assessment(back)
+eq(out["state"]["state"], "rebound", "4 wiedereinstieg: Zustand")
+eq(out["layoff"]["phase"], "wiedereinstieg", "4 wiedereinstieg: Phase")
+picks = workouts.suggest(out["state"]["state"], layoff_days=out["layoff"]["days"])
+hard_ok = [w["key"] for w in picks if w["fit"] == "ok" and w["intensity"] >= 80]
+eq(hard_ok, [], "4 wiedereinstieg: harte Einheit freigegeben")
+check(any("Infekt" in w or "stufenweise" in w for w in out["warnings"]),
       "4 wiedereinstieg: kein Hinweis zur stufenweisen Rückkehr")
-check(any("Muster" in w for w in rec["warnings"]),
+check(any("Muster" in w for w in out["warnings"]),
       "4 wiedereinstieg: das eigene Einstiegsmuster wird nicht gespiegelt")
 habit = coach.pattern_after_breaks(back)
 check(habit is not None and habit["n"] >= 3, "4 muster: zu wenige Pausen erkannt")
@@ -142,9 +146,12 @@ for offset, name in ((-1, "h1"), (-3, "h2")):
     hard[name] = {"id": name, "start_date_local": day(offset) + "T09:00:00", "type": "Ride",
                   "moving_time": 3600, "icu_intensity": 92, "icu_training_load": 90,
                   "average_heartrate": 165, "icu_average_watts": 210, "decoupling": 3.0}
-rec = coach.recommend(build(activities=hard))
-eq(rec["key"], "endurance", "5 zwei harte Tage: dritter harter Tag empfohlen")
-check(any("Seiler" in r["quelle"] for r in rec["reasons"]), "5 zwei harte Tage: Begründung fehlt")
+out = coach.assessment(build(activities=hard))
+eq(out["hard_days_last_7"], 2, "5 zwei harte Tage: nicht gezählt")
+check(any("Seiler" in r["quelle"] for r in out["reasons"]), "5 zwei harte Tage: Begründung fehlt")
+downgraded = [w for w in workouts.suggest("ready", hard_days_last_7=2) if w["intensity"] >= 80]
+check(downgraded and all(w["fit"] != "ok" for w in downgraded),
+      "5 zwei harte Tage: dritter harter Tag ohne Abwertung")
 
 # --- 6  anchors come from measured DFA, not from a guess ---------------------
 anc = coach.anchors(data)
@@ -156,21 +163,21 @@ thin["dfa"] = {k: {"hr_at_threshold": 150, "threshold_samples": 2} for k in list
 check(coach.anchors(thin)["aerobic_hr"] is None, "6 anker: dünne Messungen zählen mit")
 
 # --- 7  target windows are derived from those anchors ------------------------
-rec = coach.recommend(data)
-low, high = rec["hr_window"]
-check(120 < low < high < 200, f"7 zielfenster unplausibel: {rec['hr_window']}")
-check(rec["expected_dfa"], "7 kein erwarteter DFA-Bereich")
-check(rec["effect"] and len(rec["effect"]) > 40, "7 keine Wirkungsbeschreibung")
-easy = coach.recommend(slump)
-eq(easy["hr_window"], None, "7 Ruhetag mit Zielpuls")
+anc7 = coach.anchors(data)
+for entry in workouts.suggest("ready", ftp=250, aerobic_hr=anc7["aerobic_hr"]):
+    if entry.get("hr_window"):
+        low, high = entry["hr_window"]
+        check(90 < low < high < 210, f"7 zielfenster unplausibel: {entry['key']} {entry['hr_window']}")
+    check(entry["dfa"], f"7 {entry['key']}: kein erwarteter DFA-Bereich")
+    check(entry["effect"] and len(entry["effect"]) > 40, f"7 {entry['key']}: keine Wirkungsbeschreibung")
 
 # --- 8  budget interaction ----------------------------------------------------
-rec = coach.recommend(data, budget={"recommended": 20})
-check(rec["fits_budget"] is False, "8 budget: zu große Einheit passt angeblich")
-rec = coach.recommend(data, budget={"recommended": 500})
-check(rec["fits_budget"] is True, "8 budget: passende Einheit passt angeblich nicht")
-rec = coach.recommend(data, budget=None)
-check(rec["fits_budget"] is None, "8 budget: erfundene Aussage ohne Budget")
+tight = workouts.suggest("ready", budget=20)
+check(any(w["fits_budget"] is False for w in tight), "8 budget: zu große Einheit passt angeblich")
+wide = workouts.suggest("ready", budget=500)
+check(all(w["fits_budget"] is True for w in wide), "8 budget: passende Einheit passt angeblich nicht")
+free = workouts.suggest("ready", budget=None)
+check(all(w["fits_budget"] is None for w in free), "8 budget: erfundene Aussage ohne Budget")
 
 # --- 9  durability from real decoupling --------------------------------------
 dur = coach.durability(data)
@@ -188,30 +195,29 @@ for label, payload in (("leer", {}), ("nur wellness", {"wellness": build()["well
     st = coach.state(payload)
     check(isinstance(st, dict) and "state" in st, f"10 {label}: kein Zustand")
     out = coach.coach(payload)
-    check(isinstance(out["recommendation"], dict), f"10 {label}: keine Empfehlung")
-    check(isinstance(out["plan"], list), f"10 {label}: kein Plan")
+    for key in ("state", "layoff", "anchors", "reasons", "warnings", "evidence"):
+        check(key in out, f"10 {label}: {key} fehlt")
+    for gone in ("recommendation", "plan", "sessions"):
+        check(gone not in out, f"10 {label}: zweite Empfehlungsquelle ({gone}) im Payload")
 eq(coach.state(build(days=10))["state"], "unknown", "10 kurze Historie: behauptet einen Zustand")
 check(coach.state(build(days=10))["confidence"] == "keine", "10 kurze Historie: Vertrauen behauptet")
 
-# --- 11  the plan separates hard days ----------------------------------------
-week = coach.plan(data)
-eq(len(week), 7, "11 plan: falsche Länge")
-keys = [entry["key"] for entry in week]
-for index in range(1, len(keys)):
-    if keys[index] in ("sweetspot", "vo2max"):
-        check(keys[index - 1] not in ("sweetspot", "vo2max"),
-              f"11 plan: zwei harte Tage hintereinander an Position {index}")
-easy_share = sum(1 for k in keys if k in ("recovery", "endurance", "rest")) / len(keys)
-check(easy_share >= 0.6, f"11 plan: nur {easy_share:.0%} lockere Einheiten - Seiler verletzt")
-check(all(entry["date"] for entry in week), "11 plan: Einträge ohne Datum")
+# --- 11  a session already ridden today is not ignored ------------------------
+today_ride = build()
+today_ride["activities"]["heute"] = {
+    "id": "heute", "start_date_local": day(0) + "T09:00:00", "type": "Ride",
+    "moving_time": 3600, "icu_intensity": 60, "icu_training_load": 50,
+    "average_heartrate": 140, "icu_average_watts": 140, "decoupling": 1.5}
+check(coach.assessment(today_ride)["trained_today"] is True,
+      "11 heute gefahren: nicht erkannt")
+check(coach.assessment(build())["trained_today"] is False,
+      "11 nichts gefahren: trotzdem behauptet")
 
 # --- 12  the payload carries its own limits ----------------------------------
 full = coach.coach(data)
 check("Düking" in full["evidence"]["limit"], "12 belege: die Metaanalyse fehlt")
+check("Non-Responder" in full["evidence"]["limit"], "12 belege: der Non-Responder-Befund fehlt")
 check("Javaloyes" in full["evidence"]["rule"], "12 belege: die Regel ist nicht benannt")
-check(len(full["sessions"]) >= 5, "12 belege: Einheitenkatalog unvollständig")
-for key, session in full["sessions"].items():
-    check(bool(session["effect"]), f"12 katalog: {key} ohne Wirkungsbeschreibung")
 
 # --- 13  the signal matrix ----------------------------------------------------
 sig = coach.signals(infekt, 90)

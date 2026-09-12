@@ -204,4 +204,66 @@ const acts = F.activities(), thr = F.thresholds();
   clean(p.rDfa(thr.map((z) => ({ ...z, samples: 1 })), "all"), "10 dfa achse nur dünn");
 }
 
+
+/* ── 11  computed blocks must reach the DOM ─────────────────────────────
+   0.31.0 built the infection warning, the reasons list and a seven-day
+   ladder inside rTrainer and inserted none of them - the warning was
+   silently dropped. Rendered proof plus a source-level lock. */
+{
+  const html = p.rTrainer(F.coach("rebound"), rd);
+  contains(html, "stufenweise aufbauen", "11 warnungen: Infekt-Hinweis fehlt im DOM");
+  contains(html, "85 % Intensität", "11 warnungen: das eigene Muster fehlt im DOM");
+  contains(html, "warnrow", "11 warnungen: ohne Warn-Auszeichnung");
+  contains(html, "Mujika", "11 gründe: Quelle fehlt im DOM");
+
+  const source = H.source();
+  const slice = source.slice(source.indexOf("rTrainer(c, rd)"),
+                             source.indexOf("---------------- Heute"));
+  for (const name of ["warns", "reasons"]) {
+    ok(slice.includes(`const ${name}`) && slice.includes("${" + name + "}"),
+       `11 quelle: ${name} wird gebaut, aber nicht eingesetzt`);
+  }
+  for (const dead of ["const plan =", "zbar(", "fitBadge"]) {
+    ok(!slice.includes(dead), `11 quelle: toter Block ${dead} ist zurück`);
+  }
+}
+
+/* ── 12  the lead pick must fit the budget ──────────────────────────────
+   "HEUTE EMPFOHLEN" wearing its own "über dem Budget" badge is a visible
+   self-contradiction: the first ok card that fits the budget leads. */
+{
+  const w = F.workouts();
+  w.workouts[0].fits_budget = false;           // z2_90 (ok) blows the budget
+  const html = p.rWorkouts(w);
+  const cards = html.split('class="wocard');
+  const flagged = cards.filter((c) => c.includes("Empfehlung von oben"));
+  ok(flagged.length === 1, "12 budget-pick: keine oder mehrere Leitkarten");
+  ok(flagged[0] && flagged[0].includes("SweetSpot 2×20 min"),
+     "12 budget-pick: Leitkarte sprengt das Budget");
+  contains(html, "leadtitle\">SweetSpot 2×20 min", "12 budget-pick: Leadkarte falsch betitelt");
+}
+
+/* ── 13  the two anchors must not disagree silently ─────────────────────
+   Watts come from the FTP, heart rate from the DFA threshold. When the
+   measured threshold power sits inside the base-ride watt window, the rider
+   has to see the conflict - not two clean numbers side by side. */
+{
+  const w = F.workouts();
+  w.conflict = { ftp: 215, aerobic_power: 146, share_pct: 68, z2_window: [140, 151],
+    text: "Deine FTP (215 W) und deine gemessene aerobe Schwelle (146 W, DFA alpha-1 = 0,75) passen nicht zusammen." };
+  const html = p.rWorkouts(w);
+  contains(html, "passen nicht zusammen", "13 anker-konflikt: nicht angezeigt");
+  contains(html, "warnrow", "13 anker-konflikt: ohne Warn-Auszeichnung");
+  ok(!p.rWorkouts(F.workouts()).includes("passen nicht zusammen"),
+     "13 anker-konflikt: Fehlalarm ohne Konflikt");
+}
+
+/* ── 14  a session already ridden today is acknowledged ─────────────────── */
+{
+  contains(p.rTrainer(F.coach("trained"), rd), "schon eine",
+           "14 heute gefahren: Karten gelten kommentarlos für heute");
+  ok(!p.rTrainer(F.coach("ready"), rd).includes("schon eine"),
+     "14 nichts gefahren: Hinweis trotzdem da");
+}
+
 report("test_panel_fixes");
