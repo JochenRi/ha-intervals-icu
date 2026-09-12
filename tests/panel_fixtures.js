@@ -400,7 +400,7 @@ function goal(kind) {
     return { ...base, plan: { ...base.plan,
       budget_note: { kind: "big_day_exception", target_hours: 6.5, typical_hours: 8,
         cycle_weeks: 4, big_week_hours: 10.5,
-        text: "Die 6.5-Stunden-Fahrt ist der einzelne große Tag: alle 4 Wochen einer, die Woche läuft dann auf bis zu 10.5 Stunden — als bewusste Ausnahme (Audax-Praxis, eine Konvention)." },
+        text: "Die 6,5-Stunden-Fahrt ist der einzelne große Tag: alle 4 Wochen einer, die Woche läuft dann auf bis zu 10,5 Stunden — als bewusste Ausnahme (Audax-Praxis, eine Konvention)." },
       weeks: [week(1, "load", 8, 4.0), week(2, "load", 8, 4.0),
               week(3, "load", 10.5, 6.5, true), week(4, "recovery", 5.2, 2.8)] } };
   }
@@ -496,7 +496,7 @@ function coach(kind) {
   const anchors = { aerobic_hr: 157, aerobic_power: 158, n: 30,
     trend_power: { power_before: 155, power_now: 158, hr_before: 157, hr_now: 157,
                    power_change_pct: 2.2, hr_change: -0.4 },
-    source: "Median der letzten fünf belastbaren DFA-Messungen (Rogers/Gronwald)" };
+    source: "Median der letzten fünf belastbaren DFA-Messungen (Rogers/Gronwald) — als Trend brauchbar, als alleinige Verankerung nicht" };
   const durability = { n: 73, short: 0.0, long: 0.4, verdict: "die aerobe Basis trägt auch lange Einheiten",
                        source: "Friel: bis 5 % Entkopplung" };
   const evidence = { rule: "Javaloyes 2019/2020, Vesterinen 2016 — HRV-gesteuerte Steuerung.",

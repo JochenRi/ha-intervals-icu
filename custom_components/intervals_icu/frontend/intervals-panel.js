@@ -950,7 +950,7 @@ class IntervalsIcuPanel extends HTMLElement {
         <button class="gtile" data-act="goaledit">
           <small>ZEIT</small><b>${fmt(profile.days_per_week)} Tage pro Woche</b>
           <em>${plan.hard_per_week} harte ${plan.hard_per_week === 1 ? "Einheit" : "Einheiten"}
-            · ${esc(plan.hard_note ? "80/20 zählt Einheiten, nicht Minuten" : "")}</em></button>
+            · 80/20 zählt Einheiten, nicht Minuten</em></button>
       </div>`;
   }
 
@@ -1045,7 +1045,7 @@ class IntervalsIcuPanel extends HTMLElement {
   }
 
   _stateBands(days, opts) {
-    const COL = { slump: C.red, recovering: C.amber, rebound: C.blue,
+    const COL = { slump: C.red, recovering: C.amber, rebound: C.amber,
                   strained: C.amber, ready: C.green, unknown: C.grey };
     const OP = { slump: 0.18, recovering: 0.10, rebound: 0.10, strained: 0.07,
                  ready: 0.0, unknown: 0.0 };
@@ -1176,7 +1176,7 @@ class IntervalsIcuPanel extends HTMLElement {
       `<button class="lgbtn ${this._sigFocus === k ? "on" : ""}" data-act="sigfocus" data-id="${k}">
         <i style="background:${c}"></i>${esc(labelOf(k))}</button>`).join("");
     const statelegend = [["slump", "Einbruch", C.red], ["recovering", "noch im Einbruch", C.amber],
-                         ["rebound", "Erholung", C.blue], ["strained", "beansprucht", C.amber],
+                         ["rebound", "Erholung", C.amber], ["strained", "beansprucht", C.amber],
                          ["ready", "Normalbereich", C.green]]
       .map(([, w, c]) => `<span class="lg"><i class="swb" style="background:${c}"></i>${w}</span>`).join("");
 
@@ -1230,12 +1230,15 @@ class IntervalsIcuPanel extends HTMLElement {
     if (!c) return `<div class="card pad">Trainer wird geladen …</div>`;
     const st = c.state || {};
     const STATE_LOOK = {
+      // Judgment states use the judgment register ONLY - blue and violet
+      // belong to categories. The word and the icon shape carry the
+      // distinction between the three amber states.
       ready:      { c: C.green,  ic: "ok",    w: "im Normalbereich" },
-      rebound:    { c: C.blue,   ic: "trend", w: "Erholung nach Einbruch" },
+      rebound:    { c: C.amber,  ic: "trend", w: "Erholung nach Einbruch" },
       strained:   { c: C.amber,  ic: "warn",  w: "beansprucht" },
       recovering: { c: C.amber,  ic: "warn",  w: "noch im Einbruch" },
       slump:      { c: C.red,    ic: "stop",  w: "Einbruch" },
-      elevated:   { c: C.violet, ic: "wave",  w: "auffällig hoch" },
+      elevated:   { c: C.amber,  ic: "wave",  w: "auffällig hoch" },
       unknown:    { c: C.grey,   ic: "na",    w: "keine Einschätzung" },
     };
     const look = STATE_LOOK[st.state] || STATE_LOOK.unknown;
@@ -1513,7 +1516,7 @@ class IntervalsIcuPanel extends HTMLElement {
     const maxLoad = Math.max(1, ...(t.recent || []).map((d) => d.load));
     const bars = (t.recent || []).map((d) => {
       const height = d.load ? Math.max(8, (d.load / maxLoad) * 100) : 3;
-      const dcol = { slump: C.red, recovering: C.amber, rebound: C.blue,
+      const dcol = { slump: C.red, recovering: C.amber, rebound: C.amber,
                      strained: C.amber }[d.state] || C.slate;
       // A fixed grid, not a flex row: every bar grows from THE SAME baseline,
       // and the rows below it line up across all seven days. Cells of differing
@@ -2317,7 +2320,7 @@ class IntervalsIcuPanel extends HTMLElement {
           ${s.power_at_threshold ? `· <b class="tn">${fmt(s.power_at_threshold)} W</b>` : ""}
           ${badge(weak ? "amber" : "green", `${s.threshold_samples} Messpunkte${weak ? " — dünn" : ""}`)}
         </div>` : ""}
-        <p class="src">Rogers und Gronwald: DFA alpha-1 0,75 ≈ aerobe Schwelle (VT1), 0,5 ≈ anaerobe (VT2). Gegen Gasaustausch validiert, aber empfindlich für Artefakte und Aufzeichnungsgerät.</p>
+        <p class="src">Rogers und Gronwald: DFA alpha-1 0,75 ≈ aerobe Schwelle (VT1), 0,5 ≈ anaerobe (VT2). Die Validierungslage ist gemischt: gegen Spiroergometrie stimmt VT1 nur schwach überein (weite Übereinstimmungsgrenzen, bei Fitteren wird die Schwelle eher unterschätzt); VT2 ist robuster. Als Trend am eigenen Körper brauchbar, als alleinige Verankerung nicht — dazu empfindlich für Artefakte und Aufzeichnungsgerät.</p>
       </div>`;
   }
 
@@ -2551,7 +2554,7 @@ class IntervalsIcuPanel extends HTMLElement {
         <p><b>DFA alpha-1</b> beschreibt, wie geordnet dein Herzschlagmuster ist. Der Wert sinkt mit der Intensität:
         bei <b style="color:${C.green}">0,75</b> liegt die aerobe Schwelle, bei <b style="color:${C.red}">0,5</b> die anaerobe.
         Unten steht, bei welcher Herzfrequenz deine Kurve in jeder Einheit durch 0,75 fällt — deine aerobe Schwelle, aus dem Training selbst gemessen, ohne Labortest.</p>
-        <details class="more"><summary>Quelle und Grenzen</summary><p class="src">Rogers und Gronwald: gegen Gasaustausch (Spiroergometrie) validiert. Empfindlich für Artefakte und Aufzeichnungsgerät — deshalb zählen nur Messungen mit genügend Punkten im Schwellenfenster voll (ausgefüllte Punkte); dünne Messungen sind hohl und grau.</p></details>
+        <details class="more"><summary>Quelle und Grenzen</summary><p class="src">Rogers und Gronwald, gegen Spiroergometrie geprüft: die Übereinstimmung an der aeroben Schwelle ist schwach (weite Grenzen, fitnessabhängiger Bias), an der anaeroben robuster — als Trend brauchbar, als alleinige Verankerung nicht. Empfindlich für Artefakte und Aufzeichnungsgerät — deshalb zählen nur Messungen mit genügend Punkten im Schwellenfenster voll (ausgefüllte Punkte); dünne Messungen sind hohl und grau.</p></details>
       </div>
       <div class="bar">
         <div class="chips">

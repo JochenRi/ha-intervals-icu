@@ -93,7 +93,13 @@ check(vo2["alternatives"], "2 Normalbereich: keine Varianten der Art angeboten")
 after_break = W.suggest("ready", ftp=215, aerobic_hr=157, layoff_days=7)
 keys_break = [e["key"] for e in after_break]
 check("return_45" in keys_break, f"3 nach Pause: kein Wiedereinstieg angeboten ({keys_break})")
-check("z2_90" not in keys_break, "3 nach Pause: lange Grundlage statt Wiedereinstieg")
+endu_break = next((e for e in after_break if e["family"] == "endurance"), None)
+check(endu_break is not None,
+      "3 nach Pause: Grundlage ausgeblendet — beurteilen, nicht filtern")
+check(endu_break is not None and endu_break["fit"] != "ok",
+      "3 nach Pause: Grundlage ohne Einordnung freigegeben")
+check(endu_break is not None and "Wiedereinstieg" in endu_break["fit_reason"],
+      "3 nach Pause: Grundlagen-Urteil nennt den besseren ersten Schritt nicht")
 short_break = [e["key"] for e in W.suggest("ready", ftp=215, layoff_days=2)]
 check("return_45" not in short_break, "3 zwei Tage Pause gelten schon als Wiedereinstieg")
 
@@ -216,9 +222,41 @@ for entry in W.LIBRARY:
         if line.startswith("- "):
             check("w" in line, f"10 Watt: {entry['key']} Zeile ohne Wattwert: {line!r}")
 
-print(f"test_workouts: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
-for failure in FAILURES:
-    print("   ✗ " + failure)
+# --- 11  the heart rate window stops at the measured maximum ------------------
+vo2_entry = W.BY_KEY["vo2_4x8"]
+unclamped = W.scaled(vo2_entry, 215, 157)
+check(unclamped["hr_window"][1] > 170, "11 fenster: Testfall zu lasch gewählt")
+clamped = W.scaled(vo2_entry, 215, 157, max_hr=175)
+check(clamped["hr_window"][1] <= 175, "11 fenster: Obergrenze über dem Maximum")
+check(clamped["hr_window"][0] < clamped["hr_window"][1], "11 fenster: leeres Fenster geliefert")
+# floor at the ceiling -> no window at all instead of a fantasy range
+gone = W.scaled(vo2_entry, 215, 157, max_hr=165)
+check("hr_window" not in gone, "11 fenster: Fenster oberhalb des Maximums behauptet")
+# an easy family is untouched by the clamp
+easy = W.scaled(W.BY_KEY["z2_90"], 215, 157, max_hr=175)
+check(easy.get("hr_window") == W.scaled(W.BY_KEY["z2_90"], 215, 157).get("hr_window"),
+      "11 fenster: Klemme verändert eine lockere Einheit")
+
+# --- 12  infection pattern -> a ladder, judged and visible --------------------
+ladder = W.suggest("rebound", ftp=215, aerobic_hr=157, infection=True)
+fams = {e["family"] for e in ladder}
+check(fams == {f[0] for f in W.FAMILIES} - {"return"},
+      f"12 leiter: Familien verschwunden ({sorted(fams)})")
+for e in ladder:
+    if e["family"] in ("recovery", "return"):
+        continue
+    if e["family"] == "endurance":
+        check(e["fit"] == "maybe" and "Symptom" in e["fit_reason"],
+              "12 leiter: Grundlage nicht symptomgeleitet eingeordnet")
+    else:
+        check(e["fit"] == "no", f"12 leiter: {e['family']} trotz Infektmuster freigegeben")
+        check("Leiter" in e["fit_reason"] or "Symptom" in e["fit_reason"],
+              f"12 leiter: {e['family']} ohne Begründung abgestuft")
+# without the flag the rebound verdicts stay as they were
+plain = {e["family"]: e["fit"] for e in W.suggest("rebound", ftp=215, aerobic_hr=157)}
+check(plain["tempo"] == "maybe" and plain["sweetspot"] == "maybe",
+      "12 leiter: Infekt-Abstufung wirkt auch ohne Infekt")
+
 
 # --- anchor conflict: FTP watts vs the measured DFA threshold -----------------
 # The live case that motivated this: FTP 215, measured aerobic power 146 -
@@ -243,5 +281,8 @@ check(W.anchor_conflict(200.0, 200.0 * 0.70 * 1.03 + 0.5) is None,
 check(W.anchor_conflict(200.0, 200.0 * 0.70) is not None,
       "konflikt: an der Z2-Obergrenze stumm")
 
+print(f"test_workouts: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
+for failure in FAILURES:
+    print("   ✗ " + failure)
 print("FEHLER: keine" if not FAILURES else "")
 sys.exit(1 if FAILURES else 0)

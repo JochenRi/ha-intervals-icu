@@ -302,4 +302,22 @@ const acts = F.activities(), thr = F.thresholds();
      "16 rPlanWeeks wird nirgends in eine Ansicht eingesetzt");
 }
 
+/* --- 17  Paket 3: Register, goalbar, DFA-Ehrlichkeit ------------------------ */
+{
+  const src = H.source();
+  // Zustandsfarben: Urteile nur im Urteilsregister — Blau/Violett sind Kategorien
+  ok(!src.includes("rebound: C.blue") && !/rebound:\s*\{\s*c:\s*C\.blue/.test(src),
+     "17 register: rebound trägt eine Kategorienfarbe");
+  ok(!/elevated:\s*\{\s*c:\s*C\.violet/.test(src), "17 register: elevated trägt eine Kategorienfarbe");
+  ok(!src.includes('"Erholung", C.blue'), "17 register: Legende führt rebound in Blau");
+  // goalbar: kein Ternary, das den Text wegwirft — der Grundsatz gilt immer
+  ok(!src.includes("plan.hard_note ? "), "17 goalbar: totes Ternary steht noch im Quelltext");
+  const tile = p.rGoal(F.goal());
+  ok(tile.includes("80/20 zählt Einheiten, nicht Minuten"), "17 goalbar: Grundsatz fehlt in der Kachel");
+  // DFA-Quellzeilen: Validierungslage statt Pauschal-Segen
+  ok(!src.includes("Gegen Gasaustausch validiert, aber"), "17 dfa: alte Pauschal-Quellzeile lebt noch");
+  ok(src.includes("weite Übereinstimmungsgrenzen"), "17 dfa: Validierungslage nicht benannt");
+  ok((src.match(/alleinige Verankerung nicht/g) || []).length >= 2, "17 dfa: Trend-Vorbehalt fehlt in einer der beiden Quellzeilen");
+}
+
 report("test_panel_fixes");

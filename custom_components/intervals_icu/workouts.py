@@ -367,7 +367,8 @@ def _text_in_watts(entry: dict[str, Any], ftp: float) -> str:
     return _re.sub(r"(\d+)(-(\d+))?%", swap, entry["text"])
 
 
-def scaled(entry: dict[str, Any], ftp: float | None, aerobic_hr: int | None) -> dict[str, Any]:
+def scaled(entry: dict[str, Any], ftp: float | None, aerobic_hr: int | None,
+           max_hr: float | None = None) -> dict[str, Any]:
     """Fill in the athlete's own numbers: watts from FTP, heart rate from the
     measured aerobic threshold. Without those the shape still stands."""
     out = dict(entry)
@@ -377,7 +378,17 @@ def scaled(entry: dict[str, Any], ftp: float | None, aerobic_hr: int | None) -> 
         out["text_w"] = _text_in_watts(entry, ftp)
     if aerobic_hr and entry.get("hr_hint"):
         low, high = entry["hr_hint"]
-        out["hr_window"] = (round(aerobic_hr * low), round(aerobic_hr * high))
+        lo, hi = round(aerobic_hr * low), round(aerobic_hr * high)
+        # The hint scales the AEROBIC threshold. For the hard families that
+        # extrapolation can pass the athlete's measured maximum - and a heart
+        # rate window above the maximum is not a window. Clamp it, and drop it
+        # entirely when even its floor sits at the ceiling.
+        if max_hr:
+            hi = min(hi, round(max_hr))
+            if lo >= round(max_hr):
+                lo = hi + 1
+        if lo <= hi:
+            out["hr_window"] = (lo, hi)
     return out
 
 
@@ -445,8 +456,9 @@ def _variant(keys: list[str], state: str, ftp: float | None, budget: float | Non
 
 
 def suggest(state: str, ftp: float | None = None, aerobic_hr: int | None = None,
+            max_hr: float | None = None, infection: bool = False,
             budget: float | None = None, hard_days_last_7: int = 0,
-            layoff_days: int | None = None, limit: int = 7,
+            layoff_days: int | None = None, limit: int = 8,
             goal: str | None = None) -> list[dict[str, Any]]:
     """One session per family, each judged for today - never filtered away.
 
@@ -469,14 +481,14 @@ def suggest(state: str, ftp: float | None = None, aerobic_hr: int | None = None,
         if not match:
             continue
         family_key, family_label, keys = match
-        # the graded return replaces the base ride after a real break
+        # the graded return only EXISTS after a real break - adding it is not
+        # filtering. The base ride, by contrast, is never hidden: after a long
+        # break it stays visible and gets judged (see below).
         if family_key == "return" and not (layoff_days and layoff_days >= 4):
-            continue
-        if family_key == "endurance" and layoff_days and layoff_days >= 7:
             continue
 
         key = _variant(keys, state, ftp, budget, hard_days_last_7)
-        entry = dict(scaled(BY_KEY[key], ftp, aerobic_hr))
+        entry = dict(scaled(BY_KEY[key], ftp, aerobic_hr, max_hr))
         verdict = fits.get(family_key, "maybe")
         # a second hard day inside the week downgrades, it does not hide
         if verdict == "ok" and entry["intensity"] >= 80 and hard_days_last_7 >= 2:
@@ -485,6 +497,30 @@ def suggest(state: str, ftp: float | None = None, aerobic_hr: int | None = None,
                       "für Wochen dieser Größe; ein dritter ist die Ausnahme, nicht die Regel.")
         else:
             reason = "" if verdict == "ok" else FIT_REASON.get(state, "")
+        # after a real break the base ride stays on the table, judged - the
+        # graded return is the better first step, not the only visible one
+        if family_key == "endurance" and layoff_days and layoff_days >= 7 and verdict == "ok":
+            verdict = "maybe"
+            reason = (f"{layoff_days} Tage ohne Einheit — der abgestufte Wiedereinstieg ist "
+                      "der bessere erste Schritt. Grundlage bleibt möglich, nur nicht als Sprung.")
+        # infection pattern: the way back is a ladder of easy sessions, and the
+        # next rung only without returning symptoms (return-to-sport practice,
+        # a convention - marked as such, not a study rule)
+        if infection and state in ("recovering", "rebound") and family_key not in ("recovery", "return"):
+            if family_key == "endurance":
+                if verdict == "ok":
+                    verdict = "maybe"
+                    reason = ("Infektmuster in den Signalen: erst mehrere lockere Einheiten "
+                              "ohne Symptomrückkehr, dann die nächste Stufe "
+                              "(Return-to-Sport-Praxis, eine Konvention).")
+            else:
+                # also for families the state already blocks: under the
+                # infection pattern the ladder IS the reason, not the state
+                verdict = "no"
+                reason = ("Infektmuster in den Signalen: der Weg zurück ist eine Leiter über "
+                          "mehrere lockere Einheiten — Intensität erst, wenn Stufen ohne "
+                          "Symptomrückkehr gehalten wurden (Return-to-Sport-Praxis, eine "
+                          "Konvention).")
         entry.update({
             "family": family_key, "family_label": family_label,
             "fit": verdict, "fit_reason": reason,

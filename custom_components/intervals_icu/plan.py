@@ -138,6 +138,11 @@ def _week_kind(index: int, pattern: int) -> str:
     return "recovery" if (index + 1) % (pattern + 1) == 0 else "load"
 
 
+def _h(value: float) -> str:
+    """A German decimal comma for user-facing hour figures."""
+    return f"{value:.1f}".replace(".", ",")
+
+
 def _monday(day: date) -> date:
     return day - timedelta(days=day.weekday())
 
@@ -293,11 +298,11 @@ def plan(profile: dict[str, Any], state: dict[str, Any] | None = None,
             "cycle_weeks": cycle,
             "big_week_hours": big_week_hours,
             "text": (
-                f"Die {target_hours:.1f}-Stunden-Fahrt passt nicht als fester Anteil in "
-                f"eine {hours:.1f}-Stunden-Woche — sie ist auch nicht so geplant. Sie ist "
+                f"Die {_h(target_hours)}-Stunden-Fahrt passt nicht als fester Anteil in "
+                f"eine {_h(hours)}-Stunden-Woche — sie ist auch nicht so geplant. Sie ist "
                 f"der einzelne große Tag: alle {cycle} Wochen einer, der um rund 12 % "
                 f"wächst, während die Wochen dazwischen normal bleiben. Die Woche des "
-                f"großen Tages läuft dann auf bis zu {big_week_hours:.1f} Stunden — als "
+                f"großen Tages läuft dann auf bis zu {_h(big_week_hours)} Stunden — als "
                 "bewusste Ausnahme, danach kommt die Entlastungswoche. So bauen "
                 "Langstreckenfahrer lange Distanzen auch mit kleinen Wochenbudgets auf "
                 "(Audax-Praxis — eine Konvention, kein Studienergebnis)."
@@ -370,7 +375,7 @@ def _sessions(goal: dict[str, Any], goal_key: str, days: int, week_hours: float,
         recovery_week = kind == "recovery"
         late_quality = phase in ("specific",) and kind == "load"
         if big_week:
-            title = f"Großer Tag — {hours_long:.1f} h"
+            title = f"Großer Tag — {_h(hours_long)} h"
             workout = "z2_210_late" if late_quality else "z2_150"
             detail = (
                 f"Der große Tag — die Ausnahme, die wächst: alle {cycle} Wochen rund "
@@ -382,8 +387,8 @@ def _sessions(goal: dict[str, Any], goal_key: str, days: int, week_hours: float,
                    "Noch ohne harte Anteile; erst geht es um die Dauer.")
             )
         else:
-            title = (f"Langer Tag (verkürzt) — {hours_long:.1f} h" if recovery_week
-                     else f"Langer Tag — {hours_long:.1f} h")
+            title = (f"Langer Tag (verkürzt) — {_h(hours_long)} h" if recovery_week
+                     else f"Langer Tag — {_h(hours_long)} h")
             workout = "z2_90"
             detail = (
                 "Entlastungswoche: der lange Tag bleibt im Rhythmus, aber kürzer. "
@@ -464,7 +469,7 @@ def _sessions(goal: dict[str, Any], goal_key: str, days: int, week_hours: float,
         hours_each = round(hours_each, 1)
         sessions.append({
             "role": "endurance",
-            "title": f"Grundlage — {hours_each:.1f} h",
+            "title": f"Grundlage — {_h(hours_each)} h",
             "workout": "z2_60" if hours_each < 1.4 else "z2_90",
             "detail": "Gleichmäßig, DFA über 0,75. Kein Reiz, sondern Substanz.",
             "why": "Der Anteil, der im Dreizonenmodell 75–80 % der Einheiten ausmacht.",

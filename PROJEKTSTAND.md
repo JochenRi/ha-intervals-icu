@@ -1,13 +1,13 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 12.09.2026 · **Version:** 0.33.0 · **Status:** produktiv auf HEIMDALL,
+**Stand:** 12.09.2026 · **Version:** 0.34.0 · **Status:** produktiv auf HEIMDALL,
 Auslieferung über HACS aus `github.com/JochenRi/ha-intervals-icu`
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lokal
 archiviert, auswertet und in einem eigenen Seitenleisten-Panel darstellt.
 
-**Umfang:** ~9.000 Zeilen, davon 3.134 Frontend · 21 WebSocket-Befehle · 15 Einheiten in
-8 Familien · 14 Testdateien mit rund 2.030 Einzelprüfungen · 33 Releases.
+**Umfang:** ~9.100 Zeilen, davon 3.137 Frontend · 21 WebSocket-Befehle · 15 Einheiten in
+8 Familien · 14 Testdateien mit rund 2.090 Einzelprüfungen · 34 Releases.
 
 ---
 
@@ -44,7 +44,7 @@ custom_components/intervals_icu/
 ├── calendar.py       Kalender-Entität mit geplanten Workouts
 ├── websocket.py      21 Kommandos für das Panel
 └── frontend/
-    └── intervals-panel.js   Panel, eine Datei ohne Abhängigkeiten (3.130 Zeilen)
+    └── intervals-panel.js   Panel, eine Datei ohne Abhängigkeiten (3.137 Zeilen)
 ```
 
 **Fünf HA-freie Module** (`derive`, `analytics`, `coach`, `workouts`, `plan`) importieren
@@ -192,6 +192,24 @@ Recherche:
 
 ## 7. Fehler und was sie gelehrt haben
 
+**0.34.0 — Paket 3, Zustandsmaschine + Quellen (`coach.py`, `workouts.py`), plus zwei Prüfstand-Lehren:**
+
+| Fund | Klasse | Fix |
+|---|---|---|
+| Slump-Trigger: EIN Signal an EINEM Tag (OR ab 2 SD) löste aus — der eigene Tension-Text nennt einen Einzeltag Rauschen. | Code widerspricht dem eigenen Text | Auslösung nur bei HRV **und** Ruhepuls am selben Tag (Infektmuster) oder EINEM Signal an zwei Folgetagen; identisch in `state()` und `state_series()`. Ursache (`cause`) und Infektverdacht (`infection_suspected`) wandern in die Payload; bei Infektverdacht symptomgeleitete Leiter (Halsregel, **als Konvention gekennzeichnet**) in Warnung und Einheiten-Urteilen |
+| Anker-Block rechnete **zwei verschiedene „jetzt"-Werte**: Leitwert = Median der letzten 5, Trend-„now" = Mittel der neueren Hälfte — das Panel zeigte beide nebeneinander. | berechnet doppelt, zeigt Widerspruch | Ein „jetzt" im ganzen Block (Median letzte 5); die Hälften liefern nur noch das „vorher" |
+| `endurance` bei Pause ≥ 7 Tagen ausgeblendet — direkt unter dem Docstring „never filtered away". | Filter trotz eigener Filter-Warnung | Grundlage bleibt sichtbar, Urteil „maybe" mit Begründung (Wiedereinstieg als besserer erster Schritt); Limit 7→8, sonst fiel `return_45` durchs Raster |
+| VO2max-HF-Fenster extrapolierte die aerobe Schwelle über das gemessene Maximum hinaus (bis 1,18×). | Fantasiewerte | Klemme an `max_hr` aus `sport_settings`; Fenster entfällt, wenn schon die Untergrenze an der Decke liegt |
+| DFA-Quellzeile „gegen Gasaustausch validiert" — die Validierungslage 2024–2026 sagt: VT1 schwach (weite Übereinstimmungsgrenzen, fitnessabhängiger Bias), VT2 robuster. | Quelle freundlicher als die Lage | Beide Panel-Quellzeilen und die Anker-Quelle tragen jetzt den Vorbehalt: als Trend brauchbar, als alleinige Verankerung nicht |
+| Stunden erschienen mit Punkt („8.7 h") in allen Python-Texten; `rebound`/`elevated` trugen Blau/Violett (Kategorienfarben) als Urteil; goalbar-Ternary warf seinen Text weg. | Register- und Formatverstöße | `_h()`-Helfer mit Komma (Wächter: genau EIN `:.1f` bleibt, im Helfer); Zustandsfarben ins Urteilsregister, Wort+Icon tragen die Unterscheidung; Grundsatz-Text statisch |
+
+**Zwei Prüfstand-Lehren aus den Gegenproben:** (1) `test_workouts.py` hatte **zwei
+Summary-Abschnitte** — neue Blöcke hinter dem ersten liefen mit, wurden aber weder
+gezählt noch gemeldet, nur der Exit-Code wusste Bescheid; erst die Konsolidierung
+machte einen echten, maskierten Fund sichtbar. (2) Ein Quelltext-Wächter, dessen
+Suchmuster das tatsächliche Format nicht matcht, ist zahnlos — **eine Gegenprobe
+muss die Mutation UND das Feuern verifizieren**, sonst prüft sie nur sich selbst.
+
 **0.33.0 — Paket 2, der Plan-Umbau (`plan.py`), plus ein Fund beim Hinsehen:**
 
 | Fund | Klasse | Fix |
@@ -279,7 +297,7 @@ den Non-Responder-Befund (Manresa-Rocamora 2021).
 
 ## 9. Prüfstand
 
-**Vierzehn Dateien, rund 2.030 Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
+**Vierzehn Dateien, rund 2.090 Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
 HA-Instanz oder einen Browser.
 
 | Datei | prüft | Umfang |
@@ -290,12 +308,12 @@ HA-Instanz oder einen Browser.
 | `test_analytics.py` | Trainingsmetriken gegen bekannte Ergebnisse | |
 | `test_setup_simulation.py` | Entity-Aufbau, Übersetzungen, unique_ids | |
 | `test_laps.py` | Runden-Normalisierung | 34 |
-| `test_coach.py` | Zustandsregeln, Infektverlauf, Nachtreaktion, Einordnung, Bereiche | 141 |
+| `test_coach.py` | Zustandsregeln, Trigger-Schärfung, Infektverlauf, Nachtreaktion, Einordnung, Bereiche | 201 |
 | `test_plan.py` | Zielprofil, Wochenmuster, Zeitbudget, Progressions- und Kalender-Anker-Vertrag | 188 |
-| `test_workouts.py` | Einheitenauswahl, Wattumrechnung, Intervals-Syntax | 545 |
-| `test_websocket_registration.py` | Registrierung, Dekoratoren, FTP-Quelle | 135 |
+| `test_workouts.py` | Einheitenauswahl, HF-Klemme, Infektleiter, Wattumrechnung, Intervals-Syntax | 575 |
+| `test_websocket_registration.py` | Registrierung, Dekoratoren, FTP-Quelle | 140 |
 | `test_panel_views.js` | alle Ansichten gegen volle, leere, löchrige, entartete Daten | 724 |
-| `test_panel_fixes.js` | je ein Nachweis pro behobenem Fehler | 169 |
+| `test_panel_fixes.js` | je ein Nachweis pro behobenem Fehler | 177 |
 | `test_panel_design.js` | Gestaltungsregeln als Zusicherung | 49 |
 
 **Das Prinzip:** Ein Test, der den alten Fehler nicht nachweislich findet, ist kein Test. Bei
@@ -418,7 +436,17 @@ Blickdaten), Livefall-Simulation (4 Tage, 5,5 h, Ziel 6 h). Gegenproben: alte
 hard-Regel, Anker aus, Progression aus, Duplikat statt Variation — jeder Vertrag
 findet seinen Fehler.
 
-### Offen: Paket 3 — Zustandsmaschine + Quellen (`coach.py`, ein Chat)
+### Erledigt in 0.34.0: Paket 3 — Zustandsmaschine + Quellen
+
+Befunde 5–8 umgesetzt, Details im Fehlerkapitel (§7, 0.34.0). Perspektive aus
+Befund 7 bleibt offen: Anker triangulieren (DFA + LTHR aus `sport_settings` +
+HF-Drift).
+
+**Nächstes:** Audit des Belastungs-Reiters, danach Heute, Kalender, Fitness,
+Aktivitäten, DFA, Signale — gleiche Methode wie beim Trainer (jede Zeile gegen
+Code, Zahlen nachgerechnet, Quellen geprüft).
+
+### Ursprünglicher Auftrag Paket 3 (Referenz)
 
 5. **Slump-Trigger schärfen:** aktuell reicht EIN Signal an EINEM Tag (OR ab 2 SD) —
    der eigene Tension-Text nennt einen Einzeltag Rauschen. Ziel: HRV **und** RHR

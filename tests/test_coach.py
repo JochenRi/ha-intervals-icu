@@ -120,6 +120,7 @@ back = build(activities=acts, overrides={
 out = coach.assessment(back)
 eq(out["state"]["state"], "rebound", "4 wiedereinstieg: Zustand")
 eq(out["layoff"]["phase"], "wiedereinstieg", "4 wiedereinstieg: Phase")
+check(out["state"]["infection_suspected"], "4 wiedereinstieg: Infektmuster nicht erkannt")
 picks = workouts.suggest(out["state"]["state"], layoff_days=out["layoff"]["days"])
 hard_ok = [w["key"] for w in picks if w["fit"] == "ok" and w["intensity"] >= 80]
 eq(hard_ok, [], "4 wiedereinstieg: harte Einheit freigegeben")
@@ -475,6 +476,56 @@ check(40 < rhr_band["baseline"] < 90, f"24 bereiche: Ruhepuls unplausibel ({rhr_
 # thin history yields no bands rather than invented ones
 thin_bands = coach.today(night_history(days=15), None).get("bands") or {}
 check(not thin_bands, f"24 bereiche: aus zu wenigen Tagen erfunden ({thin_bands})")
+
+# --- 25  one signal on one day is noise, not a slump --------------------------
+# The tension text itself says a single day is noise - the trigger has to agree.
+lone = build(overrides={day(0): {"hrv": 38.0}})
+st = coach.state(lone)
+check(st["state"] != "slump", f"25 einzeltag: ein Signal an einem Tag löst aus ({st['state']})")
+
+# --- 26  one signal on two consecutive days is a signal -----------------------
+double = build(overrides={day(-1): {"hrv": 38.0}, day(0): {"hrv": 38.0}})
+st = coach.state(double)
+eq(st["state"], "slump", "26 folgetage: zwei Tage HRV lösen nicht aus")
+eq(st["cause"], "hrv", "26 folgetage: Ursache nicht benannt")
+check(not st["infection_suspected"], "26 folgetage: Infektverdacht ohne zweites Signal")
+check("zweiten Tag in Folge" in st["detail"], "26 folgetage: Text erklärt die Regel nicht")
+series = {row["date"]: row["state"] for row in coach.state_series(double)}
+check(series[day(-1)] != "slump", "26 folgetage: erster Tag schon als Einbruch gebändert")
+eq(series[day(0)], "slump", "26 folgetage: Verlauf widerspricht dem Trainer")
+# resting heart rate alone, two days in a row, triggers the same way
+double_rhr = build(overrides={day(-1): {"restingHR": 66.0}, day(0): {"restingHR": 66.0}})
+st = coach.state(double_rhr)
+eq(st["state"], "slump", "26 folgetage: Ruhepuls-Doppeltag löst nicht aus")
+eq(st["cause"], "ruhepuls", "26 folgetage: Ruhepuls-Ursache nicht benannt")
+
+# --- 27  both signals on the same day: the infection pattern ------------------
+# The September infection sat at -2.7 SD HRV and +3.7 SD resting HR on ONE day -
+# the sharpened trigger must still catch exactly that case.
+sept = build(overrides={day(0): {"hrv": 46.0, "restingHR": 57.2}})
+zh = (46.0 - 50.0) / 1.41
+check(zh <= -2.0, "27 infekt: Testwert unter der Schwelle gewählt")
+st = coach.state(sept)
+eq(st["state"], "slump", "27 infekt: beide Signale am selben Tag lösen nicht aus")
+eq(st["cause"], "beide", "27 infekt: Ursache nicht als gemeinsam erkannt")
+check(st["infection_suspected"], "27 infekt: kein Infektverdacht bei beiden Signalen")
+check("Infekt" in st["detail"], "27 infekt: Text benennt das Muster nicht")
+out = coach.assessment(sept)
+check(any("Leiter" in w and "Halses" in w for w in out["warnings"]),
+      "27 infekt: symptomgeleitete Leiter fehlt in den Warnungen")
+check(any("Konvention" in w for w in out["warnings"]),
+      "27 infekt: Halsregel nicht als Konvention gekennzeichnet")
+
+# --- 28  ONE "now" per anchor block -------------------------------------------
+anc = coach.anchors(build())
+if anc["trend_power"]:
+    eq(anc["trend_power"]["hr_now"], anc["aerobic_hr"],
+       "28 anker: zwei verschiedene Jetzt-Werte für die Herzfrequenz")
+    eq(anc["trend_power"]["power_now"], anc["aerobic_power"],
+       "28 anker: zwei verschiedene Jetzt-Werte für die Leistung")
+check("alleinige Verankerung nicht" in anc["source"],
+      "28 anker: Quellzeile ohne den Trend-Vorbehalt")
+
 
 print(f"test_coach: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:

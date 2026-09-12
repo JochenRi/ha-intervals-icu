@@ -115,12 +115,30 @@ def state(data: dict[str, Any]) -> dict[str, Any]:
             return None
         return (rhr[day] - rhr_base) / rhr_sd
 
-    recent = [d for d in hrv_days if d >= _shift(today, -(RECOVERY_WINDOW - 1))]
+    # An acute departure needs more than one lonely number: either BOTH
+    # signals leave the band on the same day (the infection pattern), or ONE
+    # signal stays out on two consecutive days. A single signal on a single
+    # day is what the tension text itself calls noise - the published control
+    # compares the 7-day mean, not a lone morning (PLEWS).
+    recent = [d for d in sorted(set(hrv) | set(rhr))
+              if d >= _shift(today, -(RECOVERY_WINDOW - 1))]
     slump_day = None
+    slump_cause = None
+    infection = False
     for day in recent:
         zh, zr = z_hrv(day), z_rhr(day)
-        if (zh is not None and zh <= -HRV_DROP_SD) or (zr is not None and zr >= RHR_RISE_SD):
+        hrv_hit = zh is not None and zh <= -HRV_DROP_SD
+        rhr_hit = zr is not None and zr >= RHR_RISE_SD
+        prev = _shift(day, -1)
+        zh_p, zr_p = z_hrv(prev), z_rhr(prev)
+        persists = ((hrv_hit and zh_p is not None and zh_p <= -HRV_DROP_SD)
+                    or (rhr_hit and zr_p is not None and zr_p >= RHR_RISE_SD))
+        both = hrv_hit and rhr_hit
+        if both or persists:
             slump_day = day
+            infection = infection or both
+            slump_cause = ("beide" if both or slump_cause == "beide"
+                           else "hrv" if hrv_hit else "ruhepuls")
     last3 = [z_hrv(d) for d in hrv_days[-3:] if z_hrv(d) is not None]
     last3_rhr = [z_rhr(d) for d in sorted(rhr)[-3:] if z_rhr(d) is not None]
     now_hrv = mean(last3) if last3 else None
@@ -134,21 +152,30 @@ def state(data: dict[str, Any]) -> dict[str, Any]:
     if slump_day is not None:
         days_since = (date.fromisoformat(today) - date.fromisoformat(slump_day)).days
         recovered = (now_hrv is not None and now_hrv >= 0) and (now_rhr is None or now_rhr <= 0)
+        cause_text = {
+            "beide": "HRV und Ruhepuls sind gemeinsam deutlich außerhalb deines "
+                     "Normalbereichs — das Muster eines Infekts.",
+            "hrv": "Die HRV liegt den zweiten Tag in Folge deutlich außerhalb deines "
+                   "Normalbereichs — ein Einzeltag wäre Rauschen, zwei in Folge sind ein Signal.",
+            "ruhepuls": "Der Ruhepuls liegt den zweiten Tag in Folge deutlich über deinem "
+                        "Normalbereich — ein Einzeltag wäre Rauschen, zwei in Folge sind ein Signal.",
+        }.get(slump_cause, "Deine Werte sind deutlich außerhalb deines Normalbereichs.")
+        infection_note = (" Beide Signale waren gleichzeitig extrem — das Muster eines "
+                          "Infekts; der Weg zurück ist eine Leiter, keine Rampe.") if infection else ""
         if days_since == 0:
-            return _st("slump", "Einbruch", slump_day,
-                       "Deine Werte sind heute deutlich außerhalb deines Normalbereichs.",
-                       week_z, now_hrv, now_rhr, "hoch")
+            return _st("slump", "Einbruch", slump_day, cause_text,
+                       week_z, now_hrv, now_rhr, "hoch", slump_cause, infection)
         if recovered:
             return _st("rebound", "Erholung nach Einbruch", slump_day,
                        f"Der Einbruch war vor {days_since} Tagen. Die letzten Tage liegen "
                        "wieder über deiner Basislinie, der Ruhepuls darunter — der Körper "
                        "ist auf dem Rückweg. Das 7-Tage-Mittel hinkt noch nach, weil der "
-                       "Einbruch darin steckt.",
-                       week_z, now_hrv, now_rhr, "mittel")
+                       "Einbruch darin steckt." + infection_note,
+                       week_z, now_hrv, now_rhr, "mittel", slump_cause, infection)
         return _st("recovering", "noch im Einbruch", slump_day,
                    f"Der Einbruch war vor {days_since} Tagen und die Werte sind noch nicht "
-                   "zurück auf deiner Basislinie.",
-                   week_z, now_hrv, now_rhr, "hoch")
+                   "zurück auf deiner Basislinie." + infection_note,
+                   week_z, now_hrv, now_rhr, "hoch", slump_cause, infection)
 
     if week_z is None:
         return _st("unknown", "keine Einschätzung", None,
@@ -170,12 +197,13 @@ def state(data: dict[str, Any]) -> dict[str, Any]:
                week_z, now_hrv, now_rhr, "mittel")
 
 
-def _st(key, label, since, detail, week_z, now_hrv, now_rhr, confidence):
+def _st(key, label, since, detail, week_z, now_hrv, now_rhr, confidence,
+        cause=None, infection=False):
     return {"state": key, "label": label, "since": since, "detail": detail,
             "week_z": round(week_z, 2) if week_z is not None else None,
             "recent_hrv_z": round(now_hrv, 2) if now_hrv is not None else None,
             "recent_rhr_z": round(now_rhr, 2) if now_rhr is not None else None,
-            "confidence": confidence}
+            "confidence": confidence, "cause": cause, "infection_suspected": infection}
 
 
 def _shift(day: str, delta: int) -> str:
@@ -213,23 +241,26 @@ def anchors(data: dict[str, Any]) -> dict[str, Any]:
     pw = [r["power"] for r in recent if r["power"]]
     power_now = median(pw) if pw else None
 
+    # ONE "now" in this whole block: the median of the last five. The halves
+    # only provide the "before" - an earlier version computed a second "now"
+    # from the newest half, and the panel showed two different current values
+    # for the same anchor.
     half = len(rows) // 2
     old_pw = [r["power"] for r in rows[:half] if r["power"]]
-    new_pw = [r["power"] for r in rows[half:] if r["power"]]
     old_hr = [r["hr"] for r in rows[:half]]
-    new_hr = [r["hr"] for r in rows[half:]]
     trend = None
-    if old_pw and new_pw and old_hr and new_hr:
+    if old_pw and old_hr and power_now and hr_now:
         trend = {
-            "power_before": round(mean(old_pw)), "power_now": round(mean(new_pw)),
-            "hr_before": round(mean(old_hr)), "hr_now": round(mean(new_hr)),
-            "power_change_pct": round((mean(new_pw) - mean(old_pw)) / mean(old_pw) * 100, 1),
-            "hr_change": round(mean(new_hr) - mean(old_hr), 1),
+            "power_before": round(mean(old_pw)), "power_now": round(power_now),
+            "hr_before": round(mean(old_hr)), "hr_now": round(hr_now),
+            "power_change_pct": round((power_now - mean(old_pw)) / mean(old_pw) * 100, 1),
+            "hr_change": round(hr_now - mean(old_hr), 1),
         }
     return {"aerobic_hr": round(hr_now), "aerobic_power": round(power_now) if power_now else None,
             "n": len(rows), "trend_power": trend,
             "source": "Median der letzten fünf belastbaren DFA-Messungen (Rogers/Gronwald: "
-                      "alpha-1 = 0,75 markiert die aerobe Schwelle)"}
+                      "alpha-1 = 0,75 markiert die aerobe Schwelle) — als Trend am eigenen "
+                      "Körper brauchbar, als alleinige Verankerung nicht"}
 
 
 # --- layoff and durability -----------------------------------------------------
@@ -380,6 +411,14 @@ def assessment(data: dict[str, Any]) -> dict[str, Any]:
                   "rebound": "Plews", "strained": "Javaloyes",
                   "ready": "Javaloyes", "elevated": "Plews"}[st["state"]]
         reasons.append({"weil": st["label"], "quelle": source, "text": st["detail"]})
+
+    if st.get("infection_suspected") and st["state"] in ("slump", "recovering", "rebound"):
+        warnings.append(
+            "Beide Signale schlugen gemeinsam aus — das Muster eines Infekts. Der Weg "
+            "zurück ist eine Leiter: mehrere lockere Einheiten, die nächste Stufe erst, "
+            "wenn dabei keine Symptome zurückkehren. Faustregel aus der Return-to-Sport-"
+            "Praxis (eine Konvention, keine Studienregel): Symptome nur oberhalb des "
+            "Halses — locker fahren möglich; Fieber, Husten oder Gliederschmerzen — Pause.")
 
     if lay.get("phase") == "wiedereinstieg":
         reasons.append({"weil": f"{lay['days']} Tage ohne Einheit",
@@ -548,7 +587,12 @@ def state_series(data: dict[str, Any]) -> list[dict[str, str]]:
         if zh is None and zr is None:
             out.append({"date": day, "state": "unknown"})
             continue
-        acute = (zh is not None and zh <= -HRV_DROP_SD) or (zr is not None and zr >= RHR_RISE_SD)
+        hrv_hit = zh is not None and zh <= -HRV_DROP_SD
+        rhr_hit = zr is not None and zr >= RHR_RISE_SD
+        prev = _shift(day, -1)
+        persists = ((hrv_hit and z_hrv.get(prev) is not None and z_hrv[prev] <= -HRV_DROP_SD)
+                    or (rhr_hit and z_rhr.get(prev) is not None and z_rhr[prev] >= RHR_RISE_SD))
+        acute = (hrv_hit and rhr_hit) or persists
         if acute:
             slump_day = day
             out.append({"date": day, "state": "slump"})

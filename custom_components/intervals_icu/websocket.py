@@ -424,11 +424,21 @@ def websocket_workouts(hass, connection, msg) -> None:
     if ftp is None:
         ftp = anchors.get("ftp")
 
+    max_hr = None
+    for settings in (data.get("sport_settings") or {}).values():
+        if isinstance(settings, dict):
+            found = settings.get("max_heartrate") or settings.get("max_hr")
+            if found:
+                max_hr = float(found)
+                break
+
     budget = (ready.get("budget") or {}).get("recommended")
     picks = workout_lib.suggest(
         st.get("state", "unknown"),
         ftp=ftp,
         aerobic_hr=anchors.get("aerobic_hr"),
+        max_hr=max_hr,
+        infection=bool(st.get("infection_suspected")),
         budget=budget,
         hard_days_last_7=coach_module._hard_days_recent(data, 7),
         layoff_days=lay.get("days"),
