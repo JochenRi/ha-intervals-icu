@@ -266,6 +266,45 @@ leer = analytics.calendar_days({"wellness": {}, "activities": {}, "dfa": {}}, []
 check("leeres Raster hat trotzdem Tage", len(leer["days"]) > 14, True)
 check("leeres Raster ohne Wochenlast", leer["max_week_load"], 0)
 
+# --- Ebene 3 (Paket B3): die Last kennt keine Etiketten -------------------------
+# Ein Nachtschicht-Etikett macht die GEMESSENE Trainingslast nicht kleiner.
+# Verhaltens-Wächter: identische Archive mit und ohne Etiketten müssen in
+# ACWR, Monotonie, Lastbudget, daily_load UND in analytics' eigener
+# HRV-Rechnung dasselbe ergeben — analytics bleibt komplett kontextfrei,
+# die Herkunftsnotiz dazu hängt die Websocket-Schicht an (siehe ausbau.md B3;
+# die saubere Lösung der Ampel-Divergenz heißt B4).
+import json as _json
+from datetime import date as _date, timedelta as _td
+
+_T = _date(2026, 9, 11)
+_lvl3 = {"wellness": {}, "activities": {}, "dfa": {}}
+for _i in range(90):
+    _d = (_T - _td(days=89 - _i)).isoformat()
+    _lvl3["wellness"][_d] = {"ctlLoad": 60.0 if _i % 3 else 0.0,
+                             "hrv": 50 + (_i * 7) % 5 - 2,
+                             "restingHR": 56, "sleepSecs": 27000,
+                             "ctl": 30, "atl": 28}
+_lvl3_ctx = _json.loads(_json.dumps(_lvl3))
+_lvl3_ctx["day_context"] = {
+    (_T - _td(days=_o)).isoformat(): {"tag": "nachtschicht", "weight": 0.0,
+                                      "note": "", "set_at": ""}
+    for _o in range(1, 25)}
+
+for _name in ("daily_load", "weekly_summary", "acwr_series", "hrv_status",
+              "readiness"):
+    _fn = getattr(analytics, _name)
+    check(f"Ebene 3: {_name} ignoriert Etiketten",
+          _json.dumps(_fn(_lvl3), sort_keys=True, default=str)
+          == _json.dumps(_fn(_lvl3_ctx), sort_keys=True, default=str), True)
+check("Ebene 3: load_budget ignoriert Etiketten",
+      analytics.load_budget(_lvl3, "green") == analytics.load_budget(_lvl3_ctx, "green"), True)
+
+# Quelltext-Wächter: die Mauer steht im Code, nicht in der Absicht.
+for _mod in ("analytics.py", "plan.py", "workouts.py"):
+    _src = (COMP / _mod).read_text(encoding="utf-8")
+    check(f"Ebene 3: {_mod} liest day_context nicht",
+          "day_context" in _src, False)
+
 print()
 print(f"test_analytics: {CHECKS} Prüfungen, {len(failures)} Fehler")
 print("FEHLER:", failures if failures else "keine")

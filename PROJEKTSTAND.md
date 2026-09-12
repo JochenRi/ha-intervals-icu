@@ -198,6 +198,12 @@ Recherche:
 |---|---|---|
 | **`state()` rechnete die HRV-Basislinie roh, `state_series()` im Log.** 0.34.0 hatte die Triggerregeln angeglichen, die z-Berechnung nicht — Trainerurteil und Verlaufsband konnten am selben Tag verschieden ausfallen (Fixture: heute −2,6 SD im Log, aber nur −1,5 SD roh: das Band sagte Einbruch, der Trainer nicht). Dazu rechneten `_night_z` und `_signal_bands` dieselbe Basislinie ein drittes und viertes Mal von Hand. | Fehlerklasse 3 (zwei Rechenwege), fünfter Fall — diesmal vierfach | EINE Primitive `_norm_band`/`_z_at`, alle vier Orte rufen sie; AST-Wächter prüft die Aufrufer (Block 29). `week_z` ist jetzt das Mittel der ln-Werte gegen das Log-Band (die publizierte Vergleichsgröße, §5). Die Mindestbelegung 20 gilt damit auch im Trainerurteil, vorher nur in den Bändern. **Das Live-Urteil kann sich durch die Log-Skala ändern** — bewusst als eigener Commit VOR der Gewichtung, damit der No-op-Beweis von Paket B nicht die Gleichheit eines Fehlers einfriert. |
 
+**0.37.0 — Fund beim Bau der Gewichtung (Paket B3):**
+
+| Fund | Klasse | Entscheidung |
+|---|---|---|
+| **`analytics.hrv_status` rechnet eine fünfte HRV-Basislinie von Hand** (eigene `_baseline` über rollende 7-Tage-ln-Mittel) und speist die Readiness-Ampel. Mit gewichteter Trainer-Basislinie können Ampel und Trainerurteil bei etikettierten Fenstern auseinanderlaufen. Eine Tages-Gewichtung NUR der Ampel-Basislinie wäre halbrichtig: die rollenden 7-Tage-Mittel selbst blieben kontaminiert. | Fehlerklasse 3, sechster Fall — diesmal bewusst NICHT vereinheitlicht | analytics bleibt komplett kontextfrei (Ebene 3, Quelltext- UND Verhaltens-Wächter in test_analytics); die Websocket-Schicht hängt der Ampel eine Herkunftsnotiz an, wenn etikettierte Tage im Fenster liegen. Die saubere Lösung heißt B4 (Basislinie je Bedingung), nicht eine zweite Gewichtungsmechanik in analytics. |
+
 **0.35.0 — zwei Funde beim Aufräumen, beide aus bekannten Klassen:**
 
 | Fund | Klasse | Fix |

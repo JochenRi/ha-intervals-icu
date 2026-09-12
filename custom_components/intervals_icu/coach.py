@@ -43,7 +43,12 @@ from __future__ import annotations
 import math
 from datetime import date, timedelta
 from statistics import mean, median, pstdev
-from typing import Any
+from typing import Any, NamedTuple
+
+try:  # inside the package (Home Assistant)
+    from . import day_context
+except ImportError:  # standalone (test suite loads this file directly)
+    import day_context
 
 # --- thresholds, all of them sourced ------------------------------------------
 HRV_DROP_SD = 2.0          # PLEWS: an acute drop of this size is not noise
@@ -80,30 +85,77 @@ def _band(values: list[float]) -> tuple[float, float]:
     return (mean(values), pstdev(values) if len(values) > 1 else 0.0)
 
 
-def _norm_band(raw: list[float], *, log: bool) -> tuple[float, float] | None:
+class Band(NamedTuple):
+    """A baseline with its provenance, so a fallback can say WHY."""
+
+    base: float
+    spread: float
+    weighted: bool     # the sum-of-weights rule allowed weighting
+    weight_sum: float  # effective days in the window
+    labeled: int       # usable values carrying a weight below 1
+
+
+def _norm_band(raw: list[float], *, log: bool,
+               weights: list[float] | None = None) -> Band | None:
     """THE baseline of a wellness signal - the only place it is computed.
 
     One primitive instead of four hand-rolled copies: `state()`,
     `_z_series()`, `_night_z()` and `_signal_bands()` all call this, so the
     scale (HRV on the log scale, the published ln(rMSSD) comparison), the
-    20-value floor and the flat-band rejection cannot drift apart again.
-    Until 0.36.1 `state()` computed the HRV band on the RAW scale while the
-    series ran on logs - the trainer verdict and the history bands could
-    disagree on the same day. A guard in test_coach.py checks the callers.
+    20-value floor, the flat-band rejection AND the day-context weighting
+    cannot drift apart again. A guard in test_coach.py checks the callers.
 
-    Returns (base, spread) on the (possibly log) scale, or None when the
-    history is too thin to mean anything.
+    The weighting rule (docs/ausbau.md B3, level 1 - a STIPULATION):
+    weighted mean and spread when at least one day carries a weight below 1
+    and the weight sum reaches MIN_WEIGHT_SUM; otherwise the plain band over
+    the same values. The unlabelled case delegates to `_band` directly, so
+    an archive without labels is BIT-IDENTICAL to the unweighted world - the
+    frozen references in test_coach block 30 hang on that. Levels 2 and 3
+    never enter here: the judged day's own weight is irrelevant (histories
+    exclude it or triggering ignores it), and analytics never calls this.
+
+    Returns the Band on the (possibly log) scale, or None when the history
+    is too thin to mean anything.
     """
-    values = [math.log(v) for v in raw if v > 0] if log else list(raw)
-    if len(values) < 20:
+    if weights is None:
+        weights = [1.0] * len(raw)
+    pairs = list(zip(raw, weights))
+    if log:
+        pairs = [(math.log(v), w) for v, w in pairs if v > 0]
+    if len(pairs) < 20:
         return None
-    base, spread = _band(values)
+    values = [v for v, _w in pairs]
+    weight_sum = sum(w for _v, w in pairs)
+    labeled = sum(1 for _v, w in pairs if w < 1.0)
+    if labeled and weight_sum >= day_context.MIN_WEIGHT_SUM:
+        base = sum(v * w for v, w in pairs) / weight_sum
+        spread = math.sqrt(sum(w * (v - base) ** 2 for v, w in pairs) / weight_sum)
+        is_weighted = True
+    else:
+        base, spread = _band(values)
+        is_weighted = False
     if spread <= 0:
         return None
-    return (base, spread)
+    return Band(base, spread, is_weighted, round(weight_sum, 2), labeled)
 
 
-def _z_at(value: float | None, band: tuple[float, float] | None, *,
+def _fallback_note(band: Band | None) -> str | None:
+    """Says WHAT is missing when the weighted baseline is not usable yet.
+
+    Fires only when the fallback changes anything - a window without a
+    single labelled day computes identically either way, and a hint that
+    warns about nothing teaches the reader to ignore hints.
+    """
+    if band is None or band.weighted or band.labeled == 0:
+        return None
+    have = f"{band.weight_sum:.1f}".replace(".", ",").removesuffix(",0")
+    days = "Tag ist" if band.labeled == 1 else "Tage sind"
+    return (f"Basislinie auf ungewichtet zurückgefallen — nur {have} belastbare "
+            f"Tage von {int(day_context.MIN_WEIGHT_SUM)} nötigen, "
+            f"{band.labeled} {days} etikettiert")
+
+
+def _z_at(value: float | None, band: Band | None, *,
           log: bool, sign: int = 1) -> float | None:
     """A value's distance from its band, on the band's own scale."""
     if value is None or band is None:
@@ -112,8 +164,7 @@ def _z_at(value: float | None, band: tuple[float, float] | None, *,
         if value <= 0:
             return None
         value = math.log(value)
-    base, spread = band
-    return sign * (value - base) / spread
+    return sign * (value - band.base) / band.spread
 
 
 # --- state --------------------------------------------------------------------
@@ -130,7 +181,8 @@ def state(data: dict[str, Any]) -> dict[str, Any]:
     if len(days) < 21:
         return {"state": "unknown", "label": "zu wenig Historie",
                 "detail": "unter drei Wochen Wellness-Daten", "since": None,
-                "slump": None, "confidence": "keine"}
+                "slump": None, "confidence": "keine", "explained": False,
+                "context": None, "baseline_note": None}
 
     today = days[-1]
     hrv = _series(wellness, "hrv", days)
@@ -138,15 +190,51 @@ def state(data: dict[str, Any]) -> dict[str, Any]:
 
     hrv_days = sorted(hrv)
     base_days = [d for d in hrv_days if d < today][-60:]
-    hrv_band = _norm_band([hrv[d] for d in base_days], log=True)
+    hrv_band = _norm_band([hrv[d] for d in base_days], log=True,
+                          weights=[day_context.weight_for(data, d) for d in base_days])
     rhr_base_days = [d for d in sorted(rhr) if d < today][-60:]
-    rhr_band = _norm_band([rhr[d] for d in rhr_base_days], log=False)
+    rhr_band = _norm_band([rhr[d] for d in rhr_base_days], log=False,
+                          weights=[day_context.weight_for(data, d) for d in rhr_base_days])
 
     def z_hrv(day: str) -> float | None:
         return _z_at(hrv.get(day), hrv_band, log=True)
 
     def z_rhr(day: str) -> float | None:
         return _z_at(rhr.get(day), rhr_band, log=False)
+
+    # Day context, attached to every verdict from the SAME bands the verdict
+    # was computed against - a second computation path here is exactly the
+    # error class this file keeps paying for.
+    baseline_note = _fallback_note(hrv_band) or _fallback_note(rhr_band)
+    today_entry = day_context.entry_for(data, today)
+    today_context = None
+    if today_entry:
+        today_context = {
+            "tag": today_entry.get("tag"),
+            "label": day_context.TAGS.get(today_entry.get("tag"), {}).get(
+                "label", today_entry.get("tag")),
+            "weight": day_context.weight_for(data, today),
+        }
+
+    def st(key, label, since, detail, week_z, now_hrv, now_rhr, confidence,
+           cause=None, infection=False):
+        result = _st(key, label, since, detail, week_z, now_hrv, now_rhr,
+                     confidence, cause, infection)
+        since_entry = day_context.entry_for(data, since) if since else None
+        explained = bool(since_entry and since_entry.get("tag") != "normal"
+                         and key in ("slump", "recovering", "rebound"))
+        if explained:
+            tag_label = day_context.TAGS.get(since_entry.get("tag"), {}).get(
+                "label", since_entry.get("tag"))
+            result["detail"] = (result["detail"] +
+                f" Der Tag tr\u00e4gt das Etikett \u201e{tag_label}\u201c \u2014 "
+                "der Ausschlag ist damit benannt: gesehen, erkl\u00e4rt, nicht "
+                "weggerechnet. Die Warnung bleibt, denn ausgeschlossen wird "
+                "hier nie.")
+        result["explained"] = explained
+        result["context"] = today_context
+        result["baseline_note"] = baseline_note
+        return result
 
     # An acute departure needs more than one lonely number: either BOTH
     # signals leave the band on the same day (the infection pattern), or ONE
@@ -180,7 +268,7 @@ def state(data: dict[str, Any]) -> dict[str, Any]:
     # 7-day mean against the 60-day band, the published comparison (PLEWS).
     # The mean of ln(rMSSD), on the same log scale as the band itself.
     week = [math.log(hrv[d]) for d in hrv_days[-7:] if hrv[d] > 0]
-    week_z = (((mean(week) - hrv_band[0]) / hrv_band[1])
+    week_z = (((mean(week) - hrv_band.base) / hrv_band.spread)
               if (week and hrv_band is not None) else None)
     swc = 0.5  # half a standard deviation, the usual smallest worthwhile change
 
@@ -198,35 +286,35 @@ def state(data: dict[str, Any]) -> dict[str, Any]:
         infection_note = (" Beide Signale waren gleichzeitig extrem — das Muster eines "
                           "Infekts; der Weg zurück ist eine Leiter, keine Rampe.") if infection else ""
         if days_since == 0:
-            return _st("slump", "Einbruch", slump_day, cause_text,
+            return st("slump", "Einbruch", slump_day, cause_text,
                        week_z, now_hrv, now_rhr, "hoch", slump_cause, infection)
         if recovered:
-            return _st("rebound", "Erholung nach Einbruch", slump_day,
+            return st("rebound", "Erholung nach Einbruch", slump_day,
                        f"Der Einbruch war vor {days_since} Tagen. Die letzten Tage liegen "
                        "wieder über deiner Basislinie, der Ruhepuls darunter — der Körper "
                        "ist auf dem Rückweg. Das 7-Tage-Mittel hinkt noch nach, weil der "
                        "Einbruch darin steckt." + infection_note,
                        week_z, now_hrv, now_rhr, "mittel", slump_cause, infection)
-        return _st("recovering", "noch im Einbruch", slump_day,
+        return st("recovering", "noch im Einbruch", slump_day,
                    f"Der Einbruch war vor {days_since} Tagen und die Werte sind noch nicht "
                    "zurück auf deiner Basislinie." + infection_note,
                    week_z, now_hrv, now_rhr, "hoch", slump_cause, infection)
 
     if week_z is None:
-        return _st("unknown", "keine Einschätzung", None,
+        return st("unknown", "keine Einschätzung", None,
                    "Zu wenige HRV-Werte für einen Vergleich.", None, now_hrv, now_rhr, "keine")
     if week_z < -swc:
-        return _st("strained", "beansprucht", None,
+        return st("strained", "beansprucht", None,
                    "Das 7-Tage-Mittel liegt unter deinem Normalband — nach der Regel von "
                    "Javaloyes ist das ein Tag für Umfang, nicht für Intensität.",
                    week_z, now_hrv, now_rhr, "mittel")
     if week_z > 1.5:
-        return _st("elevated", "auffällig hoch", None,
+        return st("elevated", "auffällig hoch", None,
                    "Das 7-Tage-Mittel liegt deutlich über dem Normalband. Nach Plews ist "
                    "das nicht automatisch gut: dauerhaft erhöhte Werte können auch "
                    "Erschöpfung anzeigen. Im Zweifel: wie gewohnt trainieren und beobachten.",
                    week_z, now_hrv, now_rhr, "gering")
-    return _st("ready", "im Normalbereich", None,
+    return st("ready", "im Normalbereich", None,
                "Das 7-Tage-Mittel liegt in deinem Normalband — nach der Regel von Javaloyes "
                "ist heute ein harter Reiz möglich.",
                week_z, now_hrv, now_rhr, "mittel")
@@ -572,7 +660,8 @@ LOAD_SIGNALS = {
 
 
 def _z_series(values: dict[str, float], days: list[str], window: int = 60,
-              log: bool = False, sign: int = 1) -> dict[str, float]:
+              log: bool = False, sign: int = 1,
+              weights: dict[str, float] | None = None) -> dict[str, float]:
     """Distance from a trailing baseline, in standard deviations.
 
     The baseline trails the day it judges, so today is never part of its own
@@ -582,7 +671,8 @@ def _z_series(values: dict[str, float], days: list[str], window: int = 60,
     ordered = [d for d in days if d in values]
     for index, day in enumerate(ordered):
         history = ordered[max(0, index - window):index]
-        band = _norm_band([values[d] for d in history], log=log)
+        band = _norm_band([values[d] for d in history], log=log,
+                          weights=[(weights or {}).get(d, 1.0) for d in history])
         z = _z_at(values[day], band, log=log, sign=sign)
         if z is not None:
             out[day] = z
@@ -599,15 +689,33 @@ def state_series(data: dict[str, Any]) -> list[dict[str, str]]:
     days = sorted(wellness)
     hrv = _series(wellness, "hrv", days)
     rhr = _series(wellness, "restingHR", days)
-    z_hrv = _z_series(hrv, days, log=True, sign=1)
-    z_rhr = _z_series(rhr, days, sign=1)      # unsigned here: a RISE is the warning
+    ctx_w = {d: day_context.weight_for(data, d) for d in days}
+    z_hrv = _z_series(hrv, days, log=True, sign=1, weights=ctx_w)
+    z_rhr = _z_series(rhr, days, sign=1, weights=ctx_w)  # unsigned here: a RISE is the warning
 
-    out: list[dict[str, str]] = []
+    def _tag(day: str) -> str | None:
+        entry = day_context.entry_for(data, day)
+        return entry.get("tag") if entry else None
+
+    def _row(day: str, state: str, explained: bool = False) -> dict[str, Any]:
+        row: dict[str, Any] = {"date": day, "state": state}
+        tag = _tag(day)
+        if tag:
+            row["context"] = tag
+        if explained:
+            # level 2 (docs/ausbau.md B3): the day still triggered - it is
+            # SEEN and NAMED, never computed away. The flag is information
+            # for the reader, not an input to any rule.
+            row["explained"] = True
+        return row
+
+    out: list[dict[str, Any]] = []
     slump_day: str | None = None
+    slump_explained = False
     for day in days:
         zh, zr = z_hrv.get(day), z_rhr.get(day)
         if zh is None and zr is None:
-            out.append({"date": day, "state": "unknown"})
+            out.append(_row(day, "unknown"))
             continue
         hrv_hit = zh is not None and zh <= -HRV_DROP_SD
         rhr_hit = zr is not None and zr >= RHR_RISE_SD
@@ -617,12 +725,14 @@ def state_series(data: dict[str, Any]) -> list[dict[str, str]]:
         acute = (hrv_hit and rhr_hit) or persists
         if acute:
             slump_day = day
-            out.append({"date": day, "state": "slump"})
+            slump_explained = _tag(day) not in (None, "normal")
+            out.append(_row(day, "slump", explained=slump_explained))
             continue
         if slump_day is not None:
             since = (date.fromisoformat(day) - date.fromisoformat(slump_day)).days
             if since > RECOVERY_WINDOW:
                 slump_day = None
+                slump_explained = False
             else:
                 # Same rule as state(): judge the recovery on the mean of the
                 # last three days, not on one day. A single dip below the
@@ -632,12 +742,13 @@ def state_series(data: dict[str, Any]) -> list[dict[str, str]]:
                 hs = [z_hrv[d] for d in window if d in z_hrv]
                 rs = [z_rhr[d] for d in window if d in z_rhr]
                 back = ((not hs or mean(hs) >= 0) and (not rs or mean(rs) <= 0))
-                out.append({"date": day, "state": "rebound" if back else "recovering"})
+                out.append(_row(day, "rebound" if back else "recovering",
+                                explained=slump_explained))
                 continue
         if zh is not None and zh < -0.5:
-            out.append({"date": day, "state": "strained"})
+            out.append(_row(day, "strained"))
         else:
-            out.append({"date": day, "state": "ready"})
+            out.append(_row(day, "ready"))
     return out
 
 
@@ -776,25 +887,30 @@ def _night_z(data: dict[str, Any], day: str) -> dict[str, Any]:
     out: dict[str, Any] = {}
     for key, field, use_log, direction, label, unit in NIGHT_FIELDS:
         raw = []
+        wts = []
         for d in days:
             value = _f((wellness.get(d) or {}).get(field))
             if value is None or value <= 0:
                 continue
             raw.append(value)
+            wts.append(day_context.weight_for(data, d))
         current = _f((wellness.get(day) or {}).get(field))
-        band = _norm_band(raw, log=use_log)
+        band = _norm_band(raw, log=use_log, weights=wts)
         z = _z_at(current if current and current > 0 else None, band,
                   log=use_log, sign=direction)
         if z is None:
             continue
-        base, _spread = band
         scale = 1 / 3600 if field == "sleepSecs" else 1
-        out[key] = {
+        entry = {
             "label": label, "unit": unit,
             "value": round(current * scale, 2),
-            "baseline": round((math.exp(base) if use_log else base) * scale, 2),
+            "baseline": round((math.exp(band.base) if use_log else band.base) * scale, 2),
             "z": round(z, 2),
+            "baseline_weighted": band.weighted,
         }
+        if (note := _fallback_note(band)) is not None:
+            entry["baseline_note"] = note
+        out[key] = entry
     return out
 
 
@@ -1031,28 +1147,34 @@ def _signal_bands(data: dict[str, Any], day: str) -> dict[str, Any]:
     out: dict[str, Any] = {}
     for key, field, use_log, direction, label, unit in NIGHT_FIELDS:
         raw = []
+        wts = []
         for d in days:
             value = _f((wellness.get(d) or {}).get(field))
             if value is None or value <= 0:
                 continue
             raw.append(value)
-        band = _norm_band(raw, log=use_log)
+            wts.append(day_context.weight_for(data, d))
+        band = _norm_band(raw, log=use_log, weights=wts)
         if band is None:
             continue
-        base, spread = band
+        base, spread = band.base, band.spread
         scale = 1 / 3600 if field == "sleepSecs" else 1
 
         def at(sd: float) -> float:
             value = base + sd * spread
             return (math.exp(value) if use_log else value) * scale
 
-        out[key] = {
+        entry = {
             "baseline": round(at(0), 2),
             "noise": [round(at(-SWC_SD), 2), round(at(SWC_SD), 2)],
             "usual": [round(at(-1), 2), round(at(1), 2)],
             "slump": round(at(-HRV_DROP_SD if direction > 0 else HRV_DROP_SD), 2),
             "unit": unit,
+            "weighted": band.weighted,
         }
+        if (note := _fallback_note(band)) is not None:
+            entry["note"] = note
+        out[key] = entry
     return out
 
 
@@ -1184,6 +1306,11 @@ def today(data: dict[str, Any], budget: dict[str, Any] | None = None) -> dict[st
         "state": condition["state"],
         "state_label": condition.get("label"),
         "state_text": condition.get("text"),
+        # day context (docs/ausbau.md B3): today's label, whether the current
+        # verdict is explained by one, and the fallback hint with numbers
+        "explained": condition.get("explained", False),
+        "context": condition.get("context"),
+        "context_note": condition.get("baseline_note"),
         "signals": signals,
         # The bands that matter, expressed in the signal's OWN unit rather than
         # in standard deviations - a rider recognises 41 ms, not -1.5 SD. They
@@ -1207,7 +1334,9 @@ def today(data: dict[str, Any], budget: dict[str, Any] | None = None) -> dict[st
         # can carry an event track ("HRV drops two days after the long ride")
         # without a tab change.
         "history_days": [
-            {"date": d, "load": round(_day_load(d)), "state": series.get(d, "unknown")}
+            {"date": d, "load": round(_day_load(d)), "state": series.get(d, "unknown"),
+             **({"context": {"tag": e["tag"], "weight": day_context.weight_for(data, d)}}
+                if (e := day_context.entry_for(data, d)) else {})}
             for d in days[-42:]
         ],
         "moved": [s for s in signals if s["moved"]],

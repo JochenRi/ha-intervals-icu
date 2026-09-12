@@ -667,18 +667,152 @@ eq([(s["key"], s["value"], s["baseline"], s["z"]) for s in _td30["signals"]],
    "30 referenz: Signalkarten (Wert, Basislinie, z)")
 eq(_td30["bands"].get("hrv"),
    {"baseline": 49.98, "noise": [49.28, 50.69], "usual": [48.59, 51.41],
-    "slump": 47.23, "unit": "ms"}, "30 referenz: HRV-Band in echten Einheiten")
+    "slump": 47.23, "unit": "ms", "weighted": False},
+   "30 referenz: HRV-Band in echten Einheiten")
 eq(_td30["bands"].get("rhr"),
    {"baseline": 56.0, "noise": [55.86, 56.14], "usual": [55.72, 56.28],
-    "slump": 56.57, "unit": "bpm"}, "30 referenz: Ruhepuls-Band in echten Einheiten")
+    "slump": 56.57, "unit": "bpm", "weighted": False},
+   "30 referenz: Ruhepuls-Band in echten Einheiten")
+# Die 0.37.0-Form trägt drei neue Schlüssel — ohne Etiketten sind sie leer.
+# Benannt geprüft, DANN die Prüfsumme: sie deckt die Form, die Felder die Werte.
+eq(_st30.get("explained"), False, "30 referenz: unetikettiert ist nichts erklärt")
+eq(_st30.get("context"), None, "30 referenz: unetikettiert kein Tageskontext")
+eq(_st30.get("baseline_note"), None,
+   "30 referenz: unetikettiert kein Rückfall-Hinweis — der Hinweis darf nur "
+   "feuern, wenn er etwas zu sagen hat")
+check(all("context" not in r and "explained" not in r for r in _ser30),
+      "30 referenz: unetikettierte Serienzeilen tragen keine Kontextschlüssel")
+eq(_td30["bands"].get("hrv", {}).get("weighted"), False,
+   "30 referenz: unetikettiert bleibt die Basislinie ungewichtet")
 _trio30 = {"state": _st30, "series": _ser30,
            "today_sig": [(s["key"], s["value"], s["baseline"], s["z"])
                          for s in _td30["signals"]],
            "bands": _td30["bands"]}
 _sha30 = hashlib.sha256(json.dumps(_trio30, sort_keys=True,
                                    ensure_ascii=False).encode()).hexdigest()
-eq(_sha30, "058c4fc791eb105fb27277db28217180c1fb17970e5cef710b01f7223edb457c",
+# Neu eingefroren für die 0.37.0-Form (Werte per Feldern oben als unverändert
+# belegt; Ur-Anker nach der Log-Angleichung war 058c4fc7…).
+eq(_sha30, "d7c4bb9fd944eef405b539e76e4397fc498ae17bb15cfd9bc58572451623bbfc",
    "30 referenz: Prüfsumme — etwas außerhalb der benannten Felder hat sich bewegt")
+
+# --- 31 · Gewichtete Basislinie (Paket B3) ------------------------------------
+# Die drei Ebenen: Basislinie gewichtet, Warnlampe schließt NIE aus,
+# Last bleibt unberührt (Ebene 3 wird in test_analytics bewacht).
+
+
+def ctx_build(labels=True, low=44.0):
+    """20 Nachtschicht-Tage drücken die HRV; gestern und heute liegen bei
+    `low`. Gewichtet ist die Basislinie ~50 (Nachtschichten zählen nicht)
+    und `low`=44 ein Einbruch — ungewichtet ist die Basislinie ~47 mit
+    breiter Streuung und derselbe Wert unauffällig."""
+    w, ctx = {}, {}
+    for i in range(120):
+        d = (TODAY - timedelta(days=119 - i)).isoformat()
+        wob = ((i * 7) % 5 - 2) * 1.0
+        hrv = 50.0 + wob
+        if 80 <= i <= 99:
+            hrv = 42.0 + wob
+            if labels:
+                ctx[d] = {"tag": "nachtschicht", "weight": 0.0, "note": "", "set_at": ""}
+        if i >= 118:
+            hrv = low
+        w[d] = {"id": d, "hrv": hrv, "restingHR": 56.0 - wob * 0.2, "sleepSecs": 27000}
+    return {"wellness": w, "activities": {}, "dfa": {}, "day_context": ctx}
+
+
+# Fixture-Beweis: gewichteter und ungewichteter Bestand ergeben VERSCHIEDENE
+# Basislinien — sonst könnte die Suite eine tote Gewichtung nicht von einer
+# lebenden unterscheiden.
+_twa = coach.today(ctx_build(True))
+_twb = coach.today(ctx_build(False))
+check(_twa["bands"]["hrv"]["baseline"] != _twb["bands"]["hrv"]["baseline"],
+      "31 beweis: Etiketten ändern die Basislinie nicht — Gewichtung tot")
+eq(_twa["bands"]["hrv"]["weighted"], True, "31 beweis: Band meldet sich nicht als gewichtet")
+eq(_twb["bands"]["hrv"]["weighted"], False, "31 beweis: unetikettiert fälschlich gewichtet")
+# unabhängige Nachrechnung des gewichteten Mittels (Log-Skala, Fenster <= heute)
+_w31 = ctx_build(True)["wellness"]
+_c31 = ctx_build(True)["day_context"]
+_d31 = sorted(_w31)[-60:]
+_pairs = [(_math.log(_w31[d]["hrv"]), 0.0 if d in _c31 else 1.0) for d in _d31]
+_sw = sum(w for _v, w in _pairs)
+_mu = sum(v * w for v, w in _pairs) / _sw
+check(abs(_twa["bands"]["hrv"]["baseline"] - round(_math.exp(_mu), 2)) < 0.011,
+      f"31 beweis: Basislinie {_twa['bands']['hrv']['baseline']} statt "
+      f"unabhängig gerechnet {round(_math.exp(_mu), 2)}")
+
+# Gleichlauf: dieselbe Gewichtungsregel greift in state() UND state_series() —
+# am letzten Tag müssen beide dasselbe sagen, und zwar NUR gewichtet Einbruch.
+eq(coach.state(ctx_build(True))["state"], "slump",
+   "31 gleichlauf: Trainerurteil sieht den gewichteten Einbruch nicht")
+eq(coach.state_series(ctx_build(True))[-1]["state"], "slump",
+   "31 gleichlauf: Verlaufsband sieht den gewichteten Einbruch nicht")
+check(coach.state(ctx_build(False))["state"] != "slump",
+      "31 gleichlauf: Einbruch auch ungewichtet — Fixture beweist nichts")
+check(coach.state_series(ctx_build(False))[-1]["state"] != "slump",
+      "31 gleichlauf: Serie bricht auch ungewichtet ein — Fixture beweist nichts")
+
+# Rückfall Σw < 30: 35 etikettierte Tage im 60er-Fenster lassen 25 belastbare —
+# der Hinweis MUSS die Zahlen nennen (ein Hinweis ohne Zahl ist ein
+# Schulterzucken), und ohne einen einzigen etikettierten Tag gibt es keinen.
+_fb = build()
+_fb["day_context"] = {day(-o): {"tag": "nachtschicht", "weight": 0.0,
+                                "note": "", "set_at": ""}
+                      for o in range(1, 36)}
+_fbt = coach.today(_fb)
+eq(_fbt["bands"]["hrv"]["weighted"], False,
+   "31 rückfall: unter Σw=30 wird trotzdem gewichtet")
+_note = _fbt["bands"]["hrv"].get("note", "")
+check("25" in _note and "30" in _note and "35 Tage sind etikettiert" in _note,
+      f"31 rückfall: Hinweis nennt die Zahlen nicht: {_note!r}")
+check("zurückgefallen" in _note, "31 rückfall: Hinweis benennt den Rückfall nicht")
+_fbs = coach.state(_fb)
+check(_fbs.get("baseline_note") and "belastbare" in _fbs["baseline_note"],
+      "31 rückfall: Trainerurteil trägt den Hinweis nicht")
+check(_fbt.get("context_note") and "25" in _fbt["context_note"],
+      "31 rückfall: today() reicht den Hinweis nicht durch")
+# Rechenwert des Rückfalls == ungewichteter Bestand, Bit für Bit
+_fb0 = build()
+eq(coach.today(_fb0)["bands"]["hrv"]["baseline"], _fbt["bands"]["hrv"]["baseline"],
+   "31 rückfall: Rückfallwert weicht vom ungewichteten Bestand ab — zweiter Rechenweg")
+
+# Ebene 2: ein w=0-Tag verändert die Basislinie der Beurteilung nicht, löst
+# aber weiterhin aus, wenn er extrem ist. Genau der Infekt-Fall: krank
+# etikettiert, und die Lampe MUSS trotzdem angehen.
+_inf = build(overrides={day(0): {"hrv": 30.0, "restingHR": 66.0}})
+_inf["day_context"] = {day(0): {"tag": "krank", "weight": 0.0, "note": "", "set_at": ""}}
+_inf0 = build(overrides={day(0): {"hrv": 30.0, "restingHR": 66.0}})
+_ist = coach.state(_inf)
+eq(_ist["state"], "slump",
+   "31 ebene2: krank-Etikett unterdrückt die Einbruchserkennung — genau der "
+   "Infekt, den das System nie ausblenden darf")
+eq(_ist["explained"], True, "31 ebene2: erklärter Einbruch nicht als erklärt markiert")
+check("gesehen" in _ist["detail"] and "Krank" in _ist["detail"],
+      "31 ebene2: der Erklärsatz fehlt im Urteilstext")
+_irow = coach.state_series(_inf)[-1]
+eq(_irow["state"], "slump", "31 ebene2: Serie unterdrückt den erklärten Einbruch")
+eq(_irow.get("explained"), True, "31 ebene2: Serienzeile trägt das erklärt-Merkmal nicht")
+eq(_irow.get("context"), "krank", "31 ebene2: Serienzeile trägt das Etikett nicht")
+eq(coach.state(_inf)["week_z"], coach.state(_inf0)["week_z"],
+   "31 ebene2: das Etikett des Tages verschiebt seine eigene Beurteilungsbasis")
+
+# Löschen == nie etikettiert: nach dem Entfernen rechnet ALLES byte-gleich.
+_del = build()
+_del["day_context"] = {day(-3): {"tag": "alkohol", "weight": 0.5, "note": "", "set_at": ""}}
+del _del["day_context"][day(-3)]
+_plain = build()
+check(json.dumps({"s": coach.state(_del), "r": coach.state_series(_del),
+                  "t": coach.today(_del)["bands"]}, sort_keys=True)
+      == json.dumps({"s": coach.state(_plain), "r": coach.state_series(_plain),
+                     "t": coach.today(_plain)["bands"]}, sort_keys=True),
+      "31 löschen: ein entfernter Eintrag rechnet anders als nie etikettiert")
+
+# history_days trägt den Kontext für Chips und Hohlmarker
+_hd = coach.today(_inf)["history_days"][-1]
+eq(_hd.get("context"), {"tag": "krank", "weight": 0.0},
+   "31 payload: history_days ohne Tageskontext")
+_ctx_state = coach.state(_inf)
+eq(_ctx_state["context"], {"tag": "krank", "label": "Krank", "weight": 0.0},
+   "31 payload: state() ohne heutigen Kontext")
 
 print(f"test_coach: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
