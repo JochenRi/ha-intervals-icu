@@ -1,13 +1,13 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 13.09.2026 · **Version:** 0.38.0 · **Status:** produktiv auf HEIMDALL,
+**Stand:** 13.09.2026 · **Version:** 0.39.0 · **Status:** produktiv auf HEIMDALL,
 Auslieferung über HACS aus `github.com/JochenRi/ha-intervals-icu`
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lokal
 archiviert, auswertet und in einem eigenen Seitenleisten-Panel darstellt.
 
 **Umfang:** ~10.870 Zeilen, davon ~4.020 Frontend · 24 WebSocket-Befehle · 15 Einheiten in
-8 Familien · 15 Testdateien mit **3.156** gezählten Einzelprüfungen · 39 Releases.
+8 Familien · 15 Testdateien mit **3.232** gezählten Einzelprüfungen · 40 Releases.
 
 ---
 
@@ -191,6 +191,36 @@ Recherche:
 ---
 
 ## 7. Fehler und was sie gelehrt haben
+
+**0.39.0 — was der Bau von C/D6/F zutage gefördert hat:**
+
+1. **Der Abgleich meldete Gleichstand, die gelöschte Einheit stand weiter im
+   Kalender.** Die Meldung war wörtlich richtig: `reconcile.plan()` vergleicht
+   das **Archiv**, geplante Einheiten liegen auf dem events-Endpunkt und kommen
+   dort nie hin. Drei Schichten, nicht eine — der Abgleich sah sie nicht, der
+   Knopf stieß keinen Refresh an, und das Panel hielt `_cal`/`_days` für die
+   ganze Browser-Sitzung. Behoben als D6a/D6b/D6c.
+
+2. **`durability()` behauptete etwas über lange Einheiten ohne eine einzige
+   lange Einheit.** Bei leerer Gruppe fiel `verdict` auf die andere zurück und
+   meldete „die aerobe Basis trägt auch lange Einheiten". Ein echter Fehler,
+   kein Spezifikationspunkt. Es entsteht jetzt **keine** Leitzahl aus einer
+   leeren oder dünnen Gruppe, sondern der Satz, was fehlt.
+
+3. **`DECOUPLING_GOOD` stand zweimal im Backend und fünfmal im Frontend.** Paket
+   F verbot ausdrücklich die Konstante im Frontend — und hätte, nur so
+   angewandt, den eigenen Satz verletzt. Jetzt einmal in `const.py`, Wächter
+   über das ganze Frontend, die restlichen vier Dubletten gezählt und
+   eingefroren.
+
+4. **`analytics.decoupling_series` versprach „steady endurance session" und
+   filterte nur nach Dauer.** Kachel und Diagramm daneben konnten Entkopplung
+   aus zwei verschiedenen Grundgesamtheiten zeigen. Ein Prädikat für beide:
+   `derive.steady_endurance_reason()`.
+
+5. **Der 90-Minuten-Schnitt versteckte das Signal.** −0,1 pp gegen +1,5 pp beim
+   Arbeits-Schnitt am selben Bestand. Die Spezifikation hatte die Achse nie
+   geprüft; die Literatur misst Durability über angesammelte Arbeit.
 
 **0.38.0 — drei Funde beim Bau von Paket D (Abgleich):**
 
@@ -502,11 +532,17 @@ bzw. ein Reiter je Chat.
 | Reiter | Status |
 |---|---|
 | **Trainer** | ✅ auditiert 12.09. — 14 Befunde; Paket 1 (Befunde 1–6) als **0.32.0 ausgeliefert und am System verifiziert** (Konfliktwächter feuert live mit 68 %); Paket 2 (Plan-Umbau + Rest Befund 10) als **0.33.0 gebaut**, Verifikation am System steht aus |
+| **Trainer (Durability-Kachel, Paket F)** | ✅ auditiert 13.09. an der Fachliteratur (Maunder 2021, Spragg, Review Eur J Appl Physiol 2025, Wingo/Lafrenz zum kardiovaskulären Drift): der 90-Minuten-Schnitt hielt nicht — Durability wird über angesammelte Arbeit gemessen. Als **0.39.0 gebaut**, Verifikation am System steht aus |
+| **Aktivitätsdetail (Vergleichsgruppe, Paket C)** | ✅ auditiert 13.09.; feste 40 % durch SD-Caliper ersetzt, die Spec-Zahl „0,2 SD ≈ ±20 %" war am eigenen Bestand um Faktor zwei daneben. Als **0.39.0 gebaut**, Verifikation am System steht aus |
 | Belastung | ⏳ nächster Audit-Kandidat (seit 0.6.0 unangetastet, am weitesten hinter der Studienlage) |
 | **DFA** | ✅ Paket A als **0.36.0 gebaut** — Brushing, Zeitfenster, Spalten, Sprung; Verifikation am System steht aus |
 | **Signale (aufgeklappte Karte in Heute)** | ✅ Datumsachse und Ereignisspur als Teil von Paket A; Hohlpunkte für w=0-Tage seit 0.37.0 |
 | **Heute, Kalender (Teilaspekt Tagesbeschriftung)** | ✅ Paket B (B2/B3/B6 + Chips) als **0.37.0 gebaut** — Verifikation am System steht aus; B5-Rest (Kachel, Mehrfachauswahl, Notizfeld, Kurzweg) und B4 offen für 0.38.0 |
 | **Archiv-Pflege (Paket D)** | ✅ Abgleich mit Intervals als **0.38.0 gebaut** — Verifikation am System steht aus |
+| **Archiv-Pflege (Paket D6)** | ✅ Kalender vs. Archiv in **0.39.0** getrennt: Aufschlüsselung aus der Payload, Refresh am Knopf, Cache-Verwerfen — Verifikation am System steht aus |
+| **Vergleichsgruppe (Paket C)** | ✅ SD-Caliper auf der log-Dauer als **0.39.0 gebaut**, Leiter 0,2–1,0 SD, Weitung gegen das Kennzahl-n — Verifikation am System steht aus |
+| **Durability-Kachel (Paket F)** | ✅ Arbeitsachse statt Dauer, VirtualRide raus, VI ≤ 1,10, Leitzahl mit Dünn-Regel als **0.39.0 gebaut** — Verifikation am System steht aus |
+| **Konstanten-Dubletten (DFA/ACWR) + toter ring()/rd-Code** | ⬜ eigenes Paket, vom Wächter bei 2+2 eingefroren (docs/ausbau.md) |
 | Heute, Kalender (voller Audit), Fitness, Aktivitäten | offen |
 
 ### Erledigt in 0.38.0: Paket D — Abgleich mit Intervals

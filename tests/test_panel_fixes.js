@@ -530,4 +530,62 @@ const acts = F.activities(), thr = F.thresholds();
   }
 }
 
+
+/* ── Quelltext-Wächter: keine zweite Wahrheit im Frontend ──────────────────
+   DECOUPLING_GOOD stand bis 0.38.0 ZWEIMAL im Backend (coach.py und
+   analytics.py) und FÜNFMAL im Frontend. Das Paket F schrieb den Satz "sonst
+   stehen zwei Wahrheiten im Haus" auf und verletzte ihn selbst. Der Wächter
+   läuft deshalb über das GANZE Frontend, nicht nur über die Durability-Kachel.
+
+   Er kennt zwei Klassen:
+   - die Entkopplungsmarke: in 0.39.0 behoben, hier auf NULL festgenagelt;
+   - DFA-Schwellen und ACWR-Korridor: bekannt, gezählt, NICHT stillschweigend
+     mitgefixt - sie bekommen ihr eigenes Paket (docs/ausbau.md). Die Zahl ist
+     eingefroren, damit keine zehnte Dublette unbemerkt dazukommt. */
+{
+  const src = H.source();
+  // Zeilenweise, ohne Kommentare - eine Zahl in einer Erklärung ist keine
+  // zweite Wahrheit, und ein Wächter, der an der eigenen Begründung scheitert,
+  // erzieht nur dazu, die Begründung wegzulassen.
+  const code = src.split("\n").filter((l) => {
+    const t = l.trim();
+    return t && !t.startsWith("//") && !t.startsWith("*") && !t.startsWith("/*");
+  });
+
+  const hits = (re) => code.filter((l) => re.test(l));
+
+  const decMark = hits(/(decoupling|drop)\b[^;\n]{0,40}[<>]=?\s*5(?![\d.])/);
+  ok(decMark.length === 0,
+     `Wächter: ${decMark.length} hartkodierte Entkopplungsmarke(n) im Frontend — ` +
+     `die Zahl gehört in die Payload: ${decMark.map((l) => l.trim().slice(0, 60)).join(" | ")}`);
+
+  // Gegenprobe: der Wächter muss eine wiedereingebaute Konstante auch finden.
+  // Ohne diesen Nachweis prüft die Null oben nur, dass der Ausdruck nie greift.
+  const planted = ["      const cls = dec > 5 ? \"warn\" : \"ok\";"];
+  ok(planted.filter((l) => /(decoupling|drop)\b[^;\n]{0,40}[<>]=?\s*5(?![\d.])/.test(l)).length === 0,
+     "Wächter Gegenprobe: Platzhalter ohne Schlüsselwort darf NICHT anschlagen");
+  const planted2 = ["      const cls = decoupling > 5 ? \"warn\" : \"ok\";"];
+  ok(planted2.filter((l) => /(decoupling|drop)\b[^;\n]{0,40}[<>]=?\s*5(?![\d.])/.test(l)).length === 1,
+     "Wächter Gegenprobe: eine wiedereingebaute 5 wird NICHT gefunden — der Wächter ist blind");
+
+  // Bekannte Klasse, eingefroren. Steigt eine dieser Zahlen, ist eine neue
+  // Dublette dazugekommen; fällt sie, ist ihr Paket gelaufen und dieser Block
+  // gehört nachgezogen.
+  const dfa = hits(/y:\s*0\.(75|5)\b/);
+  const acwr = hits(/ratio\s*>\s*1\.(3|5)\b/);
+  ok(dfa.length === 2, `Wächter: DFA-Schwellen im Frontend jetzt ${dfa.length} statt 2 — eigenes Paket`);
+  ok(acwr.length === 2, `Wächter: ACWR-Korridor im Frontend jetzt ${acwr.length} statt 2 — eigenes Paket`);
+
+  // Und die Kachel selbst: jede Zahl, die sie zeigt, kommt aus der Payload.
+  const tile = (/rDurability\(d\) \{[\s\S]*?\n  \}/.exec(src) || [""])[0];
+  ok(tile.length > 0, "Wächter: rDurability nicht gefunden");
+  for (const [name, re] of [["Schwelle", /[^.\w]5\.0|[<>]=?\s*5(?![\d.])/],
+                            ["Trennstelle", /\b800\b/],
+                            ["Mindestdauer", /\b45\b/],
+                            ["Intensitätsgrenze", /\b80\b/],
+                            ["Mindestzahl je Gruppe", /[^\w.]5(?![\d.])\s*(Einheiten|\))/]]) {
+    ok(!re.test(tile), `Wächter: ${name} steht als Zahl in rDurability statt in der Payload`);
+  }
+}
+
 report("test_panel_fixes");

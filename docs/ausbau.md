@@ -680,64 +680,169 @@ Grundlage?" zeigt drei gleichrangige Zahlen — 0,9 % · 0,7 % · 81 — die sic
 nicht zuordnen lassen. Gehört zusammen mit Paket C in ein Release: beides sind
 Karten, die Zahlen zeigen, ohne ihre Herkunft mitzuliefern.
 
-### F1 · Was die Kachel rechnet (aus `coach.durability`, nachgelesen)
+### F1 · Was die Kachel rechnet — und was die Recherche daran umgeworfen hat
 
-Ruhige Einheiten ab 45 Minuten, Intervalleinheiten ab `icu_intensity` 80
-ausgeschlossen, mindestens 8 Einheiten insgesamt. Geteilt bei 90 Minuten, je
-Gruppe der **Median der Entkopplung**. Das Urteil vergleicht gegen
-`DECOUPLING_GOOD = 5.0` (Friel).
+**Recherchiert am 13.09.2026, danach umgebaut.** Die Kachel teilte bei 90
+Minuten und verglich gegen `DECOUPLING_GOOD = 5.0`. Beides hat die Prüfung an
+der Literatur und am eigenen Bestand nicht überstanden.
 
-### F2 · Was fehlt
+**1 · Die Achse war falsch — Arbeit, nicht Dauer.** Durability wird in der
+Literatur durchgehend über **angesammelte Arbeit** indiziert: Maunder 2021
+definiert sie als Zeitpunkt und Ausmaß der Verschlechterung von Profilgrößen im
+Verlauf langer Belastung; Spragg trennt das Leistungsprofil bei 2000 kJ in
+„frisch" und „ermüdet"; in den Monumenten wird nach 30–60 kJ/kg ausgewertet.
+Der systematische Review 2025 (Eur J Appl Physiol) schränkt ein: kJ allein
+bildet die Intensität nicht ab — ein Arbeits-Schnitt gehört in einen
+intensitätsbegrenzten Pool, und genau so steht er hier.
 
-- **Die Einheit fehlt.** Dass 0,9 % eine *Entkopplung* ist, steht nirgends auf
-  der Karte.
-- **Die Bezugsmarke fehlt.** Bis 5 % gilt als unauffällig — ohne diese Zahl
-  sagt „0,9 %" nichts. Sie steckt heute nur im Quelltext, nicht in der Payload.
-- **`n` je Gruppe fehlt.** 81 ist die Gesamtzahl, nicht die Aufteilung. Wie
-  viele Einheiten über 90 Minuten liegen, ist unsichtbar — und genau davon
-  hängt ab, ob die rechte Zahl belastbar ist.
-- **Keine Leitzahl.** Drei gleich große Zahlen, keine beantwortet die Frage der
-  Überschrift.
-- **Kein Rechenweg.** Der aufklappbare Block nennt Quelle und Grenze, aber
-  nicht, wie die Zahlen zustande kommen.
+Am eigenen Bestand (81 Einheiten) ist der Unterschied nicht akademisch:
+
+| Trennung | Gruppen | Median klein | Median groß | Leitzahl |
+|---|---|---|---|---|
+| 90 min (bis 0.38.0) | 41 / 40 | 0,86 % | 0,73 % | **−0,1 pp** |
+| 800 kJ | 62 / 19 | 0,61 % | 2,08 % | **+1,5 pp** |
+| 800 kJ, ohne Rolle | 40 / 16 | −0,04 % | 2,21 % | **+2,3 pp** |
+
+Der Dauer-Schnitt sagte „die Grundlage trägt", der Arbeits-Schnitt sagt das
+Gegenteil. Grund: Dauer ist hier ein schlechter Stellvertreter für Arbeit.
+
+**2 · Die Trennstelle ist eine Setzung und wird so beschriftet.** Belegt ist die
+**Achse**, nicht die Zahl: 1.500–2.000 kJ stammen von Rennprofis und liegen über
+dem p90 dieses Bestands (1.003 kJ). 800 kJ liegt dort, wo die obere Gruppe
+gerade noch belastbar besetzt ist (19 Einheiten) — **nicht** dort, wo der
+Unterschied am größten aussieht. Bei 1.200 kJ fällt sie auf 5, und die
+kJ/kg-Reihe war bei 12 kJ/kg nicht einmal monoton (0,81 gegen 0,71 bei n = 11).
+Genau das ist der Grund, die Schwelle über die Gruppengröße zu begründen und
+nicht über den Effekt.
+
+**Absolute kJ, nicht kJ/kg.** Das Gewichtsfeld ist an 6 von 489 Wellness-Tagen
+gefüllt — eine kJ/kg-Schwelle stünde auf einem Feld, das jederzeit leer sein
+kann. Die Umrechnung bleibt Nebeninformation im Rechenweg und führt **das Datum
+des Gewichts** mit, sonst rechnet sie in zwei Jahren mit einem Wert von 2026.
+
+**3 · Die 5-%-Marke ist eine Faustregel, kein Befund.** Sie stammt aus Friels
+Trainerpraxis und wurde über TrainingPeaks verbreitet; keine gefundene Arbeit
+leitet sie aus Daten ab. Belegt ist das Phänomen dahinter — der kardiovaskuläre
+Drift — und dass es stark von der Umgebung abhängt: in Hitze stieg die
+Herzfrequenz zwischen Minute 15 und 45 um 11 %, in kühler Umgebung um 2 %.
+Setzung und Beleg stehen im Quellenblock **getrennt**, und die Leitzahl
+beantwortet die Überschrift über den **Gruppenunterschied**, nicht über das
+Über- oder Unterschreiten der Marke.
+
+**4 · VirtualRide fliegt raus — als Homogenitätsargument, nicht als
+Gültigkeitsurteil.** Die Literatur belegt nicht „Rollenfahrten sind ungültig".
+Sie belegt, dass die Entkopplung umgebungsabhängig ist, und zwar in beide
+Richtungen (Brown/Banister: draußen lag die Herzfrequenz bei vergleichbarer
+äußerer Arbeitsrate 7–13 % höher als im Labor). Zwei Umgebungen in einem
+Vergleich zu mischen ist ein Homogenitätsproblem. Dazu ein Messbefund aus dem
+eigenen Bestand: der Variabilitätsindex liegt auf der Rolle bei **1,026**,
+draußen bei **1,058** — bei fester Last ist auch das Belastungsmuster ein
+anderes. Der Rechenweg sagt genau das, als **begründete Setzung**.
+
+**5 · `icu_intensity < 80` war der falsche Filter.** Die Bedingung für eine
+interpretierbare Entkopplung ist **Gleichmäßigkeit**, nicht niedrige
+Durchschnittsintensität — das sagt der eigene Quellenblock der Kachel seit jeher,
+gefiltert wurde nach etwas anderem. Eine wellige Gruppenausfahrt mit Intensität
+70 rutschte durch, ein gleichmäßiger Tempolauf mit 81 flog raus. Der
+Variabilitätsindex (normalisierte durch mittlere Leistung) ist aus vorhandenen
+Feldern auf **allen 81** Einheiten berechenbar; VI ≤ 1,10 behält 69 davon. Die
+Zahl ist eine Setzung, das **Kriterium** ist belegt.
+
+**6 · Derselbe Filter fehlte im Belastungs-Reiter.** `analytics.decoupling_series`
+versprach im eigenen Docstring „steady endurance session" und filterte nur nach
+Dauer — die Kachel und das Diagramm daneben konnten also Entkopplung aus zwei
+verschiedenen Grundgesamtheiten zeigen, ohne dass irgendetwas das gesagt hätte.
+Beide fragen jetzt **ein** Prädikat: `derive.steady_endurance_reason()`.
+
+### F2 · Was der Kachel gefehlt hat
+
+- **Die Einheit fehlte.** Dass 0,9 % eine *Entkopplung* ist, stand nirgends.
+- **Die Bezugsmarke fehlte** in der Payload — sie steckte im Quelltext.
+- **`n` je Gruppe fehlte.** 81 war die Gesamtzahl, nicht die Aufteilung.
+- **Keine Leitzahl.** Drei gleich große Zahlen, keine beantwortete die Frage.
+- **Kein Rechenweg.**
 
 ### F3 · Was daraus wird
 
-- **Leitzahl oben:** die Antwort auf die Überschrift — hält die Entkopplung mit
-  der Dauer, und um wie viele Prozentpunkte sie sich zwischen den Gruppen
-  unterscheidet. Die beiden Gruppenwerte werden Beleg, nicht Hauptsache.
-- **Die 5-%-Marke sichtbar:** zwei kleine Balken gegen dieselbe Skala, die Marke
-  als Linie. Dann ist der Gruppenvergleich eine Längendifferenz statt
-  Kopfrechnen, und der Abstand zur Marke steht ohne Erklärung da.
-- **`n` je Gruppe** neben jedem Wert. Unter 5 Einheiten in einer Gruppe wird die
-  Zahl **nicht behauptet**, sondern als zu dünn ausgewiesen — dasselbe Muster
-  wie die hohlen Punkte im DFA-Reiter.
-- **„Mehr anzeigen" mit dem Rechenweg**, in der Bauart des Budget-Bullet-Graphen:
-  welche Einheiten zählen (ab 45 min, Intensität unter 80), warum bei 90 Minuten
-  geteilt wird, dass es **Mediane** sind und keine Mittelwerte, und was
-  Entkopplung überhaupt ist — die Herzfrequenz driftet nach oben, während die
-  Leistung gleich bleibt.
-- **Die Grenze nach vorn:** Entkopplung ist nur auf gleichmäßigen Einheiten
-  aussagekräftig. Steht heute im Quellenblock, gehört aber sichtbar dorthin, wo
-  sie erklärt, warum manche Fahrten gar nicht mitzählen.
+- **Leitzahl oben:** um wie viele Prozentpunkte sich die Entkopplung zwischen
+  den beiden Arbeitsgruppen unterscheidet. Die Gruppenwerte werden Beleg.
+- **Die Marke sichtbar:** zwei Balken gegen dieselbe Skala, die Marke als Linie.
+- **`n` je Gruppe.** Unter `MIN_SESSIONS_TO_CLAIM_GROUP` wird der Wert **nicht
+  behauptet**, sondern als zu dünn ausgewiesen — und dann gibt es **keine
+  Leitzahl**, sondern den Satz, was fehlt: „Keine Aussage über Einheiten ab
+  800 kJ: nur 3 Einheiten in dieser Gruppe." Eine Leitzahl aus einer leeren
+  Gruppe ist schlimmer als keine.
+- **Rundung:** Leitzahl und Gruppenwerte kommen aus **denselben gerundeten**
+  Zahlen. Aus den ungerundeten Medianen gerechnet stand neben 0,9 und 0,7 eine
+  Leitzahl von 0,1 — wer subtrahiert, liest 0,2.
+- **Rechenweg** mit allen fünf Begründungen aus F1, jede als Setzung oder Beleg
+  gekennzeichnet.
+- **Die Grenze nach vorn**, dorthin, wo sie erklärt, warum Fahrten nicht zählen.
+
+**Ein Fehler, kein Spec-Punkt:** bei leerer Lang-Gruppe fiel `verdict` auf die
+kurze zurück und behauptete „die aerobe Basis trägt auch lange Einheiten" —
+eine Aussage über lange Einheiten ohne eine einzige lange Einheit. Behoben, mit
+eigenem Test und eigener Gegenprobe; Fehlerkapitel PROJEKTSTAND §7.
 
 ### F4 · Backend
 
-`durability()` liefert zusätzlich: `n_short`, `n_long`, die Schwelle
-(`DECOUPLING_GOOD`, nicht im Frontend hartkodieren — sonst stehen zwei Wahrheiten
-im Haus) und den Unterschied zwischen den Gruppen. Additiv, keine bestehende
-Zusicherung ändert sich.
+`durability()` liefert `n_low`, `n_high`, `low_thin`, `high_thin`, `lead`,
+`headline`, `dropped` je Ausschlussgrund, `weight` mit Datum — und **jede Zahl,
+die das Panel zeigt**: `decoupling_good`, `split_kj`, `min_minutes`,
+`max_intensity`, `max_vi`, `min_per_group`, `min_sessions`.
+
+`DECOUPLING_GOOD` lebt in `const.py`. Es stand vorher **zweimal** im Backend
+(`coach.py` und `analytics.py`) und **fünfmal** im Frontend — F hätte, nur auf
+das Frontend angewandt, genau den Satz verletzt, den es aufschreibt.
+
+**Drei Mindestzahlen, drei Fragen, drei Namen.** Sie auf eine Zahl zu ziehen
+wäre derselbe Fehler, nur umgekehrt:
+
+| Konstante | Frage |
+|---|---|
+| `MIN_SESSIONS_FOR_TILE` (8) | reicht der Bestand für die Kachel überhaupt? |
+| `MIN_SESSIONS_TO_CLAIM_GROUP` (5) | darf ein Gruppenwert behauptet werden? |
+| `MIN_PEERS_TO_RANK_METRIC` (6) | darf eine Kennzahl als Prozentrang eingeordnet werden? |
+
+Alle drei sind **Setzungen** — das ist Statistik, keine Sportmedizin; eine
+Literaturangabe wäre hier eine Behauptung.
 
 ### Tests F
 
-- `n_short + n_long == n`, und beide werden in der Payload geführt.
-- Eine Gruppe mit weniger als 5 Einheiten wird als dünn ausgewiesen, ihr Wert
-  nicht als Aussage gezeichnet.
-- Die Schwelle im Panel stammt aus der Payload, nicht aus einer eigenen
-  Konstante — Quelltext-Wächter dagegen.
-- Gegenproben: Schwelle im Frontend hartkodieren, `n` je Gruppe weglassen,
-  dünne Gruppe trotzdem behaupten — jede Mutation muss gezählt und benannt
-  melden.
+- `n_low + n_high == n`, beide in der Payload.
+- Eine Gruppe unter der Mindestzahl wird als dünn ausgewiesen, ihr Wert nicht
+  gezeichnet, und es entsteht **keine** Leitzahl.
+- Leere Lang-Gruppe: das Urteil enthält keine Aussage über große Einheiten.
+- Die Leitzahl ist die Differenz der **angezeigten** Werte.
+- Je ein Ausschlussgrund pro Fall, einzeln nachgewiesen (Rolle, wellig, hart,
+  kurz) — die Fixture belegt, dass jede Zeile an **genau einem** Kriterium
+  scheitert.
+- Fixture-Beweis: Dauer- und Arbeits-Schnitt liefern an derselben Fixture
+  **verschiedene** Aufteilungen, sonst belegt der Vertrag den Umbau nicht.
+- Quelltext-Wächter über das **ganze** Frontend, mit eigener Gegenprobe an einer
+  eingebauten Konstante.
+
+---
+
+## Eigenes Paket — die restlichen Dubletten und der tote Code
+
+**Aufgenommen am 13.09.2026.** Der Wächter aus Paket F meldet neun
+Frontend-Dubletten von vier Backend-Konstanten. Fünf davon (die
+Entkopplungsmarke) sind Gegenstand von F und behoben. Die übrigen vier sind
+**gezählt und eingefroren**, nicht stillschweigend mitgefixt — 0.39.0 soll kein
+Konstanten-Umbau werden:
+
+| Konstante | Backend | Frontend-Dubletten |
+|---|---|---|
+| `DFA_AEROBIC` / `DFA_ANAEROBIC` | `coach.py` | 2 (Achsenmarken im DFA-Reiter) |
+| `ACWR_HIGH` / `ACWR_RISK` | `analytics.py` | 2 (Korridor-Ampel im Belastungs-Reiter) |
+
+Dazu gehört in dasselbe Paket: der **tote `ring()`/`rd`-Code aus 0.37.0**, der
+seit dem Umbau der Hauptanzeige nicht mehr gerufen wird.
+
+Der Wächter hält die Zahl bei 2 und 2 fest. Steigt sie, ist eine neue Dublette
+dazugekommen; fällt sie, ist dieses Paket gelaufen und der Wächter gehört
+nachgezogen.
 
 ---
 
@@ -748,6 +853,14 @@ Zusicherung ändert sich.
 | S2 | A | eng spezifiziert, viele kleine Eingriffe im Panel, kein Backend |
 | S3 | B | Archivschema, Migration, dieselbe Regel an mehreren Orten — das schwerste |
 | S4 | C | Mathematik und Formulierung, klein |
+| S5 | D | Abgleich mit Intervals — Sperren, nicht Löschfunktion |
+| S6 | C + D6 + F | zusammen ausgeliefert als 0.39.0 |
 
-A und C lassen sich zusammenlegen, wenn A glatt läuft. Entschieden wird das am
-Ende von S2 nach Kontextstand, nicht vorher.
+**Nachtrag 13.09.2026 zur Einordnung von C.** Die erste Fassung von C3 forderte
+zwei Schieber und einen Schalter. Das hätte ein Archivschema samt Migration
+erzwungen — ein Block, den `importer.empty_data()` nicht kennt, entsteht bei
+Altbeständen nie (die Lücke aus 0.35.0). Die Bedienung ist deshalb gestrichen:
+die Leiter läuft automatisch, die gegriffene Stufe wird ausgewiesen, **kein
+Schlüssel im Archiv**. Damit ist C wieder das, als was es hier steht —
+Mathematik und Formulierung. Sollte später daran gedreht werden, kommt es als
+`localStorage`-Anzeigepräferenz in der Bauart des Zeitwählers aus A2.
