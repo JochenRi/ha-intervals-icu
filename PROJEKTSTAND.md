@@ -194,7 +194,7 @@ Recherche:
 
 ## 7. Fehler und was sie gelehrt haben
 
-**0.47.2 — drei Befunde.**
+**0.47.2 / 0.48.0 — vier Befunde.**
 
 **1 · `stream_types` sagt, was in der DATEI lag — nicht, was die SCHNITTSTELLE
 liefert.** Die Aktivitäten führen `hrv` in `stream_types`. Der Streams-Endpunkt
@@ -241,6 +241,26 @@ höher als Block 2, in allen sieben Paaren" wurde Ermüdung gelesen. Der Beleg
 dagegen stand in denselben Daten — die zweite Hälfte von Block 1 liegt bei
 0,67, Block 2 im Median bei 0,67. **Es gab keinen Abfall zwischen den Blöcken;
 Block 1 hatte nur einen Anlauf, den Block 2 nicht mehr hat.**
+
+**Vierter Fall, und er sitzt außerhalb des Codes: eine FIXTURE-Zahl im Bericht
+an den Athleten.** Die Leitzahl wurde ihm als **262 W** gemeldet, während die
+Simulationstabelle derselben Meldung 259/260 W nannte. Der Unterschied war
+keiner: 262 W stammten aus der Test-Fixture, in der eine sechste VO2max-Einheit
+erfunden ist, damit der Fall „genug Punkte für eine Linie" überhaupt prüfbar
+wird. Aufgefallen ist es nur, weil er nach dem Unterschied zwischen zwei
+ähnlichen Zahlen gefragt hat.
+
+**Das ist keine Entlastung, sondern eine eigene Gefahrenstelle.**
+Fixture-Werte sehen wie Messwerte aus — dieselbe Form, dieselbe Einheit,
+derselbe Lauf. Und **ein Bericht wird nicht getestet**: der Prüfstand deckt den
+Code ab, nicht das, was über ihn geschrieben wird. Der Fehler hatte hier
+Folgen über die zwei Watt hinaus: mit fünf statt sechs Einheiten erscheint im
+Panel **keine Verlaufslinie**, und ohne die Rückfrage wäre das nach dem Update
+für ein fehlendes Diagramm gehalten worden.
+
+**Regel: eine Zahl in einem Bericht an den Athleten sagt, woher sie kommt —
+Bestand oder Fixture.** Sonst prüft er eine erfundene Zahl gegen eine echte und
+findet einen Unterschied, den es nicht gibt.
 
 **Regel: bevor eine Messgröße als untauglich verworfen wird, muss der
 Ausschnitt belegt sein, aus dem sie gerechnet wurde.** Ein Ausschluss wirkt
