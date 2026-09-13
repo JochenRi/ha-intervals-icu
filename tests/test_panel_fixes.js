@@ -613,7 +613,7 @@ const acts = F.activities(), thr = F.thresholds();
   // und die Liste der geprüften Kacheln wird gegen den Quelltext gehalten,
   // damit die übernächste nicht wieder durchrutscht (vierte Bauregel, 0.44.0).
   const tiles = (src.match(/\n  r[A-Z]\w*\(/g) || []).map((m) => m.trim().slice(0, -1));
-  const guarded = ["rDurability", "rFatigue"];
+  const guarded = ["rDurability", "rFatigue", "rBlocks"];
   for (const name of guarded) {
     ok(tiles.includes(name), `Wächter: ${name} steht in der Liste, existiert aber nicht mehr`);
   }
@@ -621,6 +621,24 @@ const acts = F.activities(), thr = F.thresholds();
   // gehört damit unter denselben Wächter wie die Karte selbst.
   const fat = (/rFatigue\(f\) \{[\s\S]*?\n  \}/.exec(src) || [""])[0]
     + (/_fatigueDropped\(f\) \{[\s\S]*?\n  \}/.exec(src) || [""])[0];
+  // Paket M: dieselbe Pruefung fuer die neue Kachel - je Kachel nachzutragen,
+  // das ist der Befund aus 0.46.0 und er gilt weiter.
+  const blk = (/rBlocks\(b\) \{[\s\S]*?\n  \}/.exec(src) || [""])[0];
+  ok(blk.length > 0, "Wächter: rBlocks nicht gefunden");
+  for (const [name, re] of [["Korridorgrenze", /0[.,]75|0[.,]50\s*[-–]/],
+                            ["Schrittweite", /\b5\s*%|\b10\s*%/],
+                            ["Verwurfzeit", /\b120\b|\b2\s*Minuten/],
+                            ["Trendgrenze", /unter 6\b/]]) {
+    ok(!re.test(blk), `Wächter: ${name} steht als Zahl in rBlocks statt in der Payload`);
+  }
+  for (const [planted, re] of [["unter 6 wird keine Linie", /unter 6\b/],
+                               ["die ersten 2 Minuten", /\b2\s*Minuten/]]) {
+    ok(re.test(planted), `Wächter Gegenprobe: "${planted}" wird NICHT gefunden — der Wächter ist blind`);
+  }
+  for (const key of ["min_for_trend", "corridor", "step_pct", "block_alphas",
+                     "median_alpha", "first_watts", "suggested_watts"]) {
+    ok(blk.includes(key), `Wächter: rBlocks liest ${key} nicht aus der Payload`);
+  }
   ok(fat.length > 0, "Wächter: rFatigue nicht gefunden");
   for (const [name, re] of [["Zonengrenze", /\b20\s*%/],
                             ["Mindestdauer", /\b60\s*(Minuten|min)/],

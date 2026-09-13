@@ -271,6 +271,44 @@ function fatigue(over) {
   }, over || {});
 }
 
+/* Paket M: die echten SweetSpot- und VO2max-Reihen, wie das Backend sie
+ * liefert - zwei Bloecke je SweetSpot-Einheit, der erste systematisch hoeher. */
+function blocks(over) {
+  const p = (date, fa, fw, ma, mw, bl, pct, gap, where) => ({
+    date, name: "Einheit", n_blocks: bl.length, block_alphas: bl,
+    block_watts: bl.map(() => mw), alpha_span: Math.round((Math.max(...bl) - Math.min(...bl)) * 1000) / 1000,
+    first_alpha: fa, first_watts: fw, median_alpha: ma, median_watts: mw,
+    step_pct: pct, step_gap: gap, step_where: where,
+    suggested_watts: Math.round(mw * (1 + pct / 100)),
+  });
+  const ss = [
+    p("2026-08-05", 0.8, 192, 0.743, 192, [0.8, 0.685], 0, 0, "inside"),
+    p("2026-08-14", 0.73, 192, 0.705, 192, [0.73, 0.68], 0, 0, "inside"),
+    p("2026-08-20", 0.91, 194, 0.805, 194, [0.91, 0.7], 10, 0.055, "above"),
+    p("2026-08-24", 0.86, 196, 0.755, 196, [0.86, 0.65], 5, 0.005, "above"),
+  ];
+  const vo = [
+    p("2026-07-23", 0.77, 252, 0.57, 238, [0.77, 0.58, 0.55, 0.56], 5, 0.07, "above"),
+    p("2026-08-02", 0.83, 250, 0.52, 251, [0.83, 0.52, 0.36], 5, 0.02, "above"),
+    p("2026-08-11", 0.43, 259, 0.415, 244, [0.43, 0.4, 0.335, 0.43], 0, 0, "inside"),
+    p("2026-08-19", 0.52, 259, 0.36, 246, [0.515, 0.36, 0.34], 0, 0, "inside"),
+    p("2026-09-01", 0.49, 260, 0.405, 250, [0.47, 0.4, 0.37, 0.41], 0, 0, "inside"),
+    p("2026-09-08", 0.45, 262, 0.41, 252, [0.45, 0.41, 0.38, 0.4], 0, 0, "inside"),
+  ];
+  return Object.assign({
+    families: {
+      vo2max: { corridor: [0.2, 0.5], sessions: vo.length, spread: 0.078, trend: true,
+                min_for_trend: 6, points: vo, latest: vo[vo.length - 1],
+                first_block_watts: vo.map((x) => x.first_watts) },
+      sweetspot: { corridor: [0.5, 0.75], sessions: ss.length, spread: 0.036, trend: false,
+                   min_for_trend: 6, points: ss, latest: ss[ss.length - 1],
+                   first_block_watts: ss.map((x) => x.first_watts) },
+    },
+    discarded_s: 120, step_near_pct: 5, step_far_pct: 10, scope: "rolle",
+    progress: { done: 58, pending: 0, total: 58, batch: 25, importing: false },
+  }, over || {});
+}
+
 function calendar() {
   return [
     { uid: "1", summary: "SweetSpot Erhalt 1x20", description: "1x20min @ 90%",
@@ -1064,4 +1102,4 @@ function dayContext(extra) {
   };
 }
 
-module.exports = { STAGE_WORDS, stageOf, TODAY, days, load, readiness, activities, streams, thresholds, fatigue, calendar, pmc, laps, lapsWithBounds, steadyStream, night, context, goal, today, coach, signals, workouts, dayContext };
+module.exports = { STAGE_WORDS, stageOf, TODAY, days, load, readiness, activities, streams, thresholds, fatigue, blocks, calendar, pmc, laps, lapsWithBounds, steadyStream, night, context, goal, today, coach, signals, workouts, dayContext };

@@ -925,6 +925,55 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   clean(q.rDfa(bare, "all"), "dfa ohne die neuen Felder");
 }
 
+/* ── Paket M: ein Wert je Block, ueber die Zeit ──────────────────────────── */
+{
+  const q = new M.Panel();
+  q._nowIso = F.TODAY;
+  const b = F.blocks();
+  const html = String(q.rBlocks(b));
+  clean(html, "blockmessung");
+  // Zeilenumbrueche im Template sind Formatierung, kein Inhalt.
+  const flat = html.replace(/\s+/g, " ");
+
+  // Leitzahl ist die VERLAUFSgroesse (erster Block), nicht die Steuergroesse
+  ok(/262 <span class="unit">W<\/span>/.test(html), "M: die Leitzahl ist nicht der erste Block");
+  // Die Steuerung ruht sichtbar auf ihren Einzelwerten - nicht geglaettet
+  contains(html, "Die Steuerung ruht auf", "M: es steht nicht da, worauf die Steuerung ruht");
+  ok(/0,45 und 0,41 und 0,38 und 0,40/.test(html) || /0,45 und 0,41/.test(html),
+     "M: die Einzelblöcke fehlen");
+  ok(/Median 0,410/.test(html), "M: der Median der Steuergröße fehlt");
+  // Der Vorschlag, und dass er einer ist
+  contains(html, "Das System schlägt vor, du entscheidest", "M: der Vorschlag wirkt wie eine Anweisung");
+  ok(/im Korridor 0,20–0,50/.test(flat), "M: der Korridor wird nicht genannt");
+  // Die Grenze: Rolle, nicht draußen
+  contains(html, "nicht für dieselbe Familie draußen", "M: die Rolle-Grenze fehlt");
+  ok(/40 W/.test(html), "M: der 40-Watt-Befund als Begründung fehlt");
+  // Die verworfenen zwei Minuten stehen dabei
+  ok(/ersten 2 Minuten verworfen/.test(flat), "M: das Verwerfen wird nicht benannt");
+
+  // BELEGUNG: SweetSpot hat vier Einheiten -> keine Linie, aber der Satz.
+  const ssTeil = flat.slice(flat.indexOf("SweetSpot"));
+  ok(/4 Einheiten<\/b> — unter 6 wird keine Verlaufslinie/.test(ssTeil),
+     "M: die dünne Belegung wird nicht benannt");
+  // GEGENFALL, gezaehlt und benannt: VO2max hat sechs -> Linie, kein Satz.
+  const voTeil = flat.slice(flat.indexOf("VO2max"), flat.indexOf("SweetSpot"));
+  ok(!/keine Verlaufslinie/.test(voTeil),
+     "M: auch die getragene Familie bekommt den Dünn-Satz");
+  ok(/stroke-width="2.4"/.test(voTeil), "M: die getragene Familie bekommt keine Linie");
+  // Und die grosse Spanne wird benannt, statt geglättet zu werden
+  const zwei = String(q.rBlocks(F.blocks({ families: { sweetspot: {
+    ...b.families.sweetspot, latest: b.families.sweetspot.points[2] } } })));
+  ok(/Spanne von 0,21 ist groß/.test(zwei.replace(/\s+/g, " ")),
+     "M: eine große Spanne wird verschwiegen");
+
+  // Leerer und rechnender Zustand
+  const leer = String(q.rBlocks(F.blocks({ families: {} })));
+  contains(leer, "Noch keine Einheit mit markierten", "M: der leere Fall sagt nichts");
+  const rechnet = String(q.rBlocks(F.blocks({ families: {},
+    progress: { done: 20, pending: 38, total: 58, batch: 25, importing: true } })));
+  contains(rechnet, "nicht defekt", "M: der rechnende Zustand sagt nicht, dass er arbeitet");
+}
+
 /* ── L4: die Wattvorgabe kommt aus der Messung, und die Karte sagt es ───── */
 {
   const q = new M.Panel();

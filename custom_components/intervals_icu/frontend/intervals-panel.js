@@ -1264,6 +1264,98 @@ class IntervalsIcuPanel extends HTMLElement {
     return out.join("");
   }
 
+  /* Paket M - ein Wert je Block, ueber die Zeit. Je Familie eine Karte:
+     Leitzahl oben (die Leistung im ersten eingeschwungenen Block), darunter
+     der Verlauf, dann der Vorschlag. NICHTS greift automatisch. */
+  rBlocks(b) {
+    if (!b) return this._dataGap("blocks", "Die Blockmessung");
+    const fam = b.families || {};
+    const keys = Object.keys(fam);
+    const pr = b.progress || {};
+    if (!keys.length) {
+      if (pr.pending) {
+        const done = pr.done || 0, total = pr.total || pr.pending;
+        return `<div class="card pad"><h3 class="secname">Leistung je Block</h3>
+          <p>Die Auswertung wird gerade neu gerechnet: <b class="tn">${fmt(done)} von
+          ${fmt(total)}</b> Einheiten fertig. Die Kachel füllt sich danach von selbst —
+          sie ist nicht defekt.</p>
+          <i class="dbar"><s style="width:${Math.round(done / Math.max(1, total) * 100)}%;background:${ROLE.series}"></s></i></div>`;
+      }
+      return `<div class="card pad"><h3 class="secname">Leistung je Block</h3>
+        <p>Noch keine Einheit mit markierten Arbeitsabschnitten und DFA-Aufzeichnung.
+        Gemessen wird je Block, nachdem die ersten ${fmt((b.discarded_s || 0) / 60, 0)} Minuten
+        verworfen sind — vorher ist der Kreislauf nicht eingeschwungen.</p></div>`;
+    }
+    const NAME = { vo2max: "VO2max", sweetspot: "SweetSpot", tempo: "Tempo" };
+    const karten = keys.map((key) => {
+      const f = fam[key];
+      const l = f.latest;
+      const punkte = f.points || [];
+      const lo = f.corridor[0], hi = f.corridor[1];
+      // Die Belegung entscheidet, was gezeigt wird - nichts wird geglättet.
+      const wenig = !f.trend;
+      const graph = punkte.length > 1 ? chart({
+        h: 170, n: punkte.length,
+        y0: Math.floor(Math.min(...punkte.map((p) => p.first_watts)) / 10) * 10 - 10,
+        y1: Math.ceil(Math.max(...punkte.map((p) => p.first_watts)) / 10) * 10 + 10,
+        xt: punkte.map((p, i) => ({ i, t: dShort(p.date) })),
+        label: "Leistung im ersten eingeschwungenen Block (W)", labelc: ROLE.series,
+        s: [
+          ...(f.trend ? [{ t: "line", v: punkte.map((p) => p.first_watts), c: ROLE.series, w: 2.4 }] : []),
+          { t: "dots", c: ROLE.series, p: punkte.map((p, i) => ({ i, v: p.first_watts, r: 4.2 })) },
+        ],
+      }) : "";
+      const zeilen = punkte.slice(-8).reverse().map((p) => `<tr>
+        <td>${dMed(p.date)}</td>
+        <td class="tn">${fmt(p.first_watts)} W</td>
+        <td class="tn">${fmt(p.median_alpha, 3)}</td>
+        <td class="mut">${p.block_alphas.map((a) => fmt(a, 2)).join(" · ")}</td>
+        <td>${p.step_pct === 0
+          ? badge("green", "im Korridor")
+          : badge("amber", (p.step_pct > 0 ? "+" : "") + fmt(p.step_pct) + " %")}</td></tr>`).join("");
+      return `<div class="card pad">
+        <h4 class="subsec">${NAME[key] || key}</h4>
+        <div class="statgrid lead"><div class="stat wide">
+          <small>Leistung im ersten eingeschwungenen Block</small>
+          <b class="tn lead1" style="color:${ROLE.series}">${fmt(l.first_watts)} <span class="unit">W</span></b>
+          <span class="mut">bei alpha ${fmt(l.first_alpha, 2)} · ${dMed(l.date)} ·
+            ${fmt(f.sessions)} ${f.sessions === 1 ? "Einheit" : "Einheiten"}</span></div></div>
+        ${graph}
+        ${wenig ? `<p class="hint">${ico("info", C.blue, 13)} <b>${fmt(f.sessions)}
+          ${f.sessions === 1 ? "Einheit" : "Einheiten"}</b> — unter ${fmt(f.min_for_trend)} wird
+          keine Verlaufslinie gezeichnet. ${f.sessions < 3
+            ? "Zwei Messungen sind kein Verlauf."
+            : "Die Zahl steht, die Richtung nicht."}</p>` : ""}
+        <p class="hint">${ico("info", C.blue, 13)} <b>Vorschlag fürs nächste Mal:
+          ${fmt(l.suggested_watts)} W</b>${l.step_pct === 0
+            ? ` — unverändert, dein alpha lag mit ${fmt(l.median_alpha, 3)} im Korridor
+                ${fmt(lo, 2)}–${fmt(hi, 2)}.`
+            : ` (${l.step_pct > 0 ? "+" : ""}${fmt(l.step_pct)} %) — dein alpha lag mit
+                ${fmt(l.median_alpha, 3)} ${l.step_where === "above" ? "über" : "unter"} dem
+                Korridor ${fmt(lo, 2)}–${fmt(hi, 2)}, um ${fmt(l.step_gap, 3)}.`}
+          <b>Das System schlägt vor, du entscheidest</b> — und misst beim nächsten Mal ohnehin,
+          was du tatsächlich gefahren bist.</p>
+        <p class="hint">Die Steuerung ruht auf <b>${fmt(l.n_blocks)}
+          ${l.n_blocks === 1 ? "Block" : "Blöcken"}</b>: ${l.block_alphas.map((a) => fmt(a, 2)).join(" und ")},
+          Median ${fmt(l.median_alpha, 3)}${l.alpha_span >= 0.15
+            ? ` — die Spanne von ${fmt(l.alpha_span, 2)} ist groß, der Median mittelt hier zwischen
+                zwei weit auseinanderliegenden Werten.` : "."}</p>
+        <details class="more"><summary>Die letzten Einheiten</summary>
+          <table class="dfatab"><thead><tr><th>Datum</th><th>erster Block</th>
+            <th>Median alpha</th><th>Blöcke</th><th>Schritt</th></tr></thead>
+            <tbody>${zeilen}</tbody></table></details>
+      </div>`;
+    }).join("");
+    return `<h3 class="secname">Leistung je Block</h3>
+      ${karten}
+      <p class="hint">${ico("warn", C.amber, 13)} <b>Diese Zahlen gelten für diese Einheiten auf
+        der Rolle</b>, nicht für dieselbe Familie draußen: derselbe alpha-Wert steht je nach
+        Zusammenhang für eine andere Leistung — am eigenen Bestand liegen zwischen beiden
+        rund 40 W. Gemessen wird je Block, nachdem die ersten
+        ${fmt((b.discarded_s || 0) / 60, 0)} Minuten verworfen sind (Rogers: vorher ist der
+        Kreislauf nicht im Gleichgewicht).</p>`;
+  }
+
   /* L1b - die HF-Korrektur. GLEICHWERTIGER Teil der Karte, aber vollständig
      als SETZUNG beschriftet: die eigene Messung findet den Anstieg nicht, und
      der Grund steht dabei. Die gemessene Spalte kommt aus denselben Fahrten
@@ -1395,7 +1487,7 @@ class IntervalsIcuPanel extends HTMLElement {
       if (res.applied) {
         // Alles wegwerfen, was aus den Aktivitäten gerechnet wird - sonst
         // zeigt der Kopf 238 und die Liste weiter 239.
-        this._acts = null; this._thr = null; this._fatigue = null; this._pmc = null; this._today = null;
+        this._acts = null; this._thr = null; this._fatigue = null; this._blocks = null; this._pmc = null; this._today = null;
         this._coach = null; this._load = null; this._cal = null; this._signals = null;
         const [status, days] = await Promise.all([
           this._ws("status"), this._ws("days", { weeks: this._weeks })]);
@@ -1548,6 +1640,7 @@ class IntervalsIcuPanel extends HTMLElement {
       if (what === "akt" && !this._acts) this._acts = await this._ws("activities", { limit: 300 });
       if (what === "thr" && !this._thr) this._thr = await this._ws("thresholds");
       if (what === "fatigue" && !this._fatigue) this._fatigue = await this._ws("fatigue");
+      if (what === "thr" && !this._blocks) this._blocks = await this._ws("blocks");
       if (what === "cal" && !this._cal) this._cal = await this._ws("calendar");
       delete this._failed[what];
     } catch (err) {
@@ -1666,7 +1759,7 @@ class IntervalsIcuPanel extends HTMLElement {
     else if (this._tab === "fitness") html = this.rFitness(this._pmc, this._range);
     else if (this._tab === "akt") html = this.rAkt(this._acts, this._sel);
     else if (this._tab === "belastung") html = this.rBelastung(this._load);
-    else if (this._tab === "dfa") html = this.rDfa(this._thr, this._dfaSport);
+    else if (this._tab === "dfa") html = this.rDfa(this._thr, this._dfaSport) + this.rBlocks(this._blocks);
     if (this._ctxDlg) html += this._ctxPopover();
     if (this._syncDlg) html += this._syncPopover();
     this._view.innerHTML = html;

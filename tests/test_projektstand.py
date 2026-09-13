@@ -102,7 +102,7 @@ grand = re.search(r"\*\*([\d.]+)\*\* gezählten Einzelprüfungen", text) or \
         re.search(r"mit \*\*([\d.]+)\*\* gezählten", text)
 check(grand is not None, "Prüfstand: die Gesamtzahl steht nicht im Kopf von PROJEKTSTAND")
 
-files_claim = re.search(r"\*\*(\w+) Dateien, ([\d.]+) gezählte Einzelprüfungen", body)
+files_claim = re.search(r"\*\*([\d.]+) Dateien, ([\d.]+) gezählte Einzelprüfungen", body)
 check(files_claim is not None, "Prüfstand: §9 nennt Dateizahl und Summe nicht")
 
 
@@ -110,8 +110,11 @@ def _int(value: str) -> int:
     return int(value.replace(".", ""))
 
 
-# The count of files is spelled out in German in §9's opening sentence.
-WORDS = {14: "Vierzehn", 15: "Fünfzehn", 16: "Sechzehn", 17: "Siebzehn", 18: "Achtzehn", 19: "Neunzehn", 20: "Zwanzig"}
+# ABGESCHAFFT in Paket M: die Dateizahl stand als deutsches Zahlwort im
+# Einleitungssatz und brauchte dafuer eine handgepflegte Wortliste, die genau
+# bis zur naechsten Datei reichte (fuenfter Fall derselben Klasse, §7). Sie
+# steht jetzt als ZIFFER da und wird direkt verglichen. Eine Liste, die man
+# abschaffen kann, ist besser als eine, die man pflegt.
 
 
 # --- this file's own row, and the two totals ---------------------------------
@@ -127,7 +130,7 @@ eq(_int(grand.group(1)) if grand else None, expected_total,
    "Kopfzeile von PROJEKTSTAND: Gesamtzahl der Prüfungen")
 eq(_int(files_claim.group(2)) if files_claim else None, expected_total,
    "§9: Summe im Einleitungssatz")
-eq(files_claim.group(1) if files_claim else None, WORDS.get(len(files) + 1),
+eq(_int(files_claim.group(1)) if files_claim else None, len(files) + 1,
    "§9: Dateizahl im Einleitungssatz")
 eq(tabled.get(SELF), own_count,
    f"§9-Tabelle: {SELF} (eigene Zeile, gegen den eigenen Zähler)")

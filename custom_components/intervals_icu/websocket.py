@@ -14,7 +14,7 @@ from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.util import dt as dt_util
 
-from . import analytics, coach as coach_module, day_context as day_context_lib, derive, durability_tests as durability_lib, fatigue, importer, plan as plan_lib, reconcile as reconcile_lib, workouts as workout_lib
+from . import analytics, blocks as blocks_lib, coach as coach_module, day_context as day_context_lib, derive, durability_tests as durability_lib, fatigue, importer, plan as plan_lib, reconcile as reconcile_lib, workouts as workout_lib
 from .api import IntervalsError
 from .const import (
     DECOUPLING_GOOD,
@@ -91,6 +91,7 @@ def async_register(hass: HomeAssistant) -> None:
         websocket_set_goal,
         websocket_thresholds,
         websocket_fatigue,
+        websocket_blocks,
         websocket_calendar,
         websocket_status,
         websocket_load,
@@ -285,6 +286,29 @@ def websocket_thresholds(hass, connection, msg) -> None:
         msg["id"],
         importer.threshold_series(coordinator.archive.data, since=msg.get("since")),
     )
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "intervals_icu/blocks",
+        vol.Optional("athlete_id"): str,
+    }
+)
+@callback
+def websocket_blocks(hass, connection, msg) -> None:
+    """Ein Wert je Block, ueber die Zeit (docs/ausbau.md Paket M)."""
+    if (coordinator := _require(hass, connection, msg)) is None:
+        return
+    data = coordinator.archive.data
+    result = blocks_lib.series(data)
+    stats = importer.archive_stats(data)
+    result["progress"] = {
+        "done": stats["dfa_done"], "pending": stats["dfa_pending"],
+        "total": stats["dfa_done"] + stats["dfa_pending"],
+        "batch": DFA_BATCH_SIZE,
+        "importing": bool(getattr(coordinator, "import_running", False)),
+    }
+    connection.send_result(msg["id"], result)
 
 
 @websocket_api.websocket_command(
