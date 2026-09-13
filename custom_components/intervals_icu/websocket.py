@@ -37,6 +37,12 @@ DETAIL_STREAMS: tuple[str, ...] = (
     "velocity_smooth",
     "altitude",
     "dfa_a1",
+    # Angefordert seit 0.47.2, ausschliesslich um zu MESSEN, was darin steht:
+    # liegen hier RR-Intervalle, laege die DFA-Fensterbreite bei uns statt bei
+    # Intervals - und die Arbeit zur intensitaetsabhaengigen Fensterlaenge
+    # waere direkt anwendbar. Solange das nicht geprueft ist, wird der Kanal
+    # von nichts gelesen (docs/ausbau.md, Paket M).
+    "hrv",
 )
 
 # A chart never needs more points than it has pixels. Buckets are averaged,

@@ -7,7 +7,7 @@ Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lok
 archiviert, auswertet und in einem eigenen Seitenleisten-Panel darstellt.
 
 **Umfang:** ~14.760 Zeilen, davon ~4.960 Frontend · 27 WebSocket-Befehle · 16 Einheiten in
-9 Familien · 17 Testdateien mit **5.189** gezählten Einzelprüfungen · 53 Releases.
+9 Familien · 17 Testdateien mit **5.189** gezählten Einzelprüfungen · 54 Releases.
 
 ---
 
@@ -193,6 +193,42 @@ Recherche:
 ---
 
 ## 7. Fehler und was sie gelehrt haben
+
+**0.47.2 — zweimal dieselbe Fehlkorrektur bei der Vermessung für Paket M.**
+
+**Eine Messgröße wurde zweimal als untauglich verworfen, bevor der Ausschnitt
+stimmte, aus dem sie gerechnet wurde.** Beide Male traf es VO2max, beide Male
+mit einer Zahl, die etwas anderes maß, als ihr Name sagte.
+
+**Erster Fehlschluss: eine Division als methodische Grenze.** „VO2max-Blöcke
+tragen ein auswertbares 2-Minuten-Fenster" — das war Blockdauer geteilt durch
+120 Sekunden, also eine Zählung von Zeitabschnitten. Eine DFA-Fensterbreite ist
+etwas völlig anderes, und Intervals liefert ohnehin je Sekunde einen fertigen
+Wert: ein 4-Minuten-Block trägt **240**, nicht einen. **Der Satz „vier Minuten
+sind zu kurz" klingt nach einem Naturgesetz und war eine Division** — und er
+hätte eine Familie endgültig ausgeschlossen.
+
+**Zweiter Fehlschluss: eine Streuung, die zu 80 % aus dem Anlauf stammte.** Die
+Blockmediane streuten mit SD 0,25 bis 0,53, und daraus wurde „der Gurt trägt
+oben nicht". Tatsächlich beginnt jeder Block bei hohem alpha und fällt
+innerhalb der ersten zwei Minuten — der kardiale Nachlauf, den Rogers (2021)
+und Andriolo genau deshalb verwerfen. Nach dem Verwerfen bleibt SD **0,087**,
+ein Gewinn von 69 bis 83 %. **VO2max hat damit die KLEINSTE Streuung aller drei
+Familien** (gegen 0,156 bei SweetSpot) — das Gegenteil des Befunds, mit dem es
+ausgeschlossen wurde.
+
+**Dazwischen lag noch ein dritter Irrtum derselben Wurzel:** aus „Block 1 liegt
+höher als Block 2, in allen sieben Paaren" wurde Ermüdung gelesen. Der Beleg
+dagegen stand in denselben Daten — die zweite Hälfte von Block 1 liegt bei
+0,67, Block 2 im Median bei 0,67. **Es gab keinen Abfall zwischen den Blöcken;
+Block 1 hatte nur einen Anlauf, den Block 2 nicht mehr hat.**
+
+**Regel: bevor eine Messgröße als untauglich verworfen wird, muss der
+Ausschnitt belegt sein, aus dem sie gerechnet wurde.** Ein Ausschluss wirkt
+endgültig — er wird nicht wieder aufgerollt, weil niemand eine verworfene Größe
+ein zweites Mal prüft. Und der Ausschnitt ist keine Geschmacksfrage: für die
+DFA-Auswertung ist er publiziert (zwei Minuten), am eigenen Bestand bestätigt
+(der Anlauf endet bei 90–120 s) und damit nachprüfbar statt geraten.
 
 **0.47.1 — zwei Befunde aus der Live-Verifikation von 0.47.0.**
 
