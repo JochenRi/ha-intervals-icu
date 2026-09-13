@@ -1003,6 +1003,10 @@ Durability-Training (Empfehlung über 80 g Kohlenhydrate je Stunde).
   **Leistungserhalt**, nicht zur Entkopplung. Er darf als Kontextsatz auftauchen,
   **niemals** als Marke an dieser Skala. Zwei Kennzahlen in einen Maßstab zu
   legen wäre genau die Sorte Fehler, die dieses Paket behebt.
+  **Kein Widerspruch zu J5, wo derselbe Maßstab erlaubt ist:** dort misst die
+  Kachel Watt gegen Watt wie die Studie, hier Herzfrequenz gegen Leistung. Beide
+  Stellen gelten — wer eine davon „aufräumt", hebt die Unterscheidung auf, um die
+  es geht.
 - **Leistungserhalt selbst** (beste 20-min-Leistung frisch gegen nach 1.000 kJ)
   ist die Kennzahl, die der Forschung am nächsten liegt — braucht aber
   Verlaufsdaten, die heute nur live geholt werden. Eigene Stufe, erst prüfen,
@@ -1483,32 +1487,246 @@ Das ist kein Kalender-Sonderfall, sondern die häufigste Grid-Falle überhaupt:
 
 ## Paket J — Ermüdungswiderstand aus Sekundendaten
 
-### J1 · Erst messen, dann bauen
+### J1 · Gemessen am 13.09.2026 — das Ergebnis: es trägt nicht
 
-Die Zwei-Kurven-Darstellung (Leistung über Dauer, frisch gegen nach X kJ) ist
-die etablierte Praxis (WKO5, TrainingPeaks). Sie braucht aber Kennzahlen, die
-heute nicht im Archiv liegen: beste 5- und 20-Minuten-Leistung je Einheit,
-getrennt nach frischem und ermüdetem Abschnitt. Sekundendaten werden heute nur
-live geholt und nie gespeichert.
+Die Messung aus der ersten Fassung dieses Kapitels ist gelaufen, lesend, am
+Livebestand (239 Aktivitäten, 13.05.2025 bis 11.09.2026). **Leistungserhalt ist
+aus gewöhnlichen Fahrten nicht rechenbar.** Nicht wegen der Datenmenge und nicht
+wegen des Aufwands — die sind harmlos —, sondern weil die Zahl, die dabei
+herauskommt, die Abschnittslängen misst und nicht die Ermüdung.
 
-**Vor jedem Bau steht die Messfrage:** trägt die Rechnung auf dem Bestand?
-Reichen die langen Fahrten, um einen ermüdeten Abschnitt überhaupt zu füllen?
-Wenn nicht, endet J hier — und H trägt die Kachel weiter.
+**Die Belegung.** 116 Radfahrten tragen einen Leistungsstrom. Davon erreichen,
+mit genug Restfahrt, um einen ermüdeten Abschnitt zu füllen (Freiluft /
+inklusive Rolle):
 
-### J2 · Wenn es trägt
+| Schwelle | ≥ Schwelle | + 5 min Restfahrt | + 20 min Restfahrt |
+|---|---|---|---|
+| 800 kJ | 16 / 19 | 14 / 17 | **11 / 13** |
+| 1.000 kJ | 7 / 9 | 5 / 6 | **4 / 5** |
+| 1.500 kJ | 3 / 3 | 2 / 2 | **1 / 1** |
 
-- Einmaliger Durchlauf über die Aktivitäten, wenige Kennzahlen je Einheit
-  archiviert (Archivschema + Migration in der Bauart von `plan.migrate_goal`).
-- Zwei Kurven, der Abstand ist die Aussage.
-- Ein Ermüdungswiderstand als Einzelzahl.
+1.000 kJ ist damit kein Schwellenwert, sondern ein Einzelfallfilter; 1.500 kJ
+scheidet aus. Gerechnet wurde bei **800 kJ** über alle 19 Fahrten ab dieser
+Marke.
 
-### J3 · Die Skala wird nicht geliehen
+**Befund 1 · Es wurde nie maximal gefahren.** Der beste 5-Minuten-Abschnitt
+dieser Fahrten liegt bei 75,4 % der FTP (Spanne 61,2–92,5 %). Das ist keine
+Faustregel, sondern am eigenen Bestand gegengerechnet: die gemessene
+5-Minuten-Bestleistung im aktuellen Formniveau beträgt **251 W** (23.07.2026,
+119,5 % FTP), mehrfach bestätigt durch 242–245 W an anderen Tagen. Der
+„frische" Abschnitt der langen Fahrten kommt im Mittel auf **171 W** — **68 %**
+dieser Kapazität, im besten Fall 78 %. Verglichen werden also nicht zwei
+Leistungsfähigkeiten, sondern zwei Geländeabschnitte.
 
-WKO führt eine vergleichbare Größe („Stamina", 0–100 %, typisch 70–90) — aber
-aus einem proprietären Modell. **Deren Bereich darf nicht als Maßstab für eine
-anders gerechnete Zahl dienen.** Bezug ist der eigene Verlauf über die Zeit,
-nicht eine fremde Population. Gleiche Regel wie beim Amateur-Vergleichsmaßstab
-in G6.
+**Befund 2 · Der scheinbare Verlust ist ein Längenartefakt.** Dieselben 19
+Fahrten, einziger Unterschied: der frische Abschnitt wird auf dieselbe Länge
+beschnitten wie der ermüdete (die letzten L Sekunden vor dem Schwellenübertritt,
+L = Länge des ermüdeten Abschnitts).
+
+| Rechnung | Mittel | SD | t gegen 100 % |
+|---|---|---|---|
+| frisch = alles vor 800 kJ | 93,4 % | 11,4 | **−2,53** |
+| frisch = gleich langer Abschnitt | **99,5 %** | 11,2 | **−0,18** |
+
+Die ungleiche Rechnung besteht das Steigungskriterium aus G2 (|t| > 2) — und
+zwar ausschließlich deshalb, weil ein Maximum über mehr Material höher ausfällt.
+Längengleich gerechnet ist der Verlust null.
+
+**Befund 3 · Die Placebo-Schwelle beweist es.** Dieselbe Rechnung bei 200 kJ,
+wo der ermüdete Abschnitt der lange ist: **110,2 %**, t = **+4,18**. Der Athlet
+wäre „signifikant stärker, wenn er müde ist". Gleiches Artefakt, umgekehrtes
+Vorzeichen.
+
+**Warum eine Korrektur das nicht rettet.** Die direkte Korrelation zwischen dem
+Längenverhältnis der Abschnitte und dem gemessenen Erhalt liegt bei r = +0,18 —
+eine Regression auf die Abschnittslänge hätte den Fehler nicht gefunden. Was ihn
+findet, ist der längengleiche Kontrollabschnitt. Das ist ein Konstruktionsfehler,
+kein Statistikfehler, und er verschwindet nicht mit mehr Fahrten: fehlende
+Maximalanstrengung ist kein Belegungsproblem. Zehn weitere lange Fahrten liefern
+zehn weitere submaximale Abschnitte.
+
+**Der Aufwand, gemessen — damit ihn niemand neu misst:**
+
+- **Abrufe:** einer je Fahrt über `intervals_icu/streams`. 19 Fahrten in **7,4 s**,
+  0,39 s je Fahrt; die längste Fahrt (268 min Bewegungszeit) einzeln 0,42 s.
+  Gemessen über die HA-Uhr, inklusive Ausdünnung auf 900 Punkte und sieben
+  Kanäle — J bräuchte nur `time` und `watts`, der Wert ist also eine Obergrenze.
+- **Rohdatenmenge:** die 19 Fahrten tragen 180.641 s Bewegungszeit, alle 116
+  Leistungsfahrten zusammen 588.102 s. Zwei Kanäle, ungedünnt, grob 5 Byte je
+  Zahl: **~1,8 MB** für die 19, **~5,9 MB** für alle. Einmalig, nichts davon
+  bleibt liegen.
+- **Archivzuwachs:** ein Kennzahlensatz je Fahrt (`p5_fresh`, `p5_fat`,
+  `p20_fresh`, `p20_fat`, `fresh_s`, `fat_s`, `thr_kj`, `v`) misst **122
+  Zeichen**. Über 116 Fahrten **~14 kB** gegen ein Archiv von rund 300 kB. Der
+  Archivzuwachs war nie das Problem.
+
+**Messmethodisches zum Nachlesen.** Gerechnet auf den ausgedünnten Strömen des
+Panel-Endpunkts (max. 900 Punkte, Schrittweite 7–18 s je nach Fahrtlänge),
+Rollmittel über eine **Bewegungszeit**-Achse: Lücken über 60 s zählen weder als
+Arbeit noch als Fahrzeit. Ohne diese Achse bricht die Fensterbildung an jeder
+Fahrtpause ab — in der ersten Rechnung dieser Session lieferte sie
+20-Minuten-Werte ohne zugehörige 5-Minuten-Werte, was unmöglich ist und den
+Fehler verriet. Die so summierte Arbeit liegt 2–3 % über `icu_joules`; für eine
+Ja/Nein-Entscheidung unerheblich, für einen Bau nicht — der echte Durchlauf holt
+die ungedünnten Ströme.
+
+### J2 · Was daraus folgt
+
+J ist als **Auswertepaket geschlossen.** Es wird nichts gebaut, das Leistungserhalt
+aus dem vorhandenen Bestand herausrechnet.
+
+J bleibt als **Protokollpaket offen.** J3 bis J7 beschreiben, wie es dann
+aussieht. Der Unterschied ist die Datenquelle, nicht die Darstellung: die Werte
+kommen aus einer Messeinheit, nicht aus geklaubten Abschnitten. J8 sagt, was in
+der Zwischenzeit mit dem Mittelteil der Kachel geschieht.
+
+### J3 · Die Leitdarstellung ist ein Hantel-Diagramm
+
+Nicht zwei Kurven. Ein **Hantel-Diagramm** (dumbbell):
+
+- Je Dauer **eine Zeile**: 5 min und 20 min. Zwei Punkte je Zeile — frisch und
+  ermüdet —, verbunden durch einen Strich. **Der Abstand ist die Aussage**, nicht
+  die Lage und nicht die Farbe.
+- **Gefüllter Punkt = frisch, hohler Punkt = ermüdet.** Die Form trägt die
+  Unterscheidung, nicht die Farbe allein (Hausregel Dreifachkodierung; beide
+  Punkte stehen im selben Register, es ist kein Urteil).
+- **Direkte Beschriftung am Punkt** — der Wattwert steht am Punkt, der
+  Prozentwert am Verbindungsstrich. **Keine Legende.**
+- **Genau zwei Punkte je Zeile.** Kein dritter Zustand, keine Zwischenpunkte,
+  keine Fehlerbalken an der Hantel. Was mehr zeigt, gehört in den Rechenweg.
+- Gemeinsame Watt-Achse für beide Zeilen, damit die Abstände vergleichbar sind.
+  **Die Achse beginnt nicht bei null** — eine Hantel zeigt einen Abstand, und ein
+  Nullpunkt drückt ihn optisch platt. Dafür stehen beide Wattwerte am Punkt und
+  der Prozentwert am Strich: die Zahl trägt die Aussage, das Bild ordnet sie ein.
+  Das ist eine **Setzung** und wird so beschriftet.
+- Mehrere Messtermine übereinander wären ein Kleinvielfaches und gehören in den
+  Verlauf, nicht in die Leitdarstellung.
+
+### J4 · Die zwei Leistungskurven gehören in den Rechenweg, nicht nach oben
+
+Die Zwei-Kurven-Darstellung (Leistung über Dauer, frisch gegen nach X kJ) ist die
+etablierte Praxis in WKO5 und TrainingPeaks. Sie ist der richtige Ort, um zu
+zeigen, **woher** die zwei Punkte kommen — aber sie ist nicht die Aussage: eine
+Kurve über sechs Dauern beantwortet sechs Fragen gleichzeitig, die Kachel stellt
+eine. Also in den Rechenweg, mit derselben Kodierung gefüllt/hohl.
+
+**Und nur, wenn es Stützstellen gibt.** Liefert das Protokoll wie in J8 nur 5 und
+20 min, sind das **zwei Punktepaare, keine Kurve** — eine interpolierte Linie
+über zwei gemessene Dauern ist eine Erfindung. Die Zahl der Stützstellen steht
+je Kurve dabei.
+
+### J5 · Der Amateur-Vergleichsmaßstab gehört HIER hin — mit zwei Bedingungen
+
+Die Zahl: erfolgreiche Amateure verlieren nach 1.000 kJ **6,5 %** über 20 min,
+weniger erfolgreiche **12,5 %** (Frontiers in Sports and Active Living 2025,
+„Enhanced durability predicts success in amateur road cycling"). Als
+Größenordnung daneben: 20 gut trainierte Amateure verloren nach demselben
+1.000-kJ-Protokoll 10,1 ± 6,5 % über 20 min und 10,8 ± 7,8 % über 5 min
+(BMC Sports Sci Med Rehabil 2025).
+
+**Warum er hier erlaubt ist und in G6 verboten — dieser Absatz bleibt stehen,
+sonst hebt ihn jemand später als vermeintlichen Widerspruch wieder auf.** G6
+handelt von **Entkopplung**: Herzfrequenz gegen Leistung, Prozent Drift. Der
+Maßstab ist an **Leistungserhalt** erhoben: Watt gegen Watt. Das sind zwei
+verschiedene Größen, und den Maßstab an die Entkopplungsskala zu legen hieße,
+zwei Kennzahlen in einen Maßstab zu legen — genau der Fehler, den Paket G behebt.
+Hier misst die Kachel dieselbe Größe wie die Studie: derselbe Zähler, derselbe
+Nenner, dieselbe Schwellenarbeit. Deshalb darf er hier als Marke stehen.
+
+**Bedingung 1 — nur neben protokollgemessenen Werten.** Der Maßstab ist an
+**All-out-Zeitfahren** nach einem normierten Ermüdungsprotokoll erhoben: 70–80 %
+der frischen 20-min-Leistung bis 1.000 kJ, danach 5- und 20-min-TT. Neben Werten,
+die aus gewöhnlichen Fahrten geklaubt sind, ist er falsch — das ist exakt der
+Fehler, den J1 misst. Liegt keine Protokollfahrt vor, erscheint die Marke nicht.
+
+**Bedingung 2 — nur an der 20-Minuten-Zeile.** Die Studie fand für das
+5-Minuten-Intervall **keinen** Unterschied zwischen den Gruppen. Die 5-min-Hantel
+bleibt ohne Marke, mit dem Satz dazu, dass dort keine Trennung belegt ist. Eine
+Marke an beiden Zeilen wäre eine Erfindung mit Quellenangabe.
+
+### J6 · Die Skala wird nicht geliehen
+
+WKO führt eine vergleichbare Größe („Stamina", 0–100 %, typisch 70–90) — aber aus
+einem proprietären Modell. **Deren Bereich darf nicht als Maßstab für eine anders
+gerechnete Zahl dienen.** Bezug ist der eigene Verlauf über die Zeit, nicht eine
+fremde Population. Das ist etwas anderes als J5: dort stimmt die gerechnete
+Größe mit der Studie überein, hier ist das Modell unbekannt.
+
+### J7 · Archivschema und Migration — die Lücke aus 0.35.0 darf sich nicht wiederholen
+
+- Neuer Block im Archiv (Vorschlag `durability_tests`), **eingetragen in
+  `importer.empty_data()`**. Ohne diesen Eintrag entsteht der Block auf
+  Altbeständen nie: `store.async_load` füllt fehlende Schlüssel nur auf der
+  obersten Ebene auf. Das ist die Lücke aus 0.35.0, zum dritten Mal — nach `goal`
+  und `day_context`.
+- Dazu eine Migration **in der Bauart von `plan.migrate_goal()`**: aufgerufen in
+  `store.async_load`, gibt `None` zurück, wenn nichts zu tun ist, sonst den
+  normalisierten Block; `schedule_save()` **nur** im Änderungsfall. Die
+  eingefrorene No-op-Referenz aus `test_coach` gilt hier genauso — ein No-op darf
+  keinen Speichervorgang auslösen.
+- **Versionsmarke je Satz** (`v`), Bauart `DFA_ALGO_VERSION` /
+  `ACTIVITY_FIELDS_VERSION`: ändert sich die Rechnung, werden gespeicherte Sätze
+  verworfen und neu gerechnet. Die Ströme liegen nicht im Archiv, also erreicht
+  eine Korrektur die alten Werte sonst nie.
+- Gespeichert werden nur Kennzahlen, nie Ströme: `p5_fresh`, `p5_fat`,
+  `p20_fresh`, `p20_fat`, `fresh_s`, `fat_s`, `thr_kj`, `v` — 122 Zeichen je
+  Fahrt (J1).
+
+### J8 · Was stattdessen mit dem Mittelteil der Kachel geschieht
+
+Drei Möglichkeiten, in der Reihenfolge der Empfehlung.
+
+**1 (empfohlen) · Der Mittelteil bleibt, wie er ist — und der Aufwand geht in die
+Messeinheit.** `workouts.py` führt bereits die Familie „Durability, spezifisch".
+Dazu kommt eine **Messeinheit nach dem Studienprotokoll**: 5- und 20-min-All-out
+frisch, dann 70–80 % der frischen 20-min-Leistung bis 1.000 kJ, dann 5- und
+20-min-All-out. Auf der Rolle sauber fahrbar — der Bestand zeigt 1.216 kJ in
+130 min bei 156 W, das Protokoll ist in gut zwei Stunden erledigt, und die Rolle
+hält die Bedingungen konstant, was für einen Vergleichswert wichtiger ist als
+Freiluft-Homogenität. Erst wenn **eine** solche Fahrt im Bestand liegt, zeichnet
+die Kachel die Hantel; ab **zwei** auch den Verlauf. Bis dahin steht an der
+Stelle ein Satz, was fehlt, plus der Knopf, der die Einheit in den Kalender legt
+— dieselbe Bauart wie „Was das ausbaut" in G5.
+
+**2 · Der Innenverlauf einer Fahrt.** Die Kachel hat heute einen Punkt je Fahrt;
+das Innere einer Fahrt ist ungenutzt. Rollende 20-min-Fenster, Verhältnis
+Herzfrequenz zu Leistung, aufgetragen über die kumulierte Arbeit **innerhalb
+einer Fahrt**, wählbar je Fahrt, gezeichnet nur für Fahrten, die die Filter aus
+G3 ohnehin bestehen. Das braucht keine Maximalanstrengung — genau deshalb
+funktioniert die Kachel heute mit Entkopplung und nicht mit Watt. **Mit der
+Bremse:** ein Bild, keine Leitzahl, keine Schwelle, keine Urteilsfarbe. Ein
+rollendes HF/Watt-Verhältnis reagiert auf Gelände, Hitze und Intensitätswechsel;
+als Beschreibung ist das ehrlich, als Zahl wäre es die nächste Auflage desselben
+Fehlers.
+
+**3 · Nichts.** Die Kachel ist mit Kopf, Wolke, Bins und Blockverlauf bereits
+dicht. Nichts zu bauen ist ein gültiges Ergebnis einer Messung.
+
+**Nicht 1 und 2 im selben Release.** 2 kommt nur, wenn der Mittelteil nach 1
+sichtbar leer wirkt.
+
+### Tests J
+
+Erst relevant, wenn J als Protokollpaket gebaut wird — hier festgehalten, damit
+die Bau-Session sie nicht neu erfindet.
+
+- **Längengleich ist Pflicht:** eine Fixture, deren ungleiche Rechnung einen
+  Verlust zeigt und deren längengleiche Rechnung keinen. Der Test muss den
+  Unterschied sehen — sonst prüft er nichts (Lehre 2 aus Paket A: zwei
+  unterscheidbare Fälle in der Fixture).
+- **Bewegungszeit statt Uhrzeit:** Fixture mit 20 min Pause mittendrin. Ohne die
+  Bewegungszeit-Achse bricht die Fensterbildung ab; die Gegenprobe muss das
+  Fehlen der 5-Minuten-Werte melden, nicht daran abstürzen.
+- **Keine Hantel ohne Protokollfahrt:** Gegenprobe mit Fahrten aus dem
+  gewöhnlichen Bestand — die Kachel darf nichts zeichnen und muss sagen, warum.
+- **Die Marke aus J5 an der 20-min-Zeile und nicht an der 5-min-Zeile:** beide
+  Zeilen einzeln prüfen, nicht nur eine.
+- **Migration (J7), drei Fälle einzeln:** Altbestand ohne Block → Block entsteht;
+  Bestand mit kaputtem Block → wird normalisiert; Bestand mit gültigem Block →
+  **kein** Speichervorgang.
+- Alle Schwellen (Zieldauern, Schwellenarbeit, Mindestzahl Protokollfahrten,
+  Achsen-Setzung aus J3) liegen in `const.py`, genau einmal, und in der Payload —
+  unter dem Quelltext-Wächter aus F.
 
 ---
 
