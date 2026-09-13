@@ -706,6 +706,9 @@ try:  # inside the package (Home Assistant)
         DURABILITY_MIN_MINUTES,
         FATIGUE_MAX_ABOVE_Z2,
         FATIGUE_MIN_MINUTES,
+        BLOCK_MIN_POINTS,
+        BLOCK_MIN_SECONDS,
+        BLOCK_WARMUP_DISCARD_S,
     )
 except ImportError:  # standalone (test suite loads this file directly)
     from const import (
@@ -716,6 +719,9 @@ except ImportError:  # standalone (test suite loads this file directly)
         DURABILITY_MIN_MINUTES,
         FATIGUE_MAX_ABOVE_Z2,
         FATIGUE_MIN_MINUTES,
+        BLOCK_MIN_POINTS,
+        BLOCK_MIN_SECONDS,
+        BLOCK_WARMUP_DISCARD_S,
     )
 
 
@@ -740,6 +746,89 @@ def variability_index(activity: dict[str, Any]) -> float | None:
     if not normalised or not average:
         return None
     return normalised / average
+
+
+def _median(values: list[float]) -> float | None:
+    """Echter Median - bei GERADER Anzahl das Mittel der beiden mittleren.
+
+    Eine Fassung mit `sorted(v)[n // 2]` greift dort den OBEREN Wert. Der
+    Fehler taeuscht sich nach der Datenlage: bei ungerader Blockzahl faellt er
+    nie auf, bei gerader immer - und die SweetSpot-Einheiten haben IMMER zwei
+    Bloecke (PROJEKTSTAND §7).
+    """
+    if not values:
+        return None
+    ordered = sorted(values)
+    n = len(ordered)
+    if n % 2:
+        return ordered[n // 2]
+    return (ordered[n // 2 - 1] + ordered[n // 2]) / 2.0
+
+
+def dfa_blocks(
+    dfa: list[Any] | None,
+    watts: list[Any] | None,
+    heartrate: list[Any] | None,
+    laps: list[dict[str, Any]] | None,
+    sample_secs: int = 1,
+) -> list[dict[str, Any]]:
+    """Ein Wert je BLOCK, direkt abgelesen - kein Fit, keine Interpolation.
+
+    Die Blockgrenzen kommen aus Intervals' eigenen Abschnitten, nicht aus einer
+    Erkennung: die Zuordnung trifft der Athlet (K2). Eine Segmentierung aus dem
+    Leistungsstrom hielte einen Berg, eine Ampel oder eine Pause fuer einen
+    Block - Runde 1 aus L0 in neuer Verkleidung.
+
+    Die ersten BLOCK_WARMUP_DISCARD_S Sekunden fallen weg. Ohne das misst der
+    Blockwert den EINSCHWINGVORGANG mit: alpha startet hoch und faellt
+    innerhalb der ersten zwei Minuten, was 69 bis 83 % der Streuung ausmacht
+    (PROJEKTSTAND §7).
+    """
+    if not dfa or not laps:
+        return []
+    out: list[dict[str, Any]] = []
+    for lap in laps:
+        if not isinstance(lap, dict):
+            continue
+        start = _number(lap.get("start_s"))
+        end = _number(lap.get("end_s"))
+        dur = _number(lap.get("moving_time")) or 0.0
+        label = str(lap.get("label") or "")
+        if start is None or end is None or dur < BLOCK_MIN_SECONDS:
+            continue
+        alphas: list[float] = []
+        power: list[float] = []
+        pulse: list[float] = []
+        kept = start + BLOCK_WARMUP_DISCARD_S
+        for index in range(len(dfa)):
+            moment = index * max(sample_secs, 1)
+            if moment < kept or moment > end:
+                continue
+            value = _number(dfa[index])
+            if value is None or not 0.0 < value <= 2.0:
+                continue
+            alphas.append(value)
+            watt = _number(watts[index]) if watts and index < len(watts) else None
+            if watt and watt > 0:
+                power.append(watt)
+            beat = _number(heartrate[index]) if heartrate and index < len(heartrate) else None
+            if beat and beat > 0:
+                pulse.append(beat)
+        if len(alphas) < BLOCK_MIN_POINTS:
+            continue
+        mean_a = sum(alphas) / len(alphas)
+        out.append({
+            "label": label,
+            "start_s": round(start),
+            "minutes": round(dur / 60.0, 1),
+            "points": len(alphas),
+            "discarded_s": BLOCK_WARMUP_DISCARD_S,
+            "alpha": round(_median(alphas), 3),
+            "alpha_sd": round((sum((x - mean_a) ** 2 for x in alphas) / len(alphas)) ** 0.5, 3),
+            "watts": round(_median(power)) if power else None,
+            "hr": round(_median(pulse)) if pulse else None,
+        })
+    return out
 
 
 def above_endurance_share(activity: dict[str, Any]) -> float | None:

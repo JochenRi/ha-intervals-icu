@@ -72,7 +72,7 @@ UNAVAILABLE_NOTE = "_note"
 # Bumped whenever the DFA maths changes. Stored summaries carrying an older
 # version are dropped and recomputed - the streams themselves are not kept, so
 # a fix would otherwise never reach the values already in the archive.
-DFA_ALGO_VERSION = 4
+DFA_ALGO_VERSION = 5
 
 # Bumped when ACTIVITY_FIELDS grows: stored summaries were fetched with the
 # old field list and would otherwise never gain the new columns.
@@ -258,6 +258,21 @@ async def async_import_dfa(
             # das Archiv trug ein Fenstermittel je Fahrt und keinen Verlauf.
             summary["hours"] = derive.dfa_hours(
                 by_name.get("dfa_a1"), by_name.get("watts"), by_name.get("heartrate")
+            )
+            # Die Bloecke brauchen die Abschnittsgrenzen des Athleten, und die
+            # stehen NICHT in den Stroemen. Zweiter Abruf, nur hier - Laps
+            # werden sonst nirgends archiviert, und die Stroeme sind gleich
+            # danach weg (docs/ausbau.md M4).
+            laps: list[dict[str, Any]] = []
+            try:
+                laps = derive.normalize_laps(
+                    await client.async_get_intervals(key)
+                ).get("laps") or []
+            except Exception as err:  # noqa: BLE001 - eine Fahrt ohne Laps ist kein Abbruch
+                _LOGGER.debug("laps for %s failed: %s", key, err)
+            summary["blocks"] = derive.dfa_blocks(
+                by_name.get("dfa_a1"), by_name.get("watts"),
+                by_name.get("heartrate"), laps,
             )
         data["dfa"][key] = summary or {}
         done += 1

@@ -111,7 +111,7 @@ def _int(value: str) -> int:
 
 
 # The count of files is spelled out in German in §9's opening sentence.
-WORDS = {14: "Vierzehn", 15: "Fünfzehn", 16: "Sechzehn", 17: "Siebzehn"}
+WORDS = {14: "Vierzehn", 15: "Fünfzehn", 16: "Sechzehn", 17: "Siebzehn", 18: "Achtzehn", 19: "Neunzehn", 20: "Zwanzig"}
 
 
 # --- this file's own row, and the two totals ---------------------------------

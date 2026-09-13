@@ -127,6 +127,41 @@ FATIGUE_MIN_PAIRS = 6
 # Puls bei 88-97 %, Watt bei 100 % - war der Fehler aus 0.47.0 (PROJEKTSTAND §7).
 CURVE_TARGET_SHARE = 0.90
 
+# --- Paket M: ein Wert je Block ----------------------------------------------
+# Die ersten zwei Minuten jedes Blocks werden verworfen. Rogers (Front Sports
+# Act Living 2021): die ersten zwei Minuten sind nicht im metabolischen
+# Gleichgewicht, geeignet sind die Werte bei Minute 4 und 6; Andriolo wertet
+# aus demselben Grund nur die Minuten 5 bis 20. AM EIGENEN BESTAND BESTAETIGT:
+# der Anlauf endet bei 90-120 s (Mediane je 30-s-Segment, VO2max:
+# 1,66 -> 1,67 -> 1,06 -> 0,51 -> 0,70). Bei SweetSpot dauert er laenger, die
+# publizierte Grenze deckt also den langsameren Fall mit ab - sie bleibt.
+BLOCK_WARMUP_DISCARD_S = 120
+# Unter so vielen Punkten nach dem Verwerfen traegt der Median nicht.
+BLOCK_MIN_POINTS = 20
+# Ein Block unter dieser Dauer kann nach dem Verwerfen nichts mehr hergeben.
+BLOCK_MIN_SECONDS = 150
+# Unter so vielen Bloecken wird KEINE Verlaufslinie gezeichnet - zwei Punkte
+# sind kein Verlauf, und eine Linie durch drei ist die 0.13.0-Falle.
+BLOCK_MIN_FOR_TREND = 6
+
+# Die Zielkorridore je Familie. SETZUNG AUS DER PRAXIS DES ATHLETEN, nicht aus
+# einer Studie: er faehrt VO2max unter alpha 0,5 und SweetSpot zwischen 0,5 und
+# 0,75, schaut waehrend der Einheit auf alpha und regelt die Leistung nach.
+# Beide Grenzen zaehlen - faellt alpha unter die untere, wird Leistung
+# herausgenommen. Am Bestand geprueft: von 30 gemessenen Bloecken lag KEINER
+# unter seinem Korridor, 11 darueber - die Korridore sitzen dort, wo seine
+# Werte hinstreben.
+BLOCK_CORRIDORS = {
+    "vo2max": (0.20, 0.50),
+    "sweetspot": (0.50, 0.75),
+    "tempo": (0.75, 1.00),
+}
+# Die Schrittweiten des Regelkreises. Die Grenze zwischen "knapp" und "weit"
+# wird NICHT gesetzt, sondern aus der Streuung DERSELBEN Familie gerechnet:
+# eine Abweichung, die kleiner ist als die uebliche Schwankung, ist keine.
+BLOCK_STEP_NEAR_PCT = 5
+BLOCK_STEP_FAR_PCT = 10
+
 # Which sessions the durability tile may look at.
 DURABILITY_MIN_MINUTES = 45      # below this a decoupling reading is not usable
 DURABILITY_MAX_INTENSITY = 80    # interval sessions are a different question
