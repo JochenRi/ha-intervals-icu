@@ -2457,6 +2457,111 @@ durchläuft und beide Schwellen in Watt misst — analog zum Durability-Test aus
 Paket K, aber kürzer und ohne Vollgas. Er löst gleich zwei offene Punkte: die
 Vorgaben für die übrigen Familien, und die zu dünne Gegenprobe aus L4a.
 
+## Paket M — Ein Wert je Block, aufgetragen über die Zeit
+
+**Vereinbart am 13.09.2026, nach 0.47.0. Noch nichts gebaut.**
+
+### M0 · Warum die Stundeneinteilung hier NICHT gilt
+
+Die Fahrtstunden-Einteilung aus Paket L ist für die **Grundlagenkurve** gebaut
+und gehört dorthin. Auf strukturierte Rolleneinheiten angewandt misst sie
+etwas anderes, als sie behauptet — und das ist belegt, nicht befürchtet:
+
+> SweetSpot 2×20 vom 24.08.2026. Stunde 1 (Einrollen, zwei Blöcke, Pause):
+> P(0,75) = **181,1 W**. Stunde 2 (Ausrollen): **153,8 W**. Dieselbe Fahrt,
+> dieselbe Person, 27 W Unterschied — und alpha-Spanne 0,25 bis 1,77 **in einer
+> einzigen Stunde**.
+
+Der Unterschied ist kein Ermüdungsverlauf, sondern **der Unterschied zwischen
+Block und Ausrollen**. Eine Rolleneinheit unter 90 Minuten hat keine
+Fahrtstunden im Sinne der Kurve; sie hat Abschnitte. **Die Stundeneinteilung
+wird deshalb für strukturierte Einheiten ausdrücklich nicht verwendet**, und
+der Ausschluss aus der Grundlagenkurve (`fatigue_curve_reason` → `structured`)
+bleibt bestehen.
+
+### M1 · Die andere Frage
+
+Nicht „wie fällt es innerhalb der Fahrt", sondern: **bei welcher Leistung lag
+mein alpha in den SweetSpot-Blöcken, und wie hat sich das über Wochen
+verändert.** Jeder Block ein Punkt, aufgetragen über die Zeit.
+
+Die Bedingungen sind günstiger als bei allem bisher: Rolle, fester Widerstand,
+gleiche Blockstruktur, dieselbe Person, wöchentliche Wiederholung — genau die
+Lage, in der die Literatur dem Wert am meisten zutraut (siehe
+Richtungsentscheidung). **Gemessen wird trotzdem, nicht angenommen.**
+
+### M2 · Was VOR dem Bau zu messen ist — fünf Fragen, jede mit Zahlen
+
+**a) Werden die Blöcke erkannt, und auf welchem Weg?**
+Zwei Wege stehen offen, und der Unterschied ist der, an dem dieses Projekt
+schon dreimal gescheitert ist:
+
+| Weg | Grenzen kommen von | Kosten |
+|---|---|---|
+| **Intervals' eigene Abschnitte** (`async_get_intervals`, `derive.normalize_laps`) | dem Gerät bzw. der geplanten Einheit | ein zweiter API-Abruf je Aktivität beim Import |
+| Segmentierung aus dem Wattstrom | einer eigenen Erkennung | kein Abruf, dafür eine Heuristik |
+
+**Empfehlung: der erste Weg.** `normalize_laps` mappt bereits `start_s` /
+`end_s` (exakte Zeitgrenzen zum Schneiden des Stroms), `avg_watts`, `np_watts`
+und sogar ein `dfa_a1`-Feld, falls Intervals einen Abschnittsmittelwert
+liefert. **Und er folgt K2: die Zuordnung trifft der Athlet, nicht die
+Erkennung.** Eine Segmentierungsheuristik wäre Runde 1 in neuer Verkleidung —
+sie würde einen Berg, eine Ampel oder eine Pause für einen Block halten.
+
+**Architekturpunkt, der daran hängt:** Laps werden heute **nicht archiviert**,
+sie werden je geöffneter Aktivität live geholt. Die Ströme dagegen sind nach
+dem Import weg. Für einen Verlauf über Wochen müssen die Blockwerte deshalb
+**beim Import mitgerechnet und archiviert** werden — in der Bauart von
+`dfa_hours` (J7/K2: Archivblock, Versionsmarke, Migration). Das bedeutet einen
+zweiten Abruf je Aktivität im Importweg und einen Algorithmus-Bump.
+
+**b) Sind die Blöcke lang genug?** Die Methode braucht 2-Minuten-Fenster. Ein
+4-Minuten-VO2max-Block trägt ein bis zwei, ein 20-Minuten-SweetSpot-Block
+deutlich mehr. **Zu messen: auswertbare Fenster je Blocktyp**, nicht je Fahrt.
+
+**c) Die Kernfrage: lässt sich alpha DIREKT ablesen?** Nicht „wo schneidet die
+Gerade 0,5", sondern „bei welcher Leistung lag mein alpha tatsächlich". **Wenn
+innerhalb eines Blocks die Leistung konstant ist, braucht es keinen Fit** — und
+genau damit entfällt der Fehler vom 24.08. Der Fit war dort das Problem, nicht
+alpha.
+
+**d) Gegenprobe, und sie entscheidet:** streuen die Werte zwischen
+GLEICHARTIGEN Blöcken DERSELBEN Fahrt? Liegen Block 1 und Block 2 einer
+SweetSpot-Einheit weit auseinander, misst die Rechnung nicht die Belastung.
+**Dann wird nichts gebaut.** Das ist die billigste Gegenprobe im ganzen Paket,
+weil sie zwei Messungen unter praktisch identischen Bedingungen vergleicht.
+
+**e) Belegung:** wie viele Blöcke liegen in sechs Wochen vor, wie viele in
+zwölf? **Zwei Punkte je Familie sind kein Verlauf.** Zu melden ist, welcher
+Zeitraum trägt — nicht, dass es „genug" sei.
+
+**Und die Signalfrage, die vor allem VO2max betrifft:** der Gurt wird unter
+alpha 0,5 unzuverlässig (Polar H10 gegen EKG: +58 bis −41 % dort gegen rund
+±10 % bei niedriger Intensität). Die Streuung ist **in den eigenen Blöcken** zu
+messen. Explodiert sie dort, trägt VO2max nicht — **auch wenn SweetSpot trägt.
+Dann wird nur gebaut, was trägt.**
+
+### M3 · Was daraus wird, WENN es trägt
+
+1. **Eine Verlaufsanzeige je Familie** — SweetSpot und VO2max über die letzten
+   Wochen, Leistung bei alpha 0,75 bzw. 0,5. Hausmuster wie überall: Leitzahl
+   oben, Belegung dabei, Rechenweg aufklappbar, und unterscheidbar, was Messung
+   ist und was zu dünn belegt.
+2. **Der aktuelle Wert ersetzt die FTP-Skalierung für diese Familien.** Damit
+   käme auch die SweetSpot-Vorgabe aus einer Messung statt aus einer
+   Eintragung, die nachweislich rund 10 % zu hoch steht. **Die FTP bleibt
+   Rückfall, sichtbar beschriftet** (Richtungsentscheidung, Punkt 1).
+
+### M4 · Reihenfolge, verbindlich
+
+1. 0.47.0 einspielen, **Neuberechnung abwarten** (Version 4, rund drei Abgleiche).
+2. `p050` und die Signalqualität unterhalb alpha 0,5 auslesen und melden.
+3. Dann erst a) bis e) messen.
+4. Dann entscheiden, was gebaut wird — und nur das, was trägt.
+
+**Nichts davon wird vorgezogen.** Jede der drei gescheiterten Runden aus L0 hat
+damit angefangen, dass eine plausible Idee vor ihrer Messung gebaut wurde.
+
 ### Hausmuster für die Kachel
 
 Leitzahl oben, Beleg darunter, aufklappbarer Rechenweg, **Beleg und Setzung
