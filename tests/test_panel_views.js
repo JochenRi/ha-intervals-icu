@@ -1449,13 +1449,39 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
     contains(tileClear, "Bis etwa", "durability klar: keine Leitzahl trotz gesicherter Steigung");
     ok(tileFlat !== tileClear, "durability: gesperrter und tragender Fall sind nicht unterscheidbar");
 
-    // Die beiden Achsen stehen jetzt unter EINER Ueberschrift - und der
-    // Unterschied wird benannt, sonst waere es ein Widerspruch statt einer
-    // Entscheidung.
-    contains(tileFlat, "Andere Achse als oben, mit Absicht",
+    // Die beiden Achsen: der Unterschied wird weiter benannt - aber im
+    // RECHENWEG, nicht als laengster Absatz ueber vier Strichen (0.47.0).
+    contains(tileFlat, "Zwei Achsen unter einer Überschrift, mit Absicht",
              "durability: die zwei Achsen stehen unkommentiert nebeneinander");
+    const rechenweg = tileFlat.slice(tileFlat.indexOf("Der Rechenweg"));
+    contains(rechenweg, "kassiert", "durability: die Achsen-Begründung steht nicht im Rechenweg");
     ok(/Wie stark entkoppelt es\?/.test(tileFlat) && /Wird es besser\?/.test(tileFlat),
        "durability: die Abschnitte tragen keine eigenen Ueberschriften");
+
+    // ZUGEKLAPPT, solange beide Abschnitte nichts sagen - mit einer Zeile, die
+    // den Stand nennt. Und die DATENLAGE entscheidet, nicht der Code.
+    const sumOf = (html) => (html.match(/<details class="more"( open)?><summary>([^<]*)</) || []);
+    const flatSum = sumOf(tileFlat);
+    ok(flatSum[1] === undefined, "durability flach: die tauben Abschnitte stehen offen");
+    contains(flatSum[2] || "", "unter der", "durability flach: die Zusammenfassungszeile fehlt");
+    contains(flatSum[2] || "", "kein Block trägt bisher einen Trend",
+             "durability flach: der Blockstand fehlt in der Zeile");
+    // GEGENPROBE, gezaehlt und benannt: sobald ein Block einen Trend traegt,
+    // geht derselbe Abschnitt von selbst auf. Ohne diesen Fall pruefte die
+    // Zusicherung oben nur, dass das Attribut nie gesetzt wird.
+    const clearSum = sumOf(tileClear);
+    ok(clearSum[1] === " open",
+       "durability klar: der Abschnitt bleibt zu, obwohl ein Block einen Trend trägt");
+    ok(/Blöcken trägt einen Trend/.test(clearSum[2] || ""),
+       `durability klar: die Zeile nennt den Trend nicht (${clearSum[2]})`);
+    // und ein reissendes Band oeffnet ihn ebenso - die zweite Bedingung, sonst
+    // haengt die Automatik an einem einzigen Fall
+    const laut = { ...flat, bins: flat.bins.map((b, i) => (i === 0 ? { ...b, median: flat.decoupling_good + 1 } : b)) };
+    const lautSum = sumOf(String(p.rDurability(laut)));
+    ok(lautSum[1] === " open",
+       "durability: ein Band über der Marke öffnet den Abschnitt nicht");
+    ok(/Arbeitsbändern über der/.test(lautSum[2] || ""),
+       "durability: die Zeile nennt das reißende Band nicht");
 
     // Baender und Bloecke sagen, warum sie schweigen.
     ok(flat.bins.some((b) => b.thin) && /zu dünn/.test(tileFlat),

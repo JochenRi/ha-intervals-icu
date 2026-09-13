@@ -914,25 +914,52 @@ class IntervalsIcuPanel extends HTMLElement {
         ${head}
         <p class="effect">${esc(d.headline)}</p>
         ${this.rFatigue(this._fatigue)}
-        <h4 class="subsec">Wie stark entkoppelt es?</h4>
-        <p class="hint"><b>Mediane je Arbeitsband</b> — eine Beschreibung dessen, wo die Fahrten liegen,
-          keine Vorhersage. <b>Andere Achse als oben, mit Absicht:</b> die Schwellenleistung liest sich
-          über die DAUER (die Arbeit hängt an der Intensität und holte den Bergeffekt zurück), die
-          Entkopplung über die ANGESAMMELTE ARBEIT (ein Zeitschnitt hielt hier nicht). Beides ist
-          gemessen, beides am selben Bestand begründet — und deshalb steht es getrennt statt
-          vereinheitlicht:</p>
-        <div class="durbands">${d.bins.map(band).join("")}</div>
-        <h4 class="subsec">Wird es besser?</h4>
-        <p class="hint">Der Kipppunkt je ${fmt(d.block_weeks, 0)}-Wochen-Block.
-          Ein Block, der eine der drei Regeln reißt, bleibt leer und wird nicht überbrückt:</p>
-        <div class="durbands">${d.blocks.map(blockRow).join("")}</div>
-        ${blockWait ? `<p class="hint">${blockWait}</p>` : ""}
+        ${(() => {
+          /* Zwei Abschnitte, die auf diesem Bestand durchgehend NICHTS sagen:
+             alle Bänder unter der Marke, kein Block mit Trend - eine halbe
+             Bildschirmseite Striche unter dem längsten Erklärabsatz der Karte.
+             Sie werden NICHT gelöscht, sie können wieder etwas sagen. Sie
+             klappen zu, und darüber steht eine Zeile mit dem Stand.
+             DIE DATENLAGE ENTSCHEIDET, NICHT DER CODE: sobald ein Band die
+             Marke reißt oder ein Block einen Trend trägt, geht der Abschnitt
+             von selbst auf. */
+          const loud = (d.bins || []).filter((b) => b.median != null && b.median >= mark);
+          const trend = (d.blocks || []).filter((b) => b.tipping_kj != null);
+          const open = loud.length > 0 || trend.length > 0;
+          const summary = [
+            loud.length
+              ? `${fmt(loud.length)} von ${fmt((d.bins || []).length)} Arbeitsbändern über der
+                 ${fmt(mark, 0)}-%-Marke`
+              : `Entkopplung in allen Arbeitsbändern unter der ${fmt(mark, 0)}-%-Marke`,
+            trend.length
+              ? `${fmt(trend.length)} von ${fmt((d.blocks || []).length)} Blöcken trägt einen Trend`
+              : "kein Block trägt bisher einen Trend",
+          ].join("; ");
+          return `<details class="more"${open ? " open" : ""}><summary>${summary}</summary>
+            <h4 class="subsec">Wie stark entkoppelt es?</h4>
+            <p class="hint"><b>Mediane je Arbeitsband</b> — eine Beschreibung dessen, wo die Fahrten
+              liegen, keine Vorhersage. Über einer <i>anderen Achse</i> als die Kurve oben; warum,
+              steht im Rechenweg:</p>
+            <div class="durbands">${d.bins.map(band).join("")}</div>
+            <h4 class="subsec">Wird es besser?</h4>
+            <p class="hint">Der Kipppunkt je ${fmt(d.block_weeks, 0)}-Wochen-Block.
+              Ein Block, der eine der drei Regeln reißt, bleibt leer und wird nicht überbrückt:</p>
+            <div class="durbands">${d.blocks.map(blockRow).join("")}</div>
+            ${blockWait ? `<p class="hint">${blockWait}</p>` : ""}</details>`;
+        })()}
         <p class="hint">${ico("bike", C.tx2, 13)} <b>Was das ausbaut:</b> Durability ist unabhängig von
           der VO2max trainierbar, und zwar durch niedrig- <i>und</i> hochintensives Ausdauertraining
           (Maunder 2023) — der Reiz entsteht durch Qualität unter bestehender Ermüdung, nicht durch mehr
           Kilometer. Im Trainer-Reiter steht dafür die Einheit mit dem Zweck „Durability, spezifisch“.</p>
         <details class="more"><summary>Der Rechenweg</summary>
           ${forward}
+          <p class="src"><b>Zwei Achsen unter einer Überschrift, mit Absicht.</b> Die
+            Schwellenleistung liest sich über die DAUER — die angesammelte Arbeit hängt an der
+            Intensität und holte den Bergeffekt zurück, an dem eine frühere Messrunde scheiterte.
+            Die Entkopplung liest sich über die ARBEIT — ein Zeitschnitt hielt hier nicht.
+            <b>Beides ist am selben Bestand begründet</b>, und deshalb steht es getrennt statt
+            vereinheitlicht: eine gemeinsame Achse hätte eine der beiden Begründungen kassiert,
+            und zwar stillschweigend.</p>
           <p class="src"><b>Welche Einheiten zählen:</b> ab ${fmt(d.min_minutes, 0)} Minuten,
             Intensität unter ${fmt(d.max_intensity, 0)}, nicht auf der Rolle. Ausgelassen wurden
             ${d.dropped.short} zu kurze, ${d.dropped.intense} zu intensive,
