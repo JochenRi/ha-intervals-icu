@@ -234,4 +234,126 @@ const acts = F.activities();
   ok(/ctxmark[^>]*>\s*<svg/.test(cell), "register: Tagesmarker ohne eigene Form");
 }
 
+/* ── eingefrorene Referenz: chart() im Indexmodus ──────────────────────────
+   chart() traegt vier Ansichten gleichzeitig (DFA, Fitness, Signalkarten,
+   Streams). Als die stetige x-Achse fuer die Durability-Wolke dazukam, war die
+   Gefahr nicht die neue Option, sondern die alte: eine Zeile im gemeinsamen
+   Helfer reisst alles vier auf einmal auf. Die Hashes unten stammen aus dem
+   Stand VOR dem Eingriff (0.39.0, git HEAD) - nicht aus dem neuen Code, sonst
+   bewiese die Referenz nur sich selbst. Aendert sich hier eine Ziffer, ist es
+   eine Entscheidung und keine Nebenwirkung. */
+/* Option sets that between them touch every branch of chart(): bars, line,
+   area, dots with ring/hollow/id, bands, marker lines on both sides, own y
+   ticks, x ticks and labels, direct tags, crosshair group, padding overrides.
+   If any of them moves, a shared helper has moved four views at once. */
+const CHART_CASES = (C, ROLE) => [
+  ["balken", { h: 120, n: 12, y0: 0, y1: 100, s: [{ t: "bars", v: [5, 20, null, 60, 80, 12, 0, 44, 91, 7, 33, 58], c: C.blue }] }],
+  ["linie+flaeche", { h: 200, n: 10, y0: -5, y1: 25, label: "Last", labelc: ROLE.ctl,
+    s: [{ t: "area", v: [1, 3, null, 8, 9, 12, 4, null, 6, 2], c: ROLE.ctl, w: 2.4 },
+        { t: "line", v: [2, null, 4, 4, null, 9, null, 7, 7, 1], c: ROLE.form, d: "4 3", lop: 0.7 }] }],
+  ["punkte", { h: 260, n: 8, y0: 100, y1: 180, grp: "dfa",
+    s: [{ t: "dots", c: C.violet, p: [
+      { i: 0, v: 120 }, { i: 1, v: 150, r: 5.4, op: 0.35, ring: true, id: "a1" },
+      { i: 3, v: 133, f: false, c: C.cyan }, { i: 7, v: 171, id: "a2" }] }] }],
+  ["baender+marken", { h: 150, n: 6, y0: 0, y1: 10, ym: 4,
+    bands: [{ a: 0, b: 3, c: C.green }, { a: 8, b: 10, c: C.amber, op: 0.25 }],
+    hl: [{ y: 5, c: C.tx3, d: 1, t: "Marke" }, { y: 2, c: C.blue, t: "links", side: "left" }],
+    s: [{ t: "line", v: [1, 2, 3, 4, 5, 6], c: C.blue }] }],
+  ["achsen+tags", { h: 180, n: 14, y0: 0, y1: 50, yticks: [0, 25, 50], padL: 60, padR: 30, padT: 14, padB: 28,
+    xtick: [0, 7, 13], xt: [{ i: 0, t: "Mo" }, { i: 7, t: "Di" }],
+    extra: `<rect x="0" y="0" width="10" height="10" fill="${C.slate}"/>`,
+    tags: [{ i: 13, v: 40, c: C.magenta, t: "jetzt" }, { i: 5, v: null, c: C.blue, t: "leer" }],
+    s: [{ t: "line", v: Array.from({ length: 14 }, (_, i) => (i === 3 ? null : i * 3)), c: C.magenta }] }],
+  ["einzelpunkt", { h: 100, n: 5, y0: 0, y1: 4, s: [{ t: "line", v: [null, 2, null, null, null], c: C.cyan, w: 3 }] }],
+  ["entartet", { h: 90, n: 2, y0: 0, y1: 0, s: [{ t: "bars", v: [0, 0], c: C.tx3 }] }],
+];
+
+const CHART_FROZEN = {
+  "balken": "fc1847362004b490",
+  "linie+flaeche": "6d27329449e3266a",
+  "punkte": "2ebf764f5188790b",
+  "baender+marken": "1675ce0e5cce397a",
+  "achsen+tags": "02f3b31909f26373",
+  "einzelpunkt": "979f81d9c497589d",
+  "entartet": "424d00566c7e5e0a",
+};
+{
+  const sha = (t) => require("crypto").createHash("sha256").update(t).digest("hex").slice(0, 16);
+  const cases = CHART_CASES(M.C, M.ROLE);
+  ok(cases.length === Object.keys(CHART_FROZEN).length,
+     `chart-referenz: ${cases.length} Faelle gegen ${Object.keys(CHART_FROZEN).length} eingefrorene Hashes`);
+  for (const [name, o] of cases) {
+    const out = M.chart(o);
+    ok(sha(out) === CHART_FROZEN[name],
+       `chart-referenz "${name}": Ausgabe hat sich geaendert (${sha(out)} statt ${CHART_FROZEN[name]}, ${out.length} Zeichen)`);
+    ok(!/data-x0/.test(out), `chart-referenz "${name}": xy-Attribute im Indexmodus`);
+  }
+}
+
+/* ── die stetige x-Achse: nur wenn x0/x1 gesetzt sind ──────────────────── */
+{
+  const idx = M.chart({ h: 100, n: 3, y0: 0, y1: 10,
+    s: [{ t: "dots", c: M.C.blue, p: [{ i: 0, v: 5 }, { i: 2, v: 5 }] }] });
+  const xy = M.chart({ h: 100, n: 3, y0: 0, y1: 10, x0: 0, x1: 1000,
+    s: [{ t: "dots", c: M.C.blue, p: [{ x: 0, v: 5 }, { x: 1000, v: 5 }] }] });
+  const cx = (t) => [...String(t).matchAll(/<circle cx="([\d.]+)"/g)].map((m) => +m[1]);
+  // Endpunkte identisch: die Achse ist dieselbe Flaeche, nur anders adressiert
+  ok(JSON.stringify(cx(idx)) === JSON.stringify(cx(xy)),
+     `stetige achse: Randpunkte liegen nicht auf denselben Stellen (${cx(idx)} gegen ${cx(xy)})`);
+  // und ein Punkt bei einem Viertel der Arbeit liegt auf einem Viertel der
+  // Flaeche - im Indexmodus waere er in der Mitte gelandet, weil er der
+  // zweite von dreien ist. Genau dafuer gibt es den Modus.
+  const q = M.chart({ h: 100, n: 3, y0: 0, y1: 10, x0: 0, x1: 1000,
+    s: [{ t: "dots", c: M.C.blue, p: [{ x: 0, v: 5 }, { x: 250, v: 5 }, { x: 1000, v: 5 }] }] });
+  const [a, b, c] = cx(q);
+  ok(Math.abs((b - a) / (c - a) - 0.25) < 0.001,
+     `stetige achse: Punktdichte wird nicht abgebildet (${((b - a) / (c - a)).toFixed(3)} statt 0.250)`);
+  contains(xy, 'data-x0="0"', "stetige achse: x0 fehlt am svg");
+  contains(xy, 'data-y1="10"', "stetige achse: y1 fehlt am svg");
+}
+
+/* ── Zeiger: die vier bestehenden Gruppen laufen unveraendert ──────────── */
+{
+  const mkG = (name) => {
+    const svg = { dataset: { w: "880", padl: "48", padr: "14" },
+                  getBoundingClientRect: () => ({ left: 100, top: 50, width: 880, height: 230 }) };
+    return { dataset: { grp: name }, querySelector: () => svg, querySelectorAll: () => p.shadowRoot._lines };
+  };
+  for (const [name, n] of [["sig", 60], ["pmc", 100], ["str", 240], ["dfa", 8]]) {
+    p._grp[name] = { n, xl: (i) => "P" + i,
+      rows: [{ l: "x", c: M.C.blue, u: "", vals: Array.from({ length: n }, (_, i) => i) }] };
+    const g = mkG(name);
+    for (let k = 0; k <= 20; k++) {
+      const localX = 48 + ((880 - 48 - 14) * k) / 20;
+      const want = Math.max(0, Math.min(n - 1, Math.round((localX - 48) / (880 - 48 - 14) * (n - 1))));
+      const got = p._xhMove(g, { clientX: 100 + localX, clientY: 120 });
+      ok(got === want, `zeiger ${name}: Index ${got} statt ${want} bei ${k}/20 - der Indexpfad wurde angefasst`);
+    }
+  }
+}
+
+/* ── Zeiger in der Wolke: naechster Punkt in ZWEI Richtungen ───────────── */
+{
+  const svg = { dataset: { w: "880", padl: "48", padr: "14", padt: "8", padb: "22", h: "260",
+                           x0: "0", x1: "1000", y0: "0", y1: "10" },
+                getBoundingClientRect: () => ({ left: 100, top: 50, width: 880, height: 260 }) };
+  const g = { dataset: { grp: "dur" }, querySelector: () => svg, querySelectorAll: () => p.shadowRoot._lines };
+  // zwei Fahrten mit derselben Arbeit und verschiedener Entkopplung: ueber x
+  // allein waeren sie nicht zu trennen
+  p._grp.dur = { xy: true, n: 3, xl: (i) => "F" + i,
+    pts: [{ x: 500, y: 1 }, { x: 500, y: 9 }, { x: 900, y: 5 }],
+    rows: [{ l: "Entkopplung", c: M.C.blue, u: "%", vals: [1, 9, 5] }] };
+  const PX = (v) => 48 + (v / 1000) * (880 - 48 - 14);
+  const PY = (v) => 8 + (1 - v / 10) * (260 - 8 - 22);
+  ok(p._xhMove(g, { clientX: 100 + PX(500), clientY: 50 + PY(1.2) }) === 0,
+     "wolke: unterer von zwei Punkten auf derselben Arbeit nicht getroffen");
+  ok(p._xhMove(g, { clientX: 100 + PX(500), clientY: 50 + PY(8.8) }) === 1,
+     "wolke: oberer von zwei Punkten auf derselben Arbeit nicht getroffen");
+  const strip = p.shadowRoot._strips.dur;
+  ok(/F1/.test(strip._x.textContent), `wolke: Ableseleiste zeigt nicht den getroffenen Punkt (${strip._x.textContent})`);
+  ok(/\b9\b/.test(strip._v.innerHTML), "wolke: Wert des getroffenen Punktes fehlt in der Leiste");
+  ok(p._xhMove(g, { clientX: 100 + PX(880), clientY: 50 + PY(5) }) === 2,
+     "wolke: rechter Punkt nicht getroffen");
+}
+
 report("test_panel_design");

@@ -281,7 +281,14 @@ function chart(o) {
   const padB = o.padB == null ? (o.xt ? 22 : 6) : o.padB;
   const pw = w - padL - padR, ph = h - padT - padB;
   const n = Math.max(2, o.n || 2);
-  const X = (i) => padL + (i / (n - 1)) * pw;
+  // A continuous x axis is an OPTION, never a rebuild. Without x0/x1 every
+  // existing caller takes the index path below - the same code, byte for byte,
+  // which is what test_panel_design.js freezes: this helper carries four views
+  // at once, so a silent change here tears open all four.
+  const xy = o.x0 != null && o.x1 != null;
+  const X = xy
+    ? (v) => padL + ((v - o.x0) / ((o.x1 - o.x0) || 1)) * pw
+    : (i) => padL + (i / (n - 1)) * pw;
   const Y = (v) => padT + (1 - (v - o.y0) / ((o.y1 - o.y0) || 1)) * ph;
   // `extra` is painted first: context behind the data, never on top of it.
   // Used for the state bands, which have to sit behind every stacked field
@@ -320,16 +327,19 @@ function chart(o) {
     } else if (s.t === "dots") {
       for (const p of (s.p || [])) {
         if (p.v == null) continue;
+        // index mode reads p.i, continuous mode reads p.x - one line apart, so
+        // no caller has to learn a second helper
+        const at = X(xy ? p.x : p.i);
         const r = p.r || 3.4, op = p.op == null ? 1 : p.op;
         // A point that carries an id can be brushed. The handlers reach it
         // through these attributes instead of rebuilding the view on every
         // pointer move - a re-render would fight the pointer it follows.
         const tag = p.id ? ` data-dot="${esc(String(p.id))}" data-r="${r}" data-op="${op}"` : "";
-        g += `<circle cx="${X(p.i)}" cy="${Y(p.v)}" r="${r}" fill="${p.f === false ? "none" : (p.c || s.c)}" stroke="${p.c || s.c}" stroke-width="1.6" opacity="${op}"${tag}/>`;
+        g += `<circle cx="${at}" cy="${Y(p.v)}" r="${r}" fill="${p.f === false ? "none" : (p.c || s.c)}" stroke="${p.c || s.c}" stroke-width="1.6" opacity="${op}"${tag}/>`;
         // the ring is a shape, not a second colour - WCAG 1.4.1, and the same
         // rule that gives every state its own icon form
         if (p.ring) {
-          g += `<circle class="pickring" cx="${X(p.i)}" cy="${Y(p.v)}" r="${r + 4}" fill="none" stroke="${p.c || s.c}" stroke-width="1.8" opacity="0.95"/>`;
+          g += `<circle class="pickring" cx="${at}" cy="${Y(p.v)}" r="${r + 4}" fill="none" stroke="${p.c || s.c}" stroke-width="1.8" opacity="0.95"/>`;
         }
       }
     } else {
@@ -376,7 +386,13 @@ function chart(o) {
   }
   const xh = o.grp ? `<line class="xh" x1="-9" x2="-9" y1="${padT}" y2="${padT + ph}" stroke="${C.tx2}" stroke-width="1" stroke-dasharray="3 3" opacity="0"/>` : "";
   const lbl = o.label ? `<text x="${padL + 2}" y="${padT + 12}" class="pl" fill="${o.labelc || C.tx2}">${o.label}</text>` : "";
-  return `<svg class="ch" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" data-n="${n}" data-padl="${padL}" data-padr="${padR}" data-w="${w}">${g}${lbl}${xh}</svg>`;
+    // The xy attributes are emitted ONLY in continuous mode: an extra
+  // attribute on every chart would change the output of all four existing
+  // views, which is exactly what the frozen reference forbids.
+  const xyAttr = xy
+    ? ` data-x0="${o.x0}" data-x1="${o.x1}" data-y0="${o.y0}" data-y1="${o.y1}" data-padt="${padT}" data-padb="${padB}" data-h="${h}"`
+    : "";
+  return `<svg class="ch" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" data-n="${n}" data-padl="${padL}" data-padr="${padR}" data-w="${w}"${xyAttr}>${g}${lbl}${xh}</svg>`;
 }
 
 /* sparkline: tiny inline trend, nulls become gaps */
@@ -1416,9 +1432,34 @@ class IntervalsIcuPanel extends HTMLElement {
     const W = +svg.dataset.w, padL = +svg.dataset.padl, padR = +svg.dataset.padr;
     const localX = (e.clientX - rect.left) * (W / rect.width);
     const pw = W - padL - padR;
-    let idx = Math.round(((localX - padL) / pw) * (meta.n - 1));
-    idx = Math.max(0, Math.min(meta.n - 1, idx));
-    const px = padL + (idx / (meta.n - 1)) * pw;
+    let idx, px;
+    if (meta.xy) {
+      // A scatter has no columns: over a continuous axis the nearest point is
+      // the nearest in BOTH directions. Picking the nearest x alone would hand
+      // back a point the pointer is nowhere near whenever two rides carry the
+      // same work and different decoupling - which is the whole point of the
+      // cloud.
+      const H = +svg.dataset.h, padT = +svg.dataset.padt, padB = +svg.dataset.padb;
+      const x0 = +svg.dataset.x0, x1 = +svg.dataset.x1;
+      const y0 = +svg.dataset.y0, y1 = +svg.dataset.y1;
+      const ph = H - padT - padB;
+      const localY = (e.clientY - rect.top) * (H / rect.height);
+      const PX = (v) => padL + ((v - x0) / ((x1 - x0) || 1)) * pw;
+      const PY = (v) => padT + (1 - (v - y0) / ((y1 - y0) || 1)) * ph;
+      let best = null;
+      (meta.pts || []).forEach((p, i) => {
+        if (p == null || p.x == null || p.y == null) return;
+        const dx = PX(p.x) - localX, dy = PY(p.y) - localY;
+        const d = dx * dx + dy * dy;
+        if (best == null || d < best.d) best = { d, i, px: PX(p.x) };
+      });
+      if (best == null) return null;
+      idx = best.i; px = best.px;
+    } else {
+      idx = Math.round(((localX - padL) / pw) * (meta.n - 1));
+      idx = Math.max(0, Math.min(meta.n - 1, idx));
+      px = padL + (idx / (meta.n - 1)) * pw;
+    }
     g.querySelectorAll(".xh").forEach((l) => {
       l.setAttribute("x1", px); l.setAttribute("x2", px); l.setAttribute("opacity", "0.9");
     });
