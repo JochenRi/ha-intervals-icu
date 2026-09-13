@@ -464,6 +464,46 @@ das Panel wieder zwei Zahlen, die nicht zusammenpassen.
 - Gegenproben: jede der drei Sperren einzeln entfernen — jede Mutation muss
   gezählt und benannt melden.
 
+### Präzisierungen aus dem Bau (0.38.0 — Paket D geliefert)
+
+**1 · Zwei der drei Aufräumstellen tragen kein Datum.** D5 zählt sie
+gleichrangig auf, aber `unavailable` ist eine nackte ID-Liste und eine
+DFA-Waise hat keine Aktivität mehr, an der ein Datum hinge. Sperre 2 ist dort
+nicht beweisbar. Gelöst über `covers_history()`: die beiden Stellen werden nur
+angefasst, wenn das Fenster nachweislich den ganzen Bestand umfasst — ein
+einziges unlesbares Datum im Archiv genügt, um das zu verweigern. Eine
+Zusicherung, die nur zufällig gilt (weil der Abruf ohnehin voll ist), ist
+keine.
+
+**2 · Die Gegenprobe dazu biss zunächst nicht** — Muster 2 aus Paket A, wieder
+wörtlich: in der Fixture waren Platzhalter und Waise drüben vorhanden, ihr
+Stehenbleiben bewies also nichts. Erst als derselbe Bestand mit denselben
+Lücken einmal im Teilfenster und einmal im Vollfenster läuft und zu
+verschiedenen Ergebnissen kommen muss, schlug die Mutation an.
+
+**3 · D4 fehlte eine Sperre:** zwischen Anzeige und Klick liegt ein zweiter
+Abruf. Der Vollzug schickt deshalb die angezeigten IDs mit; ausgeführt wird
+nur die Schnittmenge mit dem frischen Befund, sonst `stale` ohne Handgriff.
+Dazu zwei Zustandssperren, die die Spezifikation nicht nennt: ein laufender
+Import (er schreibt denselben Bestand und würde seine Kopie danach
+zurückschreiben) und eine nie vollständig geholte Historie (dann ist das
+Archiv kein Maßstab).
+
+**4 · Die Deckelung zählt die Platzhalter mit.** Rechnete sie nur über
+`activities`, könnte ein Abruf, der die Strava-Stubs stillschweigend weglässt,
+die ganze `unavailable`-Liste mitnehmen, ohne die 20 % je zu berühren.
+
+**5 · `updated` ist gegenstandslos.** Eine Löschung hinterlässt keinen
+Zeitstempel — jeder Löschbefund braucht die vollständige ID-Liste des
+Fensters. Ein `updated`-Feld könnte nur Änderungen verbilligen; ob der
+Endpunkt eines führt, bleibt für Paket D ohne Folgen.
+
+**6 · Der Importer bleibt nachsichtig, der Abgleich nicht.**
+`merge_activities` überspringt eine kaputte Zeile und macht weiter — richtig
+beim Hinzufügen. Beim Abgleich hieße dieselbe Nachsicht „diese Einheit gibt es
+drüben nicht mehr", also bricht `remote_index()` bei allem ab, wofür die
+Antwort nicht geradesteht. Zwei Wege, zwei Urteile, beide geprüft.
+
 ---
 
 ## Paket C — Vergleichsgruppe

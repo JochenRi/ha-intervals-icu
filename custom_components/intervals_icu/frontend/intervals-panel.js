@@ -78,6 +78,7 @@ const IC = {
   bolt: '<path d="M13 3L5 13.5h5L11 21l8-10.5h-5z"/>',
   cal:  '<rect x="4" y="5.5" width="16" height="14.5" rx="2"/><path d="M4 9.5h16M8.5 3.5v3.6M15.5 3.5v3.6"/>',
   chev: '<path d="M9.5 6.5l5.5 5.5-5.5 5.5"/>',
+  sync: '<path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 3.5V8h-4.5"/>',
   tag:  '<path d="M4 5.5h6.8l8.7 8.7-6.3 6.3-8.7-8.7z"/><circle cx="8.2" cy="9.4" r="1.3"/>',
 };
 
@@ -668,6 +669,8 @@ class IntervalsIcuPanel extends HTMLElement {
     this._ctx = {};
     this._dayctx = null;   // Etiketten-Archiv + Vokabular + Quellenblock (B5/B6)
     this._ctxDlg = null;   // ISO-Datum, dessen Beschriftungsdialog offen ist
+    this._syncDlg = null;  // Abgleich-Dialog: {state, report, msg}
+    this._syncBusy = false;
     this._ctxErr = null;
     this._ctxBusy = false;
     this._booted = false;
@@ -735,6 +738,135 @@ class IntervalsIcuPanel extends HTMLElement {
       this._ctxErr = String((err && err.message) || err);
       this._render();
     } finally { this._ctxBusy = false; }
+  }
+
+  /* Abgleich mit Intervals. Zwei Gänge: erst zeigen, was verschwinden würde,
+     dann auf Bestätigung ausführen - und der zweite Gang schickt genau die
+     IDs mit, die im ersten angezeigt wurden. Hat sich der Befund zwischen
+     Anzeige und Klick geändert, führt das Backend NICHTS aus und sagt das.
+     Es gibt keinen Weg, eine einzelne Einheit zu löschen: der Abgleich hat
+     immer nur ein Ergebnis, Gleichstand mit Intervals. */
+  async _syncOpen() {
+    if (this._syncBusy) return;
+    this._syncBusy = true;
+    this._syncDlg = { state: "load", what: "Frage Intervals nach der ganzen Historie …" };
+    this._render();
+    try {
+      this._syncDlg = { state: "report", report: await this._ws("reconcile") };
+    } catch (err) {
+      this._syncDlg = { state: "error", msg: String((err && err.message) || err) };
+    } finally {
+      this._syncBusy = false;
+    }
+    this._render();
+  }
+
+  async _syncRun() {
+    const dlg = this._syncDlg;
+    if (!dlg || dlg.state !== "report" || this._syncBusy) return;
+    const ids = (dlg.report && dlg.report.removable) || [];
+    if (!ids.length) return;
+    this._syncBusy = true;
+    // Scroll-Lage VOR dem ersten Re-Render sichern - innerHTML wirft sie mit
+    // den alten Knoten weg (dieselbe Fehlerklasse wie beim Etikett), und
+    // schon die Lade-Anzeige ist ein Re-Render.
+    const scroll = this.scrollTop;
+    this._syncDlg = { state: "load", what: "Gleiche ab …" };
+    this._render();
+    try {
+      const res = await this._ws("reconcile", { confirm: ids });
+      this._syncDlg = res.applied
+        ? { state: "done", report: res }
+        : { state: "report", report: res, stale: !!res.stale };
+      if (res.applied) {
+        // Alles wegwerfen, was aus den Aktivitäten gerechnet wird - sonst
+        // zeigt der Kopf 238 und die Liste weiter 239.
+        this._acts = null; this._thr = null; this._pmc = null; this._today = null;
+        this._coach = null; this._load = null; this._cal = null; this._signals = null;
+        const [status, days] = await Promise.all([
+          this._ws("status"), this._ws("days", { weeks: this._weeks })]);
+        this._status = status; this._days = days;
+        await this._setTab(this._tab);
+      }
+    } catch (err) {
+      this._syncDlg = { state: "error", msg: String((err && err.message) || err) };
+    } finally {
+      this._syncBusy = false;
+    }
+    this._render();
+    this.scrollTop = scroll;
+  }
+
+  _syncRow(item) {
+    const sport = SPORT[item.type] || null;
+    const when = item.date ? dMed(item.date) : "ohne Datum";
+    const what = item.kind === "unavailable" ? "Strava-Platzhalter"
+      : item.kind === "dfa" ? "DFA-Rest ohne Einheit"
+      : (item.name || (sport ? sport.l : "Einheit"));
+    return `<li class="syncrow">
+      ${sport ? ico(sport.ic, sport.c, 15) : ico("na", C.tx3, 15)}
+      <b>${esc(when)}</b><span class="cn">${esc(what)}</span>
+      ${item.dfa ? `<em class="tn">inkl. DFA</em>` : ""}</li>`;
+  }
+
+  _syncPopover() {
+    const dlg = this._syncDlg;
+    const head = `<div class="ctxhead"><b>Mit Intervals abgleichen</b>
+      <button class="ctxx" data-act="syncclose" title="schließen">${ico("stop", C.tx2, 18)}</button></div>`;
+    let body = "";
+    if (dlg.state === "load") {
+      body = `<p class="ctxcur"><span class="pulse">${esc(dlg.what || "einen Moment …")}</span></p>`;
+    } else if (dlg.state === "error") {
+      body = `<div class="ctxerr">${ico("warn", C.amber, 15)}<span>${esc(dlg.msg)}</span></div>
+        <p class="ctxwhy">Es wurde nichts entfernt. Der Abgleich fasst das Archiv erst an,
+        wenn die Antwort vollständig und fehlerfrei vorliegt.</p>`;
+    } else if (dlg.state === "done") {
+      const r = dlg.report.removed || {};
+      const n = (r.activities || 0) + (r.dfa || 0) + (r.unavailable || 0);
+      body = n
+        ? `<p class="ctxcur">${ico("ok", C.green, 15)} Entfernt: <b>${fmt(r.activities || 0)}</b>
+             ${r.activities === 1 ? "Einheit" : "Einheiten"}, <b>${fmt(r.dfa || 0)}</b> DFA-Auswertungen,
+             <b>${fmt(r.unavailable || 0)}</b> Platzhalter.</p>
+           <p class="ctxwhy">Das Archiv steht jetzt auf Gleichstand mit Intervals.</p>`
+        : `<p class="ctxcur">${ico("ok", C.green, 15)} Nichts zu tun - das Archiv war bereits im Gleichstand.</p>`;
+    } else {
+      const rep = dlg.report || {};
+      const missing = rep.missing || [];
+      const pct = Math.round((rep.share || 0) * 1000) / 10;
+      const scope = rep.full_history
+        ? `die ganze Historie (${esc(rep.oldest || "")} bis ${esc(rep.newest || "")})`
+        : `den Zeitraum ${esc(rep.oldest || "")} bis ${esc(rep.newest || "")}`;
+      if (dlg.stale) {
+        body += `<div class="ctxerr">${ico("warn", C.amber, 15)}<span>Der Befund hat sich seit
+          der Anzeige geändert - es wurde nichts entfernt. Bitte neu ansehen.</span></div>`;
+      }
+      if (!missing.length) {
+        body += `<p class="ctxcur">${ico("ok", C.green, 15)} Gleichstand: alle
+          <b>${fmt(rep.checked || 0)}</b> archivierten Einheiten sind in Intervals vorhanden.</p>`;
+      } else if (rep.capped) {
+        body += `<div class="ctxerr">${ico("warn", C.amber, 15)}<span><b>${fmt(missing.length)}</b>
+          von ${fmt(rep.checked || 0)} Einheiten fehlen drüben (${String(pct).replace(".", ",")} %).
+          Das ist mehr als ${Math.round((rep.cap_limit || 0.2) * 100)} % - <b>es wurde nichts
+          entfernt</b>. So sieht kein Aufräumen aus, sondern ein fehlgeschlagener Abruf.</span></div>`;
+      } else {
+        body += `<p class="ctxcur"><b>${fmt(missing.length)}</b>
+          ${missing.length === 1 ? "Einheit ist" : "Einheiten sind"} in Intervals nicht mehr
+          vorhanden. Geprüft wurde ${scope}.</p>`;
+      }
+      if (missing.length) {
+        body += `<ul class="synclist">${missing.map((m) => this._syncRow(m)).join("")}</ul>`;
+      }
+      if (missing.length && !rep.capped) {
+        body += `<button class="ctxchip syncgo" style="--cc:${C.amber}" data-act="syncgo">
+          ${ico("sync", C.amber, 15)}<span class="cn">Jetzt abgleichen</span>
+          <span class="cw tn">entfernt genau diese ${fmt(missing.length)} aus dem Archiv</span></button>`;
+      }
+      body += `<p class="ctxwhy">Der Abgleich liest nur. Nach Intervals geht dabei nichts -
+        was dort steht, kann hier nicht verschwinden.</p>`;
+    }
+    return `<div class="ctxback" data-act="syncclose"></div>
+      <div class="ctxdlg" role="dialog" aria-modal="true" aria-label="Mit Intervals abgleichen">
+        ${head}${body}</div>`;
   }
 
   async _boot() {
@@ -826,6 +958,9 @@ class IntervalsIcuPanel extends HTMLElement {
       <header>
         <div class="brand">Intervals.icu</div>
         <div id="hstat" class="hstat"></div>
+        <button class="syncbtn" data-act="sync"
+          title="Prüfen, ob Einheiten in Intervals gelöscht wurden - liest nur">
+          ${ico("sync", C.tx2, 15)}<span>Abgleichen</span></button>
       </header>
       <nav id="tabs"></nav>
       <div id="view"><div class="card pad">Lade Daten …</div></div>
@@ -857,6 +992,7 @@ class IntervalsIcuPanel extends HTMLElement {
     else if (this._tab === "belastung") html = this.rBelastung(this._load);
     else if (this._tab === "dfa") html = this.rDfa(this._thr, this._dfaSport);
     if (this._ctxDlg) html += this._ctxPopover();
+    if (this._syncDlg) html += this._syncPopover();
     this._view.innerHTML = html;
     // the strip must carry the newest values before anyone moves a mouse -
     // and on a touch screen nobody ever does
@@ -890,6 +1026,9 @@ class IntervalsIcuPanel extends HTMLElement {
         if (id && id <= this._now()) { this._ctxDlg = id; this._ctxErr = null; this._render(); }
       }
       else if (act === "ctxclose") { this._ctxDlg = null; this._ctxErr = null; this._render(); }
+      else if (act === "sync") this._syncOpen();
+      else if (act === "syncclose") { this._syncDlg = null; this._render(); }
+      else if (act === "syncgo") this._syncRun();
       else if (act === "ctxset") this._ctxWrite(this._ctxDlg, id);
       else if (act === "ctxdel") this._ctxWrite(this._ctxDlg, null);
       else if (act === "dfasport") { this._dfaSport = id; this._render(); }
@@ -3298,6 +3437,18 @@ svg.evtrack{margin-top:-2px}
 .rv{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:${C.tx2}}
 .rv i{width:9px;height:9px;border-radius:3px;display:inline-block}
 .rv b{color:${C.tx};font-size:14.5px}
+/* Abgleich mit Intervals (Paket D) */
+.syncbtn{display:inline-flex;align-items:center;gap:6px;margin-left:12px;padding:5px 10px;
+  border-radius:9px;background:#0005;border:1px solid ${C.line};color:${C.tx2};
+  font-family:inherit;font-size:12.5px;cursor:pointer;white-space:nowrap}
+.syncbtn:hover{background:#0008;color:${C.tx}}
+.synclist{list-style:none;margin:10px 0;padding:0;max-height:38vh;overflow-y:auto;
+  border:1px solid ${C.line};border-radius:10px}
+.syncrow{display:flex;align-items:center;gap:8px;padding:7px 11px;font-size:13.5px;
+  border-bottom:1px solid ${C.line}}
+.syncrow:last-child{border-bottom:none}
+.syncrow .cn{flex:1;color:${C.tx2}}
+.syncgo{width:100%;margin-top:4px}
 /* Zustand: ein Punktdiagramm statt dreier Balken */
 .zplot{min-width:300px}
 .zrow{display:grid;grid-template-columns:150px 1fr 52px;gap:10px;align-items:center;padding:3px 0}
@@ -3466,6 +3617,18 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
   .lrow{grid-template-columns:30px 1fr 70px 74px;}
   .lrow>*:nth-child(5),.lrow>*:nth-child(6),.lrow>*:nth-child(7),.lrow>*:nth-child(8){display:none}
 }
+/* Abgleich mit Intervals (Paket D) */
+.syncbtn{display:inline-flex;align-items:center;gap:6px;margin-left:12px;padding:5px 10px;
+  border-radius:9px;background:#0005;border:1px solid ${C.line};color:${C.tx2};
+  font-family:inherit;font-size:12.5px;cursor:pointer;white-space:nowrap}
+.syncbtn:hover{background:#0008;color:${C.tx}}
+.synclist{list-style:none;margin:10px 0;padding:0;max-height:38vh;overflow-y:auto;
+  border:1px solid ${C.line};border-radius:10px}
+.syncrow{display:flex;align-items:center;gap:8px;padding:7px 11px;font-size:13.5px;
+  border-bottom:1px solid ${C.line}}
+.syncrow:last-child{border-bottom:none}
+.syncrow .cn{flex:1;color:${C.tx2}}
+.syncgo{width:100%;margin-top:4px}
 /* Zustand: ein Punktdiagramm statt dreier Balken */
 .zplot{min-width:300px}
 .zrow{display:grid;grid-template-columns:150px 1fr 52px;gap:10px;align-items:center;padding:3px 0}

@@ -94,8 +94,13 @@ class IntervalsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "archive": importer.archive_stats(self.archive.data),
         }
 
-    def _history_start(self) -> date:
-        """Return the first day worth importing."""
+    def history_start(self) -> date:
+        """Return the first day worth importing.
+
+        Public because the reconciliation needs the very same window the full
+        import walks - a comparison against a narrower span would read the
+        difference as deletions.
+        """
         athlete = (self.data or {}).get("athlete") or {}
         activated = str(athlete.get("icu_activated") or "")[:10]
         try:
@@ -123,7 +128,7 @@ class IntervalsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         self.import_running = True
         today = date.today()
-        oldest = self._history_start() if full else today - timedelta(days=RECENT_DAYS)
+        oldest = self.history_start() if full else today - timedelta(days=RECENT_DAYS)
 
         try:
             changed = 0

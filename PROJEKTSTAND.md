@@ -1,13 +1,13 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 12.09.2026 · **Version:** 0.37.0 · **Status:** produktiv auf HEIMDALL,
+**Stand:** 13.09.2026 · **Version:** 0.38.0 · **Status:** produktiv auf HEIMDALL,
 Auslieferung über HACS aus `github.com/JochenRi/ha-intervals-icu`
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lokal
 archiviert, auswertet und in einem eigenen Seitenleisten-Panel darstellt.
 
-**Umfang:** ~10.100 Zeilen, davon ~3.850 Frontend · 23 WebSocket-Befehle · 15 Einheiten in
-8 Familien · 14 Testdateien mit **2.975** gezählten Einzelprüfungen · 38 Releases.
+**Umfang:** ~10.870 Zeilen, davon ~4.020 Frontend · 24 WebSocket-Befehle · 15 Einheiten in
+8 Familien · 15 Testdateien mit **3.156** gezählten Einzelprüfungen · 39 Releases.
 
 ---
 
@@ -192,6 +192,18 @@ Recherche:
 
 ## 7. Fehler und was sie gelehrt haben
 
+**0.38.0 — drei Funde beim Bau von Paket D (Abgleich):**
+
+| Fund | Klasse | Fix |
+|---|---|---|
+| **Zwei der drei Aufräumstellen tragen gar kein Datum.** `unavailable` ist eine nackte ID-Liste, und eine DFA-Zusammenfassung, deren Aktivität schon fort ist, hat nichts mehr, woran sie zu datieren wäre. Sperre 2 („nur innerhalb des Fensters") ist dort **nicht beweisbar** — sie hätte stillschweigend gegolten, weil Paket D ohnehin immer die ganze Historie abruft. | Die Zusicherung gilt nur, wo sie prüfbar ist | `reconcile.covers_history()` entscheidet aus dem Bestand, ob das Fenster nachweislich alles umfasst; nur dann werden die beiden datumslosen Stellen angefasst. Ein einziges unlesbares Datum im Archiv genügt, um den Vollabgleich zu verweigern. |
+| **Die Gegenprobe zur Fenstersperre biss nicht.** Die Mutation („datumslose Stellen auch ohne Vollabgleich aufräumen") lief grün durch: in der Fixture waren Platzhalter und DFA-Waise auf der Intervals-Seite **vorhanden**, fehlten also nie — das Stehenbleiben bewies nichts. | Paket A, Muster 2: eine vorgeschriebene Prüfung ist erst eine Prüfung, wenn die Fixture die Fälle unterscheidbar macht | Teilfenster und Vollfenster laufen jetzt über **denselben** Bestand mit **denselben** Lücken und müssen zu verschiedenen Ergebnissen kommen. Danach schlug die Mutation an: vier gezählte, benannte Fehler. |
+| **Zwischen Anzeige und Klick liegt ein zweiter Abruf.** D4 sah Bestätigung vor, aber nicht, dass der Vollzug einen frischen Befund erhebt — er hätte etwas anderes entfernen können als das, was im Dialog stand. | Bestätigt wird eine Anzeige, ausgeführt wird ein Befund | Der Vollzug schickt die angezeigten IDs mit; das Backend führt nur die Schnittmenge mit dem neuen Befund aus und meldet sonst `stale`, ohne etwas anzufassen. |
+
+**Nebenbefund:** §9 führte `test_websocket_registration.py` mit 172 statt 174 —
+die Tabelle summierte 2.973, der Kopf 2.975. Dieselbe Klasse wie der
+Zählfehler aus 0.35.0, eine Zeile weiter; beim Nachziehen korrigiert.
+
 **0.37.0 — Fund beim Lesen für Paket B, VOR der Gewichtung behoben:**
 
 | Fund | Klasse | Fix |
@@ -364,7 +376,7 @@ den Non-Responder-Befund (Manresa-Rocamora 2021).
 
 ## 9. Prüfstand
 
-**Vierzehn Dateien, 2.975 gezählte Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
+**Fünfzehn Dateien, 3.156 gezählte Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
 HA-Instanz oder einen Browser.
 
 | Datei | prüft | Umfang |
@@ -378,9 +390,10 @@ HA-Instanz oder einen Browser.
 | `test_coach.py` | Zustandsregeln, Trigger-Schärfung, Infektverlauf, Nachtreaktion, Einordnung, Bereiche, benannter 42-Tage-Verlauf, Basislinien-Primitive mit AST-Wächter, eingefrorene No-op-Referenz, gewichtete Basislinie mit Fixture-Beweis | 261 |
 | `test_plan.py` | Zielprofil, Wochenmuster, Zeitbudget, Progressions- und Kalender-Anker-Vertrag, Profil-Migration | 405 |
 | `test_workouts.py` | Einheitenauswahl, HF-Klemme, Infektleiter, Wattumrechnung, Intervals-Syntax | 575 |
-| `test_websocket_registration.py` | Registrierung, Dekoratoren, FTP-Quelle, eine Ankerregel, day_context-Lese/Schreibweg, Ampel-Herkunftsnotiz | 172 |
-| `test_suite_hygiene.py` | der Prüfstand prüft sich selbst: **genau eine** Summary je Datei, die etwas zählt, nichts Gezähltes dahinter, Fehler werden gedruckt | 61 |
-| `test_panel_views.js` | alle Ansichten gegen volle, leere, löchrige, entartete Daten; Zeitfenster, Brushing, Achsenregel; Tagesbeschriftung mit Dialog, Schreibweg, Scroll-Erhalt | 917 |
+| `test_websocket_registration.py` | Registrierung, Dekoratoren, FTP-Quelle, eine Ankerregel, day_context-Lese/Schreibweg, Ampel-Herkunftsnotiz | 180 |
+| `test_reconcile.py` | Abgleich mit Intervals: die drei Sperren einzeln, die datumslosen Aufräumstellen, No-op ohne Speichervorgang, der Handler am echten Aufruf (Import läuft, Historie nie geholt, Zwischenstand) | 115 |
+| `test_suite_hygiene.py` | der Prüfstand prüft sich selbst: **genau eine** Summary je Datei, die etwas zählt, nichts Gezähltes dahinter, Fehler werden gedruckt | 66 |
+| `test_panel_views.js` | alle Ansichten gegen volle, leere, löchrige, entartete Daten; Zeitfenster, Brushing, Achsenregel; Tagesbeschriftung und Abgleich-Dialog mit Schreibweg und Scroll-Erhalt | 972 |
 | `test_panel_fixes.js` | je ein Nachweis pro behobenem Fehler, plus die Zeiger-Simulation | 231 |
 | `test_panel_design.js` | Gestaltungsregeln als Zusicherung, Auswahl als Form, Achse im Aufklappen, Etiketten im Kategorienregister | 79 |
 
@@ -493,7 +506,28 @@ bzw. ein Reiter je Chat.
 | **DFA** | ✅ Paket A als **0.36.0 gebaut** — Brushing, Zeitfenster, Spalten, Sprung; Verifikation am System steht aus |
 | **Signale (aufgeklappte Karte in Heute)** | ✅ Datumsachse und Ereignisspur als Teil von Paket A; Hohlpunkte für w=0-Tage seit 0.37.0 |
 | **Heute, Kalender (Teilaspekt Tagesbeschriftung)** | ✅ Paket B (B2/B3/B6 + Chips) als **0.37.0 gebaut** — Verifikation am System steht aus; B5-Rest (Kachel, Mehrfachauswahl, Notizfeld, Kurzweg) und B4 offen für 0.38.0 |
+| **Archiv-Pflege (Paket D)** | ✅ Abgleich mit Intervals als **0.38.0 gebaut** — Verifikation am System steht aus |
 | Heute, Kalender (voller Audit), Fitness, Aktivitäten | offen |
+
+### Erledigt in 0.38.0: Paket D — Abgleich mit Intervals
+
+Knopf „Abgleichen" im Kopf, ein Abruf über die ganze Historie mit
+`fields=id,start_date_local`, Vergleich der IDs, Entfernen aus allen drei
+Aufräumstellen (`activities`, `dfa`, `unavailable`). **Keine** Bedienhandlung
+„Aktivität löschen" — die Entfernung ist Folge des Abgleichs und hat ein
+Ergebnis: Gleichstand. Der Abgleich liest nur.
+
+Die drei Sperren liegen in `reconcile.py`, das Lesen und Entscheiden
+(`plan()`) vom Schreiben (`apply()`) trennt — ein Fehlschlag kann damit nur
+vor dem ersten Handgriff passieren. Dazu drei Zustandssperren im Handler:
+laufender Import, nie geholte Historie, veränderter Befund zwischen Anzeige
+und Klick. Sechs Gegenproben, jede gezählt und benannt; eine davon biss
+zunächst nicht und wurde geschärft (§7).
+
+**Offen geblieben:** ob der Aktivitäten-Endpunkt ein `updated`-Feld führt, ist
+weiter unbelegt — die Frage ist für den Abgleich aber gegenstandslos: eine
+Löschung hinterlässt keinen Zeitstempel, also braucht jeder Löschbefund die
+vollständige ID-Liste. Ein `updated` könnte nur *Änderungen* verbilligen.
 
 ### Erledigt in 0.37.0: Paket B — Tageskontext (B2, B3, B6 plus Chips)
 

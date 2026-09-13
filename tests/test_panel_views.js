@@ -1147,5 +1147,127 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   ok(writes === 0, "beschriftung: Doppelklick schreibt doppelt");
   q._ctxBusy = false;
 
+  /* ── Abgleich mit Intervals (Paket D) ─────────────────────────────────── */
+  const REP = (over) => Object.assign({
+    oldest: "2025-05-13", newest: F.TODAY, full_history: true, checked: 240,
+    remote: 239, missing: [], share: 0, capped: false, cap_limit: 0.2,
+    removable: [], applied: false,
+  }, over || {});
+  const MISS = [
+    { id: "i1", kind: "activity", date: "2026-09-04", name: "Feierabendrunde", type: "Ride", dfa: true },
+    { id: "i2", kind: "activity", date: "2026-08-30", name: "Lauf", type: "Run", dfa: false },
+    { id: "i3", kind: "unavailable", date: null, name: "", type: "", dfa: false },
+  ];
+
+  const s = new M.Panel();
+  s._nowIso = F.TODAY;
+
+  // 1 - Gleichstand: keine Liste, kein Vollzugsknopf
+  s._syncDlg = { state: "report", report: REP() };
+  let dlg = s._syncPopover();
+  clean(dlg, "abgleich gleichstand");
+  contains(dlg, "Gleichstand", "abgleich: Gleichstand wird nicht gesagt");
+  ok(!dlg.includes('data-act="syncgo"'), "abgleich: Vollzugsknopf ohne Befund");
+
+  // 2 - Befund: erst anzeigen, was verschwinden würde
+  s._syncDlg = { state: "report", report: REP({ missing: MISS, share: 3 / 240,
+                                                removable: ["i1", "i2", "i3"] }) };
+  dlg = s._syncPopover();
+  clean(dlg, "abgleich befund");
+  ok((dlg.match(/class="syncrow"/g) || []).length === 3, "abgleich: nicht jede Einheit gezeigt");
+  contains(dlg, "Feierabendrunde", "abgleich: Name aus dem Archiv fehlt");
+  contains(dlg, "Strava-Platzhalter", "abgleich: der Platzhalter wird nicht benannt");
+  contains(dlg, "inkl. DFA", "abgleich: die mitgehende DFA-Auswertung wird verschwiegen");
+  contains(dlg, 'data-act="syncgo"', "abgleich: kein Vollzugsknopf trotz Befund");
+  contains(dlg, "liest nur", "abgleich: die Einbahnstraße wird nicht gesagt");
+
+  // 3 - Deckelung: gemeldet, aber kein Vollzug
+  s._syncDlg = { state: "report", report: REP({ missing: MISS, share: 0.5, capped: true,
+                                                removable: [] }) };
+  dlg = s._syncPopover();
+  clean(dlg, "abgleich deckelung");
+  ok(!dlg.includes('data-act="syncgo"'), "abgleich deckelung: Vollzug trotz Deckelung angeboten");
+  contains(dlg, "nichts", "abgleich deckelung: es fehlt die Aussage, dass nichts entfernt wurde");
+  contains(dlg, "50 %", "abgleich deckelung: der Anteil wird nicht beziffert");
+  ok((dlg.match(/class="syncrow"/g) || []).length === 3,
+     "abgleich deckelung: der Befund wird nicht gezeigt");
+
+  // 4 - Fehler und Zwischenstand sagen beide: es wurde nichts entfernt
+  s._syncDlg = { state: "error", msg: "server error 502 on /activities" };
+  dlg = s._syncPopover();
+  clean(dlg, "abgleich fehler");
+  contains(dlg, "502", "abgleich fehler: die Meldung erreicht den Dialog nicht");
+  contains(dlg, "nichts entfernt", "abgleich fehler: die Unversehrtheit wird nicht zugesichert");
+  s._syncDlg = { state: "report", stale: true, report: REP({ missing: MISS, removable: [] }) };
+  dlg = s._syncPopover();
+  contains(dlg, "geändert", "abgleich zwischenstand: die Abweichung wird nicht benannt");
+
+  // 5 - Vollzug: das Ergebnis nennt alle drei Aufräumstellen
+  s._syncDlg = { state: "done", report: REP({ applied: true,
+                 removed: { activities: 2, dfa: 1, unavailable: 1 } }) };
+  dlg = s._syncPopover();
+  clean(dlg, "abgleich vollzug");
+  contains(dlg, "DFA-Auswertungen", "abgleich vollzug: DFA-Stelle nicht beziffert");
+  contains(dlg, "Platzhalter", "abgleich vollzug: unavailable-Stelle nicht beziffert");
+
+  // 6 - der Schreibweg am simulierten Ereignis, nicht am Quelltext
+  const r = new M.Panel();
+  r._nowIso = F.TODAY;
+  r._weeks = 8;
+  let rscroll = 520, rrenders = 0;
+  Object.defineProperty(r, "scrollTop", { get: () => rscroll, set: (v) => { rscroll = v; } });
+  const rcalls = [];
+  r._render = () => { rrenders++; rscroll = 0; };
+  r._setTab = async () => {};
+  r._acts = acts; r._thr = thr; r._pmc = pmc; r._coach = F.coach();
+  r._ws = async (type, extra) => {
+    rcalls.push([type, extra || null]);
+    if (type === "reconcile" && !extra) return REP({ missing: MISS, removable: ["i1", "i2", "i3"] });
+    if (type === "reconcile") return REP({ applied: true, missing: MISS,
+      removed: { activities: 2, dfa: 1, unavailable: 1 },
+      stats: { activities: 237, wellness_days: 489, dfa_done: 56 } });
+    if (type === "status") return { activities: 237, wellness_days: 489, dfa_done: 56 };
+    if (type === "days") return F.days();
+    return {};
+  };
+
+  await r._syncOpen();
+  const asked = rcalls.find(([t]) => t === "reconcile");
+  ok(!!asked && asked[1] === null, "abgleich: die Vorschau schickt eine Bestätigung mit");
+  ok(r._syncDlg && r._syncDlg.state === "report", "abgleich: die Vorschau öffnet den Dialog nicht");
+
+  rcalls.length = 0; rrenders = 0; rscroll = 520;
+  await r._syncRun();
+  const done = rcalls.find(([t, e]) => t === "reconcile" && e && e.confirm);
+  ok(!!done, "abgleich: der Vollzug schickt keine Bestätigung");
+  ok(done && done[1].confirm.join(",") === "i1,i2,i3",
+     "abgleich: der Vollzug schickt andere IDs als angezeigt");
+  ok(rscroll === 520, `abgleich: Scroll-Lage verloren (${rscroll} statt 520)`);
+  ok(r._acts === null && r._thr === null && r._pmc === null && r._coach === null,
+     "abgleich: die aus Aktivitäten gerechneten Ansichten bleiben auf altem Stand");
+  ok(rcalls.some(([t]) => t === "status"), "abgleich: der Kopfzähler wird nicht neu geholt");
+  ok(r._status && r._status.activities === 237, "abgleich: der Kopf zeigt weiter die alte Zahl");
+  ok(r._syncDlg && r._syncDlg.state === "done", "abgleich: das Ergebnis wird nicht gezeigt");
+
+  // Deckelung: nichts freigegeben, also darf der Vollzug gar nicht erst gehen
+  rcalls.length = 0;
+  r._syncDlg = { state: "report", report: REP({ missing: MISS, capped: true, removable: [] }) };
+  await r._syncRun();
+  ok(!rcalls.some(([t]) => t === "reconcile"), "abgleich deckelung: der Vollzug wurde trotzdem gesendet");
+
+  // Doppelklick
+  rcalls.length = 0;
+  r._syncDlg = { state: "report", report: REP({ missing: MISS, removable: ["i1"] }) };
+  r._syncBusy = true;
+  await r._syncRun();
+  ok(!rcalls.some(([t]) => t === "reconcile"), "abgleich: Doppelklick löst zwei Abgleiche aus");
+  r._syncBusy = false;
+
+  // Fehlerweg: Dialog bleibt stehen und sagt, dass nichts geschah
+  r._ws = async () => { throw new Error("server error 502 on /activities"); };
+  await r._syncOpen();
+  ok(r._syncDlg && r._syncDlg.state === "error", "abgleich fehler: der Dialog fällt zurück");
+  ok(String(r._syncDlg.msg || "").includes("502"), "abgleich fehler: die Meldung geht verloren");
+
   report("test_panel_views");
 })();

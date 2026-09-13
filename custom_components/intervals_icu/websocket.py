@@ -14,7 +14,7 @@ from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.util import dt as dt_util
 
-from . import analytics, coach as coach_module, day_context as day_context_lib, derive, importer, plan as plan_lib, workouts as workout_lib
+from . import analytics, coach as coach_module, day_context as day_context_lib, derive, importer, plan as plan_lib, reconcile as reconcile_lib, workouts as workout_lib
 from .api import IntervalsError
 from .const import DOMAIN
 
@@ -80,6 +80,7 @@ def async_register(hass: HomeAssistant) -> None:
         websocket_days,
         websocket_day_context,
         websocket_set_day_context,
+        websocket_reconcile,
     ):
         websocket_api.async_register_command(hass, handler)
 
@@ -759,3 +760,80 @@ def websocket_today(hass, connection, msg) -> None:
     data = coordinator.archive.data
     ready = analytics.readiness(data) or {}
     connection.send_result(msg["id"], coach_module.today(data, ready.get("budget")))
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "intervals_icu/reconcile",
+        # Absent: report only, nothing is touched. Present: carry out exactly
+        # the ids that were shown and confirmed - see below.
+        vol.Optional("confirm"): [str],
+        vol.Optional("athlete_id"): str,
+    }
+)
+@websocket_api.async_response
+async def websocket_reconcile(hass, connection, msg) -> None:
+    """Compare the archive against Intervals, and on confirmation trim it.
+
+    Reads only. Nothing goes to intervals.icu, and there is no way to remove
+    one chosen activity: the removal follows from the comparison and has one
+    outcome, parity. The locks live in reconcile.plan()/apply(); what is added
+    here is the state of the system around them.
+    """
+    coordinator = _pick(hass, msg.get("athlete_id"))
+    if coordinator is None:
+        connection.send_error(msg["id"], "not_found", "no Intervals.icu athlete loaded")
+        return
+
+    # An import in flight is writing the very dict we would compare against,
+    # and would write its own stale copy back afterwards.
+    if getattr(coordinator, "import_running", False):
+        connection.send_error(msg["id"], "busy", "Der Import läuft gerade - bitte danach abgleichen.")
+        return
+
+    data = coordinator.archive.data
+    if importer.should_full_import(data):
+        connection.send_error(
+            msg["id"], "not_ready",
+            "Die Historie wurde noch nie vollständig geholt - das Archiv ist kein Maßstab.")
+        return
+
+    oldest = coordinator.history_start()
+    newest = date.today()
+    try:
+        rows = await coordinator.client.async_get_activities(
+            oldest, newest, fields=reconcile_lib.RECONCILE_FIELDS)
+    except Exception as err:  # noqa: BLE001 - lock 1: report, touch nothing
+        connection.send_error(msg["id"], "fetch_failed", str(err))
+        return
+
+    try:
+        report = reconcile_lib.plan(data, rows, oldest, newest)
+    except ValueError as err:
+        connection.send_error(msg["id"], "bad_response", str(err))
+        return
+
+    confirmed = msg.get("confirm")
+    if confirmed is None:
+        connection.send_result(msg["id"], dict(report, applied=False))
+        return
+
+    # The archive may have moved between the dialog and the click, and the
+    # second fetch is a second answer. Only the intersection of what was shown
+    # and what is still missing may go - anything else would carry out
+    # something other than what was confirmed.
+    allowed = set(report["removable"])
+    wanted = {str(key) for key in confirmed}
+    if wanted - allowed:
+        connection.send_result(msg["id"], dict(
+            report, applied=False, stale=True,
+            message="Der Befund hat sich seit der Anzeige geändert - es wurde nichts entfernt."))
+        return
+
+    removed = reconcile_lib.apply(data, wanted)
+    if reconcile_lib.changed(removed):
+        await coordinator.archive.async_save_now()
+        coordinator.async_update_listeners()
+    connection.send_result(msg["id"], dict(
+        report, applied=True, stale=False, removed=removed,
+        stats=importer.archive_stats(data)))
