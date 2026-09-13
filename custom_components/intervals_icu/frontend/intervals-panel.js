@@ -2988,7 +2988,7 @@ class IntervalsIcuPanel extends HTMLElement {
       const dec = a.decoupling;
       const decCls = (dec == null || decGood == null) ? "mut" : dec > decGood ? "warncol" : "okcol";
       const thr = a.dfa && a.dfa.hr_at_threshold
-        ? `${fmt(a.dfa.hr_at_threshold)} bpm${a.dfa.threshold_samples < 5 ? " ⚠" : ""}` : "–";
+        ? `${fmt(a.dfa.hr_at_threshold)} bpm${(a.dfa.threshold || {}).hr_usable ? "" : " ⚠"}` : "–";
       return `<button class="arow ${sel && String(sel.id) === String(a.id) ? "on" : ""}" data-act="act" data-id="${esc(a.id)}">
         <span class="aic" style="color:${sp.c}">${ico(sp.ic, sp.c, 20)}</span>
         <span class="anm"><b>${esc(a.name || sp.l)}</b><small>${dMed(a.start_date_local)} · ${sp.l}</small></span>
@@ -3654,13 +3654,18 @@ class IntervalsIcuPanel extends HTMLElement {
         <i class="dbar"><s style="width:${p}%;background:${col}"></s></i>
         <b class="tn">${p} %</b><small class="tn">${dur(secs)}</small>
       </div>`).join("");
-    const weak = (s.threshold_samples || 0) < 5;
+    // Das Urteil kommt aus der Payload (derive.threshold_verdict), nicht aus
+    // einem Vergleich hier - sonst steht die Regel zum fuenften Mal im Haus.
+    const thr = s.threshold || {};
+    const weak = !thr.hr_usable;
     return `<h3 class="secname">DFA alpha-1 dieser Einheit</h3>
       <div class="dfabox">${rowsHtml}
-        ${s.hr_at_threshold ? `<div class="dfathr">Aerobe Schwelle abgelesen bei
+        ${thr.hr != null ? `<div class="dfathr">Aerobe Schwelle abgelesen bei
           <b class="tn">${fmt(s.hr_at_threshold)} bpm</b>
           ${s.power_at_threshold ? `· <b class="tn">${fmt(s.power_at_threshold)} W</b>` : ""}
-          ${badge(weak ? "amber" : "green", `${s.threshold_samples} Messpunkte${weak ? " — dünn" : ""}`)}
+          ${badge(thr.failure ? "red" : weak ? "amber" : "green",
+            thr.failure ? `Ausfall — keine Messung`
+              : `${thr.hr_windows} Messpunkte${weak ? " — dünn" : ""}`)}
         </div>` : ""}
         <p class="src">Rogers und Gronwald: DFA alpha-1 0,75 ≈ aerobe Schwelle (VT1), 0,5 ≈ anaerobe (VT2). Die Validierungslage ist gemischt: gegen Spiroergometrie stimmt VT1 nur schwach überein (weite Übereinstimmungsgrenzen, bei Fitteren wird die Schwelle eher unterschätzt); VT2 ist robuster. Als Trend am eigenen Körper brauchbar, als alleinige Verankerung nicht — dazu empfindlich für Artefakte und Aufzeichnungsgerät.</p>
       </div>`;
@@ -3843,7 +3848,11 @@ class IntervalsIcuPanel extends HTMLElement {
     const all = thr.filter((x) => sportFilter === "all" || groupKey(x.type) === sportFilter);
     if (!all.length) return `<div class="card pad">Noch keine Schwellen-Messungen${sportFilter !== "all" ? " für diese Sportart" : ""}.</div>`;
 
-    const isSolid = (x) => (x.samples || 0) >= 5 && x.hr != null && x.hr > 0;
+    // EIN Urteil, im Backend gefaellt (derive.threshold_verdict) und hier nur
+    // gelesen. Bis 0.44.0 stand die Regel hier - und die Leistungskurve unten
+    // las eine ANDERE, sodass sie eine Fahrt behielt, die die HF-Kurve verwarf.
+    const isSolid = (x) => x.hr_usable === true;
+    const powSolid = (x) => x.power_usable === true;
     const solidAll = all.filter(isSolid);
     // TRAP 1: the headline is computed over the whole stock, never over the
     // window. Otherwise the aerobic threshold changes because somebody
@@ -3895,7 +3904,7 @@ class IntervalsIcuPanel extends HTMLElement {
     const pick = this._dfaPick;
     const pts = rows.map((x, i) => {
       if (x.hr == null || x.hr <= 0) return null;
-      const solidPt = (x.samples || 0) >= 5;
+      const solidPt = isSolid(x);
       const v = Math.max(y0a, Math.min(y1a, x.hr));
       if (v !== x.hr) clamped++;
       const hit = !!pick && x.activity_id === pick;
@@ -3932,10 +3941,10 @@ class IntervalsIcuPanel extends HTMLElement {
       + (enoughForMedian ? "" : `<p class="hint">${ico("warn", C.amber, 13)} Nur ${solid.length} belastbare Messung(en) in diesem Fenster — unter fünf wird keine Medianlinie gezeichnet.</p>`)
       + (clamped ? `<p class="hint">${ico("warn", C.amber, 13)} ${clamped} Messung(en) außerhalb des dargestellten Bereichs — an der Achse geklemmt, damit der belastbare Bereich lesbar bleibt.</p>` : "");
 
-    const powRows = rows.map((x) => ((x.samples || 0) >= 5 ? x.power : null));
+    const powRows = rows.map((x) => (powSolid(x) ? x.power : null));
     let powCh = "";
     if (powRows.some((v) => v != null)) {
-      const [p0, p1] = domainOf([{ v: all.map((x) => (isSolid(x) ? x.power : null)) }]);
+      const [p0, p1] = domainOf([{ v: all.map((x) => (powSolid(x) ? x.power : null)) }]);
       powCh = chart({
         h: 130, n, y0: p0, y1: p1, grp: "dfa",
         s: [
@@ -3943,7 +3952,7 @@ class IntervalsIcuPanel extends HTMLElement {
               ? { i, v: powRows[i], c: ROLE.pow, r: pick && x.activity_id === pick ? 5.4 : 3.4,
                   op: pick ? (x.activity_id === pick ? 1 : 0.35) : 1,
                   ring: !!pick && x.activity_id === pick,
-                  id: isSolid(x) ? x.activity_id : null } : null)).filter(Boolean), c: ROLE.pow },
+                  id: powSolid(x) ? x.activity_id : null } : null)).filter(Boolean), c: ROLE.pow },
           ...(enoughForMedian ? [{ t: "line", v: rollMedian(powRows, 5), c: ROLE.pow, w: 2 }] : []),
         ],
         label: "Schwellen-Leistung (W) — eigenes Feld statt zweiter Achse", labelc: ROLE.pow,
@@ -3954,7 +3963,7 @@ class IntervalsIcuPanel extends HTMLElement {
       rows: [
         { l: "Schwelle", c: C.blue, vals: rows.map((x) => x.hr), u: "bpm" },
         { l: "Leistung", c: ROLE.pow, vals: rows.map((x) => x.power), u: "W" },
-        { l: "Messpunkte", c: C.tx2, vals: rows.map((x) => x.samples) },
+        { l: "Messpunkte", c: C.tx2, vals: rows.map((x) => x.hr_windows) },
       ],
     };
 
@@ -3967,7 +3976,7 @@ class IntervalsIcuPanel extends HTMLElement {
     const capped = w.kept > CAP;
     const decGood = this._decGood();
     const tableRows = shown.map((x) => {
-      const weak = (x.samples || 0) < 5;
+      const weak = !isSolid(x);
       const sp = sportOf(x.type);
       const base = rollBy[x.activity_id];
       const dev = (!weak && x.hr != null && base != null) ? x.hr - base : null;
@@ -3987,7 +3996,10 @@ class IntervalsIcuPanel extends HTMLElement {
         <span class="tn">${x.load != null ? fmt(x.load) : "–"}</span>
         <span class="tn">${x.avg_hr ? fmt(x.avg_hr) + " bpm" : "–"}</span>
         <span class="tn ${decCls}">${dec != null ? fmt(dec, 1) + " %" : "–"}</span>
-        <span>${weak ? badge("amber", x.samples + " Punkte — dünn") : badge("green", x.samples + " Punkte")}</span>
+        <span>${x.failure ? badge("red", "Ausfall — keine Messung")
+          : x.hr_windows == null ? badge("amber", "Belegung unbekannt")
+          : weak ? badge("amber", x.hr_windows + " Punkte — dünn")
+          : badge("green", x.hr_windows + " Punkte")}</span>
         <span class="gobox"><i class="go" data-act="gotoact" data-id="${esc(x.activity_id)}"
           title="Einheit öffnen">${ico("chev", C.tx2, 16)}</i></span>
       </button>`;

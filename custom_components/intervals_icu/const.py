@@ -48,6 +48,27 @@ PANEL_VERSION = "0.44.0"
 
 DECOUPLING_GOOD = 5.0  # FRIEL - a coach's rule of thumb, NOT a study threshold
 
+# --- Plausibilitaet einer Schwellenmessung (PROJEKTSTAND §7, 13.09.2026) ------
+# Eine Schwellen-HF unterhalb einer physiologischen Mindestgrenze ist ein
+# AUSFALL, keine Messung. Die Fahrt vom 06.06.2026 ("neuer pulsgurt") traegt
+# 0,0 bpm ueber 24 Fenster und ging bis 0.44.0 als vollwertige Messung in die
+# Reihe ein. 80 bpm, gemessen am Bestand: der niedrigste ECHTE Wert ueber alle
+# 53 Messungen liegt bei 90,0 bpm (Gehen) bzw. 130,0 bpm (Rad) - die Grenze
+# trennt den Ausfall ab, ohne eine einzige echte Messung zu kosten. Eine aerobe
+# Schwelle (alpha-1 = 0,75!) unterhalb davon gibt es physiologisch nicht.
+THRESHOLD_MIN_HR = 80.0
+# Dieselbe Klasse fuer die Leistung. Am heutigen Bestand faengt sie NICHTS
+# (Spanne 116,6-189,6 W) - sie steht hier, weil ein ausgefallener Leistungsmesser
+# dieselbe Null liefert wie ein ausgefallener Gurt, und eine Regel, die nur in
+# eine Richtung schuetzt, ist eine halbe (§7, 0.44.0).
+THRESHOLD_MIN_POWER = 40.0
+# Ein Fenster ist keine Messung. Zwei Fahrten stehen auf einem einzigen Fenster
+# und wogen bis 0.44.0 so viel wie eine mit 1.484. Zehn statt fuenf, gemessen:
+# die Grenze kostet gegenueber fuenf genau zwei Fahrten (9 und 8 Fenster), waehrend
+# sie vier statt zwei Scheinmessungen faengt. Der Wert wird weiter GEZEIGT, mit
+# seiner Belegung - er zieht nur keinen Median.
+THRESHOLD_MIN_WINDOWS = 10
+
 # Which sessions the durability tile may look at.
 DURABILITY_MIN_MINUTES = 45      # below this a decoupling reading is not usable
 DURABILITY_MAX_INTENSITY = 80    # interval sessions are a different question

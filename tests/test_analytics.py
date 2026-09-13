@@ -257,7 +257,7 @@ cal_data["activities"]["i1"] = {
     "decoupling": 6.3,
 }
 cal_data["dfa"]["i1"] = {"secs_aerobic": 3000, "secs_transition": 900, "secs_anaerobic": 300,
-                         "hr_at_threshold": 168.0, "threshold_samples": 486}
+                         "hr_at_threshold": 168.0, "hr_windows": 486, "power_windows": 486}
 events = [{"start_date_local": (today + timedelta(days=1)).isoformat() + "T00:00:00",
            "name": "volumen", "type": "Ride", "icu_training_load": 45, "moving_time": 3600,
            "description": "DFa über 0,8", "paired_activity_id": None, "hide_from_athlete": False}]

@@ -403,12 +403,16 @@ def anchors(data: dict[str, Any]) -> dict[str, Any]:
     for key, summary in dfa.items():
         if not isinstance(summary, dict):
             continue
-        hr = _f(summary.get("hr_at_threshold"))
-        if hr is None or hr <= 0 or (summary.get("threshold_samples") or 0) < 5:
+        # ONE rule, called - not a fourth copy of it. The old line here read
+        # `hr <= 0 and >= 5 samples`, which is neither the physiological floor
+        # nor the window count the house agreed on (§7).
+        verdict = derive.threshold_verdict(summary)
+        if not verdict["hr_usable"]:
             continue
         act = acts.get(key) or {}
         rows.append({"date": str(act.get("start_date_local") or "")[:10],
-                     "hr": hr, "power": _f(summary.get("power_at_threshold"))})
+                     "hr": verdict["hr"],
+                     "power": verdict["power"] if verdict["power_usable"] else None})
     rows.sort(key=lambda r: r["date"])
     if len(rows) < 3:
         return {"aerobic_hr": None, "aerobic_power": None, "n": len(rows),

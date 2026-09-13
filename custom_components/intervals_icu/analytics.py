@@ -745,6 +745,7 @@ def _day_activities(data: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
             activity.get("icu_hr_zone_times")
         )
         summary = dfa_all.get(key) or None
+        _thr = derive.threshold_verdict(summary)
         shares = None
         if summary:
             total = (summary.get("secs_aerobic") or 0) + (summary.get("secs_transition") or 0) + (
@@ -773,8 +774,14 @@ def _day_activities(data: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
                 "decoupling": activity.get("decoupling"),
                 "zones": [round(value, 1) for value in zones] if zones else None,
                 "dfa": shares,
-                "threshold_hr": (summary or {}).get("hr_at_threshold"),
-                "threshold_samples": (summary or {}).get("threshold_samples"),
+                # Same rule as everywhere else, called rather than re-stated.
+                # This list carried the raw value with no check at all until
+                # 0.45.0 - the fifth of five places, and the only one that had
+                # no rule whatsoever.
+                "threshold_hr": _thr["hr"],
+                "threshold_windows": _thr["hr_windows"],
+                "threshold_usable": _thr["hr_usable"],
+                "threshold_failure": _thr["failure"],
             }
         )
 

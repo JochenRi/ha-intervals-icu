@@ -251,7 +251,78 @@ def dfa_summary(
         "secs_anaerobic": below * sample_secs,
         "hr_at_threshold": _mean(hr_window),
         "power_at_threshold": _mean(watt_window),
-        "threshold_samples": len(hr_window) or len(watt_window),
+        # TWO counts, not one. Until 0.44.0 this was
+        #     "threshold_samples": len(hr_window) or len(watt_window)
+        # and the `or` made the number lie: when the strap failed, the WATT
+        # count was reported as the heart rate's backing. The ride of
+        # 06.06.2026 showed "24 windows" next to a threshold that had no
+        # window at all. A count belongs to the value it stands next to.
+        "hr_windows": len(hr_window),
+        "power_windows": len(watt_window),
+    }
+
+
+try:  # inside the package (Home Assistant)
+    from .const import THRESHOLD_MIN_HR, THRESHOLD_MIN_POWER, THRESHOLD_MIN_WINDOWS
+except ImportError:  # standalone (test suite loads this file directly)
+    from const import THRESHOLD_MIN_HR, THRESHOLD_MIN_POWER, THRESHOLD_MIN_WINDOWS
+
+
+def threshold_verdict(summary: dict[str, Any] | None) -> dict[str, Any]:
+    """Judge ONE threshold reading: measurement, or failure?
+
+    THE one place. Before 0.45.0 this judgement stood in five places with
+    four different rules - coach.anchors (hr > 0 and >= 5 windows), the
+    panel's isSolid (same), the panel's power row (windows only),
+    importer.threshold_series (>= 1 window) and analytics (nothing at all).
+    The heart rate curve therefore dropped the 06.06. failure while the
+    power curve below it kept the same ride.
+
+    The defect class is the one from §7: the check sat at the INPUT - every
+    single sample was filtered - and nobody looked at the RESULT. A mean over
+    nothing is still a mean, and it carried a count that belonged to another
+    value.
+
+    Returns the reading plus its verdict. `usable` decides whether the value
+    may pull a median, a mean or a curve; `shown` stays True either way,
+    because a failure that silently disappears is the other half of the same
+    mistake (§7 class 4, the silent exit).
+    """
+    summary = summary if isinstance(summary, dict) else {}
+    hr = _number(summary.get("hr_at_threshold"))
+    power = _number(summary.get("power_at_threshold"))
+    hr_windows = int(summary.get("hr_windows") or 0)
+    power_windows = int(summary.get("power_windows") or 0)
+
+    hr_ok = hr is not None and hr >= THRESHOLD_MIN_HR
+    power_ok = power is not None and power >= THRESHOLD_MIN_POWER
+
+    # Each value against ITS OWN count - that is the whole point of splitting
+    # the field. A ride whose strap failed may still carry a usable power
+    # reading, and vice versa.
+    hr_usable = hr_ok and hr_windows >= THRESHOLD_MIN_WINDOWS
+    power_usable = power_ok and power_windows >= THRESHOLD_MIN_WINDOWS
+
+    reason = None
+    if hr is not None and not hr_ok:
+        reason = "hr_implausible"
+    elif power is not None and not power_ok:
+        reason = "power_implausible"
+    elif hr is None and power is None:
+        reason = "no_reading"
+    elif not (hr_usable or power_usable):
+        reason = "too_few_windows"
+
+    return {
+        "hr": hr,
+        "power": power,
+        "hr_windows": hr_windows,
+        "power_windows": power_windows,
+        "hr_usable": hr_usable,
+        "power_usable": power_usable,
+        "usable": hr_usable or power_usable,
+        "failure": reason in ("hr_implausible", "power_implausible"),
+        "reason": reason,
     }
 
 

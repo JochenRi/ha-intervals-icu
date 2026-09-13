@@ -470,6 +470,61 @@ async def main():
     check("der nächstältere gemessene Test springt ein",
           (dts.anchor(noval) or {}).get("p20"), 180.0)
 
+    # --- Waechter: eine fehlende Versionsmarke heisst URALT ------------------
+    # PROJEKTSTAND §7 (0.45.0). `store.async_load` fuellt das Grundgeruest auf,
+    # und genau dabei wurde eine FEHLENDE Marke als AKTUELLE eingesetzt - der
+    # Migrationsmechanismus hat sich damit still selbst abgeschaltet. Es sind
+    # ZWEI Marken, nicht eine: `dfa_version` und `fields_version`. Also Klasse,
+    # also Waechter - und zwar einer, der die Liste in store.py gegen die
+    # Marken in empty_data() haelt, damit eine DRITTE Marke nicht wieder
+    # jahrelang unbemerkt aufgefuellt wird (vierte Bauregel, 0.44.0).
+    import ast as _ast
+    import re as _re
+
+    _imp_src = (COMP / "importer.py").read_text()
+    _store_src = (COMP / "store.py").read_text()
+    marks = set()
+    for node in _ast.walk(_ast.parse(_imp_src)):
+        if isinstance(node, _ast.FunctionDef) and node.name == "empty_data":
+            for sub in _ast.walk(node):
+                if isinstance(sub, _ast.Constant) and isinstance(sub.value, str) \
+                        and sub.value.endswith("_version"):
+                    marks.add(sub.value)
+    check("Waechter: Versionsmarken im Grundgeruest gefunden", len(marks) >= 2, True)
+
+    guarded_line = _re.search(r'for mark in \(([^)]*)\):', _store_src)
+    check("Waechter: die Ausnahmeliste in store.py steht", guarded_line is not None, True)
+    guarded = set(_re.findall(r'"([a-z_]+_version)"', guarded_line.group(1))) if guarded_line else set()
+    check("Waechter: jede Marke aus empty_data steht in der Ausnahmeliste",
+          sorted(marks - guarded), [])
+    check("Waechter: die Liste erfindet keine Marke", sorted(guarded - marks), [])
+
+    # Gegenprobe, GEZAEHLT UND BENANNT: eine dritte Marke im Grundgeruest, die
+    # niemand in die Liste nachtraegt, muss der Waechter finden. Ohne diesen
+    # Nachweis prueft die leere Differenz oben nur, dass der Ausdruck nie greift.
+    _planted = marks | {"peer_version"}
+    check("Gegenprobe: eine nicht eingetragene dritte Marke wird gefunden",
+          sorted(_planted - guarded), ["peer_version"])
+
+    # Und das Verhalten selbst, nicht nur der Quelltext: ein Altbestand OHNE
+    # Marke darf nicht als aktuell durchgehen.
+    alt = importer.empty_data("a1")
+    del alt["dfa_version"]
+    alt["dfa"] = {"x": {"hr_at_threshold": 150}}
+    merged = importer.empty_data("a1")
+    merged.update(alt)
+    for mark in ("dfa_version", "fields_version"):
+        if mark not in alt:
+            merged[mark] = 0
+    check("Altbestand ohne Marke gilt als uralt", merged["dfa_version"], 0)
+    check("und wird dadurch verworfen", importer.drop_outdated_dfa(merged), 1)
+    # Die Gegenprobe zur alten Bauart: ohne die Ausnahme haette update() die
+    # aktuelle Marke eingesetzt und die Migration haette nichts gefunden.
+    ohne = importer.empty_data("a1")
+    ohne.update(alt)
+    check("Gegenprobe: ohne die Ausnahme verwirft die Migration nichts",
+          importer.drop_outdated_dfa(ohne), 0)
+
     print(f"test_import: {CHECKS} Prüfungen, {len(failures)} Fehler")
     print("FEHLER:", failures if failures else "keine")
     return 1 if failures else 0

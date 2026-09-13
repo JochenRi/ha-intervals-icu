@@ -21,6 +21,9 @@ from .const import (
     DOMAIN,
     DURABILITY_TEST_LONG_MIN,
     DURABILITY_TEST_SHORT_MIN,
+    THRESHOLD_MIN_HR,
+    THRESHOLD_MIN_POWER,
+    THRESHOLD_MIN_WINDOWS,
 )
 
 # Streams offered to the panel's activity detail view. Fetched live on
@@ -169,7 +172,13 @@ def websocket_activity(hass, connection, msg) -> None:
         connection.send_error(msg["id"], "not_found", "unknown activity")
         return
     merged = dict(activity)
-    merged["dfa"] = data["dfa"].get(msg["activity_id"]) or None
+    summary = data["dfa"].get(msg["activity_id"]) or None
+    if summary:
+        # The judgement travels WITH the summary, computed once in the backend.
+        # The detail card used to compare `threshold_samples < 5` itself - the
+        # fourth of five copies of a rule that has one home (derive).
+        summary = {**summary, "threshold": derive.threshold_verdict(summary)}
+    merged["dfa"] = summary
     connection.send_result(msg["id"], merged)
 
 
@@ -305,6 +314,24 @@ def websocket_status(hass, connection, msg) -> None:
     # is the one carrier that is always there. Still ONE definition - const.py;
     # several carriers of the same value are fine, a second value is not.
     stats["decoupling_good"] = DECOUPLING_GOOD
+    # Dieselbe Traegerlogik fuer die Plausibilitaetsgrenzen: der DFA-Reiter, die
+    # Aktivitaetsliste und die Detailkarte muessen sagen koennen, WARUM ein Wert
+    # als Ausfall gilt - und die Zahl dazu darf nicht im Frontend stehen.
+    # `basis` reist mit, weil beide Zahlen SETZUNGEN sind und keine Befunde:
+    # gemessen wurde an EINEM Bestand (§7), und fuer andere Koerper - sehr
+    # trainiert, jung, betablockiert - kann die Grenze zu hoch liegen.
+    stats["threshold_limits"] = {
+        "min_hr": THRESHOLD_MIN_HR,
+        "min_power": THRESHOLD_MIN_POWER,
+        "min_windows": THRESHOLD_MIN_WINDOWS,
+        "basis": (
+            "Setzung, nicht Befund. Die Grenzen trennen AUSFAELLE von Messungen "
+            "und sind an einem einzigen Bestand geprueft: dort liegt der "
+            "niedrigste echte Schwellenwert bei 90 bpm (Gehen) und der hoechste "
+            "Ruhepuls bei 66 - dazwischen liegt die Grenze. Das Fenster ist "
+            "schmal, und fuer einen anderen Koerper kann es sich verschieben."
+        ),
+    }
     connection.send_result(msg["id"], stats)
 
 

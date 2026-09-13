@@ -150,7 +150,7 @@ const acts = F.activities();
   const q = new M.Panel();
   q._nowIso = F.TODAY;
   q._win.dfa = { id: "all" };
-  const pickId = (thr.slice(-10).find((x) => x.samples >= 5 && x.hr > 0) || {}).activity_id;
+  const pickId = (thr.slice(-10).find((x) => x.hr_usable && x.power_usable) || {}).activity_id;
   const plain = q.rDfa(thr, "all");
   q._dfaPick = pickId;
   const marked = q.rDfa(thr, "all");

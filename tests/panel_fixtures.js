@@ -131,9 +131,15 @@ function activities(n) {
     icu_weighted_avg_watts: i % 3 === 2 ? null : 130 + i,
     calories: 307, decoupling: i % 4 ? 2.1 : 10.6, icu_efficiency_factor: 0.92,
     average_cadence: i % 3 === 2 ? null : 79, device_name: "Garmin",
+    // Das Urteil kommt seit 0.45.0 aus dem Backend (derive.threshold_verdict)
+    // und liegt unter `threshold` - die Karte rechnet es nicht mehr selbst.
     dfa: i % 5 ? { samples: 2000, secs_aerobic: 3000, secs_transition: 400,
                    secs_anaerobic: 200, hr_at_threshold: 151, power_at_threshold: 146,
-                   threshold_samples: i % 2 ? 43 : 3 } : null,
+                   threshold: { hr: 151, power: 146,
+                                hr_windows: i % 2 ? 43 : 3, power_windows: i % 2 ? 43 : 3,
+                                hr_usable: !!(i % 2), power_usable: !!(i % 2),
+                                usable: !!(i % 2), failure: false,
+                                reason: i % 2 ? null : "too_few_windows" } } : null,
   }));
 }
 
@@ -194,12 +200,26 @@ function thresholds() {
       // "Rad" twice because it grouped on the raw type
       type: i % 4 === 3 ? "Walk" : (i % 2 ? "Ride" : "VirtualRide"),
       hr: 150 + ((i * 9) % 22), power: i % 4 === 3 ? null : 135 + ((i * 5) % 25),
-      samples: i % 5 ? 12 : 3,
+      // Belegung UND Urteil je Wert getrennt, wie sie das Backend liefert.
+      // Eine Zahl je Wert, nicht eine fuer beide: das `or` von frueher hat
+      // bei ausgefallenem Gurt die Watt-Belegung als HF-Belegung gemeldet.
+      hr_windows: i % 5 ? 12 : 3, power_windows: i % 4 === 3 ? 0 : (i % 5 ? 12 : 3),
+      hr_usable: !!(i % 5), power_usable: i % 4 === 3 ? false : !!(i % 5),
+      usable: !!(i % 5), failure: false,
+      reason: i % 5 ? null : "too_few_windows",
     });
-    // two artefacts from the real account: a zero threshold, and a walk read
-    // off a single sample - both used to stretch the axis from 0 to 160
-    if (i === 12) out[out.length - 1] = { ...out[out.length - 1], hr: 0, power: null, samples: 8 };
-    if (i === 30) out[out.length - 1] = { ...out[out.length - 1], type: "Walk", hr: 90, power: null, samples: 1 };
+    // Drei Faelle, die auseinandergezogen gehoeren (docs/ausbau.md Tests L):
+    // ein AUSFALL gegen eine echte Messung, und eine Fahrt mit EINEM Fenster
+    // gegen eine mit vielen. Beide stammen aus dem echten Konto und haben die
+    // Achse von 0 bis 160 gezogen.
+    if (i === 12) out[out.length - 1] = { ...out[out.length - 1],
+      hr: 0, power: 163, hr_windows: 24, power_windows: 24,
+      hr_usable: false, power_usable: true, usable: true,
+      failure: true, reason: "hr_implausible" };
+    if (i === 30) out[out.length - 1] = { ...out[out.length - 1], type: "Walk",
+      hr: 90, power: null, hr_windows: 1, power_windows: 0,
+      hr_usable: false, power_usable: false, usable: false,
+      failure: false, reason: "too_few_windows" };
     d = new Date(d.getTime() + 3 * 864e5);
   }
   return out;

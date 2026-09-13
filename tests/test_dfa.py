@@ -49,7 +49,57 @@ watts = [100, 190, 194, 260]
 th = derive.dfa_summary(dfa2, hr, watts)
 check("HF an der Schwelle", th["hr_at_threshold"], 151.0)
 check("Watt an der Schwelle", th["power_at_threshold"], 192.0)
-check("Stichproben Schwelle", th["threshold_samples"], 2)
+check("Stichproben Schwelle HF", th["hr_windows"], 2)
+check("Stichproben Schwelle Watt", th["power_windows"], 2)
+
+# --- die Belegungszahl gehoert zu IHREM Wert (PROJEKTSTAND §7, 0.45.0) --------
+# Bis 0.44.0 stand hier EIN Feld: `len(hr_window) or len(watt_window)`. Faellt
+# der Gurt aus, meldete es die WATT-Belegung als Belegung der Herzfrequenz.
+gurt_aus = derive.dfa_summary([0.78, 0.72], [0, 0], [190, 194])
+check("Gurt aus: keine HF abgelesen", gurt_aus["hr_at_threshold"], None)
+check("Gurt aus: HF-Belegung ist null", gurt_aus["hr_windows"], 0)
+check("Gurt aus: Watt-Belegung steht fuer sich", gurt_aus["power_windows"], 2)
+# Die Gegenprobe zur alten Bauart, GEZAEHLT UND BENANNT: die alte Formel haette
+# hier 2 geliefert - eine Zwei, die zu keinem Wert gehoerte.
+check("Gegenprobe: die alte or-Formel haette gelogen",
+      gurt_aus["hr_windows"] or gurt_aus["power_windows"], 2)
+check("Gegenprobe: das getrennte Feld luegt nicht", gurt_aus["hr_windows"], 0)
+
+# --- threshold_verdict: EINE Stelle fuer alle fuenf Leser ---------------------
+from const import THRESHOLD_MIN_HR, THRESHOLD_MIN_POWER, THRESHOLD_MIN_WINDOWS  # noqa: E402
+
+genug = THRESHOLD_MIN_WINDOWS
+ausfall = derive.threshold_verdict(
+    {"hr_at_threshold": 0.0, "power_at_threshold": 163.0,
+     "hr_windows": 24, "power_windows": 24})
+check("Ausfall 06.06.: HF unbrauchbar", ausfall["hr_usable"], False)
+check("Ausfall 06.06.: als Ausfall benannt", ausfall["reason"], "hr_implausible")
+check("Ausfall 06.06.: ist ein Ausfall, kein Mangel", ausfall["failure"], True)
+check("Ausfall 06.06.: die Leistung bleibt brauchbar", ausfall["power_usable"], True)
+
+knapp = derive.threshold_verdict(
+    {"hr_at_threshold": 150.0, "hr_windows": genug - 1, "power_windows": 0})
+check("ein Fenster zu wenig: kein Median", knapp["usable"], False)
+check("ein Fenster zu wenig: benannt", knapp["reason"], "too_few_windows")
+check("ein Fenster zu wenig: der Wert bleibt sichtbar", knapp["hr"], 150.0)
+reicht = derive.threshold_verdict(
+    {"hr_at_threshold": 150.0, "hr_windows": genug, "power_windows": 0})
+check("genau an der Grenze: brauchbar", reicht["usable"], True)
+
+# Die Grenze ist eine Konstante, kein Literal - ein Test, der 10 schreibt,
+# besteht auch dann noch, wenn die Konstante auf 20 geht.
+check("HF knapp unter der Mindestgrenze faellt",
+      derive.threshold_verdict({"hr_at_threshold": THRESHOLD_MIN_HR - 0.1,
+                                "hr_windows": 99})["hr_usable"], False)
+check("HF genau auf der Mindestgrenze bleibt",
+      derive.threshold_verdict({"hr_at_threshold": THRESHOLD_MIN_HR,
+                                "hr_windows": 99})["hr_usable"], True)
+check("Leistung unter der Mindestgrenze faellt",
+      derive.threshold_verdict({"power_at_threshold": THRESHOLD_MIN_POWER - 0.1,
+                                "power_windows": 99})["power_usable"], False)
+check("gar keine Ablesung wird als solche benannt",
+      derive.threshold_verdict({})["reason"], "no_reading")
+check("kein Summary stuerzt nicht ab", derive.threshold_verdict(None)["usable"], False)
 
 # warmup can be skipped
 check("Aufwaermen uebersprungen",
@@ -90,7 +140,7 @@ check("HF bleibt vollstaendig", coast["hr_at_threshold"], 150.0)
 # the strap dropped out and wrote zeros into the stream.
 drop = derive.dfa_summary([0.72, 0.73, 0.74], [0, 148, 152], [0, 200, 210])
 check("Puls-Aussetzer fliesst nicht ein", drop["hr_at_threshold"], 150.0)
-check("Stichproben zaehlen nur gueltige Werte", drop["threshold_samples"], 2)
+check("HF-Belegung zaehlt nur gueltige Werte", drop["hr_windows"], 2)
 
 allzero = derive.dfa_summary([0.72, 0.73], [0, 0], None)
 check("nur Aussetzer ergibt keinen Wert", allzero["hr_at_threshold"], None)

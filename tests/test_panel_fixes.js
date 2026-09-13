@@ -381,7 +381,7 @@ const acts = F.activities(), thr = F.thresholds();
 
   // W4 - the median line is LEFT OUT below five solid readings, not thinned.
   // A faint wrong line is still a wrong line.
-  const thin = F.thresholds().map((x) => ({ ...x, samples: 2 }));
+  const thin = F.thresholds().map((x) => ({ ...x, hr_windows: 2, hr_usable: false, usable: false }));
   const r = new M.Panel();
   r._nowIso = F.TODAY;
   r._win.dfa = { id: "all" };

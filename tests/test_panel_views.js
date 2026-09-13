@@ -780,7 +780,7 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   contains(p.rDfa(thr, "ride"), "Rad", "FALLE 1: Sportart nicht in der Quellzeile");
 
   // FALLE 2 - no median line under five solid readings, left out not thinned
-  const thin = thr.map((x) => ({ ...x, samples: 2 }));
+  const thin = thr.map((x) => ({ ...x, hr_windows: 2, hr_usable: false, usable: false }));
   const thinHtml = (() => { const q = new M.Panel(); q._nowIso = F.TODAY; q._win.dfa = { id: "all" }; return q.rDfa(thin, "all"); })();
   clean(thinHtml, "dfa dünn im Fenster");
   contains(thinHtml, "keine Medianlinie gezeichnet", "FALLE 2: dünne Lage ohne Hinweis");
@@ -873,8 +873,8 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   // pick from the NEWEST readings: the list is capped at 50, so the oldest
   // entries have a point but no row - which is correct, and would make this
   // check fail for a reason that has nothing to do with brushing
-  const solid = thr.slice(-10).find((x) => x.samples >= 5 && x.hr > 0);
-  const weak = thr.slice(-10).find((x) => x.samples < 5) || thr.find((x) => x.samples < 5);
+  const solid = thr.slice(-10).find((x) => x.hr_usable);
+  const weak = thr.slice(-10).find((x) => !x.hr_usable) || thr.find((x) => !x.hr_usable);
   const q = new M.Panel();
   q._nowIso = F.TODAY;
   q._win.dfa = { id: "all" };
@@ -921,7 +921,7 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   // a payload from an older backend has none of the new fields - the columns
   // must read "–" rather than "undefined"
   const bare = thr.map((x) => ({ date: x.date, activity_id: x.activity_id, type: x.type,
-                                 hr: x.hr, power: x.power, samples: x.samples }));
+                                 hr: x.hr, power: x.power }));
   clean(q.rDfa(bare, "all"), "dfa ohne die neuen Felder");
 }
 

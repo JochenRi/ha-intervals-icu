@@ -41,6 +41,19 @@ class IntervalsArchive:
             # Fill in keys added by later versions of the integration.
             base = importer.empty_data(self.athlete_id)
             base.update(stored)
+            # THE EXCEPTION TO FILLING IN: a version mark must never be filled
+            # in as CURRENT. An archive written before the mark existed carries
+            # no `dfa_version`, so update() left the skeleton's value standing -
+            # and drop_outdated_dfa then compared current against current and
+            # dropped nothing. The migration could not fire in exactly the case
+            # it was built for: the 0,0 bpm of 06.06.2026 was computed by the
+            # maths of 0.8.0, survived the fix in 0.9.0 and sat in the archive
+            # ever since. Same class as the 0.35.0 gap, one level up: there a
+            # missing block was never created, here a missing mark was created
+            # WRONG. Absent means ancient.
+            for mark in ("dfa_version", "fields_version"):
+                if mark not in stored:
+                    base[mark] = 0
             self.data = base
             # ...but update() only reaches the TOP level. A goal profile
             # written before 0.33.0 keeps its old shape and carries no

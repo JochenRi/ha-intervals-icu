@@ -53,7 +53,7 @@ def build(days=120, hrv=50.0, rhr=56.0, noise=True, activities=None, overrides=N
                              "icu_weighted_avg_watts": 138, "icu_joules": 607500}
     if activities is not None:
         acts = activities
-    dfa = {key: {"hr_at_threshold": 157, "power_at_threshold": 158, "threshold_samples": 40,
+    dfa = {key: {"hr_at_threshold": 157, "power_at_threshold": 158, "hr_windows": 40, "power_windows": 40,
                  "samples": 2000}
            for key in list(acts)[:12]}
     return {"wellness": wellness, "activities": acts, "dfa": dfa}
@@ -162,7 +162,7 @@ eq(anc["aerobic_hr"], 157, "6 anker: Herzfrequenz")
 eq(anc["aerobic_power"], 158, "6 anker: Leistung")
 check("Rogers" in anc["source"], "6 anker: Quelle fehlt")
 thin = build()
-thin["dfa"] = {k: {"hr_at_threshold": 150, "threshold_samples": 2} for k in list(thin["activities"])[:5]}
+thin["dfa"] = {k: {"hr_at_threshold": 150, "hr_windows": 2, "power_windows": 0} for k in list(thin["activities"])[:5]}
 check(coach.anchors(thin)["aerobic_hr"] is None, "6 anker: dünne Messungen zählen mit")
 
 # --- 7  target windows are derived from those anchors ------------------------
@@ -593,7 +593,7 @@ withdfa = build()
 for key in withdfa["activities"]:
     withdfa["dfa"][key] = {"secs_aerobic": 3000, "secs_transition": 400,
                            "secs_anaerobic": 200, "hr_at_threshold": 157,
-                           "power_at_threshold": 158, "threshold_samples": 40}
+                           "power_at_threshold": 158, "hr_windows": 40, "power_windows": 40}
 rows = [r for r in coach.signals(withdfa, 60)["days"] if r["activities"]]
 check(rows, "15 einheiten: keine im Fenster")
 bands = rows[-1]["activities"][0]["dfa_bands"]

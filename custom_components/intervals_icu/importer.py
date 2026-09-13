@@ -72,7 +72,7 @@ UNAVAILABLE_NOTE = "_note"
 # Bumped whenever the DFA maths changes. Stored summaries carrying an older
 # version are dropped and recomputed - the streams themselves are not kept, so
 # a fix would otherwise never reach the values already in the archive.
-DFA_ALGO_VERSION = 2
+DFA_ALGO_VERSION = 3
 
 # Bumped when ACTIVITY_FIELDS grows: stored summaries were fetched with the
 # old field list and would otherwise never gain the new columns.
@@ -312,7 +312,13 @@ def threshold_series(
     series: list[dict[str, Any]] = []
     for key, activity in data["activities"].items():
         summary = data["dfa"].get(key)
-        if not summary or not summary.get("threshold_samples"):
+        if not summary:
+            continue
+        verdict = derive.threshold_verdict(summary)
+        # Nothing was read at all - there is no value to show and no failure
+        # to name. A reading that EXISTS but cannot be true (0,0 bpm) travels
+        # on, flagged: it is shown and it pulls no median.
+        if verdict["hr"] is None and verdict["power"] is None:
             continue
         if since and str(activity.get("start_date_local") or "")[:10] < since:
             continue
@@ -321,9 +327,18 @@ def threshold_series(
                 "date": str(activity.get("start_date_local") or "")[:10],
                 "activity_id": key,
                 "type": activity.get("type"),
-                "hr": summary.get("hr_at_threshold"),
-                "power": summary.get("power_at_threshold"),
-                "samples": summary.get("threshold_samples"),
+                "hr": verdict["hr"],
+                "power": verdict["power"],
+                # The judgement is made HERE, once, and travels in the payload.
+                # The frontend must not re-derive it - that is what let the
+                # power curve keep a ride the heart rate curve had dropped.
+                "hr_windows": verdict["hr_windows"],
+                "power_windows": verdict["power_windows"],
+                "hr_usable": verdict["hr_usable"],
+                "power_usable": verdict["power_usable"],
+                "usable": verdict["usable"],
+                "failure": verdict["failure"],
+                "reason": verdict["reason"],
                 # The session's own numbers travel with the reading. Joining
                 # them in the frontend against the activity list would work
                 # only as far back as that list reaches (300 rows), and an
