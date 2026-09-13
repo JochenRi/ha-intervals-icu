@@ -50,6 +50,7 @@ try:  # inside the package (Home Assistant)
         DURABILITY_TEST_SHORT_MIN,
         DURABILITY_TEST_SPIN_FRACTION,
         DURABILITY_TEST_WARMUP_MIN,
+        DURABILITY_TEST_WORK_J,
         DURABILITY_TEST_WORK_KJ,
     )
 except ImportError:  # standalone (test suite loads this file directly)
@@ -65,6 +66,7 @@ except ImportError:  # standalone (test suite loads this file directly)
         DURABILITY_TEST_SHORT_MIN,
         DURABILITY_TEST_SPIN_FRACTION,
         DURABILITY_TEST_WARMUP_MIN,
+        DURABILITY_TEST_WORK_J,
         DURABILITY_TEST_WORK_KJ,
     )
 
@@ -569,7 +571,7 @@ def fatigued_session(p20_fresh: float | None, aerobic_power: float | None = None
             "cta": DURABILITY_TEST_FRESH["key"],
         }
 
-    block_min = round(DURABILITY_TEST_WORK_KJ * 1000.0 / target / 60.0)
+    block_min = round(DURABILITY_TEST_WORK_J / target / 60.0)
     easy = round(float(p20_fresh) * DURABILITY_TEST_EASY_FRACTION)
     spin = round(float(p20_fresh) * DURABILITY_TEST_SPIN_FRACTION)
     # the two all-outs have NO target - these are the expected values that go

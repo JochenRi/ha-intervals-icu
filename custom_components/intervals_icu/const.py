@@ -111,6 +111,12 @@ DURABILITY_TEST_COOLDOWN_MIN = 10    # Ausrollen
 DURABILITY_TEST_RECOVERY_MIN = 10
 # Arbeit im Ermuedungsblock. Aus dem Protokoll, nicht verhandelbar.
 DURABILITY_TEST_WORK_KJ = 1000.0
+# Dieselbe Groesse in Joule. Steht HIER und nicht als Umrechnung an der
+# Rechenstelle, damit im Protokollteil von workouts.py keine nackte 1000 mehr
+# auftaucht - der Waechter aus Paket F kann eine Einheitenumrechnung nicht von
+# einer Schwelle unterscheiden, und ein Waechter, den man dafuer lockert, ist
+# ab dann keiner mehr.
+DURABILITY_TEST_WORK_J = DURABILITY_TEST_WORK_KJ * 1000.0
 # Zielleistung des Ermuedungsblocks als Anteil der FRISCHEN 20-min-Leistung.
 DURABILITY_TEST_BLOCK_FRACTION = 0.80
 # Einroll-/Ausroll-Intensitaet, als Anteil desselben Ankers.

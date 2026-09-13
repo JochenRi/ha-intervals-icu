@@ -250,6 +250,148 @@ if goal_fn is not None:
     check("<=" in src + "\n    if load <= budget: pass",
           "goal Gegenprobe: ein eingebauter Vergleich wird NICHT gefunden — der Wächter ist blind")
 
+# --- DER VORGABEWERT-WAECHTER (PROJEKTSTAND 7, 0.44.0) ----------------------
+# Gefunden beim Bau von Paket K: websocket_workouts hat `recovery_offered` nie
+# an suggest() uebergeben. Der Vorgabewert False ist stillschweigend
+# eingesprungen, also konnte die Reiz-Stufe auf dem TRAINER-Reiter nie
+# erscheinen - waehrend die Wochenansicht sie korrekt zeigt.
+#
+# Das ist NICHT Fehlerklasse 3 (zwei Rechenwege), sondern deren Schwester:
+# eine Regel, ein Ort, aber zwei Aufrufer, von denen einer sie mit einem
+# Vorgabewert fuettert. Ein Vorgabewert ist eine zweite Wahrheit in Tarnung,
+# weil er unauffaellig richtig aussieht - keine der elf Gegenproben aus
+# 0.42.0 hat ihn gesehen, weil sie stage() geprueft haben und nicht den Weg
+# dorthin.
+#
+# Der Waechter prueft deshalb BEIDES:
+#   (a) jeder Aufruf einer Urteilsfunktion nennt jeden Urteilseingang,
+#   (b) die Liste der Urteilsfunktionen ist vollstaendig - eine neue Funktion
+#       in workouts.py mit Vorgabewerten fuer Urteilseingaben MUSS hier
+#       stehen, sonst schuetzt der Waechter genau bis zur naechsten Funktion
+#       und ist wieder ein Einzelfall statt einer Klasse.
+WORKOUTS = Path(__file__).resolve().parents[1] / "custom_components" / "intervals_icu" / "workouts.py"
+wtree = ast.parse(WORKOUTS.read_text(encoding="utf-8"))
+
+# DIESE LISTE IST VON HAND ZU PFLEGEN. Kommt eine Urteilsfunktion dazu, gehoert
+# sie hier hinein - Pruefung (b) unten faellt sonst, benannt.
+JUDGEMENT_FUNCTIONS = {"suggest", "rate_sessions", "fit_for", "stage",
+                       "protocol_block", "fatigued_session", "scaled"}
+
+# Eingaenge, die ein Urteil VERAENDERN. `limit` ist eine Anzeigegrenze und
+# steht bewusst nicht dabei: ein Waechter, der Harmloses mitzaehlt, wird
+# abgeschaltet statt befolgt.
+JUDGEMENT_INPUTS = {
+    "state", "fit", "fits_budget", "budget", "recovery", "recovery_offered",
+    "hard_days_last_7", "layoff_days", "infection", "intensity", "goal",
+    "ftp", "aerobic_hr", "max_hr", "aerobic_power", "p20_fresh",
+}
+
+
+def defaulted_args(node) -> set[str]:
+    """Parameter WITH a default value - the ones a caller may silently drop."""
+    names = [a.arg for a in node.args.args]
+    return set(names[len(names) - len(node.args.defaults):]) if node.args.defaults else set()
+
+
+wfuncs = {n.name: n for n in ast.walk(wtree)
+          if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+
+# (b) Vollstaendigkeit: welche oeffentliche Funktion in workouts.py traegt
+#     Vorgabewerte fuer Urteilseingaben und fehlt in der Liste?
+for name, node in sorted(wfuncs.items()):
+    if name.startswith("_"):
+        continue
+    risky = defaulted_args(node) & JUDGEMENT_INPUTS
+    if not risky:
+        continue
+    check(name in JUDGEMENT_FUNCTIONS,
+          f"Vorgabewert-Wächter: {name}() in workouts.py hat Vorgabewerte für "
+          f"{sorted(risky)} und steht nicht in JUDGEMENT_FUNCTIONS — die Liste "
+          "muss beim Hinzufügen einer Urteilsfunktion mitgepflegt werden")
+# ... und andersherum: eine Funktion, die es nicht mehr gibt, taeuscht Schutz vor.
+for name in sorted(JUDGEMENT_FUNCTIONS):
+    check(name in wfuncs,
+          f"Vorgabewert-Wächter: {name} steht in JUDGEMENT_FUNCTIONS, existiert "
+          "aber nicht mehr in workouts.py")
+# Gegenprobe auf den Waechter selbst: er muss ueberhaupt etwas zu pruefen
+# finden. Faende er null Urteilseingaenge, bestuende er immer.
+_covered = {n for n in JUDGEMENT_FUNCTIONS
+            if n in wfuncs and defaulted_args(wfuncs[n]) & JUDGEMENT_INPUTS}
+check(len(_covered) >= 4,
+      f"Vorgabewert-Wächter: nur {len(_covered)} Urteilsfunktionen mit "
+      "Vorgabewerten gefunden — der Wächter greift ins Leere")
+
+# (a) Jeder Aufruf nennt jeden Urteilseingang ausdruecklich.
+calls = 0
+for node in ast.walk(tree):
+    if not isinstance(node, ast.Call):
+        continue
+    func = node.func
+    name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", None)
+    if name not in JUDGEMENT_FUNCTIONS or name not in wfuncs:
+        continue
+    calls += 1
+    given = {kw.arg for kw in node.keywords if kw.arg}
+    # Positionsargumente zaehlen genauso: sie sind genannt, nur ohne Namen.
+    positional = [a.arg for a in wfuncs[name].args.args][:len(node.args)]
+    given |= set(positional)
+    for missing in sorted((defaulted_args(wfuncs[name]) & JUDGEMENT_INPUTS) - given):
+        check(False,
+              f"Vorgabewert-Wächter: websocket.py Zeile {node.lineno} ruft "
+              f"{name}() ohne {missing} — der Vorgabewert springt still ein")
+check(calls >= 3, f"Vorgabewert-Wächter: nur {calls} Aufrufe gefunden — "
+                  "der Wächter sieht die Aufrufstellen nicht")
+
+# --- DIE REIZ-STUFE IN BEIDEN ANSICHTEN, UNTER DENSELBEN BEDINGUNGEN --------
+# Nicht "erscheint in beiden", sondern: gleicher Zustand, gleiches Budget,
+# gleiche Erholungslage -> DIESELBE Stufe. Anwesenheit allein waere erneut
+# stumpf, genau wie die elf Gegenproben aus 0.42.0.
+sys.path.insert(0, str(WORKOUTS.parent))
+import workouts as WK  # noqa: E402
+
+GRID = [
+    ("ready", 200.0, True), ("ready", 200.0, False),
+    ("ready", 5.0, True), ("ready", 5.0, False),
+    ("strained", 200.0, True), ("strained", 5.0, True),
+    ("rebound", 200.0, False), ("ready", None, True),
+]
+seen_stages: set[str] = set()
+for state, budget, recovered in GRID:
+    picks = WK.suggest(state, ftp=215, aerobic_hr=146, max_hr=186, infection=False,
+                       budget=budget, hard_days_last_7=0, layoff_days=None,
+                       goal="long_ride", recovery_offered=recovered)
+    # dieselben Einheiten, wie die Wochenansicht sie bewertet
+    sessions = [{"workout": e.get("key"), "hours": None} for e in picks]
+    rated = WK.rate_sessions(sessions, state, budget=budget,
+                             recovery_offered=recovered, hard_days_last_7=0,
+                             layoff_days=None, infection=False, ftp=215,
+                             aerobic_hr=146, max_hr=186)
+    by_key = {e.get("key"): e for e in rated}
+    for entry in picks:
+        key = entry.get("key")
+        mirror = by_key.get(key)
+        if mirror is None:
+            continue
+        here = (entry.get("stage") or {}).get("key")
+        there = (mirror.get("stage") or {}).get("key")
+        seen_stages.add(here)
+        check(here == there,
+              f"Reiz-Gleichstand: {key} bei Zustand {state}, Budget {budget}, "
+              f"Erholung {recovered} — Trainer {here!r}, Wochenansicht {there!r}")
+        check(((entry.get("stage") or {}).get("blocked_by")
+               == (mirror.get("stage") or {}).get("blocked_by")),
+              f"Reiz-Gleichstand: {key} bei {state}/{budget}/{recovered} — "
+              "Begründung weicht zwischen den Ansichten ab")
+# Die Fixture muss die Stufen auseinanderziehen, sonst prueft der Gleichstand
+# nichts: ein Gitter, das nur gruen erzeugt, bestuende auch ohne die Regel.
+check("stimulus" in seen_stages,
+      f"Reiz-Gleichstand: das Gitter erzeugt keine Reiz-Stufe ({sorted(seen_stages)}) "
+      "— die Gegenprobe ist stumpf")
+for needed in ("green", "yellow", "red"):
+    check(needed in seen_stages,
+          f"Reiz-Gleichstand: das Gitter erzeugt keine Stufe {needed!r} "
+          f"({sorted(seen_stages)})")
+
 print(f"test_websocket_registration: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)
