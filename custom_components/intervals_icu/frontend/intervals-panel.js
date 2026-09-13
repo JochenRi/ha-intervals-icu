@@ -637,7 +637,7 @@ function bullet(b) {
 // that never resolves.
 const ROLE_LABEL = { long: "Lange Fahrt", quality: "Qualität", endurance: "Grundlage" };
 
-const BOOT_KEYS = ["status", "readiness", "days", "load", "coach", "day_context"];
+const BOOT_KEYS = ["status", "readiness", "days", "load", "coach", "day_context", "durability_tests"];
 
 const TABS = [
   ["trainer", "Trainer"],
@@ -1170,12 +1170,13 @@ class IntervalsIcuPanel extends HTMLElement {
     this._view = this.shadowRoot.getElementById("view");
     this._attach();
     try {
-      const [status, rd, days, load, coachData, dayctx] = await Promise.all([
+      const [status, rd, days, load, coachData, dayctx, dtests] = await Promise.all([
         this._ws("status"), this._ws("readiness"),
         this._ws("days", { weeks: this._weeks }), this._ws("load"), this._ws("coach"),
-        this._ws("day_context"),
+        this._ws("day_context"), this._ws("durability_tests"),
       ]);
       this._dayctx = dayctx;
+      this._dtests = dtests;
       this._status = status; this._rd = rd; this._days = days; this._load = load;
       this._coach = coachData;
       for (const key of BOOT_KEYS) { this._asked[key] = true; delete this._failed[key]; }
@@ -1361,6 +1362,9 @@ class IntervalsIcuPanel extends HTMLElement {
       else if (act === "syncgo") this._syncRun();
       else if (act === "ctxset") this._ctxWrite(this._ctxDlg, id);
       else if (act === "ctxdel") this._ctxWrite(this._ctxDlg, null);
+      else if (act === "dtset") this._dtWrite(id, el.dataset.kind);
+      else if (act === "dtdel") this._dtWrite(id, null);
+      else if (act === "dtpair") this._dtWrite(id, "fatigued", el.dataset.pair);
       else if (act === "dfasport") { this._dfaSport = id; this._render(); }
       else if (act === "sigdays") {
         this._sigDays = +id; this._signals = null;
@@ -1793,6 +1797,10 @@ class IntervalsIcuPanel extends HTMLElement {
         ${entry.detail ? `<div class="kv2"><small>Wozu sie in dieser Woche steht</small>
           <p>${esc(entry.detail)}</p>${entry.why ? `<p class="src">${esc(entry.why)}</p>` : ""}</div>` : ""}
         ${entry.fuel ? `<div class="kv2"><small>Verpflegung</small><p>${esc(entry.fuel)}</p></div>` : ""}
+        ${(entry.derivation || []).length ? `<div class="kv2"><small>Rechenweg</small>
+          <ul class="src dtsteps">${entry.derivation.map((line) => `<li>${esc(line)}</li>`).join("")}</ul></div>` : ""}
+        ${(entry.standard || []).length ? `<div class="kv2"><small>Zu standardisieren</small>
+          <ul class="src dtsteps">${entry.standard.map((line) => `<li>${esc(line)}</li>`).join("")}</ul></div>` : ""}
         ${entry.catalogue_load != null && entry.load !== entry.catalogue_load
           ? `<div class="kv2"><small>Rechenweg der Last</small>
             <p class="src">Die Vorlage ${esc(entry.key)} trägt Last ${fmt(entry.catalogue_load)} bei
@@ -1871,9 +1879,55 @@ class IntervalsIcuPanel extends HTMLElement {
       hier steht, was es heute kostet.</span></h3>
       ${reasons}
       <div class="wogrid">${cards}</div>
+      ${this._protocolBlock(w, iso)}
       <p class="note">Ein Klick legt die Einheit als geplantes Workout in deinen
       Intervals-Kalender — mit allen Schritten, direkt auf die Uhr übertragbar. Das ist der
       einzige Schreibzugriff dieser Integration, er passiert nur auf diesen Knopf.</p>`;
+  }
+
+  /* Termin 2 des Durability-Protokolls (docs/ausbau.md K1).
+
+     Der ermüdete Termin steht NICHT im Katalog, wenn kein frischer Test
+     gemessen ist: seine Zielleistung ist 80 % der frischen
+     20-Minuten-Leistung, und ohne die gibt es keine Form, die man zeigen
+     könnte. Was stattdessen dasteht, ist der GRUND plus der Knopf, der
+     Termin 1 in den Kalender legt — die Bauart von "Was das ausbaut" (G5),
+     nicht eine ausgegraute Karte.
+
+     Die Plausibilitätsregel aus K0 hat ihren eigenen Fall: liegt die
+     errechnete Zielleistung unter der gemessenen aeroben Schwelle, war
+     Termin 1 kein All-out, und dann erscheint die Einheit ebenfalls nicht —
+     mit BEIDEN Zahlen, weil "wird nicht ausgegeben" ohne die Zahlen der
+     stille Ausstieg wäre. */
+  _protocolBlock(w, iso) {
+    const p = w && w.protocol;
+    if (!p) return "";
+    const head = `<h3 class="secname">Durability-Test, ermüdet
+      <span class="hint">— der zweite Termin des Protokolls. Er misst die Größe, die aus
+      gewöhnlichen Fahrten nachweislich nicht herausrechenbar ist.</span></h3>`;
+
+    if (!p.available) {
+      return `${head}<div class="card pad protoblock">
+        <p class="protowhy">${ico("info", C.amber, 15)} ${esc(p.reason || "")}</p>
+        ${p.why === "below_aerobic" ? `<p class="src">Errechnete Zielleistung
+          <b>${fmt(p.target_w)} W</b> gegen gemessene aerobe Schwelle
+          <b>${fmt(p.aerobic_w)} W</b>, aus einer frischen 20-Minuten-Leistung von
+          ${fmt(p.p20_fresh)} W. Ein Ermüdungsblock unterhalb der aeroben Schwelle
+          ermüdet nicht.</p>` : ""}
+        <div class="worow">
+          <button class="planbtn" data-act="plan" data-id="${esc(p.cta)}" data-when="${iso(0)}">
+            ${ico("cal", null, 15)} ${esc(p.cta_title || "Termin 1")} heute in den Kalender</button>
+          <button class="planbtn ghost" data-act="plan" data-id="${esc(p.cta)}" data-when="${iso(1)}">morgen</button>
+        </div>
+      </div>`;
+    }
+
+    const e = p.entry;
+    return `${head}
+      <div class="wogrid">${this._sessionCard(e, {
+        open: this._woOpen === e.key, budget: w.budget, ftp: w.ftp,
+        planDates: [iso(0), iso(1)], toggleAct: "wodetail",
+      })}</div>`;
   }
 
   /* Goal, constraints, and the weeks that follow from them.
@@ -3003,11 +3057,112 @@ class IntervalsIcuPanel extends HTMLElement {
       ${this._lapBlock(a)}
       ${this._lapCompare(a)}
       ${this._ctxBlock(a)}
+      ${this._dtBlock(a)}
       ${this._nightBlock(a)}
       <h3 class="secname">Verlauf <span class="hint">— gestapelte Felder, eine Zeitachse, ein Cursor: so siehst du, wie sich HF und DFA zur Leistung verhalten.</span></h3>
       ${streamsHtml}
       ${this._dfaBlock(a.dfa)}
     </section>`;
+  }
+
+  /* Protokoll-Markierung (docs/ausbau.md K2). Die Zuordnung trifft der
+     Athlet, nicht die Erkennung: eine automatische Deutung ("lange Fahrt mit
+     zwei harten Blöcken am Ende, das wird der ermüdete Test sein") wäre
+     wieder eine Behauptung über eine Fahrt, über die das System nichts weiß —
+     genau die Fehlerklasse, die J1 gemessen hat.
+
+     Auch die PAARUNG ist Sache des Athleten. Bei genau einem frischen Test
+     wird der VORGESCHLAGEN und bestätigt, nie gesetzt. Der Vorschlag steht im
+     Knopftext, damit sichtbar ist, was bestätigt wird. */
+  _dtBlock(a) {
+    const dt = this._dtests;
+    if (!dt) return "";
+    const cur = (dt.tests || []).find((t) => String(t.activity_id) === String(a.id)) || null;
+    const kinds = dt.kinds || {};
+    const busy = this._dtBusy === String(a.id);
+    const err = this._dtErr && this._dtErr.id === String(a.id) ? this._dtErr.msg : null;
+
+    // Kandidaten für die Paarung: alle frischen Tests AUSSER dieser Fahrt.
+    const cands = (dt.pair_candidates || [])
+      .filter((c) => String(c.activity_id) !== String(a.id));
+    const partner = cur && cur.paired_with
+      ? (dt.tests || []).find((t) => String(t.activity_id) === String(cur.paired_with))
+      : null;
+
+    const measured = cur
+      ? `<p class="src"><b>Gemessen:</b> ${cur.p20 != null
+          ? `${fmt(cur.p20, 0)} W über 20 min${cur.p5 != null ? `, ${fmt(cur.p5, 0)} W über 5 min` : ""}`
+          : "keine Werte — die Ströme trugen keinen zusammenhängenden Abschnitt der nötigen Länge"}.
+          Bestes Mittel über die Bewegungszeit, aus den ungedünnten Strömen.</p>`
+      : "";
+
+    const pairRow = cur && cur.kind === "fatigued" ? `
+      <div class="dtpair">
+        ${partner
+          ? `<span class="src">Gepaart mit Termin 1 vom ${dMed(partner.date)}
+              (${partner.p20 != null ? fmt(partner.p20, 0) + " W" : "ohne Werte"}).</span>`
+          : cands.length
+            ? `<span class="src">Noch keinem Termin 1 zugeordnet — ohne Paar ist es eine Messung
+                ohne Bezug:</span>
+               ${cands.map((c) => `<button class="chipbtn" data-act="dtpair"
+                 data-id="${esc(a.id)}" data-pair="${esc(c.activity_id)}" ${busy ? "disabled" : ""}
+                 >Termin 1 vom ${dMed(c.date)} bestätigen</button>`).join("")}`
+            : `<span class="src">Es ist kein frischer Test markiert — ohne Termin 1 gibt es nichts
+                zu paaren.</span>`}
+      </div>` : "";
+
+    const buttons = Object.entries(kinds).map(([key, meta]) => {
+      const on = cur && cur.kind === key;
+      return `<button class="ctxchip ${on ? "on" : ""}" data-act="dtset"
+        data-id="${esc(a.id)}" data-kind="${esc(key)}" ${busy ? "disabled" : ""}
+        title="${esc(meta.read || "")}">${esc(meta.label)}</button>`;
+    }).join("");
+
+    return `<h3 class="secname">Durability-Protokoll
+      <span class="hint">— du markierst, das System erkennt nicht. Leistungserhalt ist aus
+      gewöhnlichen Fahrten nicht rechenbar: die Zahl misst dann die Abschnittslängen und nicht
+      die Ermüdung.</span></h3>
+      <div class="ctxbox dtbox">
+        <div class="ctxchips">${buttons}
+          ${cur ? `<button class="ctxremove" data-act="dtdel" data-id="${esc(a.id)}"
+            ${busy ? "disabled" : ""}>Markierung zurücknehmen</button>` : ""}</div>
+        ${busy ? `<div class="loading"><span class="spin"></span> Ströme werden geholt und gemessen …</div>` : ""}
+        ${err ? `<div class="err pad">${esc(err)}</div>` : ""}
+        ${measured}
+        ${pairRow}
+      </div>`;
+  }
+
+  async _dtWrite(id, kind, pairedWith) {
+    if (!id || this._dtBusy) return;
+    this._dtBusy = String(id);
+    this._dtErr = null;
+    this._render();
+    try {
+      const payload = { activity_id: String(id), kind };
+      if (pairedWith !== undefined) payload.paired_with = pairedWith;
+      const res = await this._ws("set_durability_test", payload);
+      // Scroll-Lage VOR dem Re-Render sichern: innerHTML wirft sie sonst mit
+      // den alten Knoten weg (dieselbe Regel wie bei _ctxWrite).
+      const scroll = this.scrollTop;
+      const [dtests, workouts] = await Promise.all([
+        this._ws("durability_tests"),
+        // Der Anker hat sich womöglich bewegt, und daran hängt Termin 2.
+        this._workouts ? this._ws("workouts") : null,
+      ]);
+      this._dtests = dtests;
+      if (workouts) this._workouts = workouts;
+      // Eine Markierung OHNE Messwerte ist eine Markierung, kein stiller
+      // Ausstieg: der Grund wird gezeigt, nicht verschluckt.
+      if (res && res.reason) this._toast(res.reason);
+      this._dtBusy = null;
+      this._render();
+      this.scrollTop = scroll;
+    } catch (err) {
+      this._dtBusy = null;
+      this._dtErr = { id: String(id), msg: String((err && err.message) || err) };
+      this._render();
+    }
   }
 
   _streamPanels(st) {
@@ -4315,6 +4470,12 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
 .psess p{margin:4px 0 0;font-size:13.5px;color:${C.tx2}}
 
 /* Wie diese Einheit dasteht */
+.dtbox .ctxchips{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px}
+.dtpair{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:6px}
+.dtsteps{margin:4px 0 0 16px;padding:0}
+.dtsteps li{margin:3px 0}
+.protoblock{border-color:var(--divider-color,#3336)}
+.protowhy{margin:0 0 6px;display:flex;gap:8px;align-items:flex-start}
 .ctxbox{background:${C.card2};border-radius:10px;padding:10px 14px}
 .ctxscale{display:grid;grid-template-columns:1fr 92px minmax(160px,1.4fr) minmax(190px,1fr);gap:12px;
   color:${C.tx3};font-size:11px;text-transform:uppercase;letter-spacing:.05em}
