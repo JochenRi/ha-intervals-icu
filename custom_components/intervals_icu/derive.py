@@ -362,14 +362,16 @@ try:  # inside the package (Home Assistant)
     from .const import (
         DURABILITY_EXCLUDED_TYPES,
         DURABILITY_MAX_INTENSITY,
-        DURABILITY_MAX_VI,
+        DURABILITY_VI_FULL,
+        DURABILITY_VI_NONE,
         DURABILITY_MIN_MINUTES,
     )
 except ImportError:  # standalone (test suite loads this file directly)
     from const import (
         DURABILITY_EXCLUDED_TYPES,
         DURABILITY_MAX_INTENSITY,
-        DURABILITY_MAX_VI,
+        DURABILITY_VI_FULL,
+        DURABILITY_VI_NONE,
         DURABILITY_MIN_MINUTES,
     )
 
@@ -414,6 +416,27 @@ def steady_endurance_reason(
     if (_number(activity.get("icu_intensity")) or 0) >= DURABILITY_MAX_INTENSITY:
         return "intense"
     index = variability_index(activity)
-    if index is None or index > DURABILITY_MAX_VI:
+    if index is None:
+        # NOT "variable" - nobody knows whether it was. Until 0.39.0 both cases
+        # were counted together and the tile said "64 too wavy" over 53 rides
+        # with no power meter at all (PROJEKTSTAND section 7).
+        return "no_power"
+    if index > DURABILITY_VI_NONE:
         return "variable"
     return None
+
+
+def steady_weight(activity: dict[str, Any]) -> float:
+    """Return how much a qualifying ride counts, from 1.0 down to 0.0.
+
+    An exclusion is a yes/no decision about a stepless quantity. The variability
+    index says how evenly a ride was pedalled, and evenness fades - so it weighs
+    the ride instead of admitting it (docs/ausbau.md G3). Callers must have
+    asked steady_endurance_reason() first; a ride without power has no weight to
+    give, which is why it is dropped rather than weighted zero.
+    """
+    index = variability_index(activity)
+    if index is None:
+        return 0.0
+    span = DURABILITY_VI_NONE - DURABILITY_VI_FULL
+    return max(0.0, min(1.0, (DURABILITY_VI_NONE - index) / span)) if span else 0.0

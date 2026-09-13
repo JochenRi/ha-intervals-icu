@@ -51,12 +51,44 @@ DECOUPLING_GOOD = 5.0  # FRIEL - a coach's rule of thumb, NOT a study threshold
 # Which sessions the durability tile may look at.
 DURABILITY_MIN_MINUTES = 45      # below this a decoupling reading is not usable
 DURABILITY_MAX_INTENSITY = 80    # interval sessions are a different question
-DURABILITY_MAX_VI = 1.10         # variability index: only steady rides qualify
 DURABILITY_EXCLUDED_TYPES = ("VirtualRide",)  # different environment, fixed load
 
-# Where the tile splits. The AXIS (accumulated work) is what the literature
-# supports; the NUMBER is a house setting - see docs/ausbau.md F1.
-DURABILITY_SPLIT_KJ = 800.0
+# Steadiness is a STEPLESS quantity, so it weighs instead of admitting: a ride
+# at VI 1.05 counts fully, 1.15 by half, from 1.25 not at all. Both numbers are
+# house settings (docs/ausbau.md G3). The upper one is also the outer gate in
+# derive.steady_endurance_reason() - one boundary, not two, or the tile and the
+# load tab would again read from two different populations (the F6 error).
+DURABILITY_VI_FULL = 1.05
+DURABILITY_VI_NONE = 1.25
+
+# A trend line needs a base to rest on, and the base is the SUM OF WEIGHTS, not
+# the head count: thirty rides at weight 0.1 are three rides. Setting.
+DURABILITY_MIN_WEIGHT_SUM = 20.0
+# Per season block the same question has a smaller answer - a block that had to
+# clear the pool threshold could never exist. Own number, own name (measured on
+# the live archive: the fullest 12-week block carries 27, the others 8 to 14).
+DURABILITY_MIN_WEIGHT_SUM_BLOCK = 8.0
+
+# A slope has to be distinguishable from zero before it may carry a claim:
+# larger in magnitude than twice its own standard error. Setting, and the one
+# that today keeps the tile from naming a tipping point at all.
+DURABILITY_MIN_SLOPE_T = 2.0
+
+# Season blocks. Twelve weeks, not eight: measured on the live archive, eight
+# produces a block of a single ride while twelve leaves none below three.
+DURABILITY_BLOCK_WEEKS = 12
+
+# Work bands for the binned medians under the cloud - a DESCRIPTION of where
+# the points sit, never a forecast. Boundaries in kJ.
+DURABILITY_BINS_KJ = (400.0, 600.0, 800.0, 1100.0)
+
+# Which power turns work into time. The median over the whole pool spans a
+# season of progression (61-151 W on this archive) and would convert with a
+# figure from last winter, so the window is recent - and when it is too thinly
+# populated it widens VISIBLY to the fallback, never silently.
+DURABILITY_POWER_DAYS = 90
+DURABILITY_POWER_DAYS_FALLBACK = 180
+DURABILITY_MIN_POWER_SESSIONS = 5
 
 # Three minimum counts, three different questions. Collapsing them into one
 # number would be the same error as the duplicated 5.0, only inverted.

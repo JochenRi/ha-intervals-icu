@@ -51,9 +51,17 @@ try:  # inside the package (Home Assistant)
         DECOUPLING_GOOD,
         DURABILITY_EXCLUDED_TYPES,
         DURABILITY_MAX_INTENSITY,
-        DURABILITY_MAX_VI,
+        DURABILITY_VI_FULL,
+        DURABILITY_VI_NONE,
+        DURABILITY_MIN_WEIGHT_SUM,
+        DURABILITY_MIN_WEIGHT_SUM_BLOCK,
+        DURABILITY_MIN_SLOPE_T,
+        DURABILITY_BLOCK_WEEKS,
+        DURABILITY_BINS_KJ,
+        DURABILITY_POWER_DAYS,
+        DURABILITY_POWER_DAYS_FALLBACK,
+        DURABILITY_MIN_POWER_SESSIONS,
         DURABILITY_MIN_MINUTES,
-        DURABILITY_SPLIT_KJ,
         MIN_PEERS_TO_RANK_METRIC,
         MIN_SESSIONS_FOR_TILE,
         MIN_SESSIONS_TO_CLAIM_GROUP,
@@ -66,9 +74,17 @@ except ImportError:  # standalone (test suite loads this file directly)
         DECOUPLING_GOOD,
         DURABILITY_EXCLUDED_TYPES,
         DURABILITY_MAX_INTENSITY,
-        DURABILITY_MAX_VI,
+        DURABILITY_VI_FULL,
+        DURABILITY_VI_NONE,
+        DURABILITY_MIN_WEIGHT_SUM,
+        DURABILITY_MIN_WEIGHT_SUM_BLOCK,
+        DURABILITY_MIN_SLOPE_T,
+        DURABILITY_BLOCK_WEEKS,
+        DURABILITY_BINS_KJ,
+        DURABILITY_POWER_DAYS,
+        DURABILITY_POWER_DAYS_FALLBACK,
+        DURABILITY_MIN_POWER_SESSIONS,
         DURABILITY_MIN_MINUTES,
-        DURABILITY_SPLIT_KJ,
         MIN_PEERS_TO_RANK_METRIC,
         MIN_SESSIONS_FOR_TILE,
         MIN_SESSIONS_TO_CLAIM_GROUP,
@@ -463,26 +479,150 @@ def _last_known_weight(data: dict[str, Any]) -> dict[str, Any] | None:
     return {"kg": round(best_value, 1), "day": best_day}
 
 
-def durability(data: dict[str, Any], min_minutes: int = DURABILITY_MIN_MINUTES) -> dict[str, Any] | None:
-    """How well the athlete holds up as WORK accumulates - measured, not assumed.
+def _weighted_line(points: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Weighted least squares of decoupling over work, with the slope's error.
 
-    Split by accumulated work, not by duration. Durability is indexed by
-    accumulated work throughout the literature (Maunder 2021; Spragg 2023 splits
-    the power profile at 2000 kJ), and on this athlete's own archive the
-    duration split hid the effect entirely: 90 minutes gave -0.1 pp, 800 kJ
-    gives +1.5 pp. The AXIS is what the sources support; the split VALUE is a
-    house setting, chosen where the upper group is still populated well enough
-    to carry a claim - see docs/ausbau.md F1.
+    The weights come from steadiness (docs/ausbau.md G3), so the fit leans on
+    the rides that were actually pedalled evenly instead of pretending a wavy
+    group ride says as much as a steady one. The standard error travels with
+    the slope because a slope alone cannot be read: on this athlete's archive
+    it is +2.9 % per 1000 kJ with an error of 2.2, which is no slope at all.
     """
-    rows = []
-    dropped = {"short": 0, "intense": 0, "variable": 0, "indoor": 0,
+    live = [p for p in points if p["w"] > 0]
+    w_sum = sum(p["w"] for p in points)
+    if len(live) < 3 or w_sum <= 0:
+        return None
+    mean_x = sum(p["w"] * p["kj"] for p in points) / w_sum
+    mean_y = sum(p["w"] * p["dec"] for p in points) / w_sum
+    spread = sum(p["w"] * (p["kj"] - mean_x) ** 2 for p in points)
+    if spread <= 0:
+        return None
+    slope = sum(p["w"] * (p["kj"] - mean_x) * (p["dec"] - mean_y) for p in points) / spread
+    intercept = mean_y - slope * mean_x
+    resid = sum(p["w"] * (p["dec"] - intercept - slope * p["kj"]) ** 2 for p in points)
+    error = math.sqrt((resid / (len(live) - 2)) / spread)
+    # A residual-free fit is perfectly determined, not unusable - it happens in
+    # fixtures, never in an archive, and returning None here would have made the
+    # cleanest possible relationship read as "too thin".
+    determined = abs(slope) / error if error > 0 else (math.inf if slope else 0.0)
+    return {
+        "a": intercept, "b": slope, "se": error, "t": determined,
+        "w_sum": w_sum, "n": len(live),
+    }
+
+
+def _tipping_kj(fit: dict[str, Any], mark: float) -> float | None:
+    """Where the fitted line crosses the mark. None when it never does."""
+    if fit["b"] <= 0:
+        return None
+    crossing = (mark - fit["a"]) / fit["b"]
+    return crossing if crossing > 0 else None
+
+
+def _conversion_power(points: list[dict[str, Any]], newest: date) -> dict[str, Any] | None:
+    """Median power of the RECENT qualifying rides, with the window it used.
+
+    Not the median over the whole pool: that spans a season of progression (61
+    to 151 W on the live archive) and would turn work into time with a figure
+    from last winter. Too few rides in the near window and it widens - visibly,
+    never silently (docs/ausbau.md G2).
+    """
+    for days in (DURABILITY_POWER_DAYS, DURABILITY_POWER_DAYS_FALLBACK):
+        cutoff = newest - timedelta(days=days)
+        watts = [p["watts"] for p in points if p["day"] >= cutoff and p["watts"]]
+        if len(watts) >= DURABILITY_MIN_POWER_SESSIONS:
+            return {"watts": round(median(watts)), "days": days, "n": len(watts)}
+    return None
+
+
+def _bin_medians(points: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Median decoupling per work band - a DESCRIPTION, never a forecast.
+
+    It is what the archive says most plainly today: the medians rise monotonic
+    across the bands while the fitted slope cannot be told from zero. Bands
+    under MIN_SESSIONS_TO_CLAIM_GROUP carry their count but no median, the same
+    rule the two groups obeyed in 0.39.0.
+    """
+    edges = [0.0, *DURABILITY_BINS_KJ, float("inf")]
+    bands = []
+    for low, high in zip(edges, edges[1:]):
+        inside = [p for p in points if low <= p["kj"] < high]
+        thin = len(inside) < MIN_SESSIONS_TO_CLAIM_GROUP
+        bands.append({
+            "from_kj": round(low),
+            "to_kj": None if high == float("inf") else round(high),
+            "n": len(inside),
+            "w": round(sum(p["w"] for p in inside), 1),
+            "median": None if (thin or not inside) else round(median([p["dec"] for p in inside]), 1),
+            "thin": thin,
+        })
+    return bands
+
+
+def _season_blocks(points: list[dict[str, Any]], mark: float) -> list[dict[str, Any]]:
+    """The tipping point per season block - the athlete's actual question.
+
+    All three honesty rules apply PER BLOCK, and "the stock" is the block, not
+    the archive: a block may not extrapolate past its own longest ride, may not
+    claim a slope it cannot distinguish from zero, and may not speak below its
+    own minimum weight. The live archive shows why all three are needed at
+    once - a four-ride block came out at |t| 3.3 and a tipping point of 640 kJ.
+    An empty block stays empty and is NOT interpolated.
+    """
+    if not points:
+        return []
+    newest = max(p["day"] for p in points)
+    span = DURABILITY_BLOCK_WEEKS * 7
+    grouped: dict[int, list[dict[str, Any]]] = {}
+    for point in points:
+        grouped.setdefault((newest - point["day"]).days // span, []).append(point)
+    blocks = []
+    for index in sorted(grouped, reverse=True):
+        inside = grouped[index]
+        start = newest - timedelta(days=span * (index + 1) - 1)
+        w_sum = sum(p["w"] for p in inside)
+        block = {
+            "start": max(start, min(p["day"] for p in inside)).isoformat(),
+            "end": min(newest, newest - timedelta(days=span * index)).isoformat(),
+            "n": len(inside), "w": round(w_sum, 1),
+            "max_kj": round(max(p["kj"] for p in inside)),
+            "tipping_kj": None, "reason": None,
+        }
+        fit = _weighted_line(inside)
+        crossing = _tipping_kj(fit, mark) if fit else None
+        if w_sum < DURABILITY_MIN_WEIGHT_SUM_BLOCK:
+            block["reason"] = "thin"
+        elif fit is None or fit["t"] < DURABILITY_MIN_SLOPE_T:
+            block["reason"] = "flat"
+        elif crossing is None or crossing > max(p["kj"] for p in inside):
+            block["reason"] = "beyond"
+        else:
+            block["tipping_kj"] = round(crossing)
+        blocks.append(block)
+    return blocks
+
+
+def durability(data: dict[str, Any], min_minutes: int = DURABILITY_MIN_MINUTES) -> dict[str, Any] | None:
+    """How long the aerobic base holds as WORK accumulates - measured, not assumed.
+
+    Indexed by accumulated work, not by duration: that axis is what the
+    literature supports (Maunder 2021; Spragg splits the power profile at 2000
+    kJ) and on this athlete's archive the duration split hid the effect
+    entirely. What 0.39.0 still got wrong was the SHAPE - two groups either side
+    of one setting answer "is it different above 800 kJ", while the question on
+    the heading is "how long until it tips". That is a curve over work, so this
+    returns the cloud, a weighted fit with its error, the binned medians and the
+    per-block course - and refuses a lead figure under any of three rules
+    (docs/ausbau.md G1-G4).
+    """
+    points: list[dict[str, Any]] = []
+    dropped = {"short": 0, "intense": 0, "variable": 0, "indoor": 0, "no_power": 0,
                "no_activity": 0, "no_decoupling": 0, "no_work": 0}
     for activity in (data.get("activities") or {}).values():
         reason = derive.steady_endurance_reason(activity, min_minutes)
         if reason is not None:
             dropped[reason] += 1
             continue
-        variability = derive.variability_index(activity)
         decoupling = _f(activity.get("decoupling"))
         if decoupling is None:
             dropped["no_decoupling"] += 1
@@ -491,65 +631,119 @@ def durability(data: dict[str, Any], min_minutes: int = DURABILITY_MIN_MINUTES) 
         if not work:
             dropped["no_work"] += 1
             continue
-        rows.append({"kj": work / 1000.0, "dec": decoupling, "vi": variability})
-    if len(rows) < MIN_SESSIONS_FOR_TILE:
+        day = str(activity.get("start_date_local") or "")[:10]
+        points.append({
+            "kj": work / 1000.0,
+            "dec": decoupling,
+            "vi": derive.variability_index(activity),
+            "w": derive.steady_weight(activity),
+            "watts": _f(activity.get("icu_average_watts")),
+            "day": date.fromisoformat(day) if len(day) == 10 else None,
+            "date": day,
+            "id": activity.get("id"),
+        })
+    points = [p for p in points if p["day"] is not None]
+    if len(points) < MIN_SESSIONS_FOR_TILE:
         return None
+    points.sort(key=lambda p: p["kj"])
 
-    low = [r["dec"] for r in rows if r["kj"] < DURABILITY_SPLIT_KJ]
-    high = [r["dec"] for r in rows if r["kj"] >= DURABILITY_SPLIT_KJ]
-    # Rounded FIRST, then compared. Showing 0.9 and 0.7 next to a lead of
-    # "0.1 pp" invites the reader to subtract and get 0.2 - three numbers out of
-    # one calculation have to agree (docs/ausbau.md F3).
-    low_value = round(median(low), 1) if low else None
-    high_value = round(median(high), 1) if high else None
-    low_thin = len(low) < MIN_SESSIONS_TO_CLAIM_GROUP
-    high_thin = len(high) < MIN_SESSIONS_TO_CLAIM_GROUP
+    weight_sum = sum(p["w"] for p in points)
+    max_kj = max(p["kj"] for p in points)
+    fit = _weighted_line(points)
+    crossing = _tipping_kj(fit, DECOUPLING_GOOD) if fit else None
+    newest = max(p["day"] for p in points)
+    power = _conversion_power(points, newest)
 
-    # No lead number out of a group that cannot carry one. A headline computed
-    # from an empty or thin group is worse than no headline: it answers the
-    # heading with something that was never measured.
-    if low_thin or high_thin:
-        missing = "ab" if high_thin else "unter"
-        count = len(high) if high_thin else len(low)
-        lead = None
+    # The three honesty rules, in the order in which they disqualify. Each one
+    # produces an ANSWER, not a gap: "no claim possible" and "the direction is
+    # there but the scatter is too wide" are different findings, and reading the
+    # second as the first would be reading "fine" into "unknown".
+    blocked = None
+    if weight_sum < DURABILITY_MIN_WEIGHT_SUM or fit is None:
+        blocked = "thin"
+    elif fit["t"] < DURABILITY_MIN_SLOPE_T:
+        blocked = "flat"
+    elif crossing is None or crossing > max_kj:
+        blocked = "beyond"
+
+    tipping = None if blocked else round(crossing / 10.0) * 10
+    # Rounded FIRST, then converted. Whoever divides the printed kJ by the
+    # printed watts has to land on the printed hours (the F3 rule).
+    hours = (tipping * 1000.0 / (power["watts"] * 3600.0)) if (tipping and power) else None
+
+    if blocked == "thin":
         headline = (
-            f"Keine Aussage über Einheiten {missing} "
-            f"{round(DURABILITY_SPLIT_KJ):.0f} kJ: nur {count} "
-            f"{'Einheit' if count == 1 else 'Einheiten'} in dieser Gruppe."
+            f"Noch keine Aussage möglich: die ausgewerteten Einheiten tragen zusammen "
+            f"{round(weight_sum, 1):.1f} von {round(DURABILITY_MIN_WEIGHT_SUM):.0f} nötigen Gewichten."
         )
-        verdict = headline
+    elif blocked == "flat":
+        direction = (
+            "Die Richtung stimmt — die Entkopplung steigt mit der Arbeit —, aber die "
+            "Streuung ist zu groß für eine Aussage."
+            if fit["b"] > 0 else
+            "In deinen Daten steigt die Entkopplung mit der Arbeit nicht — aber die "
+            "Streuung ist zu groß, um auch das zu behaupten."
+        )
+        headline = direction
+    elif blocked == "beyond":
+        headline = (
+            f"Bis {round(max_kj):.0f} kJ — deine arbeitsreichste ausgewertete Fahrt — "
+            f"bleibst du unter der {DECOUPLING_GOOD:.0f}-%-Marke. Weiter reichen deine Daten nicht."
+        )
     else:
-        lead = round(high_value - low_value, 1)
-        headline = (
-            "Die Entkopplung hält mit der angesammelten Arbeit"
-            if lead <= 0 else
-            f"Die Entkopplung steigt um {lead:.1f} Prozentpunkte, sobald die Arbeit wächst"
+        when = (
+            f" — rund {int(hours)} h {int(round((hours - int(hours)) * 60)):02d} bei deinen "
+            f"{power['watts']:.0f} W der letzten {round(power['days'] / 30):.0f} Monate"
+            if hours else ""
         )
-        verdict = (
-            "die aerobe Basis trägt auch die langen Einheiten"
-            if lead <= 0 and high_value <= DECOUPLING_GOOD else
-            "die Entkopplung steigt mit der angesammelten Arbeit — die Grundlage "
-            "trägt lange Einheiten noch nicht"
-        )
+        headline = f"Bis etwa {tipping:.0f} kJ bleibst du unter der {DECOUPLING_GOOD:.0f}-%-Marke{when}."
+
+    # What would close the gap. This is the only place in the panel that can say
+    # which ride advances the measurement: the error shrinks with the weight AND
+    # with the spread of the work, so one long ride moves it further than five
+    # short ones.
+    needed = None
+    if blocked == "flat" and fit["t"] > 0:
+        needed = max(len(points) + 1, math.ceil(len(points) * (DURABILITY_MIN_SLOPE_T / fit["t"]) ** 2))
 
     return {
-        "n": len(rows),
-        "n_low": len(low),
-        "n_high": len(high),
-        "low": low_value,
-        "high": high_value,
-        "low_thin": low_thin,
-        "high_thin": high_thin,
-        "lead": lead,
+        "n": len(points),
+        "w_sum": round(weight_sum, 1),
+        "n_full": sum(1 for p in points if p["w"] >= 0.999),
+        "n_partial": sum(1 for p in points if 0 < p["w"] < 0.999),
+        "n_zero": sum(1 for p in points if p["w"] <= 0),
+        "points": [
+            {"kj": round(p["kj"]), "dec": round(p["dec"], 1), "w": round(p["w"], 2),
+             "vi": round(p["vi"], 3) if p["vi"] is not None else None, "date": p["date"], "id": p["id"]}
+            for p in points
+        ],
+        "max_kj": round(max_kj),
+        "slope": round(fit["b"] * 1000, 2) if fit else None,
+        "slope_se": round(fit["se"] * 1000, 2) if fit else None,
+        "slope_t": round(fit["t"], 2) if fit else None,
+        "blocked": blocked,
+        "tipping_kj": tipping,
+        "tipping_hours": round(hours, 2) if hours else None,
+        "power": power,
+        "power_pool": round(median([p["watts"] for p in points if p["watts"]])) if any(p["watts"] for p in points) else None,
+        "needed_sessions": needed,
+        "bins": _bin_medians(points),
+        "blocks": _season_blocks(points, DECOUPLING_GOOD),
         "headline": headline,
-        "verdict": verdict,
-        # Everything the panel has to print. None of these may be repeated as a
-        # literal in the frontend - there is a source guard against it.
+        # Everything the panel prints. None of these may appear as a literal in
+        # the frontend - there is a source guard against exactly that.
         "decoupling_good": DECOUPLING_GOOD,
-        "split_kj": DURABILITY_SPLIT_KJ,
         "min_minutes": min_minutes,
         "max_intensity": DURABILITY_MAX_INTENSITY,
-        "max_vi": DURABILITY_MAX_VI,
+        "vi_full": DURABILITY_VI_FULL,
+        "vi_none": DURABILITY_VI_NONE,
+        "min_weight_sum": DURABILITY_MIN_WEIGHT_SUM,
+        "min_weight_sum_block": DURABILITY_MIN_WEIGHT_SUM_BLOCK,
+        "min_slope_t": DURABILITY_MIN_SLOPE_T,
+        "block_weeks": DURABILITY_BLOCK_WEEKS,
+        "bins_kj": list(DURABILITY_BINS_KJ),
+        "power_days": DURABILITY_POWER_DAYS,
+        "power_days_fallback": DURABILITY_POWER_DAYS_FALLBACK,
         "min_per_group": MIN_SESSIONS_TO_CLAIM_GROUP,
         "min_sessions": MIN_SESSIONS_FOR_TILE,
         "excluded_types": list(DURABILITY_EXCLUDED_TYPES),
@@ -560,8 +754,8 @@ def durability(data: dict[str, Any], min_minutes: int = DURABILITY_MIN_MINUTES) 
             "Studiengrenze. Belegt ist das Phänomen dahinter — der kardiovaskuläre "
             "Drift — und dass es stark von Hitze, Flüssigkeit und Umgebung abhängt. "
             "Belegt ist auch die Achse: Durability wird über angesammelte Arbeit "
-            "gemessen (Maunder 2021; Spragg trennt bei 2000 kJ). Die Trennstelle "
-            "hier ist eine Setzung."
+            "gemessen (Maunder 2021; Spragg trennt bei 2000 kJ). Die Gewichtsgrenzen, "
+            "die Mindestbelegung und das Steigungskriterium sind Setzungen."
         ),
     }
 

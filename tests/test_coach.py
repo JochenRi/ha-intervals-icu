@@ -189,13 +189,16 @@ check(all(w["fits_budget"] is None for w in free), "8 budget: erfundene Aussage 
 _RIDE_DAY = [0]
 
 
-def ride(key, kj, dec, *, minutes=90, intensity=60, kind="Ride", vi=1.02, watts=120):
+def ride(key, kj, dec, *, minutes=90, intensity=60, kind="Ride", vi=1.02, watts=120, days_ago=None):
     seconds = minutes * 60
     # Dates run forward deterministically. hash() is salted per process, so a
     # date built from it would make this file's fixture differ between runs -
     # exactly the kind of test that fails for reasons that teach nothing.
     _RIDE_DAY[0] += 1
-    stamp = (TODAY - timedelta(days=400 - _RIDE_DAY[0])).isoformat()
+    # days_ago lets the block tests place rides deliberately; without it the
+    # dates just run forward, one per ride.
+    back = days_ago if days_ago is not None else 400 - _RIDE_DAY[0]
+    stamp = (TODAY - timedelta(days=back)).isoformat()
     return {
         "id": key, "start_date_local": stamp + "T09:00:00",
         "type": kind, "moving_time": seconds, "icu_intensity": intensity,
@@ -209,86 +212,169 @@ def dur_data(rows):
     return {"wellness": {}, "activities": {r["id"]: r for r in rows}, "dfa": {}}
 
 
-SPLIT = coach.DURABILITY_SPLIT_KJ
-# Two groups, both populated, and a clear difference between them.
+# Ein Bestand, der die Kachel überhaupt trägt - klein und groß gemischt.
 both = dur_data(
-    [ride(f"lo{i}", SPLIT - 200, 1.0) for i in range(8)]
-    + [ride(f"hi{i}", SPLIT + 200, 3.0) for i in range(6)]
+    [ride(f"lo{i}", 600, 1.0) for i in range(8)]
+    + [ride(f"hi{i}", 1000, 3.0) for i in range(6)]
 )
 dur = coach.durability(both)
 check(dur is not None, "9 durability: nicht berechnet")
-eq(dur["n_low"] + dur["n_high"], dur["n"], "9 durability: Gruppen summieren sich nicht auf n")
-eq(dur["n_low"], 8, "9 durability: kleine Gruppe falsch besetzt")
-eq(dur["n_high"], 6, "9 durability: große Gruppe falsch besetzt")
-check(dur["lead"] is not None, "9 durability: keine Leitzahl trotz zweier voller Gruppen")
-# The lead must come out of the SHOWN numbers. Computing it from the unrounded
-# medians let the card print 0,9 and 0,7 beside a lead of 0,1 - the reader
-# subtracts and gets 0,2, and three numbers out of one calculation disagree.
-eq(dur["lead"], round(dur["high"] - dur["low"], 1),
-   "9 durability: Leitzahl nicht aus den angezeigten Werten gerechnet")
-check("noch nicht" in dur["verdict"], "9 durability: steigende Entkopplung gelobt")
+eq(dur["n"], 14, "9 durability: Pool falsch besetzt")
+eq(dur["n_full"] + dur["n_partial"] + dur["n_zero"], dur["n"],
+   "9 durability: Gewichtsbuchhaltung summiert sich nicht auf n")
 check("Setzung" in dur["source"] and "faustregel" in dur["source"].lower(),
       "9 durability: die 5-%-Marke wird als Befund ausgegeben")
 
-# Every number the panel prints has to be IN the payload - there is a source
-# guard in the panel suite against a second copy of any of them.
-for key in ("decoupling_good", "split_kj", "min_minutes", "max_intensity",
-            "max_vi", "min_per_group", "min_sessions"):
+# Jede Zahl, die das Panel druckt, muss IN der Payload stehen - im Panel-Test
+# steht ein Quelltext-Wächter gegen jede zweite Kopie davon.
+for key in ("decoupling_good", "min_minutes", "max_intensity", "vi_full", "vi_none",
+            "min_weight_sum", "min_weight_sum_block", "min_slope_t", "block_weeks",
+            "bins_kj", "power_days", "power_days_fallback", "min_per_group", "min_sessions"):
     check(dur.get(key) is not None, f"9 durability: {key} fehlt in der Payload")
 
-# The fixture proves it can tell the two cases apart: same archive, one group
-# emptied, and the outcome must differ.
-thin = dur_data(
-    [ride(f"lo{i}", SPLIT - 200, 1.0) for i in range(10)]
-    + [ride(f"hi{i}", SPLIT + 200, 3.0) for i in range(2)]
+# --- 9a  Ehrlichkeitsregel 1: nie über den Bestand hinaus hochrechnen --------
+# Ein Zusammenhang, dessen Schnittpunkt INNERHALB der Daten liegt: Leitzahl.
+clear = dur_data([ride(f"c{i}", 300 + i * 60, round(0.005 * (300 + i * 60) - 1 + (0.2 if i % 2 else -0.2), 3))
+                  for i in range(21)])
+dur_clear = coach.durability(clear)
+eq(dur_clear["blocked"], None, "9a Kipppunkt: klarer Zusammenhang wird nicht ausgesprochen")
+check(dur_clear["tipping_kj"] is not None, "9a Kipppunkt: keine Leitzahl trotz gesicherter Steigung")
+check(dur_clear["tipping_kj"] <= dur_clear["max_kj"],
+      "9a Kipppunkt: liegt jenseits der arbeitsreichsten Fahrt und wird trotzdem genannt")
+# Gegenprobe: denselben Zusammenhang, aber der Bestand endet VOR dem Schnitt.
+short_stock = dur_data([ride(f"s{i}", 300 + i * 30, round(0.005 * (300 + i * 30) - 1 + (0.2 if i % 2 else -0.2), 3))
+                        for i in range(21)])
+dur_short = coach.durability(short_stock)
+eq(dur_short["blocked"], "beyond",
+   "9a Gegenprobe: verkürzter Bestand liefert trotzdem einen Kipppunkt")
+check(dur_short["tipping_kj"] is None, "9a Gegenprobe: Kipppunkt jenseits des Bestands genannt")
+check(str(dur_short["max_kj"]) in dur_short["headline"] and "Weiter reichen" in dur_short["headline"],
+      "9a Gegenprobe: die Überschrift nennt die eigene Grenze nicht")
+check(dur_clear["headline"] != dur_short["headline"],
+      "9a Fixture-Beweis: voller und verkürzter Bestand sind nicht unterscheidbar")
+
+# --- 9b  Ehrlichkeitsregel 2: keine Leitzahl ohne erkennbare Steigung -------
+noisy = dur_data([ride(f"n{i}", 300 + i * 60, [8.0, -8.0, 2.0, -3.0][i % 4]) for i in range(21)])
+dur_noisy = coach.durability(noisy)
+eq(dur_noisy["blocked"], "flat", "9b flach: Leitzahl aus einer Steigung, die null sein kann")
+check(dur_noisy["tipping_kj"] is None, "9b flach: Kipppunkt trotz unerkennbarer Steigung")
+check(dur_noisy["slope_t"] < dur_noisy["min_slope_t"], "9b flach: Fixture ist doch signifikant")
+check("Streuung" in dur_noisy["headline"],
+      "9b flach: die Auskunft sagt nicht, WORAN es liegt - \"kein Zusammenhang\" liest sich wie \"alles gut\"")
+check(dur_noisy["needed_sessions"] and dur_noisy["needed_sessions"] > dur_noisy["n"],
+      "9b flach: es fehlt die Angabe, was die Messung voranbrächte")
+check(dur_clear["slope_t"] >= dur_clear["min_slope_t"],
+      "9b Fixture-Beweis: klarer und verrauschter Fall sind am Kriterium nicht unterscheidbar")
+
+# --- 9c  Ehrlichkeitsregel 3: keine Leitzahl unter Mindestbelegung ----------
+# Genau der Fall aus dem Livebestand: vier Fahrten, bilderbuchmäßige Steigung
+# (|t| 3,3 auf dem echten Block ab 22.04.2026), Kipppunkt bei 640 kJ - und
+# trotzdem schweigt die Kachel, weil vier Punkte nichts tragen.
+few = dur_data([ride(f"f{i}", 300 + i * 100, round(0.005 * (300 + i * 100) - 1, 3)) for i in range(9)]
+               + [ride(f"g{i}", 300 + i * 100, 0.0, vi=1.24) for i in range(3)])
+dur_few = coach.durability(few)
+check(dur_few["w_sum"] < dur_few["min_weight_sum"],
+      "9c dünn: Fixture erreicht die Mindestbelegung doch")
+eq(dur_few["blocked"], "thin", "9c dünn: Leitzahl trotz zu geringer Belegung")
+check(dur_few["tipping_kj"] is None, "9c dünn: Kipppunkt aus einer Belegung, die nichts trägt")
+check(f"{dur_few['w_sum']:.1f}" in dur_few["headline"],
+      "9c dünn: die Überschrift nennt die erreichte Belegung nicht")
+# und der Beweis, dass die Regel nicht bloß an der Stückzahl hängt: MEHR
+# Einheiten, alle fast gewichtslos, bleiben unter derselben Schwelle
+heavy_but_wavy = dur_data([ride(f"w{i}", 300 + i * 60, 1.0, vi=1.24) for i in range(30)])
+dur_wavy = coach.durability(heavy_but_wavy)
+check(dur_wavy["n"] == 30 and dur_wavy["w_sum"] < dur_wavy["min_weight_sum"],
+      "9c Gewicht: 30 wellige Einheiten zählen wie 30 gleichmäßige")
+eq(dur_wavy["blocked"], "thin", "9c Gewicht: Leitzahl aus 30 fast gewichtslosen Fahrten")
+
+# --- 9d  Die Gewichtung wirkt: mit und ohne muss verschieden herauskommen ---
+mixed_weight = dur_data(
+    [ride(f"e{i}", 300 + i * 80, round(0.004 * (300 + i * 80), 3)) for i in range(11)]
+    + [ride(f"u{i}", 300 + i * 80, 9.0, vi=1.22) for i in range(11)]
 )
-dur_thin = coach.durability(thin)
-check(dur_thin is not None, "9 durability dünn: nicht berechnet")
-eq(dur_thin["n_high"], 2, "9 durability dünn: Fixture besetzt die große Gruppe falsch")
-check(dur_thin["high_thin"], "9 durability dünn: dünne Gruppe nicht als dünn gemeldet")
-check(dur_thin["lead"] is None,
-      "9 durability dünn: Leitzahl aus einer Gruppe gebildet, die nichts trägt")
-check("Keine Aussage" in dur_thin["headline"],
-      "9 durability dünn: Überschrift behauptet etwas über die dünne Gruppe")
-check(dur["lead"] != dur_thin["lead"] and dur["headline"] != dur_thin["headline"],
-      "9 durability: Fixture-Beweis - voller und dünner Fall sind nicht unterscheidbar")
+dur_w = coach.durability(mixed_weight)
+flat_points = [{"kj": p["kj"], "dec": p["dec"], "w": 1.0} for p in dur_w["points"]]
+unweighted = coach._weighted_line(flat_points)
+check(abs(unweighted["b"] * 1000 - dur_w["slope"]) > 0.5,
+      "9d Gewichtung: mit und ohne Gewichte kommt dieselbe Trendgerade heraus - "
+      "die Fixture belegt den Umbau nicht")
+check(0 < min(p["w"] for p in dur_w["points"]) < 1 == max(p["w"] for p in dur_w["points"]),
+      "9d Gewichtung: die Fixture enthält keine zwei unterscheidbaren Gewichtsfälle")
 
-# The bug this replaces: with NO session in the big group the old verdict fell
-# back to the small one and announced that the base carries long sessions.
-none_high = dur_data([ride(f"lo{i}", SPLIT - 200, 1.0) for i in range(12)])
-dur_none = coach.durability(none_high)
-eq(dur_none["n_high"], 0, "9 durability leer: Fixture hat doch eine große Einheit")
-check(dur_none["lead"] is None, "9 durability leer: Leitzahl aus einer leeren Gruppe")
-check("trägt" not in dur_none["verdict"],
-      "9 durability leer: Aussage über große Einheiten ohne eine einzige große Einheit")
+# --- 9e  Zeitumrechnung: die Leistung stammt aus dem Pool, nicht aus einer Konstante
+check(dur_clear["power"]["watts"] == 120,
+      f"9e Umrechnung: fremde Leistung ({dur_clear['power']}) statt der des Pools")
+eq(dur_clear["tipping_hours"],
+   round(dur_clear["tipping_kj"] * 1000 / (dur_clear["power"]["watts"] * 3600), 2),
+   "9e Rundung: Kipppunkt, Leistung und Stunden stammen nicht aus denselben gerundeten Zahlen")
+# Gegenprobe mit verändertem Pool: dieselbe Arbeit, doppelte Leistung, halbe Zeit
+stronger = dur_data([ride(f"p{i}", 300 + i * 60, round(0.005 * (300 + i * 60) - 1 + (0.2 if i % 2 else -0.2), 3), watts=240)
+                     for i in range(21)])
+dur_strong = coach.durability(stronger)
+eq(dur_strong["tipping_kj"], dur_clear["tipping_kj"],
+   "9e Gegenprobe: die Leistung verschiebt den Kipppunkt (sie darf nur die Zeit ändern)")
+check(dur_strong["tipping_hours"] < dur_clear["tipping_hours"],
+      "9e Gegenprobe: die genannte Zeit hängt nicht am Pool - sie stammt aus einer Konstante")
+check(str(dur_strong["power"]["watts"]) in dur_strong["headline"],
+      "9e Umrechnung: die verwendete Leistung wird nicht genannt")
 
-# What the pool may contain. Each of these three is dropped for its own reason,
-# and the reason is counted so the panel can name it.
+# --- 9f  Blöcke: leere Blöcke bleiben leer und werden nicht interpoliert ----
+gapped = dur_data([ride(f"alt{i}", 300 + i * 90, round(0.005 * (300 + i * 90) - 1, 3), days_ago=260 + i)
+                   for i in range(12)]
+                  + [ride(f"neu{i}", 300 + i * 90, round(0.004 * (300 + i * 90) - 1, 3), days_ago=i)
+                     for i in range(12)])
+dur_gap = coach.durability(gapped)
+eq(len(dur_gap["blocks"]), 2,
+   f"9f Blöcke: {len(dur_gap['blocks'])} Blöcke statt zwei - die Lücke wurde aufgefüllt")
+check(all(b["n"] > 0 for b in dur_gap["blocks"]), "9f Blöcke: Block ohne Einheiten im Verlauf")
+check(dur_gap["blocks"][0]["start"] < dur_gap["blocks"][1]["start"],
+      "9f Blöcke: Verlauf läuft nicht von alt nach neu")
+# und die drei Regeln gelten JE BLOCK: ein Block, der eine reißt, bleibt leer
+for block in dur_gap["blocks"]:
+    check((block["tipping_kj"] is None) == (block["reason"] is not None),
+          "9f Blöcke: Kipppunkt und Ablehnungsgrund widersprechen sich")
+    if block["tipping_kj"] is not None:
+        check(block["tipping_kj"] <= block["max_kj"],
+              "9f Blöcke: ein Block rechnet über seinen EIGENEN Bestand hinaus")
+
+# --- 9g  Was aussortiert wird, und unter welchem Namen ----------------------
 mixed = dur_data(
-    [ride(f"lo{i}", SPLIT - 200, 1.0) for i in range(8)]
-    + [ride(f"hi{i}", SPLIT + 200, 3.0) for i in range(6)]
-    + [ride("rolle", SPLIT + 200, 0.1, kind="VirtualRide"),
-       ride("wellig", SPLIT + 200, 0.1, vi=1.30),
-       ride("hart", SPLIT + 200, 0.1, intensity=95),
-       ride("kurz", SPLIT + 200, 0.1, minutes=20)]
+    [ride(f"lo{i}", 600, 1.0) for i in range(8)]
+    + [ride(f"hi{i}", 1000, 3.0) for i in range(6)]
+    + [ride("rolle", 1000, 0.1, kind="VirtualRide"),
+       ride("wellig", 1000, 0.1, vi=1.30),
+       ride("hart", 1000, 0.1, intensity=95),
+       ride("kurz", 1000, 0.1, minutes=20)]
 )
+mixed["activities"]["ohne"] = {
+    "id": "ohne", "start_date_local": TODAY.isoformat() + "T09:00:00", "type": "Ride",
+    "moving_time": 5400, "icu_intensity": 60, "decoupling": 1.0, "icu_joules": 900000,
+}
 dur_mixed = coach.durability(mixed)
-eq(dur_mixed["n"], dur["n"], "9 durability: aussortierte Einheiten sind doch mitgezählt")
-eq(dur_mixed["dropped"]["indoor"], 1, "9 durability: Rollenfahrt nicht aussortiert")
-eq(dur_mixed["dropped"]["variable"], 1, "9 durability: wellige Einheit nicht aussortiert")
-eq(dur_mixed["dropped"]["intense"], 1, "9 durability: Intervalleinheit nicht aussortiert")
-eq(dur_mixed["dropped"]["short"], 1, "9 durability: zu kurze Einheit nicht aussortiert")
+eq(dur_mixed["n"], 14, "9g: aussortierte Einheiten sind doch mitgezählt")
+eq(dur_mixed["dropped"]["indoor"], 1, "9g: Rollenfahrt nicht aussortiert")
+eq(dur_mixed["dropped"]["variable"], 1, "9g: wellige Einheit nicht aussortiert")
+eq(dur_mixed["dropped"]["intense"], 1, "9g: Intervalleinheit nicht aussortiert")
+eq(dur_mixed["dropped"]["short"], 1, "9g: zu kurze Einheit nicht aussortiert")
+# Der Fehler aus 0.39.0: eine Fahrt OHNE Leistungsmessung wurde als "zu wellig"
+# gezählt. Am Livebestand waren das 53 von 64 - die Kachel behauptete etwas
+# über Fahrten, über die sie nichts weiß.
+eq(dur_mixed["dropped"]["no_power"], 1,
+   "9g: Fahrt ohne Leistungsmessung wird nicht getrennt gezählt")
+check(dur_mixed["dropped"]["variable"] != dur_mixed["dropped"]["no_power"] + 1,
+      "9g Fixture-Beweis: wellig und ohne Leistung sind in dieser Fixture nicht unterscheidbar")
 
-# Gegenprobe, gezählt und benannt: fällt der Arbeits-Schnitt auf die Dauer
-# zurück, muss die Gruppentrennung nachweislich eine andere werden. Ohne diesen
-# Nachweis prüft der Vertrag oben nur, dass irgendetwas geteilt wurde.
-by_duration_low = sum(1 for r in both["activities"].values() if r["moving_time"] < 90 * 60)
-check(by_duration_low != dur["n_low"],
-      "9 durability Gegenprobe: Dauer- und Arbeitsschnitt liefern dieselbe Aufteilung — "
-      "die Fixture kann den Umbau nicht belegen")
+# --- 9h  Die gebinnten Mediane: Beschreibung, keine Vorhersage --------------
+bands = dur_clear["bins"]
+eq(len(bands), len(dur_clear["bins_kj"]) + 1, "9h Bänder: Anzahl passt nicht zu den Grenzen")
+check(all(b["median"] is None for b in bands if b["thin"]),
+      "9h Bänder: ein zu dünn besetztes Band behauptet trotzdem einen Median")
+check(all(b["n"] >= dur_clear["min_per_group"] for b in bands if b["median"] is not None),
+      "9h Bänder: Median aus weniger Einheiten als die Mindestbesetzung")
+eq(sum(b["n"] for b in bands), dur_clear["n"], "9h Bänder: die Bänder summieren sich nicht auf n")
 
-# Too little history: no tile at all, rather than a tile on four sessions.
-check(coach.durability(dur_data([ride(f"x{i}", SPLIT - 200, 1.0) for i in range(4)])) is None,
+# Zu wenig Historie: gar keine Kachel, statt einer Kachel auf vier Einheiten.
+check(coach.durability(dur_data([ride(f"x{i}", 600, 1.0) for i in range(4)])) is None,
       "9 durability: Kachel aus zu wenigen Einheiten gebaut")
 
 
