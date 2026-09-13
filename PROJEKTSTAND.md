@@ -194,7 +194,26 @@ Recherche:
 
 ## 7. Fehler und was sie gelehrt haben
 
-**0.47.2 — zweimal dieselbe Fehlkorrektur bei der Vermessung für Paket M.**
+**0.47.2 — drei Befunde.**
+
+**1 · `stream_types` sagt, was in der DATEI lag — nicht, was die SCHNITTSTELLE
+liefert.** Die Aktivitäten führen `hrv` in `stream_types`. Der Streams-Endpunkt
+liefert ihn nicht: abgerufen kamen `cadence, dfa_a1, heartrate, time, watts`
+zurück, der angeforderte Kanal fehlte vollständig. **Wer aus dieser Liste
+ableitet, welche Daten verfügbar sind, liegt falsch** — sie ist eine Auskunft
+über den Inhalt der hochgeladenen Datei, nicht über die API.
+
+**Geprüft, ob das eine Klasse ist: es sind zwei weitere Stellen, und sie
+funktionieren** — `importer.has_watts()` und `has_dfa()` schließen ebenfalls aus
+`stream_types`. Für diese beiden Kanäle trägt der Schluss (58 DFA-Auswertungen
+existieren). **Die Bauart bleibt trotzdem riskant, und zwar still:** meldet
+`has_dfa()` True und der Abruf kommt leer zurück, schreibt
+`async_import_dfa()` ein leeres Dict — die Fahrt gilt als abgearbeitet und wird
+nie wieder geholt. Ein Kanal, den die Datei führt und die API nicht liefert,
+verschwindet damit lautlos aus dem Bestand. **Kein Fehler, der passiert ist —
+einer, der auf seinen Anlass wartet.**
+
+**2 · Zweimal dieselbe Fehlkorrektur bei der Vermessung für Paket M.**
 
 **Eine Messgröße wurde zweimal als untauglich verworfen, bevor der Ausschnitt
 stimmte, aus dem sie gerechnet wurde.** Beide Male traf es VO2max, beide Male

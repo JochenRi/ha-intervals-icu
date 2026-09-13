@@ -2567,7 +2567,7 @@ mitgerechnet statt vorausgesetzt.
    SweetSpot und VO2max aus einer Messung kämen statt aus einer Eintragung, die
    nachweislich rund 10 % zu hoch steht.
 
-### M5 · Offen: die Fensterbreite und der hrv-Strom
+### M5 · ABGESCHLOSSEN: die Fensterbreite liegt NICHT bei uns
 
 Die DFA-Fensterbreite liegt **nicht bei uns** — Intervals liefert `dfa_a1` als
 fertigen Strom, jeder Wert bereits gefenstert, die Breite undokumentiert. Ein
@@ -2583,7 +2583,26 @@ Herzfrequenz (600 ms entsprächen 100 bpm), ob die Summe der Werte über einen
 Abschnitt dessen Dauer ergibt, und ob die Zahl der Werte zur Zahl der
 Herzschläge passt oder zum Sekundenraster.
 
-**Wenn es RR ist:** die Fensterbreite läge bei uns, die Arbeit zur
+**GEMESSEN AM 13.09.2026, NACH 0.47.2 — die Frage ist beantwortet, negativ.**
+Zwei Aktivitaeten, die `hrv` in ihren `stream_types` fuehren, wurden abgerufen.
+Geliefert wurden beide Male `cadence, dfa_a1, heartrate, time, watts` —
+**kein `hrv`, null Werte.** Die Filterstelle scheidet aus (`thin_streams` laesst
+durch, was in `DETAIL_STREAMS` steht, und dort stand der Kanal), die Version war
+nachweislich installiert (HACS: `v0.47.2`, kein ausstehendes Update).
+
+**Folge, und sie ist endgueltig:** die RR-Intervalle sind ueber diesen Weg nicht
+zu bekommen. Die DFA-Fensterbreite bleibt Intervals' Sache — eine Grenze der
+DATENQUELLE, keine Rechenfrage. Die vier Abweichungen von Andriolo aus 0.45.0
+bleiben **vollstaendig** bestehen, keine ist hinfaellig. Die Arbeit zur
+intensitaetsabhaengigen Fensterlaenge ist auf diese Daten **nicht anwendbar**;
+sie setzt voraus, dass alpha selbst berechnet wird.
+
+**Diese Frage wird nicht noch einmal gestellt.** Die Zeile in `DETAIL_STREAMS`
+bleibt stehen, damit es auffaellt, falls Intervals den Kanal spaeter liefert.
+
+Der historische Stand der Ueberlegung, zur Einordnung:
+
+**Wenn es RR waere:** die Fensterbreite läge bei uns, die Arbeit zur
 intensitätsabhängigen Fensterlänge (bioRxiv 02/2026: 1-min-Fenster gegen das
 2-min-Fenster, ICC 0,95 beim Zeitfahren gegen 0,37 bei niedriger Intensität —
 kürzere Fenster gewinnen mit steigender Herzfrequenz, weil die Rechnung eine

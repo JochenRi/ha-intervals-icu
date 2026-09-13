@@ -37,11 +37,13 @@ DETAIL_STREAMS: tuple[str, ...] = (
     "velocity_smooth",
     "altitude",
     "dfa_a1",
-    # Angefordert seit 0.47.2, ausschliesslich um zu MESSEN, was darin steht:
-    # liegen hier RR-Intervalle, laege die DFA-Fensterbreite bei uns statt bei
-    # Intervals - und die Arbeit zur intensitaetsabhaengigen Fensterlaenge
-    # waere direkt anwendbar. Solange das nicht geprueft ist, wird der Kanal
-    # von nichts gelesen (docs/ausbau.md, Paket M).
+    # GEPRUEFT UND LEER (0.47.2). Angefordert wurde der Kanal, um zu messen, ob
+    # RR-Intervalle darin stehen - dann laege die DFA-Fensterbreite bei uns
+    # statt bei Intervals. Die API liefert ihn NICHT, obwohl `stream_types` ihn
+    # auffuehrt. Die Zeile bleibt trotzdem stehen: ein leerer Kanal wird
+    # ohnehin verworfen, sie kostet nichts, und wuerde sie entfernt, prueft das
+    # in zwei Jahren jemand ein zweites Mal. Fuegt Intervals ihn spaeter hinzu,
+    # faellt es auf (docs/ausbau.md M5).
     "hrv",
 )
 
