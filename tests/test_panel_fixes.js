@@ -583,8 +583,18 @@ const acts = F.activities(), thr = F.thresholds();
                             ["Trennstelle", /\b800\b/],
                             ["Mindestdauer", /\b45\b/],
                             ["Intensitätsgrenze", /\b80\b/],
+                            ["Gewichtsgrenzen", /1\.05|1\.25/],
+                            ["Steigungskriterium", /\b2\.0\b/],
                             ["Mindestzahl je Gruppe", /[^\w.]5(?![\d.])\s*(Einheiten|\))/]]) {
     ok(!re.test(tile), `Wächter: ${name} steht als Zahl in rDurability statt in der Payload`);
+  }
+  // Die Kehrseite: eine Zahl kann auch dadurch verschwinden, dass die Kachel
+  // sie gar nicht mehr zeigt. Jede neue Schwelle aus 0.40.0 muss NACHWEISLICH
+  // aus der Payload gelesen werden - sonst ist der Wächter oben nur still.
+  for (const key of ["vi_full", "vi_none", "min_weight_sum", "min_weight_sum_block",
+                     "min_slope_t", "block_weeks", "power_days", "power_days_fallback",
+                     "fuelling_g_per_h", "max_intensity", "min_minutes", "decoupling_good"]) {
+    ok(tile.includes("d." + key), `Wächter: rDurability liest ${key} nicht aus der Payload`);
   }
 }
 

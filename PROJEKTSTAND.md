@@ -1,13 +1,13 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 13.09.2026 · **Version:** 0.39.0 · **Status:** produktiv auf HEIMDALL,
+**Stand:** 13.09.2026 · **Version:** 0.40.0 · **Status:** produktiv auf HEIMDALL,
 Auslieferung über HACS aus `github.com/JochenRi/ha-intervals-icu`
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lokal
 archiviert, auswertet und in einem eigenen Seitenleisten-Panel darstellt.
 
 **Umfang:** ~10.870 Zeilen, davon ~4.020 Frontend · 24 WebSocket-Befehle · 15 Einheiten in
-8 Familien · 15 Testdateien mit **3.232** gezählten Einzelprüfungen · 40 Releases.
+8 Familien · 15 Testdateien mit **3.421** gezählten Einzelprüfungen · 41 Releases.
 
 ---
 
@@ -110,7 +110,7 @@ Jede Kennzahl trägt Quelle und Grenze sichtbar mit sich.
 | HRV-Trend | 7-Tage-Mittel ln(rMSSD) gegen 60-Tage-Band, Schwelle 0,5 SD (Plews/Altini) | Nachtmessung der Uhr, nicht die validierte Morgenmessung im Liegen |
 | Entkopplung | Friel: ≤ 5 %; trainierte oft < 3 %, Freizeit 5–10 % | nur bei gleichmäßiger Fahrt aussagekräftig |
 | DFA alpha-1 | Rogers/Gronwald: 0,75 ≈ VT1, 0,5 ≈ VT2 | gegen Gasaustausch validiert; empfindlich für Artefakte und Gerät |
-| Durability | Maunder: Zeitpunkt und Ausmaß der Verschlechterung während langer Belastung | eigene Eigenschaft, unabhängig von FTP und VO2max |
+| Durability | Maunder: Zeitpunkt und Ausmaß der Verschlechterung während langer Belastung; über angesammelte Arbeit indiziert | eigene Eigenschaft, unabhängig von FTP und VO2max; **am eigenen Bestand ist die Steigung über der Arbeit nicht von null zu unterscheiden** — die Kachel sagt das, statt eine Leitzahl zu erfinden |
 | Kardiale Drift | HF steigt bei konstanter Last; bei Trainierten abgeschwächt | das *Was*; ob Watt/Herzschlag hält, ist das *Na und* |
 | Nachtreaktion | Nachtmessung ist die sauberste Bedingung; Rückkehr zur Ruhe-HRV dauert Minuten bis 24 h | **glockenförmiger** Zusammenhang zwischen Last und HRV-Änderung — deshalb nur gegen die eigene übliche Antwort lesbar |
 | 30/15 | Rønnestad: signifikant größere Zuwächse über 10 Wochen | **Richtigstellung:** der Vergleich ist *nicht* aufwandsgleich — 29,5 min Arbeit gegen 20 min bei 4×5 |
@@ -191,6 +191,51 @@ Recherche:
 ---
 
 ## 7. Fehler und was sie gelehrt haben
+
+**0.40.0 — was der Bau von Paket G zutage gefördert hat:**
+
+1. **Die Kachel behauptete etwas über 53 Fahrten, über die sie nichts wusste.**
+   `steady_endurance_reason()` gab „variable" zurück, wenn der Variabilitätsindex
+   *zu hoch* war — und ebenso, wenn er **gar nicht berechenbar** war, weil die
+   Fahrt keine Leistungsmessung trägt. Beides landete in einem Zähler, und der
+   Rechenweg druckte „64 zu wellige". Tatsächlich wellig waren **11**; die
+   anderen 53 sind unbekannt, nicht wellig. Ein Bugfix, kein Feature: getrennte
+   Gründe, getrennte Zahlen, eigener Test und eigene Gegenprobe.
+   **Die Lehre:** ein Zähler, der zwei Gründe zusammenfasst, erfindet den
+   häufigeren. Wer „nicht messbar" unter „gemessen und schlecht" verbucht,
+   schreibt eine Messung hin, die nie stattgefunden hat.
+
+2. **Die erwartete Wirkung eines Umbaus war um Faktor fünf daneben** (45 → ~110
+   erwartet, 45 → 56 gemessen) — und zwar aus demselben Grund wie Punkt 1: die
+   Spezifikation hatte den falsch beschrifteten Zähler geglaubt. Eine Erwartung
+   aus einer Zahl, die man nicht selbst nachgerechnet hat, ist eine Vermutung.
+
+3. **Die Umrechnung Arbeit → Zeit hätte mit einer Leistung aus dem Vorjahr
+   gerechnet.** „Median der qualifizierten Einheiten" klingt richtig und ist es
+   nicht, wenn der Pool elf Monate Progression umfasst: 86 W über den ganzen
+   Bestand gegen 136 W in den letzten 90 Tagen, aus demselben Kipppunkt 6 h 45
+   gegen 4 h 15. **Die Lehre:** ein Median über einen Zeitraum, in dem sich die
+   Größe verändert hat, ist kein Wert, sondern ein Durchschnitt aus zwei
+   Athleten.
+
+4. **Der Blockverlauf wäre eine Hintertür um die Ehrlichkeitsregeln gewesen.**
+   Die Spec verlangte für die Blöcke nur „ausreichende Belegung". Am Livebestand
+   liefert ein Block aus **vier** Fahrten |t| = 3,30 und einen Kipppunkt von
+   640 kJ — die Steigungsregel allein hätte ihn durchgewinkt. Alle drei Regeln
+   gelten jetzt je Block, und „der Bestand" ist dort der Block.
+
+5. **Methodisch, und das Wichtigste an dieser Session:** die Spezifikation wurde
+   **an den Livedaten widerlegt, bevor eine Zeile gebaut wurde.** G2 verlangte
+   eine Leitzahl aus der Steigung der Trendgeraden — die Steigung besteht das
+   eigene Zwei-Standardfehler-Kriterium nicht (|t| = 1,33), und der Schnittpunkt
+   läge jenseits des Bestands. Geprüft auf **drei** Wegen statt einem, weil ein
+   Kriterium auch nur ein Kriterium ist: gewichtete Kleinste-Quadrate,
+   Kendall-Tau (z = 1,57) und Bootstrap ([−1,65; +6,55]) — alle drei sagen
+   dasselbe. Gebaut wurde daraufhin die Kachel, die **das** sagt: „Die Richtung
+   stimmt, aber die Streuung ist zu groß für eine Aussage", mit der Angabe, was
+   fehlen würde (rund 128 statt 56 Einheiten; lange Fahrten zählen stärker, weil
+   der Fehler an der Spannweite der Arbeit hängt). Eine Zahl, die nur dasteht,
+   weil eine Kachel eine Zahl haben soll, ist schlimmer als keine.
 
 **0.39.0 — was der Bau von C/D6/F zutage gefördert hat:**
 
@@ -406,7 +451,7 @@ den Non-Responder-Befund (Manresa-Rocamora 2021).
 
 ## 9. Prüfstand
 
-**Fünfzehn Dateien, 3.156 gezählte Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
+**Fünfzehn Dateien, 3.421 gezählte Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
 HA-Instanz oder einen Browser.
 
 | Datei | prüft | Umfang |
@@ -414,18 +459,18 @@ HA-Instanz oder einen Browser.
 | `test_derive.py` | Parselogik gegen echte Payloads | 29 |
 | `test_dfa.py` | DFA-Auswertung, Bandgrenzen, Artefakte | 25 |
 | `test_import.py` | vollständiger Import gegen einen Nachbau des Kontos, Schwellenreihe und `since`, day_context-Migration und Schreibweg, Quellenblock-Auflagen | 76 |
-| `test_analytics.py` | Trainingsmetriken gegen bekannte Ergebnisse, Ebene-3-Wächter (Last kennt keine Etiketten, Quelltext und Verhalten) | 86 |
+| `test_analytics.py` | Trainingsmetriken gegen bekannte Ergebnisse, Ebene-3-Wächter (Last kennt keine Etiketten, Quelltext und Verhalten) | 90 |
 | `test_setup_simulation.py` | Entity-Aufbau, Übersetzungen, unique_ids | 22 |
 | `test_laps.py` | Runden-Normalisierung | 34 |
-| `test_coach.py` | Zustandsregeln, Trigger-Schärfung, Infektverlauf, Nachtreaktion, Einordnung, Bereiche, benannter 42-Tage-Verlauf, Basislinien-Primitive mit AST-Wächter, eingefrorene No-op-Referenz, gewichtete Basislinie mit Fixture-Beweis | 261 |
+| `test_coach.py` | Zustandsregeln, Trigger-Schärfung, Infektverlauf, Nachtreaktion, Einordnung, Bereiche, benannter 42-Tage-Verlauf, Basislinien-Primitive mit AST-Wächter, eingefrorene No-op-Referenz, gewichtete Basislinie mit Fixture-Beweis, **Durability: die drei Ehrlichkeitsregeln einzeln, Gewichtungs- und Umrechnungs-Gegenprobe, Blockverlauf** | 333 |
 | `test_plan.py` | Zielprofil, Wochenmuster, Zeitbudget, Progressions- und Kalender-Anker-Vertrag, Profil-Migration | 405 |
 | `test_workouts.py` | Einheitenauswahl, HF-Klemme, Infektleiter, Wattumrechnung, Intervals-Syntax | 575 |
 | `test_websocket_registration.py` | Registrierung, Dekoratoren, FTP-Quelle, eine Ankerregel, day_context-Lese/Schreibweg, Ampel-Herkunftsnotiz | 180 |
-| `test_reconcile.py` | Abgleich mit Intervals: die drei Sperren einzeln, die datumslosen Aufräumstellen, No-op ohne Speichervorgang, der Handler am echten Aufruf (Import läuft, Historie nie geholt, Zwischenstand) | 115 |
+| `test_reconcile.py` | Abgleich mit Intervals: die drei Sperren einzeln, die datumslosen Aufräumstellen, No-op ohne Speichervorgang, der Handler am echten Aufruf (Import läuft, Historie nie geholt, Zwischenstand) | 129 |
 | `test_suite_hygiene.py` | der Prüfstand prüft sich selbst: **genau eine** Summary je Datei, die etwas zählt, nichts Gezähltes dahinter, Fehler werden gedruckt | 66 |
-| `test_panel_views.js` | alle Ansichten gegen volle, leere, löchrige, entartete Daten; Zeitfenster, Brushing, Achsenregel; Tagesbeschriftung und Abgleich-Dialog mit Schreibweg und Scroll-Erhalt | 972 |
-| `test_panel_fixes.js` | je ein Nachweis pro behobenem Fehler, plus die Zeiger-Simulation | 231 |
-| `test_panel_design.js` | Gestaltungsregeln als Zusicherung, Auswahl als Form, Achse im Aufklappen, Etiketten im Kategorienregister | 79 |
+| `test_panel_views.js` | alle Ansichten gegen volle, leere, löchrige, entartete Daten; Zeitfenster, Brushing, Achsenregel; Tagesbeschriftung und Abgleich-Dialog mit Schreibweg und Scroll-Erhalt; **die Durability-Wolke: Gewicht als Größe und Deckkraft, Gerade nur bei gesicherter Steigung, Register getrennt** | 1014 |
+| `test_panel_fixes.js` | je ein Nachweis pro behobenem Fehler, plus die Zeiger-Simulation; Quelltext-Wächter über das ganze Frontend, beidseitig (keine Zahl im Quelltext, jede Schwelle nachweislich aus der Payload) | 256 |
+| `test_panel_design.js` | Gestaltungsregeln als Zusicherung, Auswahl als Form, Achse im Aufklappen, Etiketten im Kategorienregister; **eingefrorene `chart()`-Referenz aus dem Stand vor dem Eingriff** und der Zeiger-Unverändert-Beweis über vier Ansichten | 187 |
 
 **Das Prinzip:** Ein Test, der den alten Fehler nicht nachweislich findet, ist kein Test. Bei
 den kritischen Fixes wurde der Fix zurückgedreht und geprüft, dass der Test fehlschlägt —
@@ -542,6 +587,7 @@ bzw. ein Reiter je Chat.
 | **Archiv-Pflege (Paket D6)** | ✅ Kalender vs. Archiv in **0.39.0** getrennt: Aufschlüsselung aus der Payload, Refresh am Knopf, Cache-Verwerfen — Verifikation am System steht aus |
 | **Vergleichsgruppe (Paket C)** | ✅ SD-Caliper auf der log-Dauer als **0.39.0 gebaut**, Leiter 0,2–1,0 SD, Weitung gegen das Kennzahl-n — Verifikation am System steht aus |
 | **Durability-Kachel (Paket F)** | ✅ Arbeitsachse statt Dauer, VirtualRide raus, VI ≤ 1,10, Leitzahl mit Dünn-Regel als **0.39.0 gebaut** — Verifikation am System steht aus |
+| **Durability-Kachel (Paket G)** | ✅ auditiert 13.09. **an den eigenen Livedaten, vor dem Bau**: die Zweiteilung beantwortet die Überschrift nicht, und die in G2 geforderte Leitzahl trägt auf diesem Bestand nicht (Steigung +2,95 ± 2,22 %/1.000 kJ, |t| 1,33; Kipppunkt 2.398 kJ jenseits der längsten Fahrt von 2.153 kJ; keine Krümmung nachweisbar). Punktwolke über der Arbeit, VI als Gewicht statt als Türsteher, gebinnte Mediane, Blockverlauf über 12 Wochen — als **0.40.0 gebaut**; die Kachel verweigert die Leitzahl und sagt, woran es liegt. Verifikation am System steht aus |
 | **Konstanten-Dubletten (DFA/ACWR) + toter ring()/rd-Code** | ⬜ eigenes Paket, vom Wächter bei 2+2 eingefroren (docs/ausbau.md) |
 | Heute, Kalender (voller Audit), Fitness, Aktivitäten | offen |
 

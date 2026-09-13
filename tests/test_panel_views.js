@@ -1281,5 +1281,75 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   ok(r._syncDlg && r._syncDlg.state === "error", "abgleich fehler: der Dialog fällt zurück");
   ok(String(r._syncDlg.msg || "").includes("502"), "abgleich fehler: die Meldung geht verloren");
 
+  /* ── Durability-Kachel 0.40.0: die Wolke, und was sie verschweigt ───────
+     Die Kachel rechnete seit 0.39.0 das Richtige und zeigte es nicht: zwei
+     Balken bei 0,0 % und 1,4 % gegen eine Skala bis 5 %. Jetzt eine
+     Punktwolke ueber der Arbeit - mit drei Regeln, die eine Leitzahl
+     verhindern duerfen, und der Pflicht zu sagen, WELCHE gegriffen hat. */
+  {
+    const flat = F.coach("slump").durability;
+    const clear = F.coach("rebound").durabilityClear;
+    const tileFlat = p.rDurability(flat);
+    const tileClear = p.rDurability(clear);
+    clean(tileFlat, "durability flach");
+    clean(tileClear, "durability klar");
+
+    const dots = [...tileFlat.matchAll(/<circle cx="([\d.]+)" cy="([\d.]+)" r="([\d.]+)"[^>]*opacity="([\d.]+)"/g)];
+    ok(dots.length === flat.points.length,
+       `durability: ${dots.length} Punkte gezeichnet, ${flat.points.length} in der Payload`);
+    // Das Gewicht muss SICHTBAR sein - sonst sieht man nicht, worauf der Trend
+    // ruht, und die Gewichtung bliebe eine reine Backend-Behauptung.
+    ok(new Set(dots.map((m) => m[3])).size > 1 && new Set(dots.map((m) => m[4])).size > 1,
+       "durability: Gewicht ist im Bild nicht zu sehen (eine Groesse, eine Deckkraft)");
+    // Die Punkte liegen nach ARBEIT, nicht nach Reihenfolge.
+    const xs = dots.map((m) => +m[1]), kj = flat.points.map((q) => q.kj);
+    const span = (xs[xs.length - 1] - xs[0]) / (kj[kj.length - 1] - kj[0]);
+    ok(Math.abs((xs[1] - xs[0]) / (kj[1] - kj[0]) - span) < 0.01,
+       "durability: die x-Achse laeuft ueber den Index statt ueber die Arbeit");
+
+    // Regel 2 im Bild: ohne gesicherte Steigung KEINE Gerade.
+    ok(!tileFlat.includes(M.C.violet),
+       "durability flach: es wird eine Trendgerade gezeichnet, obwohl keine Leitzahl erlaubt ist");
+    ok(tileClear.includes(M.C.violet), "durability klar: die gesicherte Trendgerade fehlt");
+    contains(tileFlat, "Streuung", "durability flach: sagt nicht, WORAN es liegt");
+    ok(!/Bis etwa/.test(tileFlat), "durability flach: nennt trotzdem einen Kipppunkt");
+    contains(tileFlat, String(flat.needed_sessions),
+             "durability flach: sagt nicht, was die Messung voranbraechte");
+    contains(tileClear, "Bis etwa", "durability klar: keine Leitzahl trotz gesicherter Steigung");
+    ok(tileFlat !== tileClear, "durability: gesperrter und tragender Fall sind nicht unterscheidbar");
+
+    // Zwei Farbregister, die sich nie mischen: die Marke darf urteilen, die
+    // Punkte nicht.
+    const dotColour = /<circle[^>]*fill="([^"]+)"/.exec(tileFlat)[1].toLowerCase();
+    for (const judge of [M.C.green, M.C.amber, M.C.red]) {
+      ok(dotColour !== String(judge).toLowerCase(),
+         `durability: die Punkte tragen mit ${judge} eine Urteilsfarbe`);
+    }
+    ok(tileFlat.includes(`stroke="${M.C.amber}"`),
+       "durability: die Marke ist nicht im Urteilsregister gezeichnet");
+
+    // Baender und Bloecke sagen, warum sie schweigen.
+    ok(flat.bins.some((b) => b.thin) && /zu dünn/.test(tileFlat),
+       "durability: zu duenn besetztes Arbeitsband nicht als solches ausgewiesen");
+    contains(tileFlat, "kein gesicherter Trend", "durability: Block ohne Trend nennt seinen Grund nicht");
+    contains(tileFlat, "zu dünn belegt", "durability: zu duenn belegter Block nennt seinen Grund nicht");
+    contains(tileFlat, M.fmt(flat.blocks[2].tipping_kj, 0) + " kJ",
+             "durability: der Kipppunkt eines tragenden Blocks fehlt");
+
+    // Die ehrliche Buchhaltung aus G3: "26 Einheiten" waere falsch, wenn ein
+    // Teil davon fast nichts beitraegt.
+    for (const needle of [String(flat.n_full), String(flat.n_partial),
+                          M.fmt(flat.w_sum, 1), String(flat.dropped.no_power)]) {
+      contains(tileFlat, needle, `durability Rechenweg: ${needle} fehlt`);
+    }
+    contains(tileFlat, "ohne Leistungsmessung",
+             "durability: Fahrten ohne Leistung werden wieder als 'wellig' verkauft");
+    contains(tileFlat, "Durability, spezifisch", "durability: der Verweis auf die Einheit fehlt (G5)");
+    contains(tileFlat, "Hungerast", "durability: die Warnung zum Fuettern fehlt (G5)");
+
+    ok(p._grp.dur && p._grp.dur.xy === true && p._grp.dur.pts.length === flat.points.length,
+       "durability: die Wolke ist nicht als xy-Gruppe fuer den Zeiger angemeldet");
+  }
+
   report("test_panel_views");
 })();

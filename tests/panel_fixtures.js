@@ -545,30 +545,81 @@ function coach(kind) {
     trend_power: { power_before: 155, power_now: 158, hr_before: 157, hr_now: 157,
                    power_change_pct: 2.2, hr_change: -0.4 },
     source: "Median der letzten fünf belastbaren DFA-Messungen (Rogers/Gronwald) — als Trend brauchbar, als alleinige Verankerung nicht" };
-  /* Durability ab 0.39.0: getrennt nach ANGESAMMELTER ARBEIT, nicht nach Dauer.
-     Jede Zahl, die die Kachel zeigt, kommt aus dieser Payload - die Schwelle,
-     die Trennstelle, die Filtergrenzen, die Mindestzahlen. Im Frontend darf
-     keine davon ein zweites Mal stehen (Quelltext-Wächter). */
+  /* Durability ab 0.40.0: eine Punktwolke ueber der Arbeit. Jede Zahl, die die
+     Kachel zeigt, kommt aus dieser Payload - die Marke, die Filtergrenzen, die
+     Gewichtsgrenzen, die Mindestbelegungen, das Steigungskriterium. Im Frontend
+     darf keine davon ein zweites Mal stehen (Quelltext-Waechter).
+
+     Dieser Fall ist der Livefall: Richtung vorhanden, Streuung zu gross - die
+     Kachel verweigert die Leitzahl und sagt, woran es liegt. */
+  const durabilityPoints = [
+      { kj: 250, dec: 5.9, w: 1.0, vi: 1.05, date: "2026-01-01", id: "a0" },
+      { kj: 320, dec: -5.5, w: 1.0, vi: 1.05, date: "2026-01-02", id: "a1" },
+      { kj: 390, dec: 1.2, w: 0.55, vi: 1.14, date: "2026-01-03", id: "a2" },
+      { kj: 460, dec: -2.3, w: 0.2, vi: 1.21, date: "2026-01-04", id: "a3" },
+      { kj: 530, dec: 3.8, w: 0.85, vi: 1.08, date: "2026-02-05", id: "a4" },
+      { kj: 600, dec: 6.9, w: 1.0, vi: 1.05, date: "2026-02-06", id: "a5" },
+      { kj: 670, dec: -4.5, w: 1.0, vi: 1.05, date: "2026-02-07", id: "a6" },
+      { kj: 740, dec: 2.2, w: 0.55, vi: 1.14, date: "2026-02-08", id: "a7" },
+      { kj: 810, dec: -1.3, w: 0.2, vi: 1.21, date: "2026-03-09", id: "a8" },
+      { kj: 880, dec: 4.9, w: 0.85, vi: 1.08, date: "2026-03-10", id: "a9" },
+      { kj: 950, dec: 8.0, w: 1.0, vi: 1.05, date: "2026-03-11", id: "a10" },
+      { kj: 1020, dec: -3.4, w: 1.0, vi: 1.05, date: "2026-03-12", id: "a11" },
+      { kj: 1090, dec: 3.3, w: 0.55, vi: 1.14, date: "2026-04-13", id: "a12" },
+      { kj: 1160, dec: -0.2, w: 0.2, vi: 1.21, date: "2026-04-14", id: "a13" },
+      { kj: 1230, dec: 5.9, w: 0.85, vi: 1.08, date: "2026-04-15", id: "a14" },
+      { kj: 1300, dec: 9.0, w: 1.0, vi: 1.05, date: "2026-04-16", id: "a15" },
+      { kj: 1370, dec: -2.4, w: 1.0, vi: 1.05, date: "2026-05-17", id: "a16" },
+      { kj: 1440, dec: 4.3, w: 0.55, vi: 1.14, date: "2026-05-18", id: "a17" },
+      { kj: 1510, dec: 0.8, w: 0.2, vi: 1.21, date: "2026-05-19", id: "a18" },
+      { kj: 1580, dec: 6.9, w: 0.85, vi: 1.08, date: "2026-05-20", id: "a19" },
+      { kj: 1650, dec: 10.0, w: 1.0, vi: 1.05, date: "2026-06-21", id: "a20" },
+      { kj: 1720, dec: -1.4, w: 1.0, vi: 1.05, date: "2026-06-22", id: "a21" },
+      { kj: 1790, dec: 5.3, w: 0.55, vi: 1.14, date: "2026-06-23", id: "a22" },
+      { kj: 1860, dec: 1.8, w: 0.2, vi: 1.21, date: "2026-06-24", id: "a23" },
+      { kj: 1930, dec: 7.9, w: 0.85, vi: 1.08, date: "2026-07-25", id: "a24" },
+      { kj: 2000, dec: 11.0, w: 1.0, vi: 1.05, date: "2026-07-26", id: "a25" },
+  ];
   const durability = {
-    n: 56, n_low: 40, n_high: 16, low: 0.0, high: 2.2,
-    low_thin: false, high_thin: false, lead: 2.2,
-    headline: "Die Entkopplung steigt um 2.2 Prozentpunkte, sobald die Arbeit wächst",
-    verdict: "die Entkopplung steigt mit der angesammelten Arbeit — die Grundlage trägt lange Einheiten noch nicht",
-    decoupling_good: 5.0, split_kj: 800.0, min_minutes: 45, max_intensity: 80,
-    max_vi: 1.1, min_per_group: 5, min_sessions: 8,
+    n: 26, w_sum: 18.2, n_full: 11, n_partial: 15, n_zero: 0,
+    points: durabilityPoints,
+    max_kj: 2000,
+    slope: 2.95, slope_se: 2.22, slope_t: 1.33, blocked: "flat",
+    tipping_kj: null, tipping_hours: null,
+    power: { watts: 136, days: 90, n: 18 }, power_pool: 86,
+    needed_sessions: 128,
+    headline: "Die Richtung stimmt — die Entkopplung steigt mit der Arbeit —, aber die Streuung ist zu groß für eine Aussage.",
+    bins: [
+      { from_kj: 0, to_kj: 400, n: 6, w: 4.2, median: -0.5, thin: false },
+      { from_kj: 400, to_kj: 600, n: 5, w: 3.4, median: -0.1, thin: false },
+      { from_kj: 600, to_kj: 800, n: 6, w: 4.1, median: 0.4, thin: false },
+      { from_kj: 800, to_kj: 1100, n: 5, w: 3.6, median: 1.5, thin: false },
+      { from_kj: 1100, to_kj: null, n: 4, w: 2.9, median: null, thin: true },
+    ],
+    blocks: [
+      { start: "2026-01-01", end: "2026-03-26", n: 12, w: 9.1, max_kj: 900, tipping_kj: null, reason: "flat" },
+      { start: "2026-03-28", end: "2026-06-20", n: 4, w: 2.9, max_kj: 650, tipping_kj: null, reason: "thin" },
+      { start: "2026-06-22", end: "2026-09-11", n: 10, w: 6.2, max_kj: 2000, tipping_kj: 1400, reason: null },
+    ],
+    decoupling_good: 5.0, min_minutes: 45, max_intensity: 80,
+    vi_full: 1.05, vi_none: 1.25,
+    min_weight_sum: 20.0, min_weight_sum_block: 8.0, min_slope_t: 2.0,
+    block_weeks: 12, bins_kj: [400.0, 600.0, 800.0, 1100.0],
+    power_days: 90, power_days_fallback: 180, fuelling_g_per_h: 80,
+    min_per_group: 5, min_sessions: 8,
     excluded_types: ["VirtualRide"],
-    dropped: { short: 61, intense: 14, variable: 11, indoor: 25, no_activity: 0,
-               no_decoupling: 22, no_work: 0 },
+    dropped: { short: 85, intense: 7, variable: 11, indoor: 38, no_activity: 0,
+               no_power: 53, no_decoupling: 0, no_work: 0 },
     weight: { kg: 73.5, day: "2026-09-09" },
     source: "Setzung: die 5-%-Marke ist eine Trainerfaustregel (Friel), keine Studiengrenze.",
   };
-  /* Derselbe Bestand, nur die große Gruppe zu dünn - die Kachel darf daraus
-     KEINE Leitzahl bilden. Zwei unterscheidbare Fälle, sonst prüft der Test
-     die Dünn-Regel nur dem Namen nach. */
-  const durabilityThin = Object.assign({}, durability, {
-    n: 44, n_low: 41, n_high: 3, high: null, high_thin: true, lead: null,
-    headline: "Keine Aussage über Einheiten ab 800 kJ: nur 3 Einheiten in dieser Gruppe.",
-    verdict: "Keine Aussage über Einheiten ab 800 kJ: nur 3 Einheiten in dieser Gruppe.",
+  /* Derselbe Bestand, aber mit gesicherter Steigung: Leitzahl, Gerade, Stunden.
+     Zwei unterscheidbare Faelle, sonst prueft der Test die Regeln nur dem
+     Namen nach. */
+  const durabilityClear = Object.assign({}, durability, {
+    w_sum: 24.0, slope: 4.80, slope_se: 1.10, slope_t: 4.36, blocked: null,
+    tipping_kj: 1400, tipping_hours: 2.86, needed_sessions: null,
+    headline: "Bis etwa 1400 kJ bleibst du unter der 5-%-Marke — rund 2 h 52 bei deinen 136 W der letzten 3 Monate.",
   });
   const evidence = { rule: "Javaloyes 2019/2020, Vesterinen 2016 — HRV-gesteuerte Steuerung.",
                      limit: "Düking 2021: kleiner, nicht signifikanter Effekt auf die Spitzenleistung; dafür weniger Non-Responder (Manresa-Rocamora 2021).",
@@ -597,7 +648,7 @@ function coach(kind) {
     return { state: states.rebound,
       layoff: { days: 7, last: "2026-09-04", phase: "wiedereinstieg",
                 note: "Bis etwa zwei Wochen Pause kostet vor allem das Plasmavolumen Leistung." },
-      anchors, durability, durabilityThin, habit: { n: 6, median_intensity: 85, hard_share: 83 },
+      anchors, durability, durabilityClear, habit: { n: 6, median_intensity: 85, hard_share: 83 },
       hard_days_last_7: 0, trained_today: false,
       reasons: [{ weil: "Erholung nach Einbruch", quelle: "Plews", text: "Signal zum Wiedereinstieg, nicht zur Intensität." },
                 { weil: "7 Tage ohne Einheit", quelle: "Mujika/Coyle; Rückkehr nach Infekt", text: "Plasmavolumen, kein Trainingsverlust." }],

@@ -39,7 +39,7 @@ PANEL_COMPONENT = "intervals-icu-panel"
 PANEL_FILE = "intervals-panel.js"
 PANEL_TITLE = "Intervals"
 PANEL_ICON = "mdi:chart-timeline-variant"
-PANEL_VERSION = "0.39.0"
+PANEL_VERSION = "0.40.0"
 
 # --- thresholds shared by backend and panel -----------------------------------
 # One definition per number, here, because the panel has to show several of them
@@ -89,6 +89,11 @@ DURABILITY_BINS_KJ = (400.0, 600.0, 800.0, 1100.0)
 DURABILITY_POWER_DAYS = 90
 DURABILITY_POWER_DAYS_FALLBACK = 180
 DURABILITY_MIN_POWER_SESSIONS = 5
+
+# Der Reiz soll aus der Anstrengung kommen, nicht aus dem Hungerast: eine
+# schlecht gefuetterte Fahrt ist kein Durability-Training. Empfehlung aus der
+# Literatur, und weil die Kachel sie DRUCKT, steht sie hier und nicht dort.
+DURABILITY_FUELLING_G_PER_H = 80
 
 # Three minimum counts, three different questions. Collapsing them into one
 # number would be the same error as the duplicated 5.0, only inverted.

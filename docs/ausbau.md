@@ -876,11 +876,29 @@ Schnittpunkt der Trendgeraden mit der 5-%-Marke, umgerechnet in Zeit:
 *„Bis etwa 1.400 kJ bleibst du unter 5 % — rund 2 h 40 bei deiner üblichen
 Grundlagenleistung."*
 
+**Nachgemessen am 13.09.2026, vor dem Bau: die Steigung besteht das Kriterium
+NICHT.** Gewichtet +2,95 % je 1.000 kJ bei einem Standardfehler von 2,22, also
+|t| = 1,33 gegen die geforderten 2,0. Auf zwei weiteren Wegen gegengeprüft, weil
+ein Kriterium auch nur ein Kriterium ist: Kendall-Tau z = 1,57, Bootstrap-Intervall
+[−1,65; +6,55]. Der Schnittpunkt läge bei 2.398 kJ und damit **jenseits** der
+arbeitsreichsten ausgewerteten Fahrt (2.153 kJ) — Regel 1 und Regel 2 feuern
+gleichzeitig. Die Kachel nennt heute also keinen Kipppunkt, sondern sagt, woran
+es liegt. **Krümmung:** quadratischer Term |t| = 0,85 — eine Gerade ist die
+richtige Form, eine Kurve wäre eine Erfindung.
+
 **Umrechnung über die Medianleistung der qualifizierten Einheiten**, nicht über
 die aerobe Schwellenleistung — der Pool, der die Punkte liefert, liefert auch
 den Umrechnungsfaktor, sonst rechnet die Kachel mit einer Leistung, die in ihren
 eigenen Daten nicht vorkommt. Die Schwellenleistung steht als Alternativwert im
 Rechenweg. Die verwendete Leistung wird immer genannt.
+
+**Präzisierung 13.09.2026, gemessen.** „Der Pool" darf nicht der ganze Bestand
+sein: dessen Medianleistung liegt bei **86 W** und spannt 61–151 W über elf
+Monate Progression — derselbe Kipppunkt ergäbe 6 h 45 statt 4 h 15. Gerechnet
+wird deshalb mit dem Median der qualifizierten Einheiten der letzten **90 Tage**
+(136 W), mit **sichtbarem** Rückfall auf 180 Tage, wenn das nahe Fenster zu dünn
+besetzt ist. Der Pool-Median und die Schwellenleistung stehen als Alternativwerte
+im Rechenweg.
 
 **Drei Ehrlichkeitsregeln, nicht verhandelbar:**
 
@@ -916,6 +934,20 @@ Ja/Nein-Entscheidung über eine stufenlose Größe.**
 
 Erwartete Wirkung: Datenbasis von 45 auf ~110 Einheiten.
 
+**Nachgemessen am 13.09.2026, vor dem Bau — die Erwartung war falsch: 45 auf 56.**
+Die Annahme hinter diesem Kapitel stimmt nicht. Von den 64 Einheiten, die heute
+als „zu wellig" herausfallen, haben **53 überhaupt keine Leistungsmessung** —
+ohne NP und AP ist kein Variabilitätsindex berechenbar, und was nicht messbar
+ist, kann auch nicht gewichtet werden. Tatsächlich wellig (VI zwischen 1,10 und
+1,25) sind **11**. Die Gewichtung holt also genau diese 11 zurück, nicht 65.
+
+Daraus folgt zweierlei. Erstens: die heutige Kachel **behauptet etwas über
+Fahrten, über die sie nichts weiß** — „64 zu wellige" ist über 53 davon eine
+Erfindung. Das ist ein Fehler, kein Spec-Punkt; getrennte Zählung ab 0.40.0,
+Fehlerkapitel PROJEKTSTAND §7. Zweitens: der begrenzende Faktor ist nicht die
+Gleichmäßigkeit, sondern der Bestand — 85 Einheiten unter 45 Minuten, 38 auf der
+Rolle, 53 ohne Leistungsmesser.
+
 ### G4 · Der Verlauf über die Saison
 
 Zweites, kleineres Feld: der Kipppunkt je Block (Vorschlag 8 Wochen) über die
@@ -924,6 +956,27 @@ werden nicht interpoliert. **Das ist die eigentliche Frage des Athleten** —
 „wird es besser?" —, und zugleich die methodisch sauberere Auswertung: der
 Verlauf im eigenen Athleten ist belegt, der Abstand zu einer Populationsgrenze
 nicht.
+
+**Präzisierung 13.09.2026 (Lücke in dieser Spezifikation, im Bau gefunden).**
+Oben stand nur „ausreichende Belegung". Damit wäre der Blockverlauf eine
+Hintertür um G2 gewesen: ein Block mit flacher Steigung oder mit einem
+Schnittpunkt jenseits **seiner eigenen** arbeitsreichsten Fahrt hätte trotzdem
+einen Punkt in die Kurve gesetzt. **Alle drei Ehrlichkeitsregeln gelten je
+Block**, und „der Bestand" ist dort der Block, nicht das Archiv. Ein Block, der
+eine Regel reißt, bleibt leer und wird nicht überbrückt — mit Angabe, welche.
+
+Am Livebestand ist das keine Theorie: der 12-Wochen-Block ab 22.04.2026 besteht
+aus **vier** Fahrten, liefert |t| = 3,30 und einen Kipppunkt von 640 kJ. Die
+Steigungsregel allein hätte ihn durchgelassen; die Belegungsregel fängt ihn.
+Dieser Fall liegt als Testfall in der Fixture.
+
+**Blocklänge 12 Wochen statt 8, gemessen.** Bei acht Wochen entsteht auf diesem
+Bestand ein Block aus einer einzigen Fahrt und kein Block erreicht die Belegung;
+bei zwölf liegt der vollste bei Σw 27, keiner unter drei Einheiten.
+
+**Eigene, niedrigere Mindestbelegung je Block.** Die Pool-Schwelle (Σw ≥ 20)
+erreicht auf diesem Archiv kein einziger Block — eine Leitzahl, die nie
+erscheint, ist keine. Der Block bekommt seine eigene Zahl mit eigenem Namen.
 
 ### G5 · „Was das ausbaut" — die Kachel verweist auf die Einheit
 

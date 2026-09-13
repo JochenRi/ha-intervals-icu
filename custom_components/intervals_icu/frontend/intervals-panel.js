@@ -342,6 +342,15 @@ function chart(o) {
           g += `<circle class="pickring" cx="${at}" cy="${Y(p.v)}" r="${r + 4}" fill="none" stroke="${p.c || s.c}" stroke-width="1.8" opacity="0.95"/>`;
         }
       }
+    } else if (s.t === "xyline") {
+      // Eine Gerade ueber der stetigen Achse. Eigener Zweig, weil die
+      // Linienzuege unten ueber den INDEX laufen - im Indexmodus ist dieser
+      // Typ nicht erreichbar, die eingefrorene Referenz bleibt unberuehrt.
+      const pp = (s.p || []).filter((q) => q && q.v != null);
+      if (pp.length > 1) {
+        g += `<path d="${pp.map((q, k) => `${k ? "L" : "M"}${X(q.x).toFixed(1)} ${Y(q.v).toFixed(1)}`).join("")}"`
+          + ` fill="none" stroke="${s.c || C.tx2}" stroke-width="${s.w || 2}" opacity="${s.lop == null ? 1 : s.lop}"/>`;
+      }
     } else {
       const col = s.c || C.tx2;
       let dPath = "", seg = 0, singles = "";
@@ -761,67 +770,151 @@ class IntervalsIcuPanel extends HTMLElement {
      Längendifferenz statt als Kopfrechnen; der Abstand zur Marke steht ohne
      Erklärung da. Jede Zahl hier kommt aus der Payload — Schwelle, Trennstelle,
      Mindestzahlen, Filtergrenzen. Keine davon steht in dieser Datei. */
+  /* Die Durability-Kachel: eine Punktwolke ueber der Arbeit, keine zwei Balken.
+     Zwei Balken bei 0,0 % und 1,4 % gegen eine 5er-Skala zeigen nichts, und die
+     Zweiteilung beantwortet die Ueberschrift nicht - gefragt ist, wie lange es
+     traegt und ob es besser wird (docs/ausbau.md G1).
+
+     Die Punkte tragen das KATEGORIENregister, die Marke das Urteilsregister.
+     Punkte nach "ueber/unter der Marke" einzufaerben waere genau die Mischung,
+     die dieses Haus dreimal ein Release gekostet hat. */
   rDurability(d) {
     const mark = d.decoupling_good;
-    const vals = [mark, d.low, d.high].filter((v) => v != null).map(Math.abs);
-    const span = Math.max(...vals, 1) * 1.25;
-    const pos = (v) => Math.max(0, Math.min(100, (v / span) * 100));
-    const split = fmt(d.split_kj, 0);
+    const pts = (d.points || []);
+    if (!pts.length) return "";
+    const x1 = Math.max(100, Math.ceil(d.max_kj / 100) * 100);
+    const decs = pts.map((q) => q.dec);
+    const y1 = Math.max(mark * 1.15, ...decs) ;
+    const y0 = Math.min(0, ...decs);
+    const tick = (k) => Math.round((x1 / 4) * k);
+    // Gewicht wird Groesse UND Deckkraft: man sieht, worauf der Trend ruht.
+    const dots = pts.map((q, i) => ({
+      x: q.kj, v: q.dec, i,
+      r: 2.2 + 3.2 * q.w,
+      op: 0.28 + 0.72 * q.w,
+      id: q.id == null ? null : String(q.id),
+    }));
+    const series = [{ t: "dots", c: ROLE.series, p: dots }];
+    // Die Gerade wird NUR gezeichnet, wenn sie auch eine Leitzahl tragen darf.
+    // Eine blasse falsche Linie ist immer noch eine falsche Linie - dieselbe
+    // Regel wie bei der Medianlinie im DFA-Reiter.
+    if (!d.blocked && d.slope != null) {
+      const at = (kj) => (d.tipping_kj - kj) * (d.slope / 1000) * -1 + mark;
+      series.push({ t: "xyline", c: C.violet, w: 2, p: [{ x: 0, v: at(0) }, { x: x1, v: at(x1) }] });
+    }
+    const cloud = chart({
+      h: 250, n: pts.length, x0: 0, x1, y0, y1, grp: "dur",
+      hl: [{ y: mark, c: C.amber, d: 1, t: fmt(mark, 0) + " %" }],
+      s: series,
+      xtick: [0, 1, 2, 3, 4].map(tick),
+      xt: [0, 2, 4].map((k) => ({ i: tick(k), t: fmt(tick(k), 0) + " kJ" })),
+      label: "Entkopplung (%) ueber angesammelter Arbeit",
+      labelc: ROLE.series,
+    });
+    this._grp.dur = {
+      xy: true, n: pts.length,
+      pts: pts.map((q) => ({ x: q.kj, y: q.dec })),
+      xl: (i) => dMed(pts[i].date) + " · " + fmt(pts[i].kj, 0) + " kJ",
+      rows: [
+        { l: "Entkopplung", c: ROLE.series, u: "%", dec: 1, vals: pts.map((q) => q.dec) },
+        { l: "Gleichmaessigkeit (VI)", c: C.slate, u: "", dec: 2, vals: pts.map((q) => q.vi) },
+        { l: "Gewicht", c: C.slate, u: "", dec: 2, vals: pts.map((q) => q.w) },
+      ],
+    };
 
-    const bar = (label, value, n, thin) => {
-      const col = thin ? C.tx3 : (mark != null && value > mark ? C.amber : C.green);
-      return `<div class="durbar">
-        <span class="durlab">${esc(label)}
-          <em>${n} ${n === 1 ? "Einheit" : "Einheiten"}${thin ? " — zu dünn für eine Aussage" : ""}</em></span>
-        <span class="durtrack">
-          ${mark != null ? `<i class="durmark" style="left:${pos(mark).toFixed(1)}%"></i>` : ""}
-          ${value != null && !thin ? `<i class="durfill" style="width:${pos(value).toFixed(1)}%;background:${col}"></i>` : ""}
-        </span>
-        <b class="tn durval" style="color:${col}">${value != null && !thin ? fmt(value, 1) + " %" : "–"}</b>
-      </div>`;
+    const band = (b) => `<span class="durband">
+      <em>${b.to_kj == null ? "ab " + fmt(b.from_kj, 0) : fmt(b.from_kj, 0) + "–" + fmt(b.to_kj, 0)} kJ</span>
+      <b class="tn">${b.median == null ? "–" : sign(b.median, 1) + " %"}</b>
+      <span class="mut">${b.n} ${b.n === 1 ? "Einheit" : "Einheiten"}${b.thin ? ", zu dünn" : ""}</span></span>`;
+
+    const blockRow = (b) => {
+      const why = { thin: "zu dünn belegt", flat: "kein gesicherter Trend",
+                    beyond: "Schnittpunkt jenseits des Blocks" }[b.reason] || "";
+      return `<span class="durband">
+        <em>${dMed(b.start)} – ${dMed(b.end)}</em>
+        <b class="tn">${b.tipping_kj == null ? "–" : fmt(b.tipping_kj, 0) + " kJ"}</b>
+        <span class="mut">${b.n} Einheiten, Gewicht ${fmt(b.w, 1)}${why ? " — " + why : ""}</span></span>`;
     };
 
     const weight = d.weight
-      ? ` Umgerechnet mit dem zuletzt gemessenen Gewicht (${fmt(d.weight.kg, 1)} kg vom ${dMed(d.weight.day)}) sind das rund ${fmt(d.split_kj / d.weight.kg, 1)} kJ/kg — Nebeninformation, gerechnet wird in kJ.`
+      ? ` Zum Einordnen: mit dem zuletzt gemessenen Gewicht (${fmt(d.weight.kg, 1)} kg vom ${dMed(d.weight.day)}) sind ${fmt(d.max_kj, 0)} kJ rund ${fmt(d.max_kj / d.weight.kg, 1)} kJ/kg — Nebeninformation, gerechnet wird in kJ.`
       : " Eine Umrechnung in kJ/kg steht nicht dabei: im Archiv liegt kein Gewicht.";
 
+    const forward = d.needed_sessions
+      ? `<p class="hint">${ico("trend", C.tx2, 13)} Was die Messung voranbringt: bei dieser Streuung
+          bräuchte es rund ${fmt(d.needed_sessions, 0)} qualifizierte Einheiten statt ${fmt(d.n, 0)}.
+          Lange Fahrten zählen dabei stärker als viele kurze — der Fehler der Steigung schrumpft mit der
+          Spannweite der Arbeit, nicht nur mit der Stückzahl.</p>`
+      : "";
+
     return `<h3 class="secname">Wie lange trägt die Grundlage?</h3>
-      <div class="card">
+      <div class="card pad" data-grp="dur">
         <p class="effect">${esc(d.headline)}</p>
-        <p class="hint">Entkopplung: die Herzfrequenz steigt, während die Leistung gleich bleibt.
-          ${mark != null ? `Die Linie ist die ${fmt(mark, 0)}-%-Marke.` : ""}</p>
-        ${bar(`unter ${split} kJ`, d.low, d.n_low, d.low_thin)}
-        ${bar(`ab ${split} kJ`, d.high, d.n_high, d.high_thin)}
-        <p class="hint">Entkopplung ist nur auf gleichmäßigen Einheiten aussagekräftig — deshalb
-          zählen hier längst nicht alle Fahrten mit: ${fmt(d.n, 0)} von ihnen erfüllen die Bedingungen.</p>
+        <p class="hint">Ein Punkt ist eine Fahrt: rechts liegt mehr geleistete Arbeit, oben mehr
+          Entkopplung — die Herzfrequenz steigt, während die Leistung gleich bleibt. Die Waagerechte
+          ist die ${fmt(mark, 0)}-%-Marke. Große, kräftige Punkte sind gleichmäßig gefahren und zählen
+          voll; kleine, blasse zählen anteilig.</p>
+        ${readout("dur")}
+        ${cloud}
+        ${forward}
+        <p class="hint"><b>Mediane je Arbeitsband</b> — eine Beschreibung dessen, wo die Punkte liegen,
+          keine Vorhersage:</p>
+        <div class="durbands">${d.bins.map(band).join("")}</div>
+        <p class="hint"><b>Wird es besser?</b> Der Kipppunkt je ${fmt(d.block_weeks, 0)}-Wochen-Block.
+          Ein Block, der eine der drei Regeln reißt, bleibt leer und wird nicht überbrückt:</p>
+        <div class="durbands">${d.blocks.map(blockRow).join("")}</div>
+        <p class="hint">${ico("bike", C.tx2, 13)} <b>Was das ausbaut:</b> Durability ist unabhängig von
+          der VO2max trainierbar, und zwar durch niedrig- <i>und</i> hochintensives Ausdauertraining
+          (Maunder 2023) — der Reiz entsteht durch Qualität unter bestehender Ermüdung, nicht durch mehr
+          Kilometer. Im Trainer-Reiter steht dafür die Einheit mit dem Zweck „Durability, spezifisch“.</p>
         <details class="more"><summary>Der Rechenweg</summary>
           <p class="src"><b>Welche Einheiten zählen:</b> ab ${fmt(d.min_minutes, 0)} Minuten,
-            Intensität unter ${fmt(d.max_intensity, 0)}, und gleichmäßig gefahren —
-            Variabilitätsindex (normalisierte durch mittlere Leistung) höchstens
-            ${fmt(d.max_vi, 2)}. Ausgelassen wurden
+            Intensität unter ${fmt(d.max_intensity, 0)}, nicht auf der Rolle. Ausgelassen wurden
             ${d.dropped.short} zu kurze, ${d.dropped.intense} zu intensive,
-            ${d.dropped.variable} zu wellige, ${d.dropped.indoor} auf der Rolle,
-            ${d.dropped.no_decoupling} ohne Entkopplungswert und
-            ${d.dropped.no_work} ohne Arbeitswert.</p>
-          <p class="src"><b>Warum Rollenfahrten nicht mitzählen:</b> das ist eine Setzung, kein
-            Studienergebnis. Belegt ist, dass die Entkopplung stark von der Umgebung abhängt, und
-            bei fester Last (ERG) ist auch das Belastungsmuster ein anderes — im eigenen Bestand
-            liegt der Variabilitätsindex auf der Rolle bei 1,03 gegen 1,06 draußen. Ein gemischter
-            Vergleich misst dann teilweise drinnen gegen draußen statt klein gegen groß.</p>
-          <p class="src"><b>Warum nach Arbeit und nicht nach Dauer getrennt wird:</b> Durability
-            wird in der Literatur über angesammelte Arbeit gemessen, nicht über die Uhr
-            (Maunder 2021; Spragg trennt das Leistungsprofil bei 2000 kJ). Die <i>Achse</i> ist
-            belegt.</p>
-          <p class="src"><b>Warum die Trennstelle bei ${split} kJ liegt:</b> das ist eine Setzung.
-            Sie liegt dort, weil die obere Gruppe dort gerade noch belastbar besetzt ist — weiter
-            oben fällt sie unter ${fmt(d.min_per_group, 0)} Einheiten und die Werte werden
-            sprunghaft. Sie liegt NICHT dort, wo der Unterschied am größten aussieht.${weight}</p>
-          <p class="src"><b>Was gerechnet wird:</b> je Gruppe der <i>Median</i> der Entkopplung,
-            nicht der Mittelwert — einzelne Ausreißer sollen die Gruppe nicht tragen. Die Leitzahl
-            ist die Differenz der beiden <i>angezeigten</i> Werte. Unter
-            ${fmt(d.min_per_group, 0)} Einheiten wird eine Gruppe nicht behauptet, sondern als zu
-            dünn ausgewiesen, und dann gibt es auch keine Leitzahl: eine Leitzahl aus einer leeren
-            Gruppe wäre schlimmer als keine.</p>
+            ${d.dropped.indoor} auf der Rolle, ${d.dropped.variable} zu wellige
+            (Variabilitätsindex über ${fmt(d.vi_none, 2)}),
+            ${d.dropped.no_power} <b>ohne Leistungsmessung</b> — über deren Gleichmäßigkeit ist nichts
+            bekannt, sie sind deshalb nicht „wellig“, sondern unbekannt —,
+            ${d.dropped.no_decoupling} ohne Entkopplungswert und ${d.dropped.no_work} ohne Arbeitswert.</p>
+          <p class="src"><b>Worauf die Auswertung wirklich ruht:</b> ${fmt(d.n, 0)} Einheiten, davon
+            ${fmt(d.n_full, 0)} mit vollem Gewicht, ${fmt(d.n_partial, 0)} anteilig und
+            ${fmt(d.n_zero, 0)} mit Gewicht null. Zusammen ergibt das ein Gewicht von
+            ${fmt(d.w_sum, 1)} — das ist die Zahl, die zählt, nicht die Stückzahl. Nötig für eine
+            Leitzahl: ${fmt(d.min_weight_sum, 0)}, je Block ${fmt(d.min_weight_sum_block, 0)}.</p>
+          <p class="src"><b>Warum Gleichmäßigkeit gewichtet und nicht ausgeschlossen wird:</b> ein
+            Ausschluss ist eine Ja/Nein-Entscheidung über eine stufenlose Größe. Der
+            Variabilitätsindex (normalisierte durch mittlere Leistung, aus den eigenen Feldern
+            gerechnet) zählt bis ${fmt(d.vi_full, 2)} voll und ab ${fmt(d.vi_none, 2)} gar nicht,
+            dazwischen anteilig. Die beiden Grenzen sind eine <b>Setzung</b>.</p>
+          <p class="src"><b>Die Trendgerade und warum hier ${d.blocked ? "keine" : "eine"} Leitzahl
+            steht:</b> gemessene Steigung ${d.slope == null ? "–" : sign(d.slope, 2) + " % je 1.000 kJ"},
+            Standardfehler ${d.slope_se == null ? "–" : fmt(d.slope_se, 2)}, Verhältnis
+            ${d.slope_t == null ? "–" : fmt(d.slope_t, 2)}. Erst ab dem ${fmt(d.min_slope_t, 1)}-fachen
+            des eigenen Fehlers lässt sich eine Steigung von null unterscheiden — eine Setzung, und
+            darunter wird weder eine Leitzahl genannt noch eine Gerade gezeichnet. Über die
+            arbeitsreichste ausgewertete Fahrt (${fmt(d.max_kj, 0)} kJ) hinaus wird nie
+            hochgerechnet.${weight}</p>
+          <p class="src"><b>Womit Arbeit in Zeit umgerechnet wird:</b>
+            ${d.power ? `${fmt(d.power.watts, 0)} W — der Median der qualifizierten Einheiten aus den
+              letzten ${fmt(d.power.days, 0)} Tagen (${fmt(d.power.n, 0)} Einheiten). Der Median über den
+              ganzen Bestand läge bei ${fmt(d.power_pool, 0)} W und stammte damit aus einer anderen
+              Form; deshalb das nahe Fenster, das sich bei zu dünner Belegung sichtbar auf
+              ${fmt(d.power_days_fallback, 0)} Tage weitet.`
+              : `keine — im nahen Fenster stehen zu wenige Einheiten, auch nach der Weitung auf
+              ${fmt(d.power_days_fallback, 0)} Tage. Es bleibt bei kJ.`}</p>
+          <p class="src"><b>Die drei Formen, die Durability ausbauen:</b> negativ gesplittete Fahrt
+            (die letzten 30–60 min zwischen aerober Schwelle und FTP) · Intervalle an den Anfang einer
+            langen Fahrt, danach 1–2 h ruhig · späte Anstiege von 5–20 min, 6–8 Wochen vor einem Ziel.
+            <b>Mit der Warnung, die dazugehört:</b> der Reiz soll aus der Anstrengung kommen, nicht aus
+            dem Hungerast — schlecht gefütterte Fahrten sind kein Durability-Training (über
+            ${fmt(d.fuelling_g_per_h, 0)} g Kohlenhydrate je Stunde).</p>
+          <p class="src"><b>Warum Rollenfahrten nicht mitzählen:</b> eine Setzung, kein
+            Studienergebnis. Belegt ist, dass die Entkopplung stark von der Umgebung abhängt, und bei
+            fester Last ist auch das Belastungsmuster ein anderes — im eigenen Bestand liegt der
+            Variabilitätsindex auf der Rolle bei 1,03 gegen 1,06 draußen.</p>
+          <p class="src"><b>Warum über der Arbeit und nicht über der Dauer:</b> Durability wird in der
+            Literatur über angesammelte Arbeit gemessen, nicht über die Uhr (Maunder 2021; Spragg
+            trennt das Leistungsprofil bei 2000 kJ). Die <i>Achse</i> ist belegt.</p>
           <p class="src"><b>Die Grenze:</b> ${esc(d.source)}</p>
         </details>
       </div>`;
@@ -4102,13 +4195,10 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
 .qq{display:block;color:${C.tx3};font-size:12px;font-style:normal}
 .ancgrid{display:grid;grid-template-columns:minmax(250px,1fr) 2fr;gap:22px;align-items:center}
 .durrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:14px;margin-bottom:6px}
-.durbar{display:grid;grid-template-columns:minmax(120px,1.1fr) 3fr auto;align-items:center;gap:10px;margin:8px 0}
-.durlab{display:flex;flex-direction:column;font-size:13px;color:${C.tx2}}
-.durlab em{font-style:normal;font-size:11px;color:${C.tx3}}
-.durtrack{position:relative;height:14px;border-radius:7px;background:${C.card2};overflow:visible}
-.durfill{position:absolute;left:0;top:0;bottom:0;border-radius:7px;opacity:.85}
-.durmark{position:absolute;top:-3px;bottom:-3px;width:2px;background:${C.amber};z-index:2}
-.durval{font-size:15px;min-width:56px;text-align:right}
+.durbands{display:flex;flex-wrap:wrap;gap:6px 18px;margin:4px 0 10px}
+.durband{display:flex;flex-direction:column;font-size:13px;color:${C.tx1};min-width:150px}
+.durband em{font-style:normal;font-size:11px;color:${C.tx3}}
+.durband .mut{font-size:11px;color:${C.tx3}}
 .catrow{display:grid;grid-template-columns:190px 110px 190px 1fr;gap:12px;align-items:baseline;
   padding:10px 14px;border-bottom:1px solid ${C.line}44;font-size:13px}
 @media(max-width:980px){
