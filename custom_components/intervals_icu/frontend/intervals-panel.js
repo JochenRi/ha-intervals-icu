@@ -373,6 +373,18 @@ function chart(o) {
           g += `<circle class="pickring" cx="${at}" cy="${Y(p.v)}" r="${r + 4}" fill="none" stroke="${p.c || s.c}" stroke-width="1.8" opacity="0.95"/>`;
         }
       }
+    } else if (s.t === "xyband") {
+      // Das Unsicherheitsband: eine FLAECHE ZWISCHEN ZWEI KURVEN ueber der
+      // stetigen Achse. Eigener Zweig, kein erweitertes `area` - `area` fuellt
+      // gegen die Nulllinie und laeuft ueber den INDEX. Im Indexmodus ist
+      // dieser Typ nicht erreichbar, die eingefrorene Referenz bleibt also
+      // unberuehrt (dieselbe Vorsicht wie bei xyline).
+      const pp = (s.p || []).filter((q) => q && q.lo != null && q.hi != null);
+      if (pp.length > 1) {
+        const up = pp.map((q, k) => `${k ? "L" : "M"}${X(q.x).toFixed(1)} ${Y(q.hi).toFixed(1)}`).join("");
+        const down = [...pp].reverse().map((q) => `L${X(q.x).toFixed(1)} ${Y(q.lo).toFixed(1)}`).join("");
+        g += `<path d="${up}${down}Z" fill="${s.c || C.tx3}" opacity="${s.op == null ? 0.14 : s.op}"/>`;
+      }
     } else if (s.t === "xyline") {
       // Eine Gerade ueber der stetigen Achse. Eigener Zweig, weil die
       // Linienzuege unten ueber den INDEX laufen - im Indexmodus ist dieser
@@ -380,7 +392,8 @@ function chart(o) {
       const pp = (s.p || []).filter((q) => q && q.v != null);
       if (pp.length > 1) {
         g += `<path d="${pp.map((q, k) => `${k ? "L" : "M"}${X(q.x).toFixed(1)} ${Y(q.v).toFixed(1)}`).join("")}"`
-          + ` fill="none" stroke="${s.c || C.tx2}" stroke-width="${s.w || 2}" opacity="${s.lop == null ? 1 : s.lop}"/>`;
+          + ` fill="none" stroke="${s.c || C.tx2}" stroke-width="${s.w || 2}"`
+          + `${s.d ? ` stroke-dasharray="${s.d}"` : ""} opacity="${s.lop == null ? 1 : s.lop}"/>`;
       }
     } else {
       const col = s.c || C.tx2;
@@ -1024,6 +1037,146 @@ class IntervalsIcuPanel extends HTMLElement {
       sich auf den kürzeren Zeitraum.</p>`;
   }
 
+  /* ── Die Ermuedungskurve der aeroben Schwelle (docs/ausbau.md L1) ───────
+     Hausmuster: Leitzahl oben, Beleg darunter, aufklappbarer Rechenweg,
+     BELEG UND SETZUNG GETRENNT - im Bild wie im Text. Gemessenes traegt das
+     Serienregister und volle Deckkraft, Gesetztes ist gestrichelt und grau.
+     Keine Zahl dieser Kachel steht hier: jede kommt aus der Payload. */
+  rFatigue(f) {
+    if (!f) return this._dataGap("fatigue", "Die Ermüdungskurve");
+    const pr = f.progress || {};
+    // Nach einem Algorithmus-Bump ist das Archiv leer, bis die Stroeme neu
+    // geholt sind. Ein leerer Platz sieht aus wie ein Defekt - also steht da,
+    // was laeuft und wie weit es ist.
+    if (!f.measured.length && pr.pending) {
+      const done = pr.done || 0, total = pr.total || pr.pending;
+      const syncs = Math.ceil((pr.pending || 0) / (pr.batch || 25));
+      return `<div class="card pad"><h3 class="secname">Ermüdungskurve der aeroben Schwelle</h3>
+        <p>Die Auswertung wird gerade neu gerechnet: <b class="tn">${fmt(done)} von ${fmt(total)}</b>
+        Einheiten fertig. Die Ströme werden in Bändern von ${fmt(pr.batch)} je Abgleich geholt,
+        es fehlen also noch rund ${fmt(syncs)} Durchgänge. Die Kachel füllt sich danach von
+        selbst — sie ist nicht defekt.</p>
+        <i class="dbar"><s style="width:${Math.round(done / Math.max(1, total) * 100)}%;background:${ROLE.series}"></s></i></div>`;
+    }
+    if (!f.measured.length) {
+      return `<div class="card pad"><h3 class="secname">Ermüdungskurve der aeroben Schwelle</h3>
+        <p>Noch keine Fahrt über ${fmt(f.min_minutes)} Minuten, die ihren Stundenverlauf hergibt.
+        Ohne eine zweite Fahrtstunde gibt es keinen Verlauf zu lesen — die Karte zeigt deshalb
+        weder Messung noch Schätzung.</p>${this._fatigueDropped(f)}</div>`;
+    }
+
+    const lit = f.literature || [];
+    const xs = [...f.measured.map((r) => r.t), ...lit.map((r) => r.t)];
+    const lows = [...lit.map((r) => r.lo), ...f.measured.map((r) => r.watts)].filter((v) => v != null);
+    const his = [...lit.map((r) => r.hi), ...f.measured.map((r) => r.watts)].filter((v) => v != null);
+    const y0 = Math.floor(Math.min(...lows) / 10) * 10 - 5;
+    const y1 = Math.ceil(Math.max(...his) / 10) * 10 + 5;
+    const solid = f.solid_until_hour, thin = f.thin_until_hour;
+    // Die Trennstelle der Darstellungsbereiche kommt aus der BELEGUNG: die
+    // letzte Stunde, die noch getragen wird. Keine Stundenzahl im Quelltext.
+    const cut = f.measured.find((r) => r.hour === thin);
+    const within = lit.filter((r) => cut == null || r.t <= cut.t);
+    const beyond = lit.filter((r) => cut == null || r.t >= cut.t);
+
+    const graph = chart({
+      h: 300, n: 2, x0: Math.min(...xs), x1: Math.max(...xs), y0, y1,
+      yf: (v) => fmt(v), label: "Schwellenleistung (W) über der Fahrtdauer", labelc: ROLE.series,
+      s: [
+        // SETZUNG zuerst, damit sie hinter der Messung liegt
+        { t: "xyband", p: lit.map((r) => ({ x: r.t, lo: r.lo, hi: r.hi })), c: C.slate, op: 0.13 },
+        { t: "xyline", p: within.map((r) => ({ x: r.t, v: r.watts })), c: C.slate, w: 2, lop: 0.9 },
+        { t: "xyline", p: beyond.map((r) => ({ x: r.t, v: r.watts })), c: C.slate, w: 2, d: "5 4", lop: 0.9 },
+        // MESSUNG darüber, Punktgröße nach Belegung
+        { t: "dots", c: ROLE.series, p: f.measured.map((r) => ({
+            x: r.t, v: r.watts, r: r.band === "solid" ? 5.4 : r.band === "thin" ? 3.8 : 2.6,
+            op: r.band === "solid" ? 1 : r.band === "thin" ? 0.75 : 0.5 })) },
+        { t: "xyline", p: f.measured.filter((r) => r.band === "solid").map((r) => ({ x: r.t, v: r.watts })),
+          c: ROLE.series, w: 2.6 },
+      ],
+    });
+
+    const rows = f.measured.map((r) => {
+      const l = lit.find((q) => q.hour === r.hour);
+      const dev = l ? r.watts - l.watts : null;
+      return `<tr><td>Stunde ${r.hour}</td><td class="tn">${fmt(r.watts)} W</td>
+        <td class="tn">${l ? fmt(l.watts) + " W" : "–"}</td>
+        <td class="tn">${dev == null ? "–" : sign(Math.round(dev)) + " W"}</td>
+        <td>${badge(r.band === "solid" ? "green" : r.band === "thin" ? "amber" : "slate",
+          r.n + (r.n === 1 ? " Fahrt" : " Fahrten"))}</td></tr>`;
+    }).join("");
+
+    // BEIDE LESERICHTUNGEN, und beide enden am Bestand.
+    const letzte = f.measured[f.measured.length - 1];
+    const ziel = f.measured[0].watts - (f.measured[0].watts - (letzte.watts || 0)) / 2;
+    const wann = f.literature.find((r) => r.watts <= ziel);
+    return `<div class="card pad"><h3 class="secname">Ermüdungskurve der aeroben Schwelle</h3>
+      <div class="statgrid lead"><div class="stat wide"><small>Ausgeruht, bei Dauer null</small>
+        <b class="tn lead1" style="color:${ROLE.series}">${fmt(f.anchor_base)} <span class="unit">W</span></b>
+        <span class="mut">gemessen: ${fmt(f.anchor_n)} Fahrten in Stunde 1, Repräsentantenmethode
+        nach Andriolo, auf Intervals' eigener DFA-Fensterung</span></div></div>
+      ${graph}
+      <p class="hint">${ico("info", C.blue, 13)} <b>Dick und farbig ist gemessen</b>, dünn und grau
+        ist die Studienform nach Gallo, an deiner Zahl verankert — ab Stunde
+        ${fmt((thin || 0) + 1)} gestrichelt, weil der Bestand dort endet.
+        ${solid ? `Getragen wird die Aussage bis Stunde ${fmt(solid)}.` : ""}</p>
+      <div class="twoway">
+        <p>${fmt(letzte.t)} h Fahrtzeit — die Schwelle liegt dann bei
+          <b class="tn">${fmt(letzte.watts)} W</b> (${fmt(letzte.n)} ${letzte.n === 1 ? "Fahrt" : "Fahrten"}).</p>
+        <p>${fmt(Math.round(ziel))} W — erreicht nach
+          <b class="tn">${wann ? fmt(wann.t) + " h" : "mehr als der längsten Fahrt"}</b>,
+          und das ist Studienform, keine Messung.</p>
+      </div>
+      <details class="more"><summary>Rechenweg</summary>
+        <table class="dfatab"><thead><tr><th></th><th>gemessen</th><th>Studienform</th>
+          <th>Abweichung</th><th>Belegung</th></tr></thead><tbody>${rows}</tbody></table>
+        <p class="src"><b>Anker gemessen, Form gesetzt.</b> Die Kurve wird NICHT gemessen: der
+          erwartete Effekt je Stunde liegt unter der Streuung der Einzelmessungen, dafür
+          bräuchte es ein Vielfaches an gepaarten Fahrten. Die Messung widerspricht der
+          Literatur nicht — sie kann sie nur nicht bestätigen.</p>
+        <p class="src"><b>Abweichungen von Andriolo</b> — deshalb nennt die Leitzahl oben die
+          Fensterung und nicht das Verfahren: keine RR-Daten, die Fensterung
+          ist Intervals' eigene und nicht dokumentiert; das Artefaktkriterium entfällt und wird
+          durch den Anteil verworfener Punkte ERSETZT; das Dynamikkriterium wird als Kennzahl
+          je Stunde ausgewiesen statt als Filter angewandt.</p>
+        <p class="src"><b>Die Zeitachse ist die Bewegungszeit</b>, nicht die angesammelte Arbeit:
+          die Belegung ist praktisch dieselbe, und eine Arbeitsachse koppelt an die Intensität
+          und holt damit den Bergeffekt zurück.</p>
+        <p class="src"><b>Das Unsicherheitsband</b> ist die publizierte Streuung des
+          −5-%-Zeitpunkts (${fmt(f.t5_published)} ± ${fmt(f.t5_published_sd)} min), auf den
+          Verlust gerechnet. Diese Form erreicht −5 % nach ${fmt(f.t5_minutes)} min.</p>
+        ${this._fatigueDropped(f)}
+      </details></div>`;
+  }
+
+  /* Welche Fahrten NICHT zählen - namentlich, mit Grund und mit ihrer Zahl.
+     Ohne die Namen sucht der Athlet in zwei Wochen, warum eine Fahrt fehlt,
+     an die er sich erinnert. */
+  _fatigueDropped(f) {
+    const d = f.dropped || {};
+    const words = {
+      structured: ["strukturiert", `mehr als ${fmt(f.max_above_z2)} % der Zeit über Zone 2 — der Block läge in Stunde 1 und das Ausfahren in Stunde 2, das sähe aus wie Ermüdung`],
+      short: ["zu kurz", `unter ${fmt(f.min_minutes)} Minuten — ohne zweite Stunde kein Verlauf`],
+      variable: ["zu ungleichmäßig", "die Leistung schwankt zu stark, um eine Schwelle abzulesen"],
+      no_zones: ["ohne Zonenzeiten", "ohne sie ist nicht entscheidbar, ob die Einheit strukturiert war"],
+      no_dfa: ["ohne DFA-Strom", "die Uhr hat für diese Fahrt kein alpha-1 aufgezeichnet"],
+      no_activity: ["unbrauchbar", "kein verwertbarer Datensatz"],
+    };
+    const total = Object.values(d).reduce((sum, items) => sum + items.length, 0);
+    if (!total) return "";
+    const blocks = Object.entries(d).map(([reason, items]) => {
+      const [label, why] = words[reason] || [reason, ""];
+      const list = items.slice(-8).reverse().map((x) =>
+        `<li>${esc(x.name || "ohne Namen")} vom ${dMed(x.date)}${x.above_z2 != null
+          ? ` — <b class="tn">${fmt(x.above_z2, 1)} %</b> über Zone 2` : ""}${
+          reason === "short" ? ` — <b class="tn">${fmt(x.minutes)} min</b>` : ""}</li>`).join("");
+      return `<p class="src"><b>${label}: ${fmt(items.length)}</b> — ${why}</p>
+        <ul class="droplist">${list}${items.length > 8
+          ? `<li class="mut">… und ${fmt(items.length - 8)} weitere</li>` : ""}</ul>`;
+    }).join("");
+    return `<p class="src"><b>Von ${fmt(total + (f.rides_used || 0))} Einheiten zählen
+      ${fmt(f.rides_used)}</b> — ${fmt(total)} bleiben draußen:</p>${blocks}`;
+  }
+
   _decGood() {
     const a = this._status && this._status.decoupling_good;
     if (a != null) return a;
@@ -1082,7 +1235,7 @@ class IntervalsIcuPanel extends HTMLElement {
       if (res.applied) {
         // Alles wegwerfen, was aus den Aktivitäten gerechnet wird - sonst
         // zeigt der Kopf 238 und die Liste weiter 239.
-        this._acts = null; this._thr = null; this._pmc = null; this._today = null;
+        this._acts = null; this._thr = null; this._fatigue = null; this._pmc = null; this._today = null;
         this._coach = null; this._load = null; this._cal = null; this._signals = null;
         const [status, days] = await Promise.all([
           this._ws("status"), this._ws("days", { weeks: this._weeks })]);
@@ -1234,6 +1387,7 @@ class IntervalsIcuPanel extends HTMLElement {
       if (what === "pmc" && !this._pmc) this._pmc = await this._ws("pmc");
       if (what === "akt" && !this._acts) this._acts = await this._ws("activities", { limit: 300 });
       if (what === "thr" && !this._thr) this._thr = await this._ws("thresholds");
+      if (what === "thr" && !this._fatigue) this._fatigue = await this._ws("fatigue");
       if (what === "cal" && !this._cal) this._cal = await this._ws("calendar");
       delete this._failed[what];
     } catch (err) {
@@ -1351,7 +1505,7 @@ class IntervalsIcuPanel extends HTMLElement {
     else if (this._tab === "fitness") html = this.rFitness(this._pmc, this._range);
     else if (this._tab === "akt") html = this.rAkt(this._acts, this._sel);
     else if (this._tab === "belastung") html = this.rBelastung(this._load);
-    else if (this._tab === "dfa") html = this.rDfa(this._thr, this._dfaSport);
+    else if (this._tab === "dfa") html = this.rDfa(this._thr, this._dfaSport) + this.rFatigue(this._fatigue);
     if (this._ctxDlg) html += this._ctxPopover();
     if (this._syncDlg) html += this._syncPopover();
     this._view.innerHTML = html;

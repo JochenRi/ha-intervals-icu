@@ -52,6 +52,25 @@ except ImportError:  # standalone (test suite loads this file directly)
 # Die FORM ist belastbar, die Punktgenauigkeit ist es nicht.
 GALLO_LINEAR = 0.0104
 GALLO_QUADRATIC = 0.0059
+# Die publizierte Streuung des -5-%-Zeitpunkts: 139 +- 78 min. Sie ist die
+# Quelle des Unsicherheitsbands - NICHT eine gesetzte Bandbreite. Gerechnet
+# wird sie als Streckung der ZEITACHSE derselben Form: eine Person, die ihre
+# 5 % schon nach 61 min verliert, faellt entsprechend schneller, eine mit
+# 217 min entsprechend langsamer. Daraus folgt die Breite, statt sie zu setzen -
+# bei drei Stunden ergibt das rund 40 W, und genau dort darf die Kachel keine
+# Punktgenauigkeit mehr vortaeuschen.
+GALLO_T5_MIN = 139.0
+GALLO_T5_SD = 78.0
+
+
+def _t5_hours() -> float:
+    """Wann erreicht die Form selbst -5 %? Gerechnet, nicht eingetragen."""
+    step, t = 1.0 / 60.0, 0.0
+    while t < 10.0:
+        if literature_factor(t) <= 0.95:
+            return t
+        t += step
+    return 10.0
 
 
 def literature_factor(hours: float) -> float:
@@ -142,16 +161,32 @@ def curve(data: dict[str, Any]) -> dict[str, Any]:
         # dort aus auf t = 0 zurueckgerechnet. Sonst haenge die Literaturkurve
         # an einem Punkt, den niemand gefahren ist.
         base = anchor / literature_factor(measured[0]["t"])
+        # Die Streuung skaliert den VERLUST, nicht die Zeitachse. Eine erste
+        # Fassung streckte die Zeit (f(t * k)) - das laeuft jenseits des
+        # Studienhorizonts von rund 3,4 h aus der Form heraus, und die untere
+        # Bandkante stieg dort UEBER die Kurve. Eine Unsicherheit, die sich
+        # selbst ueberholt, ist keine.
+        fast = GALLO_T5_MIN / (GALLO_T5_MIN - GALLO_T5_SD)
+        slow = GALLO_T5_MIN / (GALLO_T5_MIN + GALLO_T5_SD)
+
+        def _point(t: float, hour: int | None) -> dict[str, Any]:
+            return {
+                "hour": hour, "t": round(t, 2),
+                "watts": round(base * literature_factor(t), 1),
+                # lo/hi sind die SETZUNG mit ihrer publizierten Streuung -
+                # getrennt vom Mittelwert, damit das Band nie wie eine
+                # zweite Messung aussieht.
+                "lo": round(base * (1.0 - (1.0 - literature_factor(t)) * fast), 1),
+                "hi": round(base * (1.0 - (1.0 - literature_factor(t)) * slow), 1),
+            }
+
         for row in measured:
-            literature.append({"hour": row["hour"], "t": row["t"],
-                               "watts": round(base * literature_factor(row["t"]), 1)})
+            literature.append(_point(row["t"], row["hour"]))
         last = measured[-1]["t"]
-        step = 0.5
-        t = last + step
+        t = last + 0.5
         while t <= last + 2.0:
-            literature.append({"hour": None, "t": round(t, 2),
-                               "watts": round(base * literature_factor(t), 1)})
-            t += step
+            literature.append(_point(t, None))
+            t += 0.5
     else:
         base = None
 
@@ -176,4 +211,7 @@ def curve(data: dict[str, Any]) -> dict[str, Any]:
         "min_minutes": FATIGUE_MIN_MINUTES,
         "solid_min_rides": FATIGUE_SOLID_MIN_RIDES,
         "thin_min_rides": FATIGUE_THIN_MIN_RIDES,
+        "t5_minutes": round(_t5_hours() * 60),
+        "t5_published": GALLO_T5_MIN,
+        "t5_published_sd": GALLO_T5_SD,
     }

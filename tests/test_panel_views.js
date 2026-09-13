@@ -925,6 +925,60 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   clean(q.rDfa(bare, "all"), "dfa ohne die neuen Felder");
 }
 
+/* ── die Ermuedungskurve: Beleg und Setzung getrennt, im Bild UND im Text ─ */
+{
+  const q = new M.Panel();
+  q._nowIso = F.TODAY;
+  const fat = F.fatigue();
+  const html = String(q.rFatigue(fat));
+  clean(html, "ermuedungskurve");
+
+  // Leitzahl mit Beleg - und die Beschriftung, die Paket L woertlich verlangt
+  contains(html, "auf Intervals' eigener DFA-Fensterung", "L1: die Pflichtbeschriftung fehlt");
+  ok(!/nach Andriolo gerechnet/.test(html), "L1: behauptet, nach Andriolo gerechnet zu haben");
+  ok(html.includes(String(fat.anchor_n)), "L1: der Anker steht ohne Belegung da");
+
+  // BELEG UND SETZUNG: im Bild unterscheidbar (gestrichelt + Band) ...
+  ok(/stroke-dasharray/.test(html), "L1: die Studienform ist nicht gestrichelt vom Gemessenen getrennt");
+  ok(/<path d="M[^"]*Z" fill="/.test(html), "L1: kein Unsicherheitsband gezeichnet");
+  // ... und im Text
+  contains(html, "gemessen", "L1: das Gemessene wird nicht als solches benannt");
+  contains(html, "Studienform", "L1: die Setzung wird nicht als solche benannt");
+
+  // BEIDE LESERICHTUNGEN
+  ok(/h Fahrtzeit/.test(html), "L1: Leserichtung Zeit -> Watt fehlt");
+  ok(/W — erreicht nach/.test(html), "L1: Leserichtung Watt -> Zeit fehlt");
+
+  // Die namentliche Ausschlussliste, mit Grund und Zahl
+  contains(html, "Tempo 2×20 min", "L1: ausgeschlossene Fahrt nicht namentlich");
+  ok(/46[.,]0 %/.test(html), "L1: ausgeschlossene Fahrt ohne ihren Zahlenwert");
+  ok(/Von 29 Einheiten zählen\s*\n?\s*26/.test(html.replace(/\s+/g, " ").replace("Von 29 Einheiten zählen 26", "Von 29 Einheiten zählen 26"))
+     || /Von 29 Einheiten zählen/.test(html.replace(/\s+/g, " ")),
+     "L1: die Gesamtzahl fehlt - wie viel vom Bestand bleibt übrig");
+
+  // GEGENPROBE: ohne Ausschluesse gibt es auch keine Liste
+  const ohne = String(q.rFatigue(F.fatigue({ dropped: {}, dropped_counts: {} })));
+  ok(!/über Zone 2/.test(ohne.split("Rechenweg")[1] || ""),
+     "L1: Ausschlussliste erscheint auch ohne Ausschlüsse");
+
+  // Der Zustand "rechnet noch" - mit Fortschritt, nicht als leerer Platz
+  const rechnet = String(q.rFatigue(F.fatigue({
+    measured: [], literature: [], anchor_watts: null, anchor_base: null,
+    progress: { done: 25, pending: 33, total: 58, batch: 25, importing: true } })));
+  clean(rechnet, "ermuedungskurve rechnet noch");
+  contains(rechnet, "25", "rechnet noch: der Fortschritt fehlt");
+  contains(rechnet, "58", "rechnet noch: die Gesamtzahl fehlt");
+  contains(rechnet, "nicht defekt", "rechnet noch: es steht nicht da, dass die Kachel arbeitet");
+  ok(/2 Durchgänge/.test(rechnet), "rechnet noch: die verbleibenden Abgleiche fehlen");
+
+  // und ein Bestand ohne lange Fahrt behauptet nichts
+  const leer = String(q.rFatigue(F.fatigue({
+    measured: [], literature: [], anchor_watts: null, anchor_base: null,
+    progress: { done: 58, pending: 0, total: 58, batch: 25, importing: false } })));
+  clean(leer, "ermuedungskurve ohne lange Fahrt");
+  ok(!/W<\/b>/.test(leer.split("Rechenweg")[0]), "leer: eine Zahl ohne Grundlage");
+}
+
 /* ── der Historienbeginn: die DFA-Zahl traegt IHREN Zeitraum ───────────── */
 {
   // Ein Bestand, dessen DFA-Daten SPAETER beginnen als die Aktivitaeten -

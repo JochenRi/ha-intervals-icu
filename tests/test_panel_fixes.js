@@ -606,6 +606,43 @@ const acts = F.activities(), thr = F.thresholds();
                                ["der letzten 30 Tage", /\b30\s*Tag/]]) {
     ok(re.test(planted), `Wächter Gegenprobe: "${planted}" wird NICHT gefunden — der Wächter ist blind`);
   }
+  // Die NEUE Kachel muss NACHGETRAGEN werden - und genau das ist der Befund:
+  // der Wächter läuft global nur über die drei bekannten Klassen, im Detail
+  // aber je Kachel. Eine Kachel, die niemand einträgt, ist ungeprüft. Der
+  // Eintrag hier ist deshalb keine Fleißarbeit, sondern die Prüfung selbst -
+  // und die Liste der geprüften Kacheln wird gegen den Quelltext gehalten,
+  // damit die übernächste nicht wieder durchrutscht (vierte Bauregel, 0.44.0).
+  const tiles = (src.match(/\n  r[A-Z]\w*\(/g) || []).map((m) => m.trim().slice(0, -1));
+  const guarded = ["rDurability", "rFatigue"];
+  for (const name of guarded) {
+    ok(tiles.includes(name), `Wächter: ${name} steht in der Liste, existiert aber nicht mehr`);
+  }
+  // Die Kachel UND ihr Rechenweg-Helfer: die Ausschlussliste zeigt Zahlen und
+  // gehört damit unter denselben Wächter wie die Karte selbst.
+  const fat = (/rFatigue\(f\) \{[\s\S]*?\n  \}/.exec(src) || [""])[0]
+    + (/_fatigueDropped\(f\) \{[\s\S]*?\n  \}/.exec(src) || [""])[0];
+  ok(fat.length > 0, "Wächter: rFatigue nicht gefunden");
+  for (const [name, re] of [["Zonengrenze", /\b20\s*%/],
+                            ["Mindestdauer", /\b60\s*(Minuten|min)/],
+                            // Gesucht ist eine SCHWELLE neben ihrem Gegenstand, nicht jede 10:
+                            // der Rundungsschritt der Achse ist keine Belegungsgrenze.
+                            ["Mindestbelegung", /\b10\s*Fahrten/],
+                            ["Streuung", /\b139\b|\b78\b/],
+                            // Die Bereichsgrenze, nicht jede Erwaehnung einer Stunde: "Stunde 1"
+                            // ist die erste Fahrtstunde und keine Grenze, "bis Stunde 2" waere eine.
+                            ["Stundengrenze", /bis Stunde \d/]]) {
+    ok(!re.test(fat), `Wächter: ${name} steht als Zahl in rFatigue statt in der Payload`);
+  }
+  for (const [planted, re] of [["mehr als 20 % über Zone 2", /\b20\s*%/],
+                               ["unter 60 Minuten", /\b60\s*(Minuten|min)/],
+                               ["getragen bis Stunde 2", /bis Stunde \d/]]) {
+    ok(re.test(planted), `Wächter Gegenprobe: "${planted}" wird NICHT gefunden — der Wächter ist blind`);
+  }
+  for (const key of ["max_above_z2", "min_minutes", "t5_published", "t5_minutes",
+                     "anchor_base", "anchor_n", "solid_until_hour", "thin_until_hour"]) {
+    ok(fat.includes("f." + key), `Wächter: rFatigue liest ${key} nicht aus der Payload`);
+  }
+
   // Die Kehrseite: eine Zahl kann auch dadurch verschwinden, dass die Kachel
   // sie gar nicht mehr zeigt. Jede neue Schwelle aus 0.40.0 muss NACHWEISLICH
   // aus der Payload gelesen werden - sonst ist der Wächter oben nur still.

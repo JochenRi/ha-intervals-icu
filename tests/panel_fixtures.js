@@ -225,6 +225,41 @@ function thresholds() {
   return out;
 }
 
+/* Die Ermuedungskurve, in der Form, die das Backend liefert (fatigue.curve).
+ * Gemessenes und Gesetztes stehen in GETRENNTEN Feldern - eine Fixture, die
+ * sie mischte, koennte die Trennung im Bild nicht pruefen. */
+function fatigue(over) {
+  const measured = [
+    { hour: 1, t: 0.5, watts: 152.5, n: 26, band: "solid" },
+    { hour: 2, t: 1.5, watts: 142.2, n: 23, band: "solid" },
+    { hour: 3, t: 2.5, watts: 131.5, n: 5, band: "thin" },
+    { hour: 4, t: 3.5, watts: 133.8, n: 1, band: "dashed" },
+  ];
+  const lit = [
+    { hour: 1, t: 0.5, watts: 152.5, lo: 151.2, hi: 152.8 },
+    { hour: 2, t: 1.5, watts: 149.1, lo: 143.4, hi: 150.7 },
+    { hour: 3, t: 2.5, watts: 143.8, lo: 131.5, hi: 147.3 },
+    { hour: 4, t: 3.5, watts: 136.8, lo: 115.2, hi: 142.6 },
+    { hour: null, t: 4.0, watts: 132.6, lo: 105.9, hi: 140.1 },
+    { hour: null, t: 4.5, watts: 128.0, lo: 95.3, hi: 137.2 },
+  ];
+  return Object.assign({
+    measured, literature: lit, anchor_watts: 152.5, anchor_n: 26, anchor_base: 153.5,
+    solid_until_hour: 2, thin_until_hour: 3, rides_used: 26,
+    dropped: {
+      structured: [
+        { activity_id: "a1", date: "2026-08-24", name: "SweetSpot 2x20Min", above_z2: 51.4, minutes: 78 },
+        { activity_id: "a2", date: "2026-09-13", name: "Tempo 2×20 min", above_z2: 46.0, minutes: 70 },
+      ],
+      short: [{ activity_id: "a3", date: "2026-09-11", name: "volumen", above_z2: 3.1, minutes: 45 }],
+    },
+    dropped_counts: { structured: 2, short: 1 },
+    max_above_z2: 20.0, min_minutes: 60, solid_min_rides: 10, thin_min_rides: 2,
+    t5_minutes: 130, t5_published: 139.0, t5_published_sd: 78.0,
+    progress: { done: 58, pending: 0, total: 58, batch: 25, importing: false },
+  }, over || {});
+}
+
 function calendar() {
   return [
     { uid: "1", summary: "SweetSpot Erhalt 1x20", description: "1x20min @ 90%",
@@ -1018,4 +1053,4 @@ function dayContext(extra) {
   };
 }
 
-module.exports = { STAGE_WORDS, stageOf, TODAY, days, load, readiness, activities, streams, thresholds, calendar, pmc, laps, lapsWithBounds, steadyStream, night, context, goal, today, coach, signals, workouts, dayContext };
+module.exports = { STAGE_WORDS, stageOf, TODAY, days, load, readiness, activities, streams, thresholds, fatigue, calendar, pmc, laps, lapsWithBounds, steadyStream, night, context, goal, today, coach, signals, workouts, dayContext };

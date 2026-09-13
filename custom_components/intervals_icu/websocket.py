@@ -14,10 +14,11 @@ from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.util import dt as dt_util
 
-from . import analytics, coach as coach_module, day_context as day_context_lib, derive, durability_tests as durability_lib, importer, plan as plan_lib, reconcile as reconcile_lib, workouts as workout_lib
+from . import analytics, coach as coach_module, day_context as day_context_lib, derive, durability_tests as durability_lib, fatigue, importer, plan as plan_lib, reconcile as reconcile_lib, workouts as workout_lib
 from .api import IntervalsError
 from .const import (
     DECOUPLING_GOOD,
+    DFA_BATCH_SIZE,
     DOMAIN,
     DURABILITY_TEST_LONG_MIN,
     DURABILITY_TEST_SHORT_MIN,
@@ -81,6 +82,7 @@ def async_register(hass: HomeAssistant) -> None:
         websocket_goal,
         websocket_set_goal,
         websocket_thresholds,
+        websocket_fatigue,
         websocket_calendar,
         websocket_status,
         websocket_load,
@@ -275,6 +277,35 @@ def websocket_thresholds(hass, connection, msg) -> None:
         msg["id"],
         importer.threshold_series(coordinator.archive.data, since=msg.get("since")),
     )
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "intervals_icu/fatigue",
+        vol.Optional("athlete_id"): str,
+    }
+)
+@callback
+def websocket_fatigue(hass, connection, msg) -> None:
+    """Die Ermuedungskurve der aeroben Schwelle (docs/ausbau.md Paket L)."""
+    if (coordinator := _require(hass, connection, msg)) is None:
+        return
+    data = coordinator.archive.data
+    result = fatigue.curve(data)
+    # Nach einem Algorithmus-Bump ist das Archiv leer, bis die Stroeme neu
+    # geholt sind - in Baendern von DFA_BATCH_SIZE je Sync. Der Fortschritt
+    # reist mit, damit die Kachel "rechnet noch, x von y" sagen kann statt
+    # leer zu bleiben: ein leerer Platz sieht aus wie ein Defekt (§7, der
+    # stille Ausstieg).
+    stats = importer.archive_stats(data)
+    result["progress"] = {
+        "done": stats["dfa_done"],
+        "pending": stats["dfa_pending"],
+        "total": stats["dfa_done"] + stats["dfa_pending"],
+        "batch": DFA_BATCH_SIZE,
+        "importing": bool(getattr(coordinator, "import_running", False)),
+    }
+    connection.send_result(msg["id"], result)
 
 
 @websocket_api.websocket_command(
