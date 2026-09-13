@@ -1225,6 +1225,90 @@ _ctx_state = coach.state(_inf)
 eq(_ctx_state["context"], {"tag": "krank", "label": "Krank", "weight": 0.0},
    "31 payload: state() ohne heutigen Kontext")
 
+
+# --- recovery_offered: the setting behind the stimulus grade (ausbau.md I7) ----
+# Three conditions, and each one has to be able to fail ON ITS OWN - otherwise
+# the rule is only ever proven by the state and the other two ride along unseen.
+def recovery_case(quiet_load=8.0, base_load=50.0, hard=False, hrv=50.0, rhr=56.0):
+    """A healthy history with an explicit daily load, quiet at the end."""
+    data = build(days=120, hrv=hrv, rhr=rhr)
+    order = sorted(data["wellness"])
+    for index, day_key in enumerate(order):
+        remaining = len(order) - 1 - index
+        data["wellness"][day_key]["ctlLoad"] = quiet_load if remaining < 2 else base_load
+    if hard:
+        last = order[-1]
+        data["activities"]["hard"] = {
+            "id": "hard", "start_date_local": last + "T09:00:00", "type": "Ride",
+            "moving_time": 3600, "icu_intensity": 88, "icu_training_load": 95,
+        }
+    return data
+
+
+calm = coach.recovery_offered(recovery_case())
+check(calm["offered"] is True, f"erholung: ruhiger Bestand gilt nicht als erholt ({calm['missing']})")
+check(calm["state"] == "ready", f"erholung: Grundfall ist nicht im Zustand ready ({calm['state']})")
+check(calm["hard_days_last_7"] == 0, "erholung: Grundfall zählt harte Tage")
+check(calm["recent_daily_load"] is not None and calm["chronic_daily_load"] is not None,
+      "erholung: die beiden Lastzahlen fehlen in der Payload")
+check(calm["recent_daily_load"] < calm["chronic_daily_load"],
+      "erholung: der ruhige Fall liegt nicht unter dem chronischen Schnitt")
+check(not calm["missing"], f"erholung: erfüllter Fall nennt trotzdem Gründe ({calm['missing']})")
+
+# 1 - the load of the last days is NOT below the chronic mean
+loud = coach.recovery_offered(recovery_case(quiet_load=140.0))
+check(loud["offered"] is False, "erholung: laute letzte Tage gelten als erholt")
+check(any("chronischen" in reason for reason in loud["missing"]),
+      f"erholung: der Lastgrund wird nicht benannt ({loud['missing']})")
+check(loud["state"] == "ready", "erholung: der Lastfall verändert den Zustand — Fall untauglich")
+
+# 2 - a hard day inside the last seven
+hard = coach.recovery_offered(recovery_case(hard=True))
+check(hard["offered"] is False, "erholung: harter Tag in der Woche gilt als erholt")
+check(hard["hard_days_last_7"] >= 1, "erholung: der harte Tag wird nicht gezählt")
+check(any("harte" in reason or "harter" in reason for reason in hard["missing"]),
+      f"erholung: der harte Tag wird nicht benannt ({hard['missing']})")
+
+# 3 - the state itself
+dip = recovery_case()
+for offset in range(3):
+    key = (TODAY - timedelta(days=offset)).isoformat()
+    dip["wellness"][key].update({"hrv": 26.0, "restingHR": 68.0})
+slumped = coach.recovery_offered(dip)
+check(slumped["offered"] is False, "erholung: Einbruch gilt als erholt")
+check(any("Zustand" in reason for reason in slumped["missing"]),
+      f"erholung: der Zustand wird nicht als Grund benannt ({slumped['missing']})")
+
+# the thresholds are CHOSEN, and the payload says so - the same honesty the
+# load budget shows about its target ratio per traffic light
+check(calm["quiet_days"] == const.RECOVERY_QUIET_DAYS,
+      "erholung: die Tageszahl kommt nicht aus const.py")
+check(calm["max_hard_days_7"] == const.RECOVERY_MAX_HARD_DAYS_7,
+      "erholung: die Grenze für harte Tage kommt nicht aus const.py")
+check("Setzung" in calm["note"] and "gewählt" in calm["note"],
+      "erholung: die Schwellen werden nicht als Setzung beschriftet")
+check(str(const.RECOVERY_QUIET_DAYS) in calm["note"],
+      "erholung: die Zahl steht nicht im Text, der sie erklärt")
+
+# a thin archive says so instead of guessing
+thin = coach.recovery_offered({"wellness": {}, "activities": {}})
+check(thin["offered"] is False, "erholung: leerer Bestand gilt als erholt")
+check(thin["chronic_daily_load"] is None, "erholung: chronischer Schnitt aus dem Nichts")
+
+# and the one that matters for error class 3: the daily load comes from
+# analytics, not from a second walk over the activities
+source = (Path(__file__).resolve().parents[1] / "custom_components" / "intervals_icu"
+          / "coach.py").read_text(encoding="utf-8")
+recovery_src = source[source.index("def recovery_offered("):]
+recovery_src = recovery_src[:recovery_src.index("\ndef ", 10)]
+check("analytics.daily_load" in recovery_src,
+      "erholung: rechnet die Tageslast selbst statt sie zu holen")
+check('data.get("activities")' not in recovery_src,
+      "erholung: läuft selbst über die Aktivitäten — zweiter Rechenweg")
+# Gegenprobe: der Wächter muss einen wiedereingebauten Durchlauf auch finden
+check('data.get("activities")' in recovery_src + '\nfor a in data.get("activities"): pass',
+      "erholung Gegenprobe: der Wächter findet einen eingebauten Durchlauf nicht")
+
 print(f"test_coach: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

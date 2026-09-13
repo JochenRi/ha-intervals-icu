@@ -281,6 +281,233 @@ check(W.anchor_conflict(200.0, 200.0 * 0.70 * 1.03 + 0.5) is None,
 check(W.anchor_conflict(200.0, 200.0 * 0.70) is not None,
       "konflikt: an der Z2-Obergrenze stumm")
 
+
+# --- 12  the four grades (docs/ausbau.md I3) ----------------------------------
+# Four grades, one place. The whole truth table is walked here, because the
+# panel prints whatever comes back and has no rule of its own to fall back on.
+eq(sorted(W.STAGES), ["green", "red", "stimulus", "yellow"], "stufen: nicht vier")
+
+labels = [W.STAGES[key]["label"] for key in ("green", "yellow", "stimulus", "red")]
+words = [W.STAGES[key]["word"] for key in ("green", "yellow", "stimulus", "red")]
+eq(len(set(labels)), 4, "stufen: zwei Stufen teilen sich ein Wort")
+eq(len(set(words)), 4, "stufen: zwei Stufen teilen sich eine Beschriftung")
+eq(labels[2], "Reiz", "stufen: die vierte Stufe heißt nicht Reiz")
+
+TRUTH = {
+    # (fit, fits_budget, recovery): (stage, blocked_by)
+    ("ok", True, True): ("green", None),
+    ("ok", True, False): ("green", None),
+    ("ok", None, True): ("green", None),
+    ("ok", None, False): ("green", None),
+    ("ok", False, True): ("stimulus", None),
+    ("ok", False, False): ("red", "budget"),
+    ("maybe", True, True): ("yellow", None),
+    ("maybe", True, False): ("yellow", None),
+    ("maybe", None, True): ("yellow", None),
+    ("maybe", None, False): ("yellow", None),
+    ("maybe", False, True): ("red", "both"),
+    ("maybe", False, False): ("red", "both"),
+    ("no", True, True): ("red", "state"),
+    ("no", True, False): ("red", "state"),
+    ("no", None, True): ("red", "state"),
+    ("no", None, False): ("red", "state"),
+    ("no", False, True): ("red", "both"),
+    ("no", False, False): ("red", "both"),
+}
+for (fit, budget, recovery), (want_key, want_blocked) in TRUTH.items():
+    got = W.stage(fit, budget, recovery)
+    eq(got["key"], want_key, f"stufe {fit}/{budget}/{recovery}")
+    eq(got["blocked_by"], want_blocked, f"stufe {fit}/{budget}/{recovery}: Begründung")
+
+# red says WHICH of the two forbids it - "rot" without the reason is the half
+# answer the specification rules out
+check("Zustand" in W.stage("no", True, False)["detail"],
+      "rot aus dem Zustand: nennt den Zustand nicht")
+check("Lastbudget" in W.stage("ok", False, False)["detail"],
+      "rot aus dem Budget: nennt das Budget nicht")
+both = W.stage("maybe", False, False)["detail"]
+check("Zustand" in both and "Lastbudget" in both, "rot aus beidem: nennt nur eines")
+
+# an unknown budget cannot be exceeded - the stimulus grade needs a real one
+eq(W.stage("ok", None, True)["key"], "green", "stufe: Reiz ohne existierendes Budget")
+
+# the objection travels WITH the stimulus grade, never alone
+stim = W.stage("ok", False, True)
+check("Meeusen" in stim.get("evidence", ""), "Reiz: Beleg fehlt")
+check("SCHWÄCHERE" in stim.get("evidence", "") or "schwächere" in stim.get("evidence", ""),
+      "Reiz: die Gegenbefunde fehlen — 'je öfter desto besser' bliebe stehen")
+for key in ("green", "yellow", "red"):
+    check("evidence" not in W.stage(*{"green": ("ok", True, False),
+                                      "yellow": ("maybe", True, False),
+                                      "red": ("no", True, False)}[key]),
+          f"{key}: trägt den Überreich-Beleg, der nicht zu ihm gehört")
+
+# --- 13  the load of the session AS PLANNED -----------------------------------
+# The plan calls the big day "5.0 h" and hands over z2_210_late (210 min, load
+# 175). Judged by the catalogue entry that is a three-and-a-half-hour ride, and
+# the most important session of the long-ride goal comes out systematically too
+# green. Both directions are checked, and the no-hours case must stay untouched.
+big = W.BY_KEY["z2_210_late"]
+eq(W.session_load(big), 175, "last: Katalogeinheit ohne Stunden verändert")
+eq(W.session_load(big, 3.5), 175, "last: gleiche Dauer ergibt nicht dieselbe Last")
+eq(W.session_load(big, 5.0), 250, "last: 5 h nicht hochgerechnet")
+eq(W.session_load(big, 2.0), 100, "last: kürzere Einheit nicht heruntergerechnet")
+check(W.session_load(big, 5.0) > W.session_load(big),
+      "last: die längere Fahrt ist nicht schwerer als der Katalogeintrag")
+eq(W.session_load({"load": 80, "minutes": 0}, 2.0), 80, "last: Division durch null")
+eq(W.session_load({}, 2.0), 0, "last: leerer Eintrag erfindet eine Zahl")
+
+# and the consequence at the budget: the same ride flips the verdict
+eq(W.stage("ok", W.session_load(big) <= 200, False)["key"], "green",
+   "last: der Katalogwert allein ergäbe grün")
+eq(W.stage("ok", W.session_load(big, 5.0) <= 200, False)["key"], "red",
+   "last: die hochgerechnete Last ändert das Urteil nicht — die Skalierung wirkt nicht")
+
+# The counter-proof with the ACTUAL numbers of the live plan, not just "something
+# scales". A four-hour routine long day is planned as z2_90 - 95 minutes, load
+# 72 in the catalogue. Before 0.42.0 the week view would have judged that ride by
+# the 72; it carries 182. If a later change ever quietly drops the scaling, the
+# figures below are what fails, and they name the defect instead of describing it.
+ROUTINE_LONG = {"role": "long", "title": "Langer Tag — 4,0 h", "workout": "z2_90",
+                "detail": "…", "why": "…", "hours": 4.0}
+routine = W.rate_sessions([dict(ROUTINE_LONG)], "ready", budget=200)[0]
+eq(routine["load"], 182, "skalierung: der lange Tag trägt nicht 182")
+eq(routine["catalogue_load"], 72, "skalierung: die Kataloglast ist nicht 72")
+check(routine["load"] != routine["catalogue_load"],
+      "skalierung: geplante Last gleich Kataloglast — die Hochrechnung fehlt")
+eq(W.session_load(W.BY_KEY["z2_90"], 4.0), 182, "skalierung: 4 h auf z2_90 ergibt nicht 182")
+
+# and the same for the big day, the session the long-ride goal is actually about
+BIG_DAY = {"role": "long", "title": "Großer Tag — 5,0 h", "workout": "z2_210_late",
+           "detail": "…", "why": "…", "hours": 5.0}
+big_rated = W.rate_sessions([dict(BIG_DAY)], "ready", budget=200)[0]
+eq(big_rated["load"], 250, "skalierung: der große Tag trägt nicht 250")
+eq(big_rated["catalogue_load"], 175, "skalierung: die Kataloglast des großen Tages ist nicht 175")
+
+# The defect made visible: at a budget of 200 the catalogue figures call BOTH
+# sessions green, the planned figures do not. That difference IS the bug fix -
+# a test that only asserts "the numbers differ" would pass on a scaling factor
+# of 1.001 and miss it.
+eq(W.stage("ok", 72 <= 200, False)["key"], "green",
+   "skalierung: schon die Kataloglast des langen Tages sprengte das Budget — Fall untauglich")
+eq(W.stage("ok", 175 <= 200, False)["key"], "green",
+   "skalierung: schon die Kataloglast des großen Tages sprengte das Budget — Fall untauglich")
+eq(routine["stage"]["key"], "green", "skalierung: 182 gegen Budget 200 ist nicht grün")
+eq(big_rated["stage"]["key"], "red", "skalierung: 250 gegen Budget 200 ist nicht rot")
+check(big_rated["stage"]["blocked_by"] == "budget",
+      "skalierung: der große Tag fällt nicht am Budget, sondern woanders")
+
+# --- 14  the same session, four different grades ------------------------------
+# The trap from the specification: a fixture in which every session is green in
+# one state and red in another tests the SESSION, not the grade. These four
+# cases hold the session constant (sweetspot_2x20, 1.2 h) and move only state,
+# budget and recovery.
+SESSION = {"role": "quality", "title": "SweetSpot 2×20", "workout": "sweetspot_2x20",
+           "detail": "…", "why": "…", "hours": 1.2}
+CASES = [
+    ("ready", 200, False, "green"),      # state carries, load fits
+    ("rebound", 200, False, "yellow"),   # state carries only partly
+    ("ready", 50, True, "stimulus"),     # over budget, but rested
+    ("ready", 50, False, "red"),         # over budget, no recovery behind it
+]
+for state, budget, recovery, want in CASES:
+    rated = W.rate_sessions([dict(SESSION)], state, budget=budget, recovery_offered=recovery)
+    eq(len(rated), 1, f"bewertung {state}/{budget}: Einheit verschwunden")
+    eq(rated[0]["stage"]["key"], want, f"bewertung {state}/{budget}/{recovery}")
+    eq(rated[0]["title"], SESSION["title"], "bewertung: Titel verändert")
+    eq(rated[0]["hours"], SESSION["hours"], "bewertung: Stunden verändert")
+grades = {W.rate_sessions([dict(SESSION)], s, budget=b, recovery_offered=r)[0]["stage"]["key"]
+          for s, b, r, _ in CASES}
+eq(len(grades), 4, "bewertung: dieselbe Einheit erreicht nicht alle vier Stufen")
+
+# the grade sits ON the session, and the load with it
+one = W.rate_sessions([dict(SESSION)], "ready", budget=200)[0]
+eq(one["family"], "sweetspot", "bewertung: Familie nicht aufgelöst")
+eq(one["catalogue_load"], W.BY_KEY["sweetspot_2x20"]["load"], "bewertung: Kataloglast fehlt")
+check(one["load"] == W.session_load(W.BY_KEY["sweetspot_2x20"], 1.2),
+      "bewertung: Last nicht über session_load gerechnet")
+check(one.get("effect"), "bewertung: 'was das bringt' fehlt an der Einheit")
+
+# an unknown workout key gets no invented verdict
+odd = W.rate_sessions([{"title": "Handstand", "workout": "nope", "hours": 1}], "ready", budget=200)
+check("stage" not in odd[0], "bewertung: unbekannte Einheit bekommt ein erfundenes Urteil")
+eq(odd[0]["title"], "Handstand", "bewertung: unbekannte Einheit verschluckt")
+
+# every workout key the plan can emit resolves - otherwise a session of the
+# current week would silently lose its grade
+for key in ("z2_210_late", "z2_150", "z2_90", "z2_60", "sweetspot_2x20",
+            "tempo_2x20", "threshold_3x12", "vo2_3015", "vo2_4x8"):
+    check(key in W.FAMILY_OF_KEY, f"bewertung: Plan-Einheit {key} ohne Familie")
+
+# --- 15  one state rule, not two ----------------------------------------------
+# fit_for() was pulled out of suggest() so the week view asks the SAME question.
+# If the two ever drift apart, this fails: the list for today and the rating of
+# a planned session of the same family must reach the same verdict.
+for state in ("ready", "rebound", "strained", "slump", "recovering", "elevated", "unknown"):
+    picks = {entry["family"]: entry["fit"]
+             for entry in W.suggest(state, ftp=215, budget=400, layoff_days=0)}
+    rated = W.rate_sessions([dict(SESSION)], state, budget=400)[0]
+    if "sweetspot" in picks:
+        eq(rated["fit"], picks["sweetspot"],
+           f"eine Regel: Wochenansicht und Einheitenliste urteilen bei {state} verschieden")
+
+# suggest() carries the grade too - the trainer tab must not derive one
+sug = W.suggest("ready", ftp=215, budget=400, layoff_days=0)
+check(all("stage" in entry for entry in sug), "einheitenliste: Stufe fehlt in der Payload")
+check(all(entry["stage"]["key"] in W.STAGES for entry in sug),
+      "einheitenliste: unbekannte Stufe in der Payload")
+tight = W.suggest("ready", ftp=215, budget=10, layoff_days=0, recovery_offered=True)
+check(any(entry["stage"]["key"] == "stimulus" for entry in tight),
+      "einheitenliste: bei knappem Budget und Erholung erscheint keine Reiz-Stufe")
+tired = W.suggest("ready", ftp=215, budget=10, layoff_days=0, recovery_offered=False)
+check(not any(entry["stage"]["key"] == "stimulus" for entry in tired),
+      "einheitenliste: Reiz-Stufe ohne Erholung im Rücken")
+
+# --- 16  no verdict without its grade ------------------------------------------
+# Found while the panel tests were nachgezogen: two fixtures flipped `fit` to
+# "no" and left `stage` green behind, and the panel - correctly - followed the
+# grade. That is a payload the BACKEND CANNOT PRODUCE, and the next session
+# would have built one again and wondered. So it becomes an assertion: wherever
+# a verdict travels, its grade travels with it, and the two agree.
+def carries_grade(entries: list[dict], label: str) -> None:
+    for entry in entries:
+        if "fit" not in entry:
+            continue
+        grade = entry.get("stage") or {}
+        check(bool(grade.get("key")), f"{label}: Urteil '{entry.get('fit')}' ohne Stufe")
+        # and they agree: a blocking verdict can never wear a green grade
+        if entry.get("fit") == "no":
+            eq(grade.get("key"), "red", f"{label}: 'no' trägt nicht rot")
+        if entry.get("fit") == "maybe" and entry.get("fits_budget") is not False:
+            eq(grade.get("key"), "yellow", f"{label}: 'maybe' im Budget trägt nicht gelb")
+        if entry.get("fit") == "ok" and entry.get("fits_budget") is not False:
+            eq(grade.get("key"), "green", f"{label}: 'ok' im Budget trägt nicht grün")
+
+for state in ("ready", "rebound", "slump", "recovering", "strained", "elevated", "unknown"):
+    for budget in (None, 10, 400):
+        carries_grade(W.suggest(state, ftp=215, budget=budget, layoff_days=0),
+                      f"einheitenliste {state}/{budget}")
+        carries_grade(W.rate_sessions([dict(SESSION), dict(ROUTINE_LONG)], state, budget=budget),
+                      f"wochenansicht {state}/{budget}")
+
+# the counter-proof: a hand-built payload with a verdict and a mismatched grade
+# must be CAUGHT by the rule above, not shrugged at
+before = len(FAILURES)
+carries_grade([{"fit": "no", "fits_budget": True, "stage": {"key": "green"}}], "gegenprobe")
+check(len(FAILURES) > before,
+      "gegenprobe: Urteil 'no' mit grüner Stufe wird nicht erkannt — die Zusicherung ist blind")
+del FAILURES[before:]   # the planted defect is not a real failure
+
+before = len(FAILURES)
+carries_grade([{"fit": "ok", "fits_budget": True}], "gegenprobe ohne Stufe")
+check(len(FAILURES) > before,
+      "gegenprobe: Urteil ganz ohne Stufe wird nicht erkannt — die Zusicherung ist blind")
+del FAILURES[before:]
+
+# the sentence for later weeks exists once, in the backend, and says why
+check("Woche selbst" in W.NO_VERDICT_NOTE, "späte Wochen: der Satz nennt den Grund nicht")
+check("sechs Tagen" in W.NO_VERDICT_NOTE, "späte Wochen: das Budgetfenster wird nicht genannt")
+
 print(f"test_workouts: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

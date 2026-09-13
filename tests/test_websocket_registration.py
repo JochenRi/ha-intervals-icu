@@ -225,6 +225,31 @@ check("context_note" in _ready_src and "B4" in _ready_src,
 check("ungewichtet gerechnet" in _ready_src,
       "readiness: die Notiz benennt die ungewichtete Rechnung nicht")
 
+
+# --- the goal handler: grades for the CURRENT week only (ausbau.md I3) --------
+# The handler wires state, budget and grade together; it must not restate any
+# of them, and it must not grade a week whose budget does not exist yet.
+goal_fn = functions.get("websocket_goal")
+check(goal_fn is not None, "goal: Handler fehlt")
+if goal_fn is not None:
+    src = ast.get_source_segment(MODULE.read_text(), goal_fn) or ""
+    for call in ("rate_sessions", "week_done", "recovery_offered", "readiness"):
+        check(call in src, f"goal: {call} wird nicht gerufen — die Ansicht rechnet selbst")
+    # only weeks[0] is graded, and it is the one marked as rated
+    check('weeks[0]["rated"] = True' in src, "goal: die laufende Woche wird nicht markiert")
+    check("weeks[1]" not in src and "for week in weeks" not in src,
+          "goal: mehr als die laufende Woche wird bewertet — das ist die Prognose")
+    check("NO_VERDICT_NOTE" in src, "goal: der Satz für spätere Wochen fehlt in der Payload")
+    check("STAGES" in src, "goal: das Stufenregister erreicht das Panel nicht")
+    check("CHOICE_EVIDENCE" in src, "goal: der Quellenblock fehlt in der Payload")
+    # no threshold of its own: the handler compares nothing, it hands over
+    for forbidden in ("<=", ">=", " < ", " > "):
+        check(forbidden not in src,
+              f"goal: der Handler vergleicht selbst ('{forbidden}') statt zu verdrahten")
+    # Gegenprobe: der Wächter muss einen eingebauten Vergleich auch finden
+    check("<=" in src + "\n    if load <= budget: pass",
+          "goal Gegenprobe: ein eingebauter Vergleich wird NICHT gefunden — der Wächter ist blind")
+
 print(f"test_websocket_registration: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

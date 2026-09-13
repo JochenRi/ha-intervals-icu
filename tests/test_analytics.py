@@ -334,6 +334,54 @@ for _mod in ("analytics.py", "plan.py", "workouts.py"):
           "day_context" in _src, False)
 
 print()
+
+# --- week_done: ridden against planned, and NOTHING paired (ausbau.md I2) ------
+# The trap the specification names: the plan says "SweetSpot 2x20, 1.2 h" and
+# "Grundlage 1.2 h", and a 1.2-hour ride in the archive fits BOTH. A view that
+# picks one is claiming something the data does not carry. So the fixture makes
+# that ambiguity explicit and the test asserts that nothing decides it.
+AMBIGUOUS = {
+    "activities": {
+        "r1": {"id": "r1", "start_date_local": "2026-09-08T09:00:00", "type": "Ride",
+               "name": "Feierabendrunde", "moving_time": 4320, "icu_training_load": 70,
+               "icu_intensity": 68},
+        # same duration, same day-shape: would fit the quality slot as well as
+        # the base ride of the same week
+        "r2": {"id": "r2", "start_date_local": "2026-09-10T09:00:00", "type": "Ride",
+               "name": "Runde zwei", "moving_time": 4320, "icu_training_load": 72,
+               "icu_intensity": 69},
+        # outside the week - must not be counted
+        "r0": {"id": "r0", "start_date_local": "2026-09-06T09:00:00", "type": "Ride",
+               "name": "Sonntag davor", "moving_time": 7200, "icu_training_load": 120},
+        "r9": {"id": "r9", "start_date_local": "2026-09-14T09:00:00", "type": "Ride",
+               "name": "Montag danach", "moving_time": 7200, "icu_training_load": 130},
+    },
+    "wellness": {}, "dfa": {},
+}
+week = analytics.week_done(AMBIGUOUS, "2026-09-07", today="2026-09-11")
+check("Woche: Einheiten der Kalenderwoche", week["sessions"], 2)
+check("Woche: Last der Kalenderwoche", week["load"], 142)
+check("Woche: Stunden der Kalenderwoche", week["hours"], 2.4)
+check("Woche: Fenster beginnt Montag", week["start"], "2026-09-07")
+check("Woche: Fenster endet Sonntag", week["end"], "2026-09-13")
+check("Woche: Resttage", week["days_left"], 2)
+names = [item["name"] for item in week["activities"]]
+check("Woche: Fahrt davor bleibt draussen", "Sonntag davor" in names, False)
+check("Woche: Fahrt danach bleibt draussen", "Montag danach" in names, False)
+
+# the pairing: it must not exist, and the payload must SAY that it does not
+check("Woche: keine Zuordnung behauptet", week["paired"], False)
+for forbidden in ("workout", "role", "matched", "session", "plan_session"):
+    check(f"Woche: keine Fahrt traegt '{forbidden}'",
+          any(forbidden in item for item in week["activities"]), False)
+check("Woche: Grenze der Zuordnung steht dran", "entscheidest du" in week["note"], True)
+
+# a week with nothing in it says zero, it does not vanish
+empty = analytics.week_done(AMBIGUOUS, "2026-08-03", today="2026-09-11")
+check("Woche: leere Woche zaehlt null Einheiten", empty["sessions"], 0)
+check("Woche: leere Woche zaehlt null Last", empty["load"], 0)
+check("Woche: vergangene Woche ohne Resttage", empty["days_left"], None)
+
 print(f"test_analytics: {CHECKS} Prüfungen, {len(failures)} Fehler")
 print("FEHLER:", failures if failures else "keine")
 sys.exit(1 if failures else 0)

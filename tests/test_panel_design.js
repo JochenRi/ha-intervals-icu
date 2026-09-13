@@ -356,4 +356,82 @@ const CHART_FROZEN = {
      "wolke: rechter Punkt nicht getroffen");
 }
 
+/* ── Urteilsregister: VIER Stufen seit 0.42.0 (docs/ausbau.md I6) ──────────
+   Vier Stufen heißt vier Wörter, vier Formen, vier Töne - nicht drei plus eine
+   Schattierung. Und der vierte Ton darf in KEINEM der beiden Kategorienregister
+   stehen, sonst ist die Trennung, die diese Datei seit 0.7.0 erzwingt, genau an
+   der neuen Stelle aufgegeben. */
+{
+  const grades = ["green", "amber", "stimulus", "red"];
+  const tones = grades.map((k) => M.ST[k] && M.ST[k].c);
+  const words = grades.map((k) => M.ST[k] && M.ST[k].word);
+  const shapes = grades.map((k) => M.ST[k] && M.ST[k].ic);
+
+  ok(tones.every(Boolean), "urteilsregister: eine der vier Stufen fehlt");
+  ok(new Set(tones).size === 4, "urteilsregister: zwei Stufen teilen sich einen Ton");
+  ok(new Set(words).size === 4, "urteilsregister: zwei Stufen teilen sich ein Wort");
+  ok(new Set(shapes).size === 4, "urteilsregister: zwei Stufen teilen sich eine Form");
+  ok(M.ST.stimulus.word === "Reiz", "urteilsregister: die vierte Stufe heißt nicht Reiz");
+
+  // Der vierte Ton steht in KEINEM Kategorienregister - weder in den
+  // Datenrollen noch in den Sportfarben noch in den Etiketten.
+  const categories = [
+    ...Object.values(M.ROLE),
+    ...Object.values(M.SPORT).map((s) => s.c),
+    ...Object.values(M.CTX_COLOR),
+  ];
+  ok(!categories.includes(M.C.orange),
+     "urteilsregister: der Reiz-Ton steht auch im Kategorienregister");
+  for (const tone of tones) {
+    ok(!categories.includes(tone), `urteilsregister: ${tone} ist zugleich eine Kategorie`);
+  }
+  // Gegenprobe: der Wächter muss einen echten Mischfall auch finden
+  ok([...categories, M.C.orange].includes(M.C.orange),
+     "urteilsregister Gegenprobe: ein eingebauter Mischfall wird NICHT gefunden — blind");
+
+  // Die Form der Reiz-Stufe ist eine EIGENE, keine Variante des Last-Blitzes.
+  // Ohne diese Prüfung greift beim nächsten Icon wieder jemand zum bolt, und
+  // dann trägt ein Urteil die Form einer Kategorie.
+  ok(M.ST.stimulus.ic !== "bolt", "urteilsregister: die Reiz-Stufe benutzt das Last-Icon");
+  ok(M.IC[M.ST.stimulus.ic], "urteilsregister: die Form der Reiz-Stufe ist nicht definiert");
+  ok(M.IC[M.ST.stimulus.ic] !== M.IC.bolt,
+     "urteilsregister: die Reiz-Form ist mit dem Blitz identisch");
+  // und sie ist auch keine Variante der drei anderen Urteilsformen
+  for (const other of ["ok", "warn", "stop", "na"]) {
+    ok(M.IC[M.ST.stimulus.ic] !== M.IC[other],
+       `urteilsregister: die Reiz-Form ist eine Kopie von ${other}`);
+  }
+  // keine doppelten Schlüssel im Formenkatalog - ein zweites bolt: würde das
+  // erste still überschreiben
+  const keys = (H.source().match(/const IC = \{[\s\S]*?\n\};/) || [""])[0]
+    .split("\n").map((line) => (line.match(/^\s{2}([a-z]+)\s*:/) || [])[1]).filter(Boolean);
+  ok(new Set(keys).size === keys.length, "urteilsregister: doppelter Schlüssel im Formenkatalog");
+
+  // Die Übersetzung Backend-Schlüssel -> Registerschlüssel steht EINMAL
+  ok(Object.keys(M.STAGE_TONE).length === 4, "urteilsregister: STAGE_TONE hat nicht vier Einträge");
+  ok(M.STAGE_TONE.yellow === "amber" && M.STAGE_TONE.stimulus === "stimulus",
+     "urteilsregister: die Übersetzung stimmt nicht");
+}
+
+/* ── der Satz für spätere Wochen trägt KEIN Urteil ─────────────────────────
+   Die Abwesenheit eines Urteils ist kein fünfter Zustand (docs/ausbau.md I3).
+   Er darf deshalb weder eine Urteilsfarbe noch eine Urteilsform tragen. */
+{
+  const q = new M.Panel();
+  q._nowIso = F.TODAY;
+  q._planOpen = "3";
+  const html = q.rPlanWeeks(F.goal());
+  const start = html.indexOf("noverdict");
+  ok(start > 0, "späte Wochen: der Satz fehlt ganz");
+  const sentence = html.slice(start, start + 600);
+  for (const grade of ["green", "amber", "orange", "red"]) {
+    ok(!sentence.includes(M.C[grade]),
+       `späte Wochen: der Satz trägt die Urteilsfarbe ${grade}`);
+  }
+  for (const shape of ["ok", "warn", "stop", "surge"]) {
+    ok(!sentence.includes(M.IC[shape]),
+       `späte Wochen: der Satz trägt die Urteilsform ${shape}`);
+  }
+}
+
 report("test_panel_design");

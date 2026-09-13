@@ -617,4 +617,88 @@ const acts = F.activities(), thr = F.thresholds();
   }
 }
 
+/* ── Wächter: keine Urteilsregel im Frontend (docs/ausbau.md I5) ───────────
+   Bis 0.41.0 hat rWorkouts Zustand und Budget SELBST zusammengeführt
+   (fit === "ok" && fits_budget === false -> amber), während das Backend die
+   beiden Hälften getrennt lieferte. Die vier Stufen ins Backend zu legen und
+   das stehen zu lassen hätte zwei Regeln im Haus bedeutet - Fehlerklasse 3.
+   Der Wächter deckte bisher nur rDurability ab und hat diese Stelle deshalb
+   nie gesehen; jetzt sieht er beide. */
+{
+  const src = H.source();
+  const cut = (from, to) => src.slice(src.indexOf(from), src.indexOf(to));
+  // Kommentare raus, bevor geprüft wird: die Begründung, WARUM die Regel raus
+  // ist, nennt die Regel - und ein Wächter, der an der eigenen Begründung
+  // scheitert, ist derselbe Fehler wie der, den er verhindern soll.
+  const strip = (body) => body.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  const views = {
+    rWorkouts: strip(cut("rWorkouts(w, forTomorrow) {", "  rGoal(g) {")),
+    rPlanWeeks: strip(cut("rPlanWeeks(g) {", "  _goalForm(g) {")),
+  };
+
+  for (const [name, body] of Object.entries(views)) {
+    ok(body.length > 200, `wächter: ${name} nicht gefunden`);
+    // die verbotene Zusammenführung selbst, in jeder Schreibweise
+    ok(!/fits_budget\s*===?\s*false/.test(body),
+       `wächter: ${name} wertet das Budget selbst aus`);
+    ok(!/fit\s*===?\s*"(ok|maybe|no)"\s*&&/.test(body),
+       `wächter: ${name} verknüpft Urteil und Budget im Frontend`);
+    // und keine Stufe, die nicht aus der Payload kommt
+    for (const word of ["passt", "geht, kostet aber", "kostet Erholung", "heute nicht"]) {
+      ok(!body.includes('"' + word), `wächter: ${name} schreibt die Stufe "${word}" selbst`);
+    }
+    // die Stufe wird nachweislich GELESEN
+    ok(/stage/.test(body), `wächter: ${name} liest die Stufe gar nicht`);
+  }
+  // die Übersetzung Backend -> Register steht an EINER Stelle
+  ok((src.match(/const STAGE_TONE/g) || []).length === 1,
+     "wächter: STAGE_TONE ist mehrfach definiert");
+  ok((src.match(/STAGE_TONE\s*=\s*\{/g) || []).length === 1,
+     "wächter: eine zweite Stufen-Übersetzung im Frontend");
+
+  // Gegenprobe: der Wächter muss eine wiedereingebaute Regel auch finden
+  const planted = 'const x = entry.fit === "ok" && entry.fits_budget === false ? "amber" : "green";';
+  ok(/fits_budget\s*===?\s*false/.test(planted) && /fit\s*===?\s*"(ok|maybe|no)"\s*&&/.test(planted),
+     "wächter Gegenprobe: eine wiedereingebaute Regel wird NICHT gefunden — der Wächter ist blind");
+  ok(!/fits_budget\s*===?\s*false/.test('const y = entry.stage.key;'),
+     "wächter Gegenprobe: eine harmlose Zeile schlägt an — der Wächter ist zu scharf");
+}
+
+/* ── die Fixture darf nicht vom Backend wegdriften ─────────────────────────
+   panel_fixtures.js formt die Payload nach; die REGEL liegt in workouts.py und
+   wird dort geprüft. Driften die vier Wörter auseinander, prüfen die Panel-
+   Tests eine Payload, die es nicht gibt - und das ist genau der Fall, der beim
+   Bau von 0.42.0 aufgefallen ist (Urteil ohne Stufe). */
+{
+  const fs = require("fs");
+  const path = require("path");
+  const backend = fs.readFileSync(
+    path.join(__dirname, "..", "custom_components", "intervals_icu", "workouts.py"), "utf8");
+  const stagesBlock = backend.slice(backend.indexOf("STAGES: dict[str, dict[str, str]] = {"),
+                                    backend.indexOf("# The one place the objection"));
+  ok(stagesBlock.length > 100, "abgleich: STAGES im Backend nicht gefunden");
+
+  for (const [key, entry] of Object.entries(F.STAGE_WORDS)) {
+    const at = stagesBlock.indexOf('"' + key + '": {');
+    ok(at > 0, `abgleich: Stufe ${key} fehlt im Backend`);
+    const chunk = stagesBlock.slice(at, at + 400);
+    ok(chunk.includes('"' + entry.label + '"'),
+       `abgleich: Wort der Stufe ${key} weicht vom Backend ab ("${entry.label}")`);
+    ok(chunk.includes('"' + entry.word + '"'),
+       `abgleich: Beschriftung der Stufe ${key} weicht vom Backend ab`);
+  }
+  ok(Object.keys(F.STAGE_WORDS).length === 4, "abgleich: die Fixture kennt nicht vier Stufen");
+  // Gegenprobe: ein verändertes Wort muss auffallen
+  ok(!stagesBlock.includes('"gelblich"'),
+     "abgleich Gegenprobe: ein erfundenes Wort steht im Backend — Prüfung wertlos");
+
+  // und die Zusicherung aus dem Bau: die Fixture baut nie ein Urteil ohne Stufe
+  for (const kind of [undefined, "einbruch"]) {
+    for (const entry of F.workouts(kind).workouts) {
+      ok(!("fit" in entry) || (entry.stage && entry.stage.key),
+         `abgleich: Fixture ${kind || "normal"} liefert ein Urteil ohne Stufe`);
+    }
+  }
+}
+
 report("test_panel_fixes");

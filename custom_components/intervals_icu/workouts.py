@@ -483,9 +483,9 @@ STIMULUS_EVIDENCE = (
 )
 
 BLOCKED_BY = {
-    "state": "der Zustand",
-    "budget": "das Lastbudget",
-    "both": "Zustand und Lastbudget",
+    "state": ("Der Zustand", "verbietet"),
+    "budget": ("Das Lastbudget", "verbietet"),
+    "both": ("Zustand und Lastbudget", "verbieten"),
 }
 
 
@@ -583,7 +583,8 @@ def stage(fit: str, fits_budget: bool | None, recovery: bool = False) -> dict[st
 
     out = {"key": key, "blocked_by": blocked, **STAGES[key]}
     if blocked:
-        out["detail"] = f"{BLOCKED_BY[blocked].capitalize()} verbiete{'n' if blocked == 'both' else 't'} es heute."
+        subject, verb = BLOCKED_BY[blocked]
+        out["detail"] = f"{subject} {verb} es heute."
     if key == "stimulus":
         out["evidence"] = STIMULUS_EVIDENCE
     return out

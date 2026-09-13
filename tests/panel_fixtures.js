@@ -409,6 +409,34 @@ function goal(kind) {
         detail: "Gleichmäßig, DFA über 0,75.", why: "75–80 % der Einheiten.", hours: 1.4 },
     ],
   });
+  /* Week 1 as the backend hands it over: graded sessions, the scaled loads,
+   * and the ridden-against-planned block. The three sessions deliberately land
+   * on three DIFFERENT grades, so a view that prints only one of them fails. */
+  const ratedWeek = (w) => ({
+    ...w, rated: true,
+    done: { start: w.start, end: "2026-09-13", days_left: 2, sessions: 2, hours: 2.4,
+            load: 142, paired: false,
+            activities: [
+              { date: "2026-09-08", name: "Feierabendrunde", sport: "Rad", group: "ride", hours: 1.2, load: 70, intensity: 68 },
+              { date: "2026-09-10", name: "Runde zwei", sport: "Rad", group: "ride", hours: 1.2, load: 72, intensity: 69 },
+            ],
+            note: "Gefahren gegen vorgesehen — welche Fahrt welche geplante Einheit war, entscheidest du. Das Archiv führt Dauer und Last, kein Etikett; eine automatische Zuordnung wäre eine Behauptung, die hier niemand belegen kann." },
+    sessions: [
+      { ...w.sessions[0], family: "endurance", load: 159, catalogue_load: 72, catalogue_minutes: 95,
+        fit: "ok", fit_reason: "", fits_budget: false, budget: 95,
+        stage: stageOf("ok", false, true),
+        purpose: "Aerobe Basis", effect: "Kapillarisierung, mitochondriale Dichte, Fettstoffwechsel." },
+      { ...w.sessions[1], family: "sweetspot", load: 80, catalogue_load: 78, catalogue_minutes: 70,
+        fit: "maybe", fit_reason: "Beansprucht — Umfang ja, Intensität kostet heute mehr, als sie bringt.",
+        fits_budget: true, budget: 95, stage: stageOf("maybe", true, true),
+        purpose: "SweetSpot", effect: "Die meiste Schwellenanpassung pro investierter Stunde." },
+      { ...w.sessions[2], family: "endurance", load: 63, catalogue_load: 45, catalogue_minutes: 60,
+        fit: "ok", fit_reason: "", fits_budget: true, budget: 95,
+        stage: stageOf("ok", true, true),
+        purpose: "Aerobe Basis", effect: "Der Anteil, der im Dreizonenmodell 75–80 % ausmacht." },
+    ],
+  });
+
   const base = {
     profile: { goal: "long_ride", target_hours: 6.5, target_date: "2027-05-01",
       days_per_week: 4, hours_per_week: 11, longest_day_hours: 3.5, hard_days: ["Mo"],
@@ -425,8 +453,27 @@ function goal(kind) {
       longest_now: 3.5, target_hours: 6.5, gap_hours: 3.0, weeks_left: 33,
       anchor: "2026-09-07", weeks_since_start: 0,
       budget_note: null,
-      weeks: [week(1, "load", 11, 3.5), week(2, "load", 11, 3.5),
+      weeks: [ratedWeek(week(1, "load", 11, 3.5)), week(2, "load", 11, 3.5),
               week(3, "load", 11.4, 3.9, true, "specific"), week(4, "recovery", 7.2, 2.5)],
+      // only the current week carries grades (docs/ausbau.md I3)
+      no_verdict_note: "Bewertet wird erst in der Woche selbst. Das Lastbudget rechnet aus den letzten sechs Tagen, der Zustand aus den Werten von heute — Budget und Zustand von übernächstem Donnerstag kennt niemand, auch dieses Panel nicht.",
+      stages: {
+        green: { label: "grün", word: "passt", detail: "Zustand unauffällig, die Last passt ins Budget." },
+        yellow: { label: "gelb", word: "geht, kostet aber", detail: "Der Zustand trägt nur bedingt." },
+        stimulus: { label: "Reiz", word: "kostet Erholung, setzt aber den Reiz", detail: "Über dem Lastbudget, aber der Zustand trägt und die letzten Tage boten Erholung." },
+        red: { label: "rot", word: "heute nicht", detail: "Zustand oder Budget sprechen dagegen." },
+      },
+      assessment: {
+        state: "ready", state_label: "im Normalbereich", budget: 95, hard_days_last_7: 0,
+        recovery: { offered: true, quiet_days: 2, max_hard_days_7: 0,
+          recent_daily_load: 12.0, chronic_daily_load: 48.5, missing: [],
+          note: "Erholung gilt als geboten, wenn der Zustand unauffällig ist, in den letzten sieben Tagen höchstens 0 harte Tage liegen und die Last der letzten 2 Tage unter deinem chronischen Tagesschnitt bleibt. Die Bestandteile sind belegt, diese Schwellen sind gewählt — eine Setzung, keine Messung." },
+      },
+      choice: {
+        rule: "Am Tag, an dem trainiert werden soll, wählst du aus den Vorschlägen — bewertet nach Zustand und Lastbudget, entschieden von dir. Das Panel fragt nicht nach kommenden Tagen, Schichten oder Terminen.",
+        evidence: "Bei Javaloyes hatte zustandsgeführtes Training deutlich weniger Nicht-Responder — 1 von 7 gegenüber 3 von 8 mit Leistungsverlust unter festem Plan.",
+        limit: "Die Überlegenheit bei der Leistung selbst ist klein und unsicher.",
+      },
       caveat: "Der große Tag alle paar Wochen mit rund 12 % Zuwachs je Schritt ist eine Konvention, kein Studienergebnis. Ein Einbruch schlägt jeden Plan.",
     },
   };

@@ -1469,5 +1469,101 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
        "H3: die Wartezeile steht auch da, wo der juengste Block traegt");
   }
 
-  report("test_panel_views");
+  /* ── Wochenplan: Stufen nur in der laufenden Woche (docs/ausbau.md I2/I3) ──
+   Die Ansicht ist seit 0.33.0 da; neu ist, dass die LAUFENDE Woche bewertet
+   wird und die späteren einen Satz tragen statt einer Stufe. Beides wird hier
+   gegeneinander geprüft - eine Prüfung, die nur die Stufen sucht, würde eine
+   Ansicht durchlassen, die sie über alle acht Wochen druckt. */
+{
+  const q = new M.Panel();
+  q._nowIso = F.TODAY;
+  const g = F.goal();
+  const plan = g.plan;
+
+  // eingeklappt: die laufende Woche trägt Stufen an den Chips, die anderen nicht
+  const folded = q.rPlanWeeks(g);
+  clean(folded, "wochenplan");
+  contains(folded, "diese Woche", "wochenplan: die laufende Woche ist nicht markiert");
+  const weekBlocks = folded.split('class="pweek ').slice(1);
+  ok(weekBlocks.length === 4, `wochenplan: ${weekBlocks.length} Wochen statt 4`);
+  ok(/class="pstage"/.test(weekBlocks[0]), "wochenplan: laufende Woche ohne Stufe");
+  for (let i = 1; i < weekBlocks.length; i++) {
+    ok(!/class="pstage"/.test(weekBlocks[i]),
+       `wochenplan: Woche ${i + 1} trägt eine Stufe — das ist die verbotene Prognose`);
+  }
+
+  // alle drei Stufen der laufenden Woche erscheinen, jede mit Wort UND Form
+  for (const key of ["stimulus", "yellow", "green"]) {
+    contains(weekBlocks[0], plan.stages[key].label,
+             `wochenplan: Stufe ${key} fehlt an den Chips`);
+  }
+
+  // aufgeklappt: Badge, Last, Budget, Zweck
+  q._planOpen = "1";
+  const open1 = q.rPlanWeeks(g);
+  clean(open1, "wochenplan Woche 1");
+  contains(open1, plan.stages.stimulus.word, "wochenplan: das Wort der Reiz-Stufe fehlt");
+  contains(open1, "Last 159", "wochenplan: die hochgerechnete Last fehlt");
+  contains(open1, "Budget 95", "wochenplan: das Budget steht nicht neben der Last");
+  contains(open1, "Katalogeinheit 72", "wochenplan: die Kataloglast wird nicht offengelegt");
+  contains(open1, "95 min", "wochenplan: die Katalogdauer fehlt neben der Hochrechnung");
+  contains(open1, "Was das bringt", "wochenplan: die Wirkung der Einheit fehlt");
+  contains(open1, "Meeusen", "wochenplan: der Beleg der Reiz-Stufe reist nicht mit");
+  ok(!/noverdict/.test(open1.slice(open1.indexOf('class="pweek '), open1.indexOf('data-id="2"'))),
+     "wochenplan: die laufende Woche trägt den Satz für spätere Wochen");
+
+  // aufgeklappt: eine spätere Woche - Satz statt Stufe, und KEINE Lastzahl
+  q._planOpen = "3";
+  const open3 = q.rPlanWeeks(g);
+  clean(open3, "wochenplan Woche 3");
+  contains(open3, "Woche selbst", "wochenplan: der Satz für spätere Wochen fehlt");
+  const body3 = open3.slice(open3.indexOf('data-id="3"'), open3.indexOf('data-id="4"'));
+  ok(!/class="bdg"/.test(body3), "wochenplan: spätere Woche trägt ein Urteilsabzeichen");
+  ok(!/Last \d/.test(body3), "wochenplan: spätere Woche druckt eine Last, die niemand kennt");
+  contains(body3, "Langer Tag", "wochenplan: spätere Woche zeigt ihre Einheiten nicht");
+  contains(body3, "aerobe", "wochenplan: spätere Woche ohne Begründung der Einheit");
+
+  // gefahren gegen vorgesehen - und NICHTS gepaart
+  contains(folded, "gefahren", "wochenplan: der Ist-Stand fehlt");
+  contains(folded, "vorgesehen", "wochenplan: der Soll-Stand fehlt");
+  contains(folded, "2 Einheiten", "wochenplan: die gefahrenen Einheiten fehlen");
+  contains(folded, "Last 142", "wochenplan: die gefahrene Last fehlt");
+  contains(folded, "3 Einheiten", "wochenplan: die vorgesehenen Einheiten fehlen");
+  contains(folded, "noch 2 Tage", "wochenplan: die Resttage fehlen");
+  contains(folded, "entscheidest du", "wochenplan: die Grenze der Zuordnung fehlt");
+  // eine Paarung wäre eine Behauptung: keine gefahrene Einheit darf neben
+  // einem Plantitel stehen
+  const doneBlock = folded.slice(folded.indexOf('class="pwdone"'),
+                                 folded.indexOf('class="pwsess"'));
+  ok(!doneBlock.includes("SweetSpot"), "wochenplan: eine Fahrt wird einer Plan-Einheit zugeordnet");
+
+  // die Legende: vier Stufen, aus der Payload, plus die Setzung dahinter
+  contains(folded, "Die vier Stufen", "wochenplan: die Legende fehlt");
+  for (const key of ["green", "yellow", "stimulus", "red"]) {
+    contains(folded, plan.stages[key].detail, `wochenplan: Legende ohne Stufe ${key}`);
+  }
+  contains(folded, "Setzung", "wochenplan: die Erholungsregel wird nicht als Setzung beschriftet");
+
+  // der Quellenblock: BEIDE Hälften des Javaloyes-Befunds
+  contains(folded, "1 von 7", "wochenplan: die Nicht-Responder-Zahlen fehlen");
+  contains(folded, "3 von 8", "wochenplan: die Vergleichszahl fehlt");
+  contains(folded, "klein und unsicher", "wochenplan: die Grenze des Befunds fehlt");
+  contains(folded, "fragt nicht nach kommenden Tagen",
+           "wochenplan: die Regel, dass nicht vorab gefragt wird, fehlt");
+
+  // eine Legende ohne Stufen in der Payload erfindet keine
+  const bare = F.goal();
+  delete bare.plan.stages;
+  const noLegend = q.rPlanWeeks(bare);
+  ok(!/Die vier Stufen/.test(noLegend),
+     "wochenplan: die Legende wird ohne Payload erfunden");
+  // und eine Woche ohne Bewertung zeigt keine Stufe, auch wenn die Sitzungen
+  // noch eine tragen
+  const unrated = F.goal();
+  unrated.plan.weeks[0].rated = false;
+  ok(!/class="pstage"/.test(q.rPlanWeeks(unrated)),
+     "wochenplan: Stufen erscheinen ohne rated-Marke");
+}
+
+report("test_panel_views");
 })();
