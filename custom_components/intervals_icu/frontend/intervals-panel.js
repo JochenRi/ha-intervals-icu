@@ -291,6 +291,15 @@ function domainOf(seriesList, pad) {
   return [lo - pd, hi + pd];
 }
 
+/* Der Zeitraum, ueber den DFA-Daten VORLIEGEN - immer neben der DFA-Zahl und
+ * nie neben dem Wellness-Zeitraum. Fehlen die Felder (aelteres Backend), wird
+ * NICHTS behauptet: lieber keine Angabe als eine geliehene. */
+function dfaSpan(s) {
+  if (!s || !s.dfa_done || !s.dfa_from || !s.dfa_to) return "";
+  const days = Math.round((Date.parse(s.dfa_to) - Date.parse(s.dfa_from)) / 864e5) + 1;
+  return ` <span class="mut">(ab ${dMed(s.dfa_from)}, ${fmt(days)} Tage)</span>`;
+}
+
 /* chart(): one x-index-based panel. Options:
  * w,h,padL,padR,padT,padB, n (point count), y0,y1, yf(v) tick format,
  * bands [{a,b,c,op}] horizontal tint bands, hl [{y,c,d,t}] reference lines,
@@ -998,6 +1007,23 @@ class IntervalsIcuPanel extends HTMLElement {
      eingefärbt, statt die Zahl zu erfinden. Quelltext-Wächter dagegen in
      test_panel_fixes.js: eine Ziffer 5 neben "decoupling"/"drop" lässt die
      Suite fallen. */
+  /* Der Historienbeginn, dort wo er gebraucht wird: WIE WEIT eine DFA-Aussage
+   * ueberhaupt zurueckreicht. Der Satz erscheint nur, wenn die DFA-Daten
+   * SPAETER beginnen als die Aktivitaeten - sonst gaebe es nichts zu sagen und
+   * ein Dauerhinweis stumpft ab. Gleiche Klasse wie "welche Fahrten zaehlen
+   * und welche nicht" (docs/ausbau.md, Historienbeginn). */
+  _historyNote() {
+    const s = this._status;
+    if (!s || !s.dfa_from || !s.dfa_done) return "";
+    if (!s.activities_from || s.activities_from >= s.dfa_from) return "";
+    const days = Math.round((Date.parse(s.dfa_to || s.dfa_from) - Date.parse(s.dfa_from)) / 864e5) + 1;
+    const span = Math.round((Date.parse(s.dfa_to || s.dfa_from) - Date.parse(s.activities_from)) / 864e5) + 1;
+    return `<p class="hint">${ico("info", C.blue, 13)} Die DFA-Auswertung beginnt am
+      <b>${dMed(s.dfa_from)}</b>: ${fmt(s.dfa_done)} Auswertungen über <b>${fmt(days)} Tage</b>,
+      während der Bestand ${fmt(span)} Tage zurückreicht. Jede DFA-gestützte Aussage stützt
+      sich auf den kürzeren Zeitraum.</p>`;
+  }
+
   _decGood() {
     const a = this._status && this._status.decoupling_good;
     if (a != null) return a;
@@ -1305,8 +1331,12 @@ class IntervalsIcuPanel extends HTMLElement {
     ).join("");
     const hs = this.shadowRoot.getElementById("hstat");
     const s = this._status;
+    // Die DFA-Zahl traegt IHREN Zeitraum, nicht den der Wellness-Tage. Bis
+    // 0.44.0 stand "58 DFA" direkt neben "489 Tage" und legte nahe, die 58
+    // verteilten sich darueber - sie liegen alle in den letzten 105 Tagen.
+    // Keine fehlende Angabe, sondern eine irrefuehrende Nachbarschaft.
     hs.innerHTML = s
-      ? `${s.importing ? '<span class="pulse">Import läuft …</span> · ' : ""}${fmt(s.activities)} Einheiten · ${fmt(s.wellness_days)} Tage · ${fmt(s.dfa_done)} DFA${s.athlete ? " · " + esc(s.athlete) : ""}`
+      ? `${s.importing ? '<span class="pulse">Import läuft …</span> · ' : ""}${fmt(s.activities)} Einheiten · ${fmt(s.wellness_days)} Tage · ${fmt(s.dfa_done)} DFA${dfaSpan(s)}${s.athlete ? " · " + esc(s.athlete) : ""}`
       : "";
     this._grp = {};
     let html = "";
@@ -4015,6 +4045,7 @@ class IntervalsIcuPanel extends HTMLElement {
 
     return `
       ${this._dfaExplain()}
+      ${this._historyNote()}
       ${this._dfaBar(groups, sportFilter, picker)}
       <div class="statgrid card lead">
         <div class="stat wide"><small>Aktuelle aerobe Schwelle</small>

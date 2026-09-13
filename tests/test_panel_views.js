@@ -925,6 +925,47 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   clean(q.rDfa(bare, "all"), "dfa ohne die neuen Felder");
 }
 
+/* ── der Historienbeginn: die DFA-Zahl traegt IHREN Zeitraum ───────────── */
+{
+  // Ein Bestand, dessen DFA-Daten SPAETER beginnen als die Aktivitaeten -
+  // genau die Lage am lebenden System (58 Auswertungen ab 31.05. in einem
+  // Bestand ueber 489 Tage). Die Kopfzeile stellte die 58 neben die 489 und
+  // erzeugte damit den gegenteiligen Eindruck.
+  const spaet = { activities: 240, wellness_days: 489, dfa_done: 58,
+                  activities_from: "2025-05-12", dfa_from: "2026-05-31",
+                  dfa_to: "2026-09-13", importing: false, decoupling_good: 5.0 };
+  const kopf = M.dfaSpan(spaet);
+  ok(/ab /.test(kopf), "historie: die DFA-Zahl nennt ihren eigenen Beginn nicht");
+  ok(/106 Tage/.test(kopf), `historie: eigener Zeitraum falsch gerechnet (${kopf})`);
+  ok(!/489/.test(kopf), "historie: die DFA-Zahl leiht sich den Wellness-Zeitraum");
+
+  const q = new M.Panel();
+  q._nowIso = F.TODAY;
+  q._win.dfa = { id: "all" };
+  q._status = spaet;
+  const html = String(q.rDfa(thr, "all"));
+  clean(html, "dfa mit spaetem Historienbeginn");
+  contains(html, "Die DFA-Auswertung beginnt am", "historie: der Reiter weist den Beginn nicht aus");
+  ok(/106 Tage/.test(html), "historie: der Reiter nennt den DFA-Zeitraum nicht");
+  ok(/490 Tage zurückreicht/.test(html), "historie: der Reiter nennt den Bestandszeitraum nicht");
+
+  // GEGENFALL, gezaehlt und benannt: decken sich beide Zeitraeume, gibt es
+  // nichts zu sagen - ein Dauerhinweis stumpft ab und waere selbst wieder
+  // eine Behauptung. Ohne diesen Fall prueft der Test oben nur, dass der Satz
+  // ueberhaupt erzeugt werden kann.
+  const deckt = { ...spaet, activities_from: "2026-05-31" };
+  const q2 = new M.Panel();
+  q2._nowIso = F.TODAY; q2._win.dfa = { id: "all" }; q2._status = deckt;
+  ok(!/Die DFA-Auswertung beginnt am/.test(String(q2.rDfa(thr, "all"))),
+     "historie: Hinweis auch bei deckungsgleichem Zeitraum");
+  // und ein aelteres Backend ohne die Felder behauptet NICHTS
+  const q3 = new M.Panel();
+  q3._nowIso = F.TODAY; q3._win.dfa = { id: "all" };
+  q3._status = { activities: 240, wellness_days: 489, dfa_done: 58 };
+  ok(M.dfaSpan(q3._status) === "", "historie: ohne die Felder wird ein Zeitraum erfunden");
+  clean(String(q3.rDfa(thr, "all")), "dfa ohne Historienfelder");
+}
+
 /* ── A5  die aufgeklappte Signalkarte bekommt eine Achse ───────────────── */
 {
   const q = new M.Panel();

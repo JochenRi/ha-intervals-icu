@@ -358,13 +358,33 @@ def threshold_series(
 def archive_stats(data: dict[str, Any]) -> dict[str, Any]:
     """Return a short summary of what the archive currently holds."""
     days = sorted(data["wellness"])
+    # The DFA readings have their OWN period, and it is shorter than the
+    # archive's. Until 0.44.0 the header put "58 DFA" next to "489 Tage" and
+    # thereby suggested the 58 were spread over those 489 - they all sit in
+    # the last 105. Not a missing figure but a misleading neighbourhood
+    # (docs/ausbau.md, "Historienbeginn"), so the period travels WITH its
+    # count instead of borrowing the wellness one.
+    dfa_days = sorted(
+        str((data["activities"].get(key) or {}).get("start_date_local") or "")[:10]
+        for key, summary in data["dfa"].items()
+        if summary and (data["activities"].get(key) or {}).get("start_date_local")
+    )
+    act_days = sorted(
+        str(activity.get("start_date_local") or "")[:10]
+        for activity in data["activities"].values()
+        if activity.get("start_date_local")
+    )
     return {
         "wellness_days": len(days),
         "wellness_from": days[0] if days else None,
         "wellness_to": days[-1] if days else None,
         "activities": len(data["activities"]),
+        "activities_from": act_days[0] if act_days else None,
+        "activities_to": act_days[-1] if act_days else None,
         "unavailable": len(data["unavailable"]),
         "dfa_done": sum(1 for value in data["dfa"].values() if value),
+        "dfa_from": dfa_days[0] if dfa_days else None,
+        "dfa_to": dfa_days[-1] if dfa_days else None,
         "dfa_pending": len(pending_dfa(data)),
         "last_import": data.get("last_import"),
     }

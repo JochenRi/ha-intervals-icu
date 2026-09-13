@@ -241,6 +241,40 @@ async def main():
     check("Statistik: offene DFA", stats["dfa_pending"], 0)
     check("Statistik: nicht abrufbar", stats["unavailable"], 8)
 
+    # --- der Historienbeginn (docs/ausbau.md, eigener Punkt) -----------------
+    # Ein Bestand, dessen DFA-Daten SPAETER beginnen als die Aktivitaeten: die
+    # Kopfzeile stellte "58 DFA" neben den Wellness-Zeitraum und legte damit
+    # nahe, die Auswertungen verteilten sich darueber. Beide Zeitraeume muessen
+    # getrennt herauskommen - sonst leiht sich die DFA-Zahl einen fremden.
+    spaet = importer.empty_data("a9")
+    spaet["wellness"] = {"2025-01-01": {}, "2026-09-13": {}}
+    spaet["activities"] = {
+        "alt1": {"start_date_local": "2025-05-02T09:00:00", "type": "Ride"},
+        "alt2": {"start_date_local": "2026-01-07T09:00:00", "type": "Ride"},
+        "neu1": {"start_date_local": "2026-08-01T09:00:00", "type": "Ride"},
+        "neu2": {"start_date_local": "2026-09-10T09:00:00", "type": "Ride"},
+    }
+    spaet["dfa"] = {"neu1": {"samples": 900, "hr_at_threshold": 151, "hr_windows": 40},
+                    "neu2": {"samples": 900, "hr_at_threshold": 153, "hr_windows": 44}}
+    st = importer.archive_stats(spaet)
+    check("Historienbeginn: Aktivitäten reichen weiter zurück", st["activities_from"], "2025-05-02")
+    check("Historienbeginn: die DFA-Daten beginnen später", st["dfa_from"], "2026-08-01")
+    check("Historienbeginn: DFA-Ende getrennt ausgewiesen", st["dfa_to"], "2026-09-10")
+    check("Historienbeginn: die Zeiträume fallen NICHT zusammen",
+          st["dfa_from"] != st["activities_from"], True)
+    # Die Gegenprobe, GEZAEHLT UND BENANNT: deckt sich der DFA-Zeitraum mit dem
+    # Bestand, muessen beide Felder gleich herauskommen - sonst prueft die
+    # Ungleichheit oben nur, dass irgendetwas verschieden ist.
+    deckt = importer.empty_data("a9")
+    deckt["activities"] = {"x": {"start_date_local": "2026-08-01T09:00:00", "type": "Ride"}}
+    deckt["dfa"] = {"x": {"samples": 900, "hr_at_threshold": 151, "hr_windows": 40}}
+    check("Gegenprobe: deckungsgleicher Bestand liefert denselben Beginn",
+          importer.archive_stats(deckt)["dfa_from"],
+          importer.archive_stats(deckt)["activities_from"])
+    # Und der leere Fall behauptet nichts, statt heute zu behaupten.
+    leer = importer.archive_stats(importer.empty_data("a9"))
+    check("leerer Bestand behauptet keinen DFA-Beginn", leer["dfa_from"], None)
+
     # --- threshold series: the join key and the session's own numbers --------
     # The DFA tab keys its selection on the activity_id, jumps into the
     # activity with it, and shows the session's duration/load/HR next to the

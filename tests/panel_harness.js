@@ -61,7 +61,7 @@ function load() {
       C, ROLE, SPORT, ST, IC, STAGE_TONE, CTX_COLOR, chart, spark, bullet, monthTicks, dayAxis, domainOf,
       WINDOWS, WIN_DEFAULT, winDef, winRange, winApply, winChips, isoMinus,
       tickVals, movAvg, rollMedian, median, meanOf, fmt, sign, dur, hhmm, hmn,
-      dShort, dMed, dLong, groupKey, sportOf, esc,
+      dShort, dMed, dLong, groupKey, sportOf, esc, dfaSpan,
     });`);
   return { Panel: defined["intervals-icu-panel"], ...exported };
 }
