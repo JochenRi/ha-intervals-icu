@@ -1709,7 +1709,11 @@ class IntervalsIcuPanel extends HTMLElement {
     return `<style>${this._css()}</style>
     <div id="app">
       <header>
-        <div class="brand">Intervals.icu</div>
+        <!-- TEMPORAER, EINMALIG: Gruss an Michael, von dem das Trainingswissen
+             hinter diesem Projekt stammt. GEHOERT WIEDER RAUS - siehe den
+             offenen Punkt in PROJEKTSTAND §12. Eigener Commit, damit er sich
+             sauber zurueckdrehen laesst. -->
+        <div class="brand">Intervals.icu <span style="font-weight:400;opacity:.85">— Guten Morgen Michael ♥</span></div>
         <div id="hstat" class="hstat"></div>
         <button class="syncbtn" data-act="sync"
           title="Prüfen, ob Einheiten in Intervals gelöscht wurden - liest nur">
