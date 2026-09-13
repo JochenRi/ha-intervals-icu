@@ -7,7 +7,7 @@ Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lok
 archiviert, auswertet und in einem eigenen Seitenleisten-Panel darstellt.
 
 **Umfang:** ~14.760 Zeilen, davon ~4.960 Frontend · 27 WebSocket-Befehle · 16 Einheiten in
-9 Familien · 17 Testdateien mit **5.177** gezählten Einzelprüfungen · 51 Releases.
+9 Familien · 17 Testdateien mit **5.177** gezählten Einzelprüfungen · 52 Releases.
 
 ---
 
@@ -193,6 +193,37 @@ Recherche:
 ---
 
 ## 7. Fehler und was sie gelehrt haben
+
+**0.47.0 — ein Befund aus dem Bau von L4.**
+
+**1 · Die Wattvorgaben kamen aus der FTP, nicht aus dem Anker — und beide zeigten
+dieselbe Zahl.** Vor dem Bau stand die Frage: gilt künftig die 146 W aus
+`coach.anchors` oder die 154 W der Kurve? **Die Frage war falsch gestellt.**
+`scaled()` rechnet `blocks_w` aus `ftp * prozent / 100`; der Anker steuert
+**keine einzige Wattvorgabe**. Er wird für die Plausibilitätsregel, die
+Konfliktwarnung und — über `aerobic_hr` — für die Herzfrequenzfenster benutzt.
+Die 146 W der Grundlageneinheit sind 68 % von 215 W.
+
+**Dass beide Wege bei derselben Zahl landen, ist Zufall** — und genau deshalb
+ist es niemandem aufgefallen. **Zwei Zahlen, die sich zufällig treffen,
+verbergen den Unterschied besser als zwei, die auseinanderliegen:** bei einer
+Abweichung fragt jemand nach, bei Gleichstand niemand. Bewegt sich der
+Profilwert, springt jede Grundlagenvorgabe mit, ohne dass eine Messung sich
+gerührt hätte.
+
+**Ich habe den Fehler selbst festgeschrieben.** Der Rechenweg der Kachel sagte
+seit 0.46.0, der Trainer verankere seine Einheiten auf dem Anker-Median. Das
+stimmte nie. Der Satz ist korrigiert und nennt jetzt die FTP als die Zahl, die
+tatsächlich steuert. **Am Feld prüfen, nicht am Text** — Lehre 1 aus Paket A,
+diesmal von mir selbst gerissen, und zwar in einem Text, der erklären sollte,
+warum zwei Zahlen auseinanderliegen.
+
+**Nebenbefund, den der Athlet wissen muss:** die Katalogvorgabe für SweetSpot
+sind 88 % von 215 W = 189 W; gefahren werden rund 180 W. Gegen die
+`icu_rolling_ftp` (193 W) sind das 94 % — die Einheit landet im richtigen
+Bereich, **weil sich zwei Fehler aufheben**: überhöhter Profilwert nach oben,
+Fahrweise darunter. Ein Wechsel auf die rollende FTP ohne weitere Änderung
+ergäbe 170 W und machte die Einheit zu leicht.
 
 **0.46.0 — vier Befunde aus dem Umbau von Paket L.**
 
@@ -391,6 +422,12 @@ Verfahren statt dreier Einzelfälle:
 | `JUDGEMENT_FUNCTIONS` (Vorgabewerte) | 0.44.0 | `fatigued_session()` und `scaled()` |
 | Versionsmarken in `store.async_load` | 0.45.0 | `fields_version` |
 | geprüfte Kacheln im Quelltext-Wächter | 0.45.0 | `rFatigue` |
+| `curve` unter den Urteilseingängen | 0.47.0 | die Wattvorgabe fiele sonst stillschweigend auf die FTP zurück |
+
+**Vier Mal dieselbe Form, und die ZAHL DER FÄLLE ist selbst die Aussage:** das
+ist kein Muster mehr, das man erkennt, sondern eines, mit dem man rechnet. Jede
+neue handgepflegte Liste bekommt ihre Vollständigkeitsprüfung mit, bevor sie
+zum vierten Mal jemandem auffällt.
 
 **Regel: eine von Hand gepflegte Liste braucht eine Prüfung, die das Pflegen
 erzwingt.** Ohne sie schützt der Wächter genau bis zum nächsten Fall, an den
@@ -1190,6 +1227,7 @@ bzw. ein Reiter je Chat.
 | **Durability-Messung als Einheit (Paket K, Stufe 1)** | ✅ gebaut als **0.44.0**. K1 und K2; K3 (die Hantel) bleibt zurückgestellt, bis zwei Messungen vorliegen. Die Spezifikation wurde vor dem Bau an drei Stellen korrigiert: K1 war **nicht** „nur `workouts.py`" (der 20-Minuten-Bestwert steht in keinem Feld, also zieht K2 das ganze J7 mit rein — Archivblock, Migration, Messweg aus den ungedünnten Strömen); die Lastregel aus I3 gilt bei **konstanter** Intensität und ist für eine Einheit mit fester Arbeit und abgeleiteter Dauer nicht anwendbar (jetzt gerechnet statt skaliert); und die Ausschlusswarnung zielte auf `DURABILITY_EXCLUDED_TYPES`, während in Wahrheit der **Intensitätsfilter** beißt. Verifikation am System steht aus |
 | **Durability-Kachel (Paket H)** | ✅ gebaut als **0.41.0**. Kopfbereich aus drei Zeilen: belegte Fähigkeit (längste gleichmäßige Fahrt nach ZEIT, mit der Leistung dieser Fahrt), Bezug der letzten 30 Tage mit sichtbarer Ausweitung, nächster Schritt ×1,10 auf fünf Minuten gerundet. Die Spezifikation wurde vor dem Bau an drei Stellen korrigiert: H war **nicht** frontend-only (Dauer und Leistung fehlten in der Payload), der Rückfall ist die **Regel** statt einer Ausnahme (am Livebestand 230 gegen 260 min bei gefülltem Fenster), und vier Fallen fehlten. Verifikation am System steht aus |
 | **Trainer (Ermüdungskurve, Paket L)** | ✅ gebaut als **0.45.0**, in **0.46.0** an ihren Platz gerückt: sie ist das Hauptbild der Durability-Kachel im Trainer und ersetzt dort die Punktwolke — vorher stand sie im DFA-Reiter neben einer zweiten Kachel zur selben Frage (§7). Dazu die fehlende Bedienung (Ablesestreifen, Zeiger, Wertetabelle, beide Leserichtungen) und die gepaarte Gegenrechnung zum Auswahleffekt. L1/L1a/L1b: Anker gemessen (Repräsentantenmethode je Fahrtstunde, aus den ungedünnten Strömen beim Import), Form nach Gallo gesetzt und daran verankert, Unsicherheitsband aus der publizierten Streuung. Die Bereichsgrenzen rechnen sich aus der Belegung — zwei Bestände ergeben nachweislich zwei Grenzen. Vorgeschaltet zwei Bugfixes, die heute schon wirken: die Plausibilitätsregel an EINER Stelle statt in fünf Fassungen, und der Historienbeginn. Die Spezifikation wurde vor dem Bau an vier Stellen korrigiert: L1 war NICHT payload-fertig (das Archiv trug ein Fenstermittel je Fahrt, keinen Stundenverlauf — also Algorithmus-Bump, Neuberechnung, Fortschrittsanzeige), die Ausdünnung ist auf dem Importweg gar nicht da, der VI kann strukturierte Einheiten nicht trennen (§7), und L2–L6 existieren nicht und wurden nicht erfunden. Verifikation am System steht aus |
+| **Trainer (Wattvorgaben, Paket L4)** | ✅ gebaut als **0.47.0**. Grundlage und lange Fahrt beziehen ihre Watt aus der gemessenen Kurve, gestaffelt nach Fahrtdauer auf der gepaarten Reihe; die übrigen Familien bleiben bei der FTP, die dort als **Rückfall** beschriftet ist. Die Einheitenkarte nennt je Abschnitt, ob die Zahl gemessen oder Studienform ist. Die Spezifikation wurde vor dem Bau an einer Stelle korrigiert: nicht „SweetSpot liegt außerhalb des Messbereichs" (falsch — es liegt drin), sondern „aus arbiträren Fahrten ist dort kein tragfähiger Fit zu gewinnen". Dazu `p050` und die Signalqualität unter alpha 0,5 erhoben, von nichts benutzt. Verifikation am System steht aus |
 | **Konstanten-Dubletten (DFA/ACWR) + toter ring()/rd-Code** | ⬜ eigenes Paket, vom Wächter bei 2+2 eingefroren (docs/ausbau.md) |
 | Heute, Kalender (voller Audit), Fitness, Aktivitäten | offen |
 

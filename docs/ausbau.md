@@ -2357,6 +2357,106 @@ nicht nebeneinander sehen konnte (PROJEKTSTAND §7, 0.46.0).
 - Das Entkopplungs-Diagramm im BELASTUNGS-Reiter ist eine andere Stelle
   (`analytics.decoupling_series`) und bleibt unangetastet.
 
+### L4 · Die Wattvorgabe kommt aus der Messung (gebaut 0.47.0)
+
+**Welche Familien, und warum genau die.** Grundlage und lange Fahrt beziehen
+ihre Wattvorgabe aus der Kurve, die übrigen bleiben bei der FTP-Skalierung.
+
+**Die Begründung ist NICHT „SweetSpot liegt außerhalb des Messbereichs" — das
+ist falsch, und die erste Fassung dieses Abschnitts behauptete es.** Gemessen am
+eigenen Bestand liegt die SweetSpot-Leistung mitten im messbaren Band: im
+Fenster alpha 0,70–0,80 werden dort 180–185 W getreten. Der Grund ist ein
+anderer und liegt bei der QUELLE, nicht beim Bereich:
+
+> **Aus einer Fahrt mit Blöcken und Pausen ist kein tragfähiger Fit zu
+> gewinnen.** Die Repräsentantengerade läuft dort über ZWEI getrennte
+> Punktwolken — Block bei niedrigem alpha und hoher Leistung, Pause umgekehrt.
+> Gemessen an der SweetSpot-Fahrt vom 24.08.2026: alpha-Spanne 0,25 bis 1,77
+> **in derselben Stunde**, und P(0,75) ergibt 181 W im Block-Abschnitt gegen
+> 153,8 W beim Ausfahren **derselben Fahrt**. Was bei 0,75 herauskommt, ist ein
+> Punkt auf einer Geraden zwischen zwei Zuständen, keine Messung an der Schwelle.
+
+**Der Weg zu Vorgaben für die übrigen Familien führt deshalb über eine EIGENE
+MESSEINHEIT** — einen Stufentest, der den Bereich gleichmäßig durchläuft —
+**nicht über die FTP.** Die FTP ist dort **Rückfall**, und die Einheitenkarte
+beschriftet sie als solchen.
+
+**Wie gestaffelt wird.** Auf der GEPAARTEN Reihe; die ungepaarte trägt einen
+nachgewiesenen Auswahlanteil. Bis zur letzten gemessenen Stunde ist es Messung,
+darüber Studienform — und welches von beidem, sagt **jeder Abschnitt der
+Einheitenkarte selbst**, nicht eine Fußzeile. Trägt ein gepaarter Schritt nicht,
+wird nicht auf ihm gestaffelt. Ein- und Ausrollen bleiben Prozent der FTP: das
+sind Prozentangaben auf eine Schwelle, die dort nicht gemessen wurde.
+
+**Die Kurve begrenzt NICHT die Dauer** (das macht die Progressionsregel aus H2)
+und ersetzt NICHT die Zustandsbewertung aus Paket I.
+
+### L4a · Warum der Plan neben die Kurve schickt — und warum nicht durch Streuung
+
+Liegt jede Fahrt exakt auf der Kurve, liegen alle neuen Messpunkte auf der Kurve
+und sie versteinert. Gebaut ist die Gegenprobe **aus dem Aufbau der Einheit**:
+der Endblock der langen Fahrt (`z2_210_late`, 88 % FTP) ist nicht als
+„gleichmäßig" markiert, bleibt deshalb FTP-skaliert und liegt über der Kurve.
+
+**Warum nicht künstliche Streuung:** eine erfundene Abweichung müsste erklärt
+werden, hätte keine Begründung im Trainingsaufbau und wäre beim nächsten Umbau
+das Erste, was jemand „aufräumt". Eine, die aus der Struktur der Einheit folgt,
+erklärt sich selbst und überlebt.
+
+**Offener Punkt, gemessen und nicht gelöst: das reicht vermutlich nicht.** Ein
+Endblock sitzt am Ende einer Fahrt ab drei Stunden. Am eigenen Bestand
+(105 Tage DFA-Historie) erreichen **fünf** Fahrten die dritte Stunde und
+**drei** die vierte — eine Gegenprobe alle drei bis fünf Wochen. Für eine Kurve,
+die laufend neue Punkte bekommt, ist das dünn. **Wer hier weiterbaut, braucht
+eine zweite Quelle für Punkte oberhalb der Kurve** — die naheliegende ist der
+Stufentest aus der Richtungsentscheidung, der ohnehin gebraucht wird.
+
+### Richtungsentscheidung: die eigene Messung vor dem Profilfeld
+
+**Festgelegt am 13.09.2026.** Die DFA-Messung ist die maßgebliche Größe, nicht
+die FTP: die FTP ist eine Eintragung in einem Profil, der alpha-Wert eine
+Messung aus eigenen Fahrten. Daraus folgt für alles Weitere:
+
+1. **FTP-Skalierung ist RÜCKFALL, nicht Regel.** Wo eine eigene Messung
+   vorliegt, gilt sie; wo keine vorliegt, wird sichtbar zurückgefallen, mit
+   Angabe warum — nie stillschweigend.
+2. **Die obere Schwelle ist methodisch die zuverlässigere, das Signal dort
+   schlechter.** In Radstudien: HRVT1 ICC 0,87 / typischer Fehler 18 W gegen
+   HRVT2 ICC 0,97 / 5 W; eine Ruderstudie nennt HRVT1 ausdrücklich weniger
+   geeignet für Trainingssteuerung. Umgekehrt zeigt ein Gurtvergleich gegen EKG
+   bei niedriger Intensität etwa ±10 % Abweichung im DFA-Wert, bei hoher
+   +58 bis −41 %. **Methode oben besser, Aufzeichnung oben schlechter — beides
+   muss gemessen sein, bevor darauf gebaut wird.** `p050` und der Anteil
+   verworfener Punkte unterhalb alpha 0,5 werden seit 0.47.0 erhoben und von
+   nichts benutzt.
+3. **Die tragfähige Frage ist nicht „welcher alpha-Wert IST die Schwelle",
+   sondern „bei welcher Leistung erreiche ich MEINEN eigenen Wert"** (Physiol
+   Rep 2026, Olieslagers et al.). Wer bei 175 W einen persönlichen Wert von 0,85
+   zeigt und ihn später bei 225 W erreicht, hat sich belegbar verbessert — ohne
+   Labortest.
+
+### Offene Punkte, damit sie nicht untergehen
+
+**L6 · `coach.anchors` auf die Kurve umstellen.** Heute rechnet der Anker das
+Fenstermittel über die ganze Fahrt, die Kurve den Fit bei genau 0,75 auf der
+ersten Stunde. Methodisch ist der Fit sauberer. **Nicht nebenbei umstellen:** am
+Anker hängen die Herzfrequenzfenster jeder Einheit, die Plausibilitätsregel aus
+K0 und die Konfliktwarnung. Eigener Schritt mit eigener Vorher-Nachher-Messung.
+
+**Die FTP-Quelle.** Der Profilwert steht auf 215 W, `icu_rolling_ftp` bei
+191–194, die gemessene 20-Minuten-Bestleistung bei 192 — der steuernde Wert
+steht rund 10 % zu hoch. **Ein Wechsel ist mehr als ein Feldwechsel:**
+`_latest_ftp()` trägt eine eigene Quellenlogik mit Vorrangregeln, und an ihr
+hängen außer den Wattvorgaben auch `anchor_conflict()` (die Warnung FTP gegen
+gemessene Schwelle) und `protocol_load()` (die Lastrechnung jeder Einheit). Wer
+das angeht, prüft alle drei zusammen — und rechnet vor, was sich je Einheit
+verschiebt.
+
+**Der Stufentest.** Eine eigene Katalogeinheit, die den Bereich stufenweise
+durchläuft und beide Schwellen in Watt misst — analog zum Durability-Test aus
+Paket K, aber kürzer und ohne Vollgas. Er löst gleich zwei offene Punkte: die
+Vorgaben für die übrigen Familien, und die zu dünne Gegenprobe aus L4a.
+
 ### Hausmuster für die Kachel
 
 Leitzahl oben, Beleg darunter, aufklappbarer Rechenweg, **Beleg und Setzung
