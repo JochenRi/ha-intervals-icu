@@ -661,6 +661,8 @@ function bullet(b) {
 // What _boot fetches up front. Named here so a failed boot can mark exactly
 // those payloads as failed instead of leaving their views in a loading hint
 // that never resolves.
+const ROLE_LABEL = { long: "Lange Fahrt", quality: "Qualität", endurance: "Grundlage" };
+
 const BOOT_KEYS = ["status", "readiness", "days", "load", "coach", "day_context"];
 
 const TABS = [
@@ -707,6 +709,7 @@ class IntervalsIcuPanel extends HTMLElement {
     // stayed missing from 0.20.0 to 0.42.0 without anyone noticing.
     this._asked = {};
     this._failed = {};
+    this._psOpen = null;
     this._grp = {};
     this._range = 182;
     this._weeks = 12;
@@ -1407,6 +1410,11 @@ class IntervalsIcuPanel extends HTMLElement {
       else if (act === "wodetail") {
         this._woOpen = (this._woOpen === id ? null : id); this._render();
       }
+      // the same card in the week view - its own open-state, because the same
+      // session key can appear in more than one week
+      else if (act === "psdetail") {
+        this._psOpen = (this._psOpen === id ? null : id); this._render();
+      }
       else if (act === "goaledit") {
         this._goalDraft = {};   // start clean: two questions, not a filled form
         this._goalEdit = true; this._render();
@@ -1722,77 +1730,128 @@ class IntervalsIcuPanel extends HTMLElement {
     return `<div class="wobar">${segs}</div>`;
   }
 
+  /* Which explanations are shared by SEVERAL sessions of the same list.
+
+     A state warning belongs to the state, not to the session - printed on
+     every card it is the same sentence three times, and nobody reads it the
+     third time. It goes above the list ONCE; only a reason that belongs to a
+     single session stays on its card (docs/ausbau.md I10). */
+  _sharedReasons(list) {
+    const seen = new Map();
+    for (const entry of list || []) {
+      const reason = (entry || {}).fit_reason;
+      if (reason) seen.set(reason, (seen.get(reason) || 0) + 1);
+    }
+    return new Set([...seen.entries()].filter(([, n]) => n > 1).map(([r]) => r));
+  }
+
+  _reasonRow(reason, tone) {
+    return `<div class="warnrow">${ico(tone === "red" ? "warn" : "info",
+      tone === "red" ? C.red : C.amber, 16)} <span>${esc(reason)}</span></div>`;
+  }
+
+  /* ONE session card, for both views.
+
+     The trainer tab and the week view show the same thing - a session, what it
+     is made of, and what it costs today. Until 0.42.2 the week view had its
+     own, poorer shape: no segment bar, no heart-rate window, no purpose line,
+     five paragraphs of prose instead. A second, thinner rendering of the same
+     object is the layout version of a second rule in the house.
+
+     `o` carries what differs, and only that: whether the card is open, what it
+     may print in its head, which reasons were already said above, and whether
+     the calendar buttons belong here (they need a DATE, which a planned week
+     does not have). */
+  _sessionCard(entry, o) {
+    const opts = o || {};
+    const st = entry.stage || {};
+    const tone = STAGE_TONE[st.key] || "unknown";
+    const word = st.key === "stimulus" && opts.budget != null
+      ? `${st.word} (über dem Budget von ${fmt(opts.budget)})`
+      : `${st.word}${st.key === "green" && opts.todayWord ? " heute" : ""}`;
+    const hrw = entry.hr_window;
+    const blocks = entry.blocks_w || entry.blocks;
+    const planned = opts.plannedHours;
+    // The duration line states BOTH numbers where they differ: the template is
+    // 95 minutes, the planned ride is 4 hours, and hiding either would be the
+    // half-truth the load bug was made of.
+    const dur = planned
+      ? `geplant ${fmt(planned, 1)} h · Vorlage ${entry.minutes} min`
+      : `${entry.minutes} min`;
+    const loadTxt = `Last ${fmt(entry.load)}${opts.budget != null ? ` · Budget ${fmt(opts.budget)}` : ""}`;
+    const openKey = opts.openKey || entry.key;
+
+    return `<div class="wocard ${opts.recommended ? "first" : ""}">
+      ${opts.recommended ? `<div class="recflag">${ico("ok", C.green, 14)}
+        das ist die Empfehlung von oben</div>` : ""}
+      <div class="wohead">
+        <div>
+          <div class="wofam">${esc(entry.family_label || "")}</div>
+          <div class="wotitle">${esc(entry.title)}</div>
+          <div class="wometa">${esc(entry.purpose || "")} · ${dur} · ${loadTxt}${
+            hrw ? ` · ${hrw[0]}–${hrw[1]} bpm` : ""}</div>
+        </div>
+        ${st.key ? badge(tone, word) : ""}
+      </div>
+      ${this._woBar(entry, opts.ftp)}
+      <div class="wosteps">${(blocks || []).map(([min, val, label]) =>
+        `<span><b>${min}′</b> ${esc(label)} <em>${entry.blocks_w ? val + " W" : val + " % FTP"}</em></span>`).join("")}</div>
+      ${entry.effect ? `<p class="effect"><b>Was das bringt:</b> ${esc(entry.effect)}</p>` : ""}
+      ${entry.fit_reason && !(opts.saidAbove || new Set()).has(entry.fit_reason)
+        ? `<p class="fitwhy">${ico(st.key === "red" ? "warn" : "info",
+            st.key === "red" ? C.red : C.amber, 14)} ${esc(entry.fit_reason)}</p>` : ""}
+
+      <div class="worow">
+        ${opts.planDates ? `<button class="planbtn" data-act="plan" data-id="${esc(entry.key)}"
+          data-when="${opts.planDates[0]}">${ico("cal", null, 15)} heute in den Kalender</button>
+        <button class="planbtn ghost" data-act="plan" data-id="${esc(entry.key)}"
+          data-when="${opts.planDates[1]}">morgen</button>` : ""}
+        <button class="chipbtn" data-act="${opts.toggleAct}" data-id="${esc(openKey)}">
+          ${opts.open ? "weniger" : "Aufbau, Beleg und Rechenweg"}</button>
+      </div>
+      ${opts.open ? `<div class="wodetail">
+        <div class="kv2"><small>Schritte, wie sie in Intervals landen</small>
+          <pre>${esc(entry.text_w || entry.text || "")}</pre>
+          ${entry.text_w ? "" : `<p class="src">Ohne hinterlegte FTP bleiben Prozente stehen —
+            erfundene Wattzahlen wären schlimmer als ehrliche Prozente.</p>`}</div>
+        ${entry.dfa ? `<div class="kv2"><small>Erwartetes DFA alpha-1</small><p>${esc(entry.dfa)}</p></div>` : ""}
+        ${entry.detail ? `<div class="kv2"><small>Wozu sie in dieser Woche steht</small>
+          <p>${esc(entry.detail)}</p>${entry.why ? `<p class="src">${esc(entry.why)}</p>` : ""}</div>` : ""}
+        ${entry.fuel ? `<div class="kv2"><small>Verpflegung</small><p>${esc(entry.fuel)}</p></div>` : ""}
+        ${entry.catalogue_load != null && entry.load !== entry.catalogue_load
+          ? `<div class="kv2"><small>Rechenweg der Last</small>
+            <p class="src">Die Vorlage ${esc(entry.key)} trägt Last ${fmt(entry.catalogue_load)} bei
+            ${entry.catalogue_minutes} min. Geplant sind ${fmt(planned, 1)} h — bei gleicher
+            Intensität wächst die Last linear mit der Dauer, also ${fmt(entry.load)}.
+            Nach der Vorlage allein wären es ${fmt(entry.catalogue_load)}, und genau diese
+            Verwechslung hat die lange Fahrt bis 0.42.0 zu freundlich bewertet.</p></div>` : ""}
+        ${entry.evidence ? `<div class="kv2"><small>Beleg</small><p class="src">${esc(entry.evidence)}</p></div>` : ""}
+        ${entry.limit ? `<div class="kv2"><small>Grenze</small><p class="src">${esc(entry.limit)}</p></div>` : ""}
+        ${st.evidence ? `<div class="kv2"><small>Zur Stufe „${esc(st.label)}"</small>
+          <p class="src">${esc(st.evidence)}</p></div>` : ""}
+      </div>` : ""}
+    </div>`;
+  }
+
   rWorkouts(w, forTomorrow) {
     if (!w) return this._dataGap("workouts", "Die Einheiten");
     const list = w.workouts || [];
     if (!list.length) return "";
-    const ftp = w.ftp;
     const today = new Date();
     const iso = (d) => new Date(today.getTime() + d * 86400000).toISOString().slice(0, 10);
 
     // One logic, not two. The list IS the recommendation: the first card that
     // fits today carries the mark, instead of a second block above computing
-    // its own answer that could quietly disagree with this one. And it must
-    // fit the BUDGET too - a lead card wearing "über dem Budget" as its own
-    // badge would contradict itself on screen.
+    // its own answer that could quietly disagree with this one.
     let pick = list.findIndex((e) => (e.stage || {}).key === "green");
     if (pick < 0) pick = list.findIndex((e) => (e.stage || {}).key === "stimulus");
-    const cards = list.map((entry, index) => {
-      const open = this._woOpen === entry.key;
-      // The grade comes from the PAYLOAD. Until 0.41.0 this block combined
-      // state and budget itself (fit === "ok" && fits_budget === false ->
-      // amber) while the backend handed over the two halves separately - a
-      // second rule in the house, the error class this file warns about
-      // everywhere else. It now reads what workouts.stage() decided, the same
-      // grade the week view prints (docs/ausbau.md I5).
-      const st = entry.stage || {};
-      const fitTone = STAGE_TONE[st.key] || "unknown";
-      const fitWord = st.key === "stimulus" && w.budget != null
-        ? `${st.word} (über dem Budget von ${fmt(w.budget)})`
-        : (forTomorrow ? st.word : `${st.word}${st.key === "green" ? " heute" : ""}`);
-      const fit = badge(fitTone, fitWord);
-      const hrw = entry.hr_window;
-      const recommended = index === pick;
-      return `<div class="wocard ${recommended ? "first" : ""}">
-        ${recommended ? `<div class="recflag">${ico("ok", C.green, 14)}
-          das ist die Empfehlung von oben</div>` : ""}
-        <div class="wohead">
-          <div>
-            <div class="wofam">${esc(entry.family_label || "")}</div>
-            <div class="wotitle">${esc(entry.title)}</div>
-            <div class="wometa">${esc(entry.purpose)} · ${entry.minutes} min · Last ${fmt(entry.load)}${
-              hrw ? ` · ${hrw[0]}–${hrw[1]} bpm` : ""}</div>
-          </div>
-          ${fit}
-        </div>
-        ${this._woBar(entry, ftp)}
-        <div class="wosteps">${(entry.blocks_w || entry.blocks).map(([min, val, label]) =>
-          `<span><b>${min}′</b> ${esc(label)} <em>${entry.blocks_w ? val + " W" : val + " % FTP"}</em></span>`).join("")}</div>
-        <p class="effect"><b>Was das bringt:</b> ${esc(entry.effect)}</p>
-        <p class="evi"><b>Beleg:</b> ${esc(entry.evidence)}</p>
-        ${entry.fit_reason ? `<p class="fitwhy">${ico((entry.stage || {}).key === "red" ? "warn" : "info",
-          (entry.stage || {}).key === "red" ? C.red : C.amber, 14)} ${esc(entry.fit_reason)}</p>` : ""}
-        ${(entry.stage || {}).evidence ? `<p class="src">${esc(entry.stage.evidence)}</p>` : ""}
 
-        <div class="worow">
-          <button class="planbtn" data-act="plan" data-id="${esc(entry.key)}" data-when="${iso(0)}">
-            ${ico("cal", null, 15)} heute in den Kalender</button>
-          <button class="planbtn ghost" data-act="plan" data-id="${esc(entry.key)}" data-when="${iso(1)}">
-            morgen</button>
-          <button class="chipbtn" data-act="wodetail" data-id="${esc(entry.key)}">
-            ${open ? "weniger" : "Aufbau, DFA und Beleg"}</button>
-        </div>
-        ${open ? `<div class="wodetail">
-          <div class="kv2"><small>Schritte, wie sie in Intervals landen</small>
-            <pre>${esc(entry.text_w || entry.text)}</pre>
-            ${entry.text_w ? "" : `<p class="src">Ohne hinterlegte FTP bleiben Prozente stehen —
-              erfundene Wattzahlen wären schlimmer als ehrliche Prozente.</p>`}</div>
-          <div class="kv2"><small>Erwartetes DFA alpha-1</small><p>${esc(entry.dfa)}</p></div>
-          <div class="kv2"><small>Beleg</small><p class="src">${esc(entry.evidence)}</p></div>
-          <div class="kv2"><small>Grenze</small><p class="src">${esc(entry.limit)}</p></div>
-        </div>` : ""}
-      </div>`;
-    }).join("");
+    const shared = this._sharedReasons(list);
+    const cards = list.map((entry, index) => this._sessionCard(entry, {
+      open: this._woOpen === entry.key, budget: w.budget, ftp: w.ftp,
+      recommended: index === pick, todayWord: !forTomorrow, saidAbove: shared,
+      planDates: [iso(0), iso(1)], toggleAct: "wodetail",
+    })).join("");
 
     const lead = pick >= 0 ? list[pick] : null;
     const leadCard = lead ? `<div class="leadrec">
@@ -1819,6 +1878,8 @@ class IntervalsIcuPanel extends HTMLElement {
 
     const conflict = w.conflict ? `<div class="warnrow">${ico("warn", C.amber, 16)}
       <span>${esc(w.conflict.text)}</span></div>` : "";
+    // said once, above the list, instead of on every card
+    const reasons = [...shared].map((r) => this._reasonRow(r, "amber")).join("");
 
     return `${conflict}${leadCard}<h3 class="secname">Alle Einheiten für ${forTomorrow ? "morgen" : "heute"}
       <span class="hint">— eine je Art, jede ${forTomorrow
@@ -1826,6 +1887,7 @@ class IntervalsIcuPanel extends HTMLElement {
       FTP${w.ftp ? ` (${fmt(w.ftp)} W)` : ""}, Puls aus deiner gemessenen aeroben
       Schwelle${w.aerobic_hr ? ` (${w.aerobic_hr} bpm)` : ""}. Was du machst, entscheidest du —
       hier steht, was es heute kostet.</span></h3>
+      ${reasons}
       <div class="wogrid">${cards}</div>
       <p class="note">Ein Klick legt die Einheit als geplantes Workout in deinen
       Intervals-Kalender — mit allen Schritten, direkt auf die Uhr übertragbar. Das ist der
@@ -1902,25 +1964,19 @@ class IntervalsIcuPanel extends HTMLElement {
         ${rated ? this._weekDone(w) : ""}
         ${open ? `<div class="pwbody">
           <p class="hint">${esc(w.phase_note)}</p>
-          ${rated ? "" : `<p class="hint noverdict">${ico("clock", C.tx3, 14)} ${esc(plan.no_verdict_note || "")}</p>`}
-          ${(w.sessions || []).map((s) => `<div class="psess ${s.role}">
-            <div class="pshead">
-              <b>${esc(s.title)}</b>
-              ${rated ? this._stageBadge(s) : ""}
-            </div>
-            ${rated && s.load != null ? `<p class="psload tn">Last ${fmt(s.load)}${
-              s.budget != null ? ` · Budget ${fmt(s.budget)}` : ""}${
-              s.catalogue_load != null && s.load !== s.catalogue_load
-                ? ` <em>(Katalogeinheit ${fmt(s.catalogue_load)} bei ${s.catalogue_minutes} min — auf ${
-                    fmt(s.hours, 1)} h hochgerechnet)</em>` : ""}</p>` : ""}
-            <p>${esc(s.detail)}</p>
-            ${s.effect ? `<p class="effect"><b>Was das bringt:</b> ${esc(s.effect)}</p>` : ""}
-            <p class="src">${esc(s.why)}</p>
-            ${s.fuel ? `<p class="src"><b>Verpflegung:</b> ${esc(s.fuel)}</p>` : ""}
-            ${rated && s.fit_reason ? `<p class="fitwhy">${ico((s.stage || {}).key === "red" ? "warn" : "info",
-              (s.stage || {}).key === "red" ? C.red : C.amber, 14)} ${esc(s.fit_reason)}</p>` : ""}
-            ${rated && (s.stage || {}).evidence ? `<p class="src">${esc(s.stage.evidence)}</p>` : ""}
-          </div>`).join("")}
+          ${rated ? this._weekReasons(w) : `<p class="hint noverdict">${ico("clock", C.tx3, 14)} ${
+            esc(plan.no_verdict_note || "")}</p>`}
+          <div class="wogrid">${(w.sessions || []).map((s) => this._sessionCard(
+            // A week without a grade shows the SAME card, only without a
+            // verdict - not a different, poorer shape. The role stands in for
+            // the family label the catalogue would give it.
+            rated ? s : { ...s, stage: null, minutes: null,
+                          family_label: ROLE_LABEL[s.role] || "Einheit" },
+            { open: this._psOpen === `${w.index}:${s.title}`,
+              openKey: `${w.index}:${s.title}`, toggleAct: "psdetail",
+              budget: rated ? s.budget : null, ftp: (plan.assessment || {}).ftp,
+              saidAbove: rated ? this._sharedReasons(w.sessions) : null,
+              plannedHours: s.hours })).join("")}</div>
         </div>` : `<div class="pwsess">${(w.sessions || []).map((s) =>
           `<span class="ptag ${s.role}">${esc(s.title)}${
             rated && (s.stage || {}).key ? ` ${this._stageDot(s.stage)}` : ""}</span>`).join("")}</div>`}
@@ -1950,6 +2006,19 @@ class IntervalsIcuPanel extends HTMLElement {
       ? `${st.word} (über dem Budget von ${fmt(s.budget)})`
       : st.word;
     return badge(STAGE_TONE[st.key] || "unknown", word);
+  }
+
+  /* The state warnings of a week, said ONCE above its sessions.
+
+     They belong to the state, not to the session: printed per card they were
+     the same sentence three times in a row, and the third one is not read
+     (docs/ausbau.md I10). A reason that belongs to a single session stays on
+     that session's card - `_sessionCard` skips only what was said here. */
+  _weekReasons(w) {
+    const shared = [...this._sharedReasons(w.sessions)];
+    if (!shared.length) return "";
+    const worst = (w.sessions || []).some((s) => (s.stage || {}).key === "red") ? "red" : "amber";
+    return shared.map((r) => this._reasonRow(r, worst)).join("");
   }
 
   _stageDot(st) {

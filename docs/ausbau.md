@@ -1313,6 +1313,77 @@ den Fehler damit festgeschrieben. Umgedreht, plus ein Wächter über den
 Ladepfad: jeder Reiter, den `_render` bedient, muss seine Payload auf dem Weg
 über `_setTab` auch anfordern.
 
+### I9 · Eine Karte, nicht zwei Bauarten (0.42.2)
+
+**Live-Befund am 13.09.2026.** Aufgeklappt war die Wochenansicht keine
+Entsprechung zur Trainer-Karte, sondern eine Textwand: kein Segmentbalken,
+keine Watt- und Pulsbereiche, keine Zweckzeile — stattdessen fünf Absätze
+Fließtext, bei drei Einheiten übereinander. Genau das, woran eine Einheit
+erkannt wird, fehlte.
+
+Zwei Darstellungen desselben Objekts sind die Layout-Fassung einer zweiten
+Regel im Haus. Die gemeinsame Renderfunktion ist deshalb die **Trainer-Karte**:
+`_sessionCard()` baut beide Ansichten, und die Wochenansicht bekommt deren
+kompakte Variante, keine eigene magerere Bauart. Was dabei an Fließtext
+wegfällt, ist richtig — „Was das bringt", Beleg, Grenze, Verpflegung und der
+Rechenweg gehören in den **aufklappbaren Teil der Karte**, nicht untereinander
+in die Wochenzeile.
+
+Damit das geht, liefert `rate_sessions()` dieselben Felder wie `suggest()`:
+Schritte in Watt aus der eigenen FTP, Pulsfenster aus der gemessenen aeroben
+Schwelle, Zweck, Beleg und Grenze. Eine Karte, die aus einem dünneren Datensatz
+gebaut wird, wird zwangsläufig dünner.
+
+**Die Dauer steht doppelt da, und das mit Absicht.** Die Vorlage `z2_90` trägt
+95 Minuten, geplant sind 4,0 Stunden. Die Kopfzeile nennt **beides** —
+„geplant 4,0 h · Vorlage 95 min" —, weil das Verschweigen einer der beiden
+Zahlen genau der Fehler ist, aus dem der Lastbug bestand. Ob der Segmentbalken
+auf die geplante Dauer gestreckt werden soll, ist damit **nicht** entschieden:
+siehe die offene Frage unten.
+
+### I10 · Eine Zustandswarnung gehört dem Zustand, nicht der Einheit (0.42.2)
+
+Die Infektwarnung stand bei jeder Einheit derselben Woche erneut — dreimal
+untereinander dieselbe Zeile. Beim dritten Mal liest sie niemand. Sie gilt dem
+**Zustand**, also steht sie einmal oben.
+
+Und es war eine **Klasse, kein Ort**: derselbe Fehler trat im Trainer-Reiter
+auf, sobald mehrere Einheiten dieselbe Zustandsbegründung trugen — im
+Einbruchsfall fünfmal. `_sharedReasons()` sammelt deshalb die Begründungen, die
+**mehr als eine** Einheit teilen, und stellt sie einmal über die Liste; eine
+Begründung, die nur eine einzelne Einheit betrifft („zwei harte Tage liegen
+schon in dieser Woche"), bleibt an ihrer Karte. Beide Ansichten nutzen denselben
+Sammler, und beide werden darauf geprüft.
+
+### I11 · Die Hochrechnung ist die Herleitung, nicht die Aussage (0.42.2)
+
+„Last 118 · Budget 94 (Katalogeinheit 72 bei 95 min — auf 2,6 h hochgerechnet)"
+war als Nachweis richtig und in der ersten Zeile falsch. Oben steht die
+Aussage — `Last 118 · Budget 94` —, der Klammerzusatz wandert in den
+Rechenweg im aufklappbaren Teil. Die Zahl war der teuerste Fund von Paket I;
+sie muss **nachweisbar** bleiben, nicht dauerhaft sichtbar. Ein Wächter prüft
+beides: nichts von der Hochrechnung im Kartenkopf, und sie steht vollständig
+im aufgeklappten Teil.
+
+### Offen nach 0.42.2 · Der Segmentbalken einer gestreckten Einheit
+
+Der Balken zeigt den Aufbau der **Vorlage**. Bei der langen Fahrt weicht deren
+Dauer von der geplanten ab (95 min gegen 4,0 h), und beide Zahlen stehen
+nebeneinander in der Kopfzeile. Ob der Balken proportional auf die geplante
+Dauer gestreckt werden soll, ist eine Trainingsentscheidung und keine
+Darstellungsfrage:
+
+- **Streckung proportional** wäre konsistent mit der Lastrechnung (die genau
+  das annimmt), macht aus 10 Minuten Einrollen aber 25.
+- **Nur die gleichmäßigen Blöcke strecken** ist das, was ein Trainer täte,
+  braucht aber eine neue Schwelle dafür, welcher Block elastisch ist — also
+  eine Zahl, die niemand gemessen hat.
+- **Gar nicht strecken** (der jetzige Stand) zeigt einen Balken, der auf 95
+  Minuten summiert, während darüber 4,0 h steht. Ehrlich, weil beides
+  dasteht, aber erklärungsbedürftig.
+
+Nicht entschieden, nicht still gebaut.
+
 ### Tests I
 
 - Die vier Stufen: ein Bestand, in dem **dieselbe** Einheit je nach Zustand

@@ -524,13 +524,7 @@ def websocket_workouts(hass, connection, msg) -> None:
     if ftp is None:
         ftp = anchors.get("ftp")
 
-    max_hr = None
-    for settings in (data.get("sport_settings") or {}).values():
-        if isinstance(settings, dict):
-            found = settings.get("max_heartrate") or settings.get("max_hr")
-            if found:
-                max_hr = float(found)
-                break
+    max_hr = _max_hr(data)
 
     budget = (ready.get("budget") or {}).get("recommended")
     picks = workout_lib.suggest(
@@ -650,6 +644,16 @@ def _latest_ftp(data: dict[str, Any]) -> float | None:
     return best
 
 
+def _max_hr(data: dict[str, Any]) -> float | None:
+    """The athlete's measured maximum heart rate, once - both handlers need it."""
+    for settings in (data.get("sport_settings") or {}).values():
+        if isinstance(settings, dict):
+            found = settings.get("max_heartrate") or settings.get("max_hr")
+            if found:
+                return float(found)
+    return None
+
+
 def _state_for_plan(data: dict[str, Any]) -> dict[str, Any]:
     """What the archive knows that the plan should take into account."""
     longest = 0.0
@@ -711,6 +715,7 @@ def websocket_goal(hass, connection, msg) -> None:
     weeks = built.get("weeks") or []
     if built.get("ready") and weeks:
         st = coach_module.state(data)
+        anchors = coach_module.anchors(data)
         lay = coach_module.layoff(data)
         rec = coach_module.recovery_offered(data)
         budget = ((analytics.readiness(data) or {}).get("budget") or {}).get("recommended")
@@ -722,6 +727,9 @@ def websocket_goal(hass, connection, msg) -> None:
             hard_days_last_7=coach_module._hard_days_recent(data, 7),
             layoff_days=lay.get("days"),
             infection=bool(st.get("infection_suspected")),
+            ftp=_latest_ftp(data) or anchors.get("ftp"),
+            aerobic_hr=anchors.get("aerobic_hr"),
+            max_hr=_max_hr(data),
         )
         weeks[0]["rated"] = True
         weeks[0]["done"] = analytics.week_done(data, weeks[0]["start"])

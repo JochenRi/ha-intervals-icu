@@ -759,4 +759,45 @@ const acts = F.activities(), thr = F.thresholds();
   ok(/Nie angefordert/.test(gap), "leerfall-wächter: der Defektfall hat keinen eigenen Text");
 }
 
+/* ── eine Karte, nicht zwei Bauarten (docs/ausbau.md I9) ──────────────────
+   Die Wochenansicht hatte ihre eigene, magerere Darstellung derselben Sache:
+   kein Segmentbalken, kein Pulsfenster, keine Zweckzeile, dafür fünf Absätze
+   Fließtext. Zwei Darstellungen desselben Objekts sind die Layout-Fassung
+   einer zweiten Regel im Haus. */
+{
+  const src = H.source();
+  const cut = (from, to) => src.slice(src.indexOf(from), src.indexOf(to));
+  const strip = (b) => b.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  const workouts = strip(cut("rWorkouts(w, forTomorrow) {", "  rGoal(g) {"));
+  const weeks = strip(cut("rPlanWeeks(g) {", "  _weekReasons(w) {"));
+
+  for (const [name, body] of [["rWorkouts", workouts], ["rPlanWeeks", weeks]]) {
+    ok(/_sessionCard\(/.test(body), `karte: ${name} baut die Einheit nicht über _sessionCard`);
+    // und keine der Bestandteile wird daneben noch einmal selbst gezeichnet
+    for (const own of ["wosteps", "_woBar(", 'class="wometa"', 'class="psess']) {
+      ok(!body.includes(own), `karte: ${name} zeichnet ${own} an der gemeinsamen Karte vorbei`);
+    }
+  }
+  // die Karte selbst führt alles, woran eine Einheit erkannt wird
+  const card = cut("  _sessionCard(entry, o) {", "  rWorkouts(w, forTomorrow) {");
+  for (const part of ["_woBar(", "wosteps", "hr_window", "entry.purpose", "blocks_w"]) {
+    ok(card.includes(part), `karte: der Sitzungskarte fehlt ${part}`);
+  }
+  // Gegenprobe: der Wächter muss eine zweite Bauart auch finden
+  ok(strip('const x = `<div class="wosteps">…`;').includes("wosteps"),
+     "karte Gegenprobe: eine wiedereingebaute zweite Bauart wird NICHT gefunden — blind");
+
+  // Die Herleitung der Last gehört in den AUFKLAPPBAREN Teil, nicht in den Kopf
+  const head = card.slice(0, card.indexOf('${opts.open ?'));
+  ok(!/Katalogeinheit|catalogue_load/.test(head),
+     "karte: die Hochrechnung der Last steht im Kartenkopf statt im Rechenweg");
+  const detail = card.slice(card.indexOf("${opts.open ?"));
+  ok(/catalogue_load/.test(detail), "karte: der Rechenweg der Last fehlt im aufgeklappten Teil");
+
+  // Die gemeinsame Warnung wird an EINER Stelle gesammelt
+  ok((src.match(/_sharedReasons\(list\) \{/g) || []).length === 1,
+     "warnung: der Sammler ist mehrfach definiert");
+  ok(/saidAbove/.test(card), "warnung: die Karte fragt nicht, was schon oben stand");
+}
+
 report("test_panel_fixes");

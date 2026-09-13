@@ -409,6 +409,16 @@ function goal(kind) {
         detail: "Gleichmäßig, DFA über 0,75.", why: "75–80 % der Einheiten.", hours: 1.4 },
     ],
   });
+  /* What rate_sessions copies over from the catalogue so BOTH views can build
+   * the same card: steps in watts, the heart-rate window, the evidence. */
+  const card = (key, familyLabel, purpose, minutes, blocks, hr) => ({
+    key, family_label: familyLabel, purpose, minutes, blocks,
+    blocks_w: blocks.map(([m, pct, l]) => [m, Math.round(215 * pct / 100), l]),
+    text: "- 10m 55%", text_w: "- 10m 118w", hr_window: hr,
+    dfa: "durchgehend über 0,75", evidence: "Dreizonenmodell (Seiler).",
+    limit: "Expertenkonsens nennt 60–90 Minuten.",
+  });
+
   /* Week 1 as the backend hands it over: graded sessions, the scaled loads,
    * and the ridden-against-planned block. The three sessions deliberately land
    * on three DIFFERENT grades, so a view that prints only one of them fails. */
@@ -422,15 +432,22 @@ function goal(kind) {
             ],
             note: "Gefahren gegen vorgesehen — welche Fahrt welche geplante Einheit war, entscheidest du. Das Archiv führt Dauer und Last, kein Etikett; eine automatische Zuordnung wäre eine Behauptung, die hier niemand belegen kann." },
     sessions: [
-      { ...w.sessions[0], family: "endurance", load: 159, catalogue_load: 72, catalogue_minutes: 95,
+      { ...w.sessions[0], ...card("z2_90", "Grundlage", "Aerobe Basis", 95,
+          [[10, 55, "Einrollen"], [80, 68, "gleichmäßig"], [5, 50, "Ausrollen"]], [138, 152]),
+        family: "endurance", load: 159, catalogue_load: 72, catalogue_minutes: 95,
         fit: "ok", fit_reason: "", fits_budget: false, budget: 95,
         stage: stageOf("ok", false, true),
         purpose: "Aerobe Basis", effect: "Kapillarisierung, mitochondriale Dichte, Fettstoffwechsel." },
-      { ...w.sessions[1], family: "sweetspot", load: 80, catalogue_load: 78, catalogue_minutes: 70,
+      { ...w.sessions[1], ...card("sweetspot_2x20", "SweetSpot", "SweetSpot", 70,
+          [[12, 55, "Einrollen"], [20, 90, "Block 1"], [6, 55, "Pause"], [20, 90, "Block 2"], [8, 50, "Ausrollen"]],
+          [160, 170]),
+        family: "sweetspot", load: 80, catalogue_load: 78, catalogue_minutes: 70,
         fit: "maybe", fit_reason: "Beansprucht — Umfang ja, Intensität kostet heute mehr, als sie bringt.",
         fits_budget: true, budget: 95, stage: stageOf("maybe", true, true),
         purpose: "SweetSpot", effect: "Die meiste Schwellenanpassung pro investierter Stunde." },
-      { ...w.sessions[2], family: "endurance", load: 63, catalogue_load: 45, catalogue_minutes: 60,
+      { ...w.sessions[2], ...card("z2_60", "Grundlage", "Aerobe Basis", 60,
+          [[10, 55, "Einrollen"], [45, 68, "gleichmäßig"], [5, 50, "Ausrollen"]], [138, 152]),
+        family: "endurance", load: 63, catalogue_load: 45, catalogue_minutes: 60,
         fit: "ok", fit_reason: "", fits_budget: true, budget: 95,
         stage: stageOf("ok", true, true),
         purpose: "Aerobe Basis", effect: "Der Anteil, der im Dreizonenmodell 75–80 % ausmacht." },

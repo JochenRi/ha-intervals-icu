@@ -678,7 +678,9 @@ NO_VERDICT_NOTE = (
 def rate_sessions(sessions: list[dict[str, Any]], state: str,
                   budget: float | None = None, recovery_offered: bool = False,
                   hard_days_last_7: int = 0, layoff_days: int | None = None,
-                  infection: bool = False) -> list[dict[str, Any]]:
+                  infection: bool = False, ftp: float | None = None,
+                  aerobic_hr: int | None = None,
+                  max_hr: float | None = None) -> list[dict[str, Any]]:
     """Grade the planned sessions of the CURRENT week - a view, not a planner.
 
     Every session the plan produced carries a `workout` key into the catalogue.
@@ -700,6 +702,11 @@ def rate_sessions(sessions: list[dict[str, Any]], state: str,
             # an unknown key gets no invented verdict - it gets none at all
             out.append(rated)
             continue
+        # The SAME payload the session list carries, so both views can render
+        # the same card. The week view used to get a thinner record and grew a
+        # poorer card around it - segments, heart-rate window and purpose line
+        # all missing, five paragraphs of prose instead (docs/ausbau.md I9).
+        full = scaled(BY_KEY[str(session.get("workout"))], ftp, aerobic_hr, max_hr)
         load = session_load(entry, session.get("hours"))
         verdict, reason = fit_for(
             family, state, entry.get("intensity") or 0,
@@ -708,7 +715,19 @@ def rate_sessions(sessions: list[dict[str, Any]], state: str,
         )
         fits_budget = None if budget is None else load <= budget
         rated.update({
+            "key": entry.get("key"),
             "family": family,
+            "family_label": next((label for fam, label, _ in FAMILIES if fam == family), family),
+            "minutes": entry.get("minutes"),
+            "intensity": entry.get("intensity"),
+            "blocks": full.get("blocks"),
+            "blocks_w": full.get("blocks_w"),
+            "text": full.get("text"),
+            "text_w": full.get("text_w"),
+            "hr_window": full.get("hr_window"),
+            "dfa": entry.get("dfa"),
+            "evidence": entry.get("evidence"),
+            "limit": entry.get("limit"),
             "load": load,
             "catalogue_load": entry.get("load"),
             "catalogue_minutes": entry.get("minutes"),

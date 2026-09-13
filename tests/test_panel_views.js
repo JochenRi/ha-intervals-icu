@@ -1508,10 +1508,32 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   contains(open1, plan.stages.stimulus.word, "wochenplan: das Wort der Reiz-Stufe fehlt");
   contains(open1, "Last 159", "wochenplan: die hochgerechnete Last fehlt");
   contains(open1, "Budget 95", "wochenplan: das Budget steht nicht neben der Last");
-  contains(open1, "Katalogeinheit 72", "wochenplan: die Kataloglast wird nicht offengelegt");
-  contains(open1, "95 min", "wochenplan: die Katalogdauer fehlt neben der Hochrechnung");
   contains(open1, "Was das bringt", "wochenplan: die Wirkung der Einheit fehlt");
-  contains(open1, "Meeusen", "wochenplan: der Beleg der Reiz-Stufe reist nicht mit");
+
+  // Die Karte ist dieselbe wie im Trainer-Reiter: Segmentbalken, Schritte in
+  // Watt, Pulsfenster, Zweckzeile. Eine eigene, magerere Bauart für dieselbe
+  // Sache wäre die Layout-Fassung einer zweiten Regel im Haus.
+  contains(open1, 'class="wocard', "wochenplan: keine Sitzungskarte, sondern eigene Bauart");
+  contains(open1, 'class="wosteps"', "wochenplan: die Schritte fehlen");
+  contains(open1, "118 W", "wochenplan: die Wattzahlen der Segmente fehlen");
+  contains(open1, "138–152 bpm", "wochenplan: das Pulsfenster fehlt");
+  contains(open1, "Aerobe Basis", "wochenplan: die Zweckzeile fehlt");
+  contains(open1, "Vorlage 95 min", "wochenplan: die Dauer der Vorlage fehlt neben der geplanten");
+  contains(open1, "geplant 3,5 h", "wochenplan: die geplante Dauer fehlt");
+
+  // Die HERLEITUNG der Last gehört in den Rechenweg, nicht in die Kopfzeile:
+  // die Zahl muss nachweisbar bleiben, nicht dauerhaft sichtbar.
+  const head1 = open1.slice(open1.indexOf('class="wometa"'), open1.indexOf('class="wosteps"'));
+  ok(!/Katalogeinheit/.test(head1),
+     "wochenplan: die Hochrechnung steht in der Kopfzeile statt im Rechenweg");
+  q._psOpen = "1:Langer Tag — 3.5 h";
+  const deep = q.rPlanWeeks(g);
+  contains(deep, "Rechenweg der Last", "wochenplan: der Rechenweg fehlt im aufgeklappten Teil");
+  contains(deep, "Last 72", "wochenplan: die Kataloglast wird im Rechenweg nicht genannt");
+  contains(deep, "linear mit der Dauer", "wochenplan: die Hochrechnung wird nicht begründet");
+  contains(deep, "Meeusen", "wochenplan: der Beleg der Reiz-Stufe reist nicht mit");
+  contains(deep, "Verpflegung", "wochenplan: die Verpflegung fehlt im aufgeklappten Teil");
+  q._psOpen = null;
   ok(!/noverdict/.test(open1.slice(open1.indexOf('class="pweek '), open1.indexOf('data-id="2"'))),
      "wochenplan: die laufende Woche trägt den Satz für spätere Wochen");
 
@@ -1615,6 +1637,56 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   }
   // rTrainer trägt denselben Hinweis, nur mit zwei Argumenten
   contains(q.rTrainer(null, null), "Nie angefordert", "leerfall: rTrainer verschweigt den Ausfall");
+}
+
+/* ── eine Zustandswarnung, einmal — nicht je Einheit (docs/ausbau.md I10) ──
+   Sie gilt dem ZUSTAND, nicht der Einheit. Dreimal untereinander liest sie
+   beim dritten Mal niemand. Das galt in BEIDEN Ansichten, also wird es in
+   beiden geprüft - der Fehler war eine Klasse, kein Ort. */
+{
+  const q = new M.Panel();
+  q._nowIso = F.TODAY;
+  const count = (html, needle) => html.split(needle).length - 1;
+
+  // 1 - Wochenansicht: dieselbe Begründung an allen drei Einheiten
+  const g = F.goal();
+  const shared = "Infektmuster in den Signalen: erst mehrere lockere Einheiten.";
+  for (const s of g.plan.weeks[0].sessions) s.fit_reason = shared;
+  q._planOpen = "1";
+  const week = q.rPlanWeeks(g);
+  ok(count(week, shared) === 1,
+     `warnung: die Zustandswarnung steht ${count(week, shared)}× in der Woche statt einmal`);
+  // und sie steht ÜBER den Karten, nicht in der ersten
+  ok(week.indexOf(shared) < week.indexOf('class="wocard'),
+     "warnung: die gemeinsame Warnung steht in einer Karte statt über ihnen");
+
+  // 2 - eine Begründung, die nur EINE Einheit betrifft, bleibt an ihr
+  const g2 = F.goal();
+  g2.plan.weeks[0].sessions[1].fit_reason = "Zwei harte Tage liegen schon in dieser Woche.";
+  const week2 = q.rPlanWeeks(g2);
+  contains(week2, "Zwei harte Tage", "warnung: die einzelne Begründung verschwindet");
+  ok(week2.indexOf("Zwei harte Tage") > week2.indexOf('class="wocard'),
+     "warnung: eine einzelne Begründung wird nach oben gezogen");
+
+  // 3 - Trainer-Reiter: dieselbe Klasse, derselbe Test
+  const w = F.workouts("einbruch");
+  const many = "Die Erholung läuft, aber die letzten Tage tragen noch keinen harten Reiz.";
+  ok((w.workouts.filter((e) => e.fit_reason === many) || []).length >= 2,
+     "warnung: die Fixture trägt die Begründung nicht mehrfach — Fall untauglich");
+  const trainer = q.rWorkouts(w);
+  ok(count(trainer, many) === 1,
+     `warnung: die Zustandswarnung steht ${count(trainer, many)}× im Trainer-Reiter statt einmal`);
+  ok(trainer.indexOf(many) < trainer.indexOf('class="wocard'),
+     "warnung: im Trainer-Reiter steht die gemeinsame Warnung in einer Karte");
+
+  // 4 - Gegenprobe für den Sammler selbst: zwei gleiche Gründe gelten als
+  //     gemeinsam, ein einzelner nicht
+  ok(q._sharedReasons([{ fit_reason: "a" }, { fit_reason: "a" }]).has("a"),
+     "warnung: zwei gleiche Gründe werden nicht als gemeinsam erkannt");
+  ok(!q._sharedReasons([{ fit_reason: "a" }, { fit_reason: "b" }]).has("a"),
+     "warnung: ein einzelner Grund wird nach oben gezogen");
+  ok(q._sharedReasons([]).size === 0, "warnung: leere Liste erfindet einen Grund");
+  ok(q._sharedReasons([{}, {}]).size === 0, "warnung: Einheiten ohne Grund erzeugen einen");
 }
 
 report("test_panel_views");

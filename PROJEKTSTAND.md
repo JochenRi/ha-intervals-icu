@@ -1,13 +1,13 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 13.09.2026 · **Version:** 0.42.1 · **Status:** produktiv auf HEIMDALL,
+**Stand:** 13.09.2026 · **Version:** 0.42.2 · **Status:** produktiv auf HEIMDALL,
 Auslieferung über HACS aus `github.com/JochenRi/ha-intervals-icu`
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lokal
 archiviert, auswertet und in einem eigenen Seitenleisten-Panel darstellt.
 
 **Umfang:** ~12.420 Zeilen, davon ~4.460 Frontend · 24 WebSocket-Befehle · 15 Einheiten in
-8 Familien · 15 Testdateien mit **4.254** gezählten Einzelprüfungen · 44 Releases.
+8 Familien · 15 Testdateien mit **4.295** gezählten Einzelprüfungen · 45 Releases.
 
 ---
 
@@ -191,6 +191,33 @@ Recherche:
 ---
 
 ## 7. Fehler und was sie gelehrt haben
+
+**0.42.2 — drei Befunde aus dem aufgeklappten Zustand, alle drei dieselbe Wurzel.**
+
+1. **Zwei Bauarten für dieselbe Sache.** Aufgeklappt war die Wochenansicht eine
+   Textwand: kein Segmentbalken, keine Watt- und Pulsbereiche, keine Zweckzeile,
+   dafür fünf Absätze Fließtext je Einheit. Die Trainer-Karte kann all das —
+   die Wochenansicht hatte nur nie darauf zugegriffen, weil `rate_sessions()`
+   einen dünneren Datensatz lieferte. **Eine Karte, die aus weniger gebaut wird,
+   wird zwangsläufig dünner.** `_sessionCard()` baut jetzt beide Ansichten,
+   `rate_sessions()` liefert dieselben Felder wie `suggest()`.
+2. **Dieselbe Warnung dreimal.** Die Zustandswarnung stand an jeder Einheit der
+   Woche erneut, im Trainer-Reiter im Einbruchsfall sogar fünfmal. Sie gilt dem
+   Zustand, nicht der Einheit. Eine Warnung, die dreimal hintereinander
+   dasteht, wird beim dritten Mal nicht gelesen — das ist keine Redundanz,
+   sondern Verlust. Gesammelt wird jetzt an einer Stelle; was mehr als eine
+   Einheit teilt, steht einmal oben, was nur eine betrifft, bleibt an ihr.
+3. **Der Nachweis stand in der Aussagezeile.** „Last 118 · Budget 94
+   (Katalogeinheit 72 bei 95 min — auf 2,6 h hochgerechnet)" war als Beleg
+   richtig und als Kopfzeile falsch. Die Hochrechnung ist die Herleitung, nicht
+   die Aussage: sie gehört in den Rechenweg. **Lehre: eine Zahl muss
+   nachweisbar sein, nicht dauerhaft sichtbar.**
+
+**Die gemeinsame Wurzel** ist dieselbe wie bei Fehlerklasse 3: zwei Wege auf
+dieselbe Frage, diesmal nicht in der Rechnung, sondern in der Darstellung. Eine
+zweite Bauart desselben Objekts driftet genauso auseinander wie eine zweite
+Rechenregel — nur merkt man es später, weil nichts falsch wird, sondern nur
+ärmer.
 
 **0.42.1 — der Zielblock war seit 0.20.0 beim ersten Aufbau unsichtbar.**
 
@@ -610,7 +637,7 @@ den Non-Responder-Befund (Manresa-Rocamora 2021).
 
 ## 9. Prüfstand
 
-**Fünfzehn Dateien, 4.254 gezählte Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
+**Fünfzehn Dateien, 4.295 gezählte Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
 HA-Instanz oder einen Browser.
 
 | Datei | prüft | Umfang |
