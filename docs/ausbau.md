@@ -1674,6 +1674,10 @@ Größe mit der Studie überein, hier ist das Modell unbekannt.
 
 ### J8 · Was stattdessen mit dem Mittelteil der Kachel geschieht
 
+**Entschieden am 13.09.2026: Weg 1, in zwei Stufen. Ausgeführt als Paket K.**
+Die Wege 2 und 3 bleiben als Begründung stehen, damit nachvollziehbar ist,
+wogegen entschieden wurde — nicht als offene Auswahl.
+
 Drei Möglichkeiten, in der Reihenfolge der Empfehlung.
 
 **1 (empfohlen) · Der Mittelteil bleibt, wie er ist — und der Aufwand geht in die
@@ -1728,6 +1732,254 @@ die Bau-Session sie nicht neu erfindet.
   Achsen-Setzung aus J3) liegen in `const.py`, genau einmal, und in der Payload —
   unter dem Quelltext-Wächter aus F.
 
+---
+
+## Paket K — Die Durability-Messung als Einheit
+
+Die Fortsetzung von J nach Weg 1 aus J8, in zwei Stufen: **Stufe 1** ist der
+Katalog samt Zuordnung (K1, K2, K4), **Stufe 2** die Hantel (K3). Stufe 2 wird
+erst gebaut, wenn Stufe 1 zwei Messungen geliefert hat — vorher gäbe es nichts
+zu zeichnen.
+
+### K0 · Das Protokoll und seine Quelle
+
+Barsumyan, Soost, Burchard: „Durability as an independent parameter of endurance
+performance in cycling", BMC Sports Sci Med Rehabil 17:192 (2025). Heimtest an
+zwei Terminen, ausdrücklich für Amateure entwickelt statt für Profis — die
+älteren Protokolle (Spragg, Leo, ~4-h-Vorbelastung, 40 kJ/kg) sind an kleinen
+Profikohorten erhoben und für einen Schichtarbeiter mit Rolle nicht fahrbar.
+
+- **Termin 1 (frisch):** standardisiertes Einrollen → 5 min all-out →
+  20 min all-out.
+- **Termin 2 (ermüdet, anderer Tag):** Einrollen → fahren bei 80 % der
+  **frischen 20-Minuten-Leistung**, bis 1.000 kJ Arbeit geleistet sind →
+  5 min all-out → 20 min all-out.
+
+Validierung an 20 gut trainierten Amateuren: **−10,1 ± 6,5 %** über 20 min,
+**−10,8 ± 7,8 %** über 5 min. Zu standardisieren sind Arbeit in kJ, Route bzw.
+Rolle und die Energiezufuhr vor und während.
+
+**Der Anker kommt aus Termin 1 selbst — und das ist keine Bequemlichkeit,
+sondern die Rettung dieses Protokolls auf diesem Konto.** Gemessen am
+13.09.2026:
+
+| Feld | Wert | was es ist |
+|---|---|---|
+| `icu_ftp` | **215 W**, über alle Fahrten konstant | der im Intervals-Profil **eingetragene** Wert |
+| `icu_rolling_ftp` | **192–194 W** | Intervals' eigene Schätzung **aus den Leistungsdaten** |
+| `icu_pm_ftp` | 132–194 W, je Fahrt schwankend | Einzelfahrt-Schätzung, als Anker unbrauchbar |
+| beste gemessene 20-min-Leistung | **192 W** (aktuelles Formniveau) | siehe J1 |
+| gemessene aerobe Schwelle | **146 W** (DFA alpha-1 = 0,75) | Anker-Konflikt im Trainer-Reiter |
+
+Die 215 bewegen sich seit Monaten keinen Watt, während die datengetriebene
+Schätzung bei 193 liegt und die tatsächlich gefahrene 20-Minuten-Bestleistung
+bei 192. **Die 215 sind gesetzt, nicht abgeleitet, und liegen rund 10 % zu
+hoch.** Ein aus ihnen abgeleitetes Protokolltempo wäre 80 % von 226 W
+(= 215 / 0,95) ≈ **181 W** — 35 W über der gemessenen aeroben Schwelle, also
+kein Ermüdungsblock, sondern ein Tempotest bis zum Abbruch. Aus der gemessenen
+frischen 20-Minuten-Leistung ergeben sich **~154 W**, knapp über der aeroben
+Schwelle, und das ist die Absicht des Protokolls.
+
+**Daraus eine Plausibilitätsregel, die gebaut wird:** liegt die aus Termin 1
+errechnete Zielleistung **unter** der gemessenen aeroben Schwelle, war Termin 1
+kein All-out. Die Einheit wird dann nicht ausgegeben, sondern sagt das — mit
+beiden Zahlen. Ein Ermüdungsblock unterhalb der aeroben Schwelle ermüdet nicht.
+
+### K1 · Zwei Katalogeinheiten in `workouts.py`
+
+Bauart wie `z2_210_late` (`key`, `title`, `purpose`, `minutes`, `intensity`,
+`load`, `blocks`, `text`, `hr_hint`, `dfa`, `effect`, `evidence`, `limit`,
+`states`). Neue Familie in der Familienliste, damit sie nicht unter „Lange
+Fahrt" verschwindet.
+
+**`durability_test_fresh` — „Durability-Test, frisch"**
+
+- Einrollen 20 min · 5 min all-out · 10 min locker · 20 min all-out ·
+  10 min ausrollen. Rund **65 min**.
+- Die Reihenfolge 5 vor 20 stammt aus dem Protokoll und wird nicht gedreht.
+  Die 10 min dazwischen sind eine **Setzung** (das Protokoll nennt keine
+  Erholungsdauer) und werden so beschriftet — aber sie müssen bei beiden
+  Terminen **gleich** sein, sonst vergleicht der zweite Termin etwas anderes.
+- `evidence` trägt die Quelle aus K0, `effect` sagt, was gemessen wird:
+  die beiden frischen Bezugswerte, aus denen alles Weitere folgt.
+
+**`durability_test_fatigued` — „Durability-Test, ermüdet"**
+
+- Einrollen 20 min · Ermüdungsblock bei **80 % der frischen
+  20-Minuten-Leistung**, bis **1.000 kJ** im Block geleistet sind · direkt
+  anschließend 5 min all-out · 10 min locker · 20 min all-out · ausrollen.
+- **Die Zielleistung ist kein Katalogwert, sondern wird gerechnet** — aus dem
+  Ergebnis von `durability_test_fresh`. Liegt kein frischer Test vor, erscheint
+  die Einheit **nicht** im Katalog, sondern ein Satz, dass Termin 1 fehlt, plus
+  der Knopf, der ihn in den Kalender legt. Dieselbe Bauart wie „Was das ausbaut"
+  in G5.
+- **Dauer ist keine Konstante, sondern folgt aus der Zielleistung**: bei 154 W
+  braucht der Block 1.000.000 J / 154 W ≈ **1 h 48**, der ganze Termin also
+  knapp **drei Stunden**. Die angezeigte Dauer wird mitgerechnet, nicht
+  eingetragen — sonst steht sie nach der nächsten Messung falsch da (dieselbe
+  Falle wie die Last des großen Tags in I3).
+- `load` wird wie in I3 auf die gerechnete Dauer skaliert, nicht als Zahl
+  gepflegt.
+
+**Standardisierung, in `limit` und im Panel bei beiden Einheiten:**
+
+1. **Rolle**, nicht Straße — konstante Bedingungen sind für einen Vergleichswert
+   wichtiger als Freiluft-Homogenität. Der Ermüdungsblock in **ERG**, die
+   All-out-Abschnitte **nicht** in ERG (ERG deckelt genau das, was gemessen
+   werden soll).
+2. **Gleiche Mahlzeit im gleichen zeitlichen Abstand** vor beiden Terminen.
+   Während Termin 2 mindestens `DURABILITY_FUELLING_G_PER_H` (80 g
+   Kohlenhydrate je Stunde, G5) — bei drei Stunden also rund 240 g. Der Reiz
+   soll aus der Arbeit kommen, nicht aus dem Hungerast; ein schlecht gefütterter
+   Termin 2 misst die Energiezufuhr.
+3. **Die 1.000 kJ zählen ab Beginn des Ermüdungsblocks**, nicht ab Fahrtbeginn.
+   Der Radcomputer zeigt die Gesamtarbeit — der Wert beim Blockstart wird
+   notiert und 1.000 addiert. Das steht als Satz in der Einheit, nicht als
+   Fußnote.
+4. Gleiche Tageszeit, gleicher Lüfter, gleiche Übersetzung. Alles, was nicht
+   gleich war, gehört in den Rechenweg der Kachel.
+
+**Die Ausschlussregel aus F/G gilt hier NICHT.** `DURABILITY_EXCLUDED_TYPES`
+hält `VirtualRide` aus der Entkopplungs-Wolke heraus, weil dort Bedingungen
+vergleichbar sein müssen. Hier ist die Rolle genau richtig. Die Bau-Session muss
+aufpassen, dass sie ihre eigenen Testfahrten nicht wegfiltert — das ist der
+naheliegendste Fehler in diesem Paket.
+
+### K2 · Die Zuordnung trifft der Athlet, nicht die Erkennung
+
+Nach dem Muster von „gefahren gegen vorgesehen" (I2) und dem Tageskontext (B):
+**der Athlet markiert eine Fahrt als frischen oder ermüdeten Test.** Eine
+automatische Erkennung — „lange Fahrt mit zwei harten Blöcken am Ende, das wird
+der ermüdete Test sein" — wäre wieder eine Behauptung über eine Fahrt, über die
+das System nichts weiß. Genau die Fehlerklasse aus J1 und aus dem
+„64 zu wellige"-Befund in G3.
+
+- Schreibweg wie `set_day_context`: ein eigener WebSocket-Befehl, der in den
+  Archivblock aus J7 schreibt, Schlüssel ist die `activity_id`.
+- **Auch die Paarung ist Sache des Athleten.** Beim Markieren eines ermüdeten
+  Tests wird gefragt, zu welchem frischen Test er gehört; gibt es genau einen,
+  wird der vorgeschlagen und **bestätigt**, nicht gesetzt. Automatisch den
+  nächstliegenden vorherigen zu nehmen, wäre dieselbe Paarung, die
+  `test_analytics` an anderer Stelle ausdrücklich verbietet.
+- Die Markierung ist **rücknehmbar**. Ein falsch markierter Test darf nicht
+  bedeuten, dass das Archiv von Hand repariert werden muss.
+- Der **Zustand am Testtag** wird nicht mitgespeichert, sondern aus
+  `state_series()` für das Datum gerechnet und neben der Messung gezeigt (K4).
+  Gespeichert wird nur, was nicht wieder herleitbar ist — dieselbe Regel wie bei
+  den Strömen.
+
+### K3 · Stufe 2: die Hantel erst bei zwei Messungen
+
+- **Weniger als ein Paar (frisch + ermüdet): keine Hantel.** Der Mittelteil der
+  Kachel bleibt exakt wie er ist (Wolke, Bins, Blockverlauf aus G). Eine leere
+  Kachelfläche mit einem Platzhalter wäre schlechter als gar nichts.
+- An der Stelle steht bis dahin ein Satz, welcher der beiden Termine fehlt, plus
+  der Knopf. Der Satz nennt den Grund, nicht nur den Mangel.
+- Liegt ein Paar vor, zeichnet die Kachel die Hantel nach **J3**: zwei Zeilen
+  (5 und 20 min), je zwei Punkte, gefüllt gegen hohl, direkte Beschriftung,
+  Achse nicht bei null (Setzung, beschriftet). Die Marke aus **J5** steht an der
+  20-Minuten-Zeile und **nicht** an der 5-Minuten-Zeile — die Studie fand für
+  5 min keinen Gruppenunterschied. Das ist keine Vorsichtsmaßnahme, die man
+  später lockern kann, sondern die Aussage der Quelle.
+- Ab dem **zweiten Paar** kommt der Verlauf: dieselben zwei Zeilen über die
+  Termine, im Register des Blockverlaufs aus G4. Ein Paar ist ein Wert, zwei
+  Paare sind eine Richtung — und die Ehrlichkeitsregeln aus G2 gelten auch hier:
+  aus zwei Punkten wird keine Gerade gelegt.
+
+### K4 · Die ermüdete Einheit ist die härteste im Katalog
+
+- **`states`: `["ready"]`.** Bei gelbem oder rotem Zustand misst der Test die
+  Ermüdung statt der Durability — das ist kein Sicherheitshinweis, sondern ein
+  Messfehler. Die Einheit wird dann nicht als „geht, kostet aber" ausgegeben,
+  sondern als **rot mit Begründung, welches von beiden** (Zustand oder Budget),
+  nach der Wahrheitstabelle aus I3.
+- **Die Vierstufigkeit aus I3 gilt unverändert**, inklusive der Stufe „Reiz".
+  Eine Ausnahme für die Testeinheit würde genau die Regel aufweichen, die I3
+  gegen Sonderfälle verteidigt.
+- `limit`-Text in der Bauart von `z2_210_late`: mindestens zwei ruhige Tage
+  davor, grüner Zustand, keine harte Einheit in den 48 h danach. Und der Satz,
+  warum: ein Test in müdem Zustand liefert eine Zahl, die später nicht mehr von
+  einer echten Verschlechterung zu unterscheiden ist.
+- **Der Zustand am Testtag wird neben dem Ergebnis ausgewiesen** (K2). Ein Paar,
+  dessen ermüdeter Termin auf einen gelben Tag fiel, bleibt sichtbar
+  gekennzeichnet — sonst wandert es beim nächsten Vergleich als gültiger Wert
+  mit durch.
+- `durability_test_fresh` ist demgegenüber harmlos (65 min, zwei kurze
+  All-outs), braucht aber denselben grünen Zustand: der frische Bezugswert ist
+  der Anker für alles Weitere, und ein zu niedriger Anker macht den
+  Ermüdungsblock zu leicht und den gemessenen Erhalt zu gut.
+
+### Tests K
+
+- **Die Zielleistung von `durability_test_fatigued` kommt aus dem frischen
+  Test**, nicht aus der FTP: Gegenprobe mit verändertem frischem Ergebnis — die
+  Zielleistung muss mitwandern. Und eine zweite Gegenprobe mit einer FTP von
+  215 im Archiv: die Zielleistung darf sich **nicht** ändern.
+- **Kein ermüdeter Test ohne frischen:** Gegenprobe, die Einheit darf nicht im
+  Katalog stehen und der Ersatzsatz muss erscheinen.
+- **Plausibilitätsregel aus K0:** Zielleistung unter der gemessenen aeroben
+  Schwelle → die Einheit wird nicht ausgegeben, mit beiden Zahlen im Text.
+- **Keine Hantel unter einem Paar** und **keine Gerade unter zwei Paaren:**
+  beide einzeln geprüft.
+- **Die Marke aus J5 an der 20-min-Zeile und nicht an der 5-min-Zeile:** beide
+  Zeilen prüfen, nicht nur eine.
+- **Keine automatische Erkennung und keine automatische Paarung:** ein Bestand
+  mit zwei unmarkierten, protokollförmigen Fahrten darf **nichts** zeichnen.
+- **`VirtualRide` wird hier nicht ausgefiltert:** ein Paar auf der Rolle muss
+  gezeichnet werden. Gegenprobe gegen die Filter aus G3.
+- Die Dauer der ermüdeten Einheit ist gerechnet, nicht eingetragen: Gegenprobe
+  mit zwei verschiedenen Zielleistungen.
+- Alle Schwellen (Protokolldauern, 1.000 kJ, 80-%-Faktor, Erholungsdauer
+  zwischen den All-outs) in `const.py`, genau einmal, und in der Payload — unter
+  dem Quelltext-Wächter aus F.
+
+---
+
+## Kleinkram für die nächste Session
+
+Drei Posten, die keine eigene Spec brauchen, aber liegen bleiben, wenn sie
+nirgends stehen.
+
+**1 · Die §9-Tabelle im PROJEKTSTAND ist zum ZWEITEN Mal veraltet.** Am
+13.09.2026 summierte sie auf **4.185**, der Kopf derselben Datei auf **4.518**;
+vier Zeilen hingen hinterher (`test_workouts` 1.030 statt 1.230,
+`test_panel_views` 1.114/1.170, `test_panel_fixes` 312/373, `test_panel_design`
+219/235). Beim ersten Mal (Lehre 4 aus Paket A) war das ein Einzelfall — beim
+zweiten Mal ist es ein Muster, und das Muster heißt: eine von Hand gepflegte
+Zahl neben einer gerechneten Zahl geht auseinander, immer.
+
+**Ein Wächter gehört gebaut.** Er kann nicht in eine einzelne Testdatei, weil
+die Zahl erst nach dem Lauf existiert: also ein Läufer (`tests/run_all.py` o. ä.),
+der jede Datei fährt, die gemeldeten Zahlen einsammelt und **beides** gegen den
+PROJEKTSTAND hält — die Tabelle **und** die Kopfzahl. Nur die Kopfzahl zu
+prüfen hätte den jetzigen Fall nicht gefunden; nur die Tabelle zu prüfen hätte
+den Fall aus 0.36.0 nicht gefunden. Ausgabe als Differenzliste je Datei, Urteil
+im Exit-Code.
+
+**2 · Fehlerkapitel PROJEKTSTAND §7, Eintrag zu J1 — eine eigene Fehlerklasse.**
+Bisher sammelt §7 vor allem „zu wenig Daten" und „Prüfstand meldet nicht, was er
+prüft". J1 ist etwas Drittes: **die Messung misst etwas anderes als behauptet.**
+
+Die naheliegende Rechnung (bester 5-min-Abschnitt vor der kJ-Schwelle gegen den
+besten danach) hätte einen Verlust von 6,6 % **angezeigt** und dabei das eigene
+Signifikanzkriterium aus G2 **bestanden** (|t| = 2,53 gegen geforderte 2,0).
+Gefangen hat ihn nicht die Statistik, sondern ein **längengleicher
+Kontrollabschnitt**: wird der frische Abschnitt auf die Länge des ermüdeten
+beschnitten, steht der Erhalt bei 99,5 % und |t| bei 0,18. Der ganze Effekt war
+„Maximum über mehr Material".
+
+**Der Beleg, der es unstrittig macht, gehört mit hinein:** dieselbe Rechnung bei
+einer Placebo-Schwelle von 200 kJ — wo der ermüdete Abschnitt der lange ist —
+liefert **110,2 %** bei t = **+4,18**. Der Athlet wäre „signifikant stärker,
+wenn er müde ist". Ein Signifikanzkriterium schützt gegen Rauschen, nicht gegen
+eine falsch konstruierte Messung; dagegen hilft nur ein Kontrollfall, dessen
+Ergebnis man vorher kennt.
+
+**3 · `NAECHSTER_CHAT.md` steht noch auf Paket 4 / 0.34.0** und beschreibt eine
+Umbenennung, die längst entschieden ist, sowie einen Prüfstand mit 2.090
+Prüfungen. Für eine neue Session ist die Datei inzwischen irreführender als
+hilfreich — entweder auf den Stand nach J/K ziehen oder löschen. Die
+Projektdokumentation liegt ohnehin im PROJEKTSTAND und hier.
 ---
 
 ## Reihenfolge und Modellwahl
