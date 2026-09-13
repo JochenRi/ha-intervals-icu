@@ -251,6 +251,14 @@ async def async_import_dfa(
             by_name.get("heartrate"),
             by_name.get("watts"),
         )
+        if summary:
+            # Der Stundenverlauf entsteht HIER, aus den ungeduennten Stroemen -
+            # sie werden gleich danach weggeworfen und sind spaeter nicht mehr
+            # zu haben. Genau diese Luecke hat Paket L bis 0.44.0 blockiert:
+            # das Archiv trug ein Fenstermittel je Fahrt und keinen Verlauf.
+            summary["hours"] = derive.dfa_hours(
+                by_name.get("dfa_a1"), by_name.get("watts")
+            )
         data["dfa"][key] = summary or {}
         done += 1
         if progress is not None:
@@ -348,6 +356,13 @@ def threshold_series(
                 "moving_time": activity.get("moving_time"),
                 "load": activity.get("icu_training_load"),
                 "avg_hr": activity.get("average_heartrate"),
+                # Die Gegengroesse zur Schwellenleistung, aus DENSELBEN Daten
+                # und auf einem anderen Weg gerechnet. Fuer die Herzfrequenz
+                # gab es sie laengst (avg_hr), fuer die Leistung nicht - und
+                # damit liess sich eine gedrueckte Schwellenleistung nicht von
+                # einer echten unterscheiden (§7, Randnotiz zur Migration).
+                "avg_watts": activity.get("icu_average_watts"),
+                "intensity": activity.get("icu_intensity"),
                 "decoupling": activity.get("decoupling"),
             }
         )

@@ -267,6 +267,98 @@ try:  # inside the package (Home Assistant)
 except ImportError:  # standalone (test suite loads this file directly)
     from const import THRESHOLD_MIN_HR, THRESHOLD_MIN_POWER, THRESHOLD_MIN_WINDOWS
 
+# Andriolo's representative method cuts the DFA axis into intervals, averages
+# power and alpha WITHIN each interval and correlates only those midpoints -
+# that is what clears the cardiac lag. Width and minimum count are house
+# settings: the published work bins by group, not by a stated width.
+DFA_BIN_WIDTH = 0.05
+FATIGUE_MIN_BINS = 3
+
+
+def dfa_hours(
+    dfa: list[Any] | None,
+    watts: list[Any] | None,
+    sample_secs: int = 1,
+    hour_secs: int = 3600,
+) -> list[dict[str, Any]]:
+    """Read P(alpha = 0.75) off EACH hour of a ride, separately.
+
+    One reading per ride cannot show fatigue - the whole question is whether
+    hour two sits below hour one. The archive held a single window mean per
+    ride until 0.45.0, so this is where the hour-by-hour figures come from.
+
+    The read-off is Andriolo's: bin the alpha axis, average both quantities
+    inside each bin, fit a line through the BIN MIDPOINTS, read it at 0.75.
+    Never extrapolated - if 0.75 lies outside the alpha range actually
+    ridden in that hour, the hour carries no value and says so. An
+    extrapolated threshold is an invention with a decimal point.
+    """
+    if not dfa:
+        return []
+    out: list[dict[str, Any]] = []
+    per_hour = max(1, int(hour_secs // max(sample_secs, 1)))
+    total = len(dfa)
+    hour = 0
+    while hour * per_hour < total:
+        start, stop = hour * per_hour, min(total, (hour + 1) * per_hour)
+        points: list[tuple[float, float]] = []
+        dropped = 0
+        low = 0
+        for index in range(start, stop):
+            alpha = _number(dfa[index])
+            watt = _number(watts[index]) if watts and index < len(watts) else None
+            if alpha is None or not 0.0 < alpha <= 2.0 or watt is None or watt <= 0:
+                dropped += 1
+                continue
+            points.append((alpha, watt))
+            if alpha < 1.0:
+                low += 1
+
+        row: dict[str, Any] = {
+            "hour": hour + 1,
+            "points": len(points),
+            "dropped": dropped,
+            # Andriolo's artefact criterion (5 % of beats) is not reproducible
+            # here - Intervals hands over no artefact field. This is the
+            # SUBSTITUTE and is labelled as one: share of points thrown away.
+            "dropped_share": round(dropped / max(1, dropped + len(points)) * 100, 1),
+            # Andriolo requires at least half the points below alpha 1.0. On
+            # everyday data that leaves too little to decide anything, so it
+            # travels as a FIGURE per hour instead of acting as a filter.
+            "dynamic_share": round(low / len(points) * 100, 1) if points else None,
+            "bins": 0,
+            "p075": None,
+            "alpha_min": None,
+            "alpha_max": None,
+        }
+        if len(points) >= 2:
+            buckets: dict[int, list[tuple[float, float]]] = {}
+            for alpha, watt in points:
+                buckets.setdefault(int(alpha / DFA_BIN_WIDTH), []).append((alpha, watt))
+            mids = [
+                (sum(a for a, _ in items) / len(items), sum(w for _, w in items) / len(items))
+                for items in buckets.values()
+            ]
+            row["bins"] = len(mids)
+            row["alpha_min"] = round(min(a for a, _ in mids), 3)
+            row["alpha_max"] = round(max(a for a, _ in mids), 3)
+            if len(mids) >= FATIGUE_MIN_BINS and row["alpha_min"] <= 0.75 <= row["alpha_max"]:
+                n = len(mids)
+                mean_a = sum(a for a, _ in mids) / n
+                mean_w = sum(w for _, w in mids) / n
+                var = sum((a - mean_a) ** 2 for a, _ in mids)
+                if var > 0:
+                    slope = sum((a - mean_a) * (w - mean_w) for a, w in mids) / var
+                    intercept = mean_w - slope * mean_a
+                    row["p075"] = round(slope * 0.75 + intercept, 1)
+                    row["slope"] = round(slope, 1)
+                    resid = sum((w - (slope * a + intercept)) ** 2 for a, w in mids)
+                    tot = sum((w - mean_w) ** 2 for _, w in mids)
+                    row["r2"] = round(1 - resid / tot, 3) if tot > 0 else None
+        out.append(row)
+        hour += 1
+    return out
+
 
 def threshold_verdict(summary: dict[str, Any] | None) -> dict[str, Any]:
     """Judge ONE threshold reading: measurement, or failure?
@@ -546,6 +638,8 @@ try:  # inside the package (Home Assistant)
         DURABILITY_VI_FULL,
         DURABILITY_VI_NONE,
         DURABILITY_MIN_MINUTES,
+        FATIGUE_MAX_ABOVE_Z2,
+        FATIGUE_MIN_MINUTES,
     )
 except ImportError:  # standalone (test suite loads this file directly)
     from const import (
@@ -554,6 +648,8 @@ except ImportError:  # standalone (test suite loads this file directly)
         DURABILITY_VI_FULL,
         DURABILITY_VI_NONE,
         DURABILITY_MIN_MINUTES,
+        FATIGUE_MAX_ABOVE_Z2,
+        FATIGUE_MIN_MINUTES,
     )
 
 
@@ -578,6 +674,72 @@ def variability_index(activity: dict[str, Any]) -> float | None:
     if not normalised or not average:
         return None
     return normalised / average
+
+
+def above_endurance_share(activity: dict[str, Any]) -> float | None:
+    """Return the share of time spent ABOVE zone 2, in percent.
+
+    Zone 3 upwards is where a session stops being base work: tempo, threshold,
+    VO2max. The SweetSpot entry that Intervals adds is an OVERLAPPING band
+    between zones 3 and 4 and is deliberately left out - counting it would
+    count the same seconds twice.
+    """
+    zones = activity.get("icu_zone_times")
+    if not isinstance(zones, (list, tuple)) or not zones:
+        return None
+    ordered: list[tuple[int, float]] = []
+    for entry in zones:
+        if isinstance(entry, dict):
+            name = str(entry.get("id") or "")
+            secs = _number(entry.get("secs"))
+            if not name.startswith("Z") or not name[1:].isdigit() or secs is None:
+                continue
+            ordered.append((int(name[1:]), secs))
+        else:
+            secs = _number(entry)
+            if secs is not None:
+                ordered.append((len(ordered) + 1, secs))
+    if not ordered:
+        return None
+    total = sum(secs for _, secs in ordered)
+    if total <= 0:
+        return None
+    return sum(secs for number, secs in ordered if number >= 3) / total * 100
+
+
+def fatigue_curve_reason(
+    activity: dict[str, Any], min_minutes: float = FATIGUE_MIN_MINUTES
+) -> str | None:
+    """Return None when a ride may lend its HOUR-BY-HOUR course, else why not.
+
+    TWO CRITERIA, TWO QUESTIONS - and neither replaces the other. The
+    variability index asks how JUMPY the pedalling was; this asks whether the
+    session was STRUCTURED. A 20-minute block is extremely even, just at a
+    different level, so the VI reads it as a quiet ride: measured on ten rides,
+    the VI ranges overlap completely (structured 1,031-1,275 against base
+    1,000-1,088) and DURABILITY_VI_NONE would have admitted all three of the
+    rides that wrecked round 3 in docs/ausbau.md L0.
+
+    Structured sessions are excluded BEFORE the measurement, never after. A
+    goodness-of-fit criterion applied afterwards narrows the selection onto
+    exactly the structured rides and collects the confounder instead of
+    dropping it - that is how round 3 turned a training plan into "fatigue".
+    """
+    if not isinstance(activity, dict):
+        return "no_activity"
+    if (activity.get("moving_time") or 0) / 60 < min_minutes:
+        return "short"
+    share = above_endurance_share(activity)
+    if share is None:
+        return "no_zones"
+    if share > FATIGUE_MAX_ABOVE_Z2:
+        return "structured"
+    # The jumpiness question, asked SEPARATELY and answered with the house's
+    # own limit. A ride can be unstructured and still too jumpy to read.
+    index = variability_index(activity)
+    if index is not None and index > DURABILITY_VI_NONE:
+        return "variable"
+    return None
 
 
 def steady_endurance_reason(

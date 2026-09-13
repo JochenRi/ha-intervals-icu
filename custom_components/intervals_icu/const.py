@@ -69,6 +69,42 @@ THRESHOLD_MIN_POWER = 40.0
 # seiner Belegung - er zieht nur keinen Median.
 THRESHOLD_MIN_WINDOWS = 10
 
+# --- Ermuedungskurve: welche Fahrten ihren Stundenverlauf hergeben ------------
+# ZWEI KRITERIEN, ZWEI FRAGEN - und keines ersetzt das andere:
+#   * DURABILITY_VI_* fragt "wie ZAPPELIG wurde getreten" (Ampeln, Wind, Berge).
+#   * Diese Grenze hier fragt "war die Einheit STRUKTURIERT" (Bloecke im Plan).
+# Dass das zwei Fragen sind, hat die Vermessung vom 13.09.2026 erzwungen: der
+# VI trennt strukturierte Einheiten NICHT, weil ein 20-Minuten-Block sehr
+# gleichmaessig ist - nur auf anderem Niveau. Gemessen (Anteil der Zeit
+# oberhalb Zone 2 des Dreizonenmodells, §5):
+#
+#   SweetSpot 2x20   24.08.  VI 1,0955  51,4 %      volumen Rad 30.08. VI 1,0882  14,4 %
+#   vol+SweetSpot    20.08.  VI 1,0309  33,3 %      volumen Rad 04.09. VI 1,0738   4,4 %
+#   Tempo 2x20       13.09.  VI 1,0694  46,0 %      volumen Rad 27.08. VI 1,0476   3,2 %
+#   VO2max 3x4       01.09.  VI 1,2745  38,8 %      volumen Rolle      VI 1,0000   0,0 %
+#
+# Die VI-Bereiche ueberlappen vollstaendig (1,031-1,275 gegen 1,000-1,088):
+# DURABILITY_VI_NONE = 1,25 haette ALLE DREI Stoerer aus L0 Runde 3 durchgelassen.
+# Der Zonenanteil trennt mit einer Luecke von 19 Punkten ohne einen einzigen
+# Ueberlappungsfall. Er faengt zugleich den Stoerer aus Runde 1 mit: eine
+# Ausfahrt, deren erster Berg die Stunde 1 anhebt, steht ebenfalls ueber Zone 2.
+#
+# SETZUNG, an ZEHN Fahrten EINES Bestands gemessen - keine Studiengrenze. Wer
+# ueberwiegend strukturiert faehrt, verliert daran viel; deshalb weist die
+# Kachel aus, wie viele Fahrten daran scheitern, statt eine leere Kurve zu
+# zeigen. Mittig in der belegten Luecke: 6 Punkte Abstand nach unten, 13 nach oben.
+FATIGUE_MAX_ABOVE_Z2 = 20.0
+# Eine Ermuedungskurve braucht Fahrten, die ueberhaupt zwei Stunden erreichen
+# koennen. Unterhalb einer Stunde gibt es keinen Stundenverlauf zu lesen.
+FATIGUE_MIN_MINUTES = 60
+# Die Darstellungsbereiche der Kurve. Was hier steht, ist die MINDESTBELEGUNG -
+# die Stundengrenzen selbst rechnen sich daraus und stehen NIRGENDS im Code:
+# ein Bestand mit langen Fahrten bekommt andere als einer mit kurzen. Setzung.
+# Am eigenen Bestand ergibt das durchgezogen bis Stunde 2 (26 und 23 Fahrten),
+# duenn fuer Stunde 3 (5) und gestrichelt ab Stunde 4 (1).
+FATIGUE_SOLID_MIN_RIDES = 10
+FATIGUE_THIN_MIN_RIDES = 2
+
 # Which sessions the durability tile may look at.
 DURABILITY_MIN_MINUTES = 45      # below this a decoupling reading is not usable
 DURABILITY_MAX_INTENSITY = 80    # interval sessions are a different question
