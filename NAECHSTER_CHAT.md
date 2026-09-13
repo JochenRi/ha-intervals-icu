@@ -107,7 +107,17 @@ Gruppenunterschied. Aus zwei Punkten wird keine Gerade.
 
 ### B4 · Das Aufräum-Paket (Punkt 6 aus dem K-Auftrag)
 
-Als eigenes Release zurückgestellt. **Übrig ist nur noch die DFA/ACWR-Dublette**
+**Ganz oben auf der Liste, weil er bei 0.44.0 ausgefallen ist: der §7-Eintrag
+zu J1 als eigene Fehlerklasse.** Nicht „zu wenig Daten", sondern „die Messung
+misst etwas anderes als behauptet". Mit der Placebo-Schwelle bei 200 kJ
+(+110,2 %, t = +4,18 — signifikant stärker im ermüdeten Zustand) als Beleg, dem
+längengleichen Kontrollabschnitt als dem, was es gefangen hat, und r = +0,18 als
+dem Beleg, dass eine Regression es nicht gefunden hätte. Die einzige der vier
+Klassen, gegen die kein Wächter hilft — nur ein Kontrollabschnitt, den jemand
+absichtlich baut. Der volle Wortlaut steht in `docs/ausbau.md` unter „Zuerst in
+diesem Paket".
+
+Der Rest als eigenes Release zurückgestellt. **Übrig ist nur noch die DFA/ACWR-Dublette**
 — vier Frontend-Stellen, Wächter steht auf exakter Gleichheit `=== 2` und muss
 mit umgeschrieben werden. `ring()` ist erledigt, `decoupling_series` bleibt
 stehen (sie hat einen Konsumenten). Siehe `docs/ausbau.md`, Abschnitt „Eigenes

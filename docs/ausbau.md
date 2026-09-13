@@ -856,7 +856,44 @@ sucht, sucht nach totem Code, den es nicht gibt:
   `thresholds.decoupling_good`. Wer sie entfernt, entfernt ein laufendes
   Diagramm. **Nichts daran anfassen.**
 
-**Was von diesem Paket übrig ist:** ausschließlich die vier Frontend-Dubletten
+### Zuerst in diesem Paket: der §7-Eintrag zu J1
+
+**Offen geblieben beim Bau von 0.44.0, dort gemeldet, hier vorgemerkt, damit er
+nicht ein zweites Mal untergeht.** Er ist Dokumentation eines negativen
+Ergebnisses — es hängt nichts daran, deshalb kein eigenes Release, aber er
+gehört ins Fehlerkapitel, und zwar als **eigene Fehlerklasse**.
+
+Der Eintrag benennt die Klasse, nicht den Einzelfall. Nicht „zu wenig Daten" —
+das wäre ein Belegungsproblem und ginge mit mehr Fahrten weg. Sondern: **die
+Messung misst etwas anderes als behauptet.** Das ist ein Konstruktionsfehler,
+und er verschwindet nicht mit mehr Material: zehn weitere lange Fahrten liefern
+zehn weitere submaximale Abschnitte.
+
+Was in den Eintrag muss:
+
+- **Der Befund:** Leistungserhalt aus gewöhnlichen Fahrten gerechnet ergab
+  93,4 % (t = −2,53) — und bestand damit das Steigungskriterium aus G2.
+  Längengleich gerechnet: 99,5 %, t = −0,18. Der Verlust war die Abschnittslänge.
+- **Die Placebo-Schwelle als Beleg:** dieselbe Rechnung bei **200 kJ**, wo der
+  ermüdete Abschnitt der lange ist, ergibt **+110,2 %, t = +4,18**. Der Athlet
+  wäre „signifikant stärker, wenn er müde ist". Gleiches Artefakt, umgekehrtes
+  Vorzeichen — und deshalb ein Beweis und nicht bloß ein Verdacht.
+- **Was es gefangen hat:** der **längengleiche Kontrollabschnitt**. Nichts
+  sonst.
+- **Was es NICHT gefangen hätte:** eine Regression auf das Längenverhältnis.
+  Die Korrelation zwischen Längenverhältnis und gemessenem Erhalt liegt bei
+  **r = +0,18**. Wer den Fehler statistisch zu korrigieren versucht hätte,
+  hätte ihn nicht einmal gesehen.
+- **Und der Satz, der die Klasse von den anderen drei trennt:** gegen diese
+  Fehlerklasse hilft **kein Wächter**. Die anderen drei lassen sich einsperren —
+  eine zweite Quelle, ein zweiter Rechenweg, ein stiller Ausstieg sind am
+  Quelltext oder am Verhalten erkennbar. Eine Kennzahl, die sauber rechnet und
+  dabei die falsche Größe misst, sieht von innen korrekt aus. Was sie auffliegen
+  lässt, ist ein **Kontrollabschnitt, den jemand absichtlich baut** — also die
+  Frage „was müsste herauskommen, wenn hier nichts wäre?", vor der Messung
+  gestellt und mitgerechnet.
+
+**Was von diesem Paket sonst übrig ist:** die vier Frontend-Dubletten
 oben. Der Wächter hält die Zahl bei 2 und 2 fest. Steigt sie, ist eine neue
 Dublette dazugekommen; fällt sie, ist dieses Paket gelaufen und der Wächter
 gehört nachgezogen.
