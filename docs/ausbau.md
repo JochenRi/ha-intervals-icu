@@ -2150,9 +2150,14 @@ Abweichungen gehören in den aufklappbaren Rechenweg der Karte, nicht nur hierhi
   (`derive.py`, `DFA_STREAMS`). Andriolos Vorverarbeitung — 120-s-Fenster,
   5-s-Gitter, Artefaktkorrektur, Detrending mit Lambda 500 — ist nicht
   nachbaubar. Die Fensterung ist Intervals' eigene und nicht dokumentiert.
-- **Ausdünnung.** Der Panel-Endpunkt liefert `sample_secs` zwischen 5 und 18 s
-  je nach Fahrtlänge und **mittelt** über den Bucket, glättet die alpha-Kurve
-  also zusätzlich.
+- **Ausdünnung — KORRIGIERT beim Bau (0.45.0), sie trifft nicht zu.** Der
+  Panel-Endpunkt liefert `sample_secs` zwischen 5 und 18 s und mittelt über den
+  Bucket — der IMPORTWEG aber nicht: `api.async_get_streams()` holt ungedünnt,
+  und dort entsteht die Auswertung. Gerechnet wird also sauberer, als diese
+  Spezifikation annahm. **Kehrseite:** die Messzahlen unten (152,5 W und die
+  Prüfpunkttabelle) sind an GEDÜNNTEN Daten entstanden. Sie dürfen deshalb in
+  keinem Test als Erwartungswert stehen — der Test prüft die Rechenvorschrift,
+  die Kachel rechnet den Anker aus dem Bestand.
 - **Artefaktkriterium entfällt.** Andriolos Grenze von 5 % ist nicht abbildbar,
   weil kein Artefaktfeld existiert. **Ersatzmaß** (ausdrücklich als solches
   beschriftet, nicht als Andriolos Kriterium): Anteil verworfener Punkte je
@@ -2272,6 +2277,50 @@ dieser Session mit Paket K. L2 bis L6 sind hier **absichtlich nicht
 ausgeschrieben**, weil ihr Inhalt nur aus dem Briefing als Verweis bekannt ist
 und alles andere Erfindung wäre. Wer sie braucht, schreibt sie neu — die
 Grundlagen dafür stehen vollständig in L0, L1, L1a und L1b.
+
+**Stand nach 0.45.0: sie sind OFFEN und wurden nicht gebaut.** Der Bauauftrag
+nannte sie („L1b, L2–L6 wie spezifiziert"), die Spezifikation gibt es aber
+nicht — die Bau-Session hat das gemeldet statt zu erfinden, und der Auftrag
+wurde daraufhin auf L1/L1a/L1b eingegrenzt. **Woher ihr Inhalt kommen muss:
+vom Athleten, nicht aus dieser Datei.** Wer sie wiederhaben will, schreibt auf,
+was die fünf Punkte leisten sollen; alles, was eine nächste Session hier
+herauslesen könnte, wäre eine Rekonstruktion aus dem Nichts. Diese Notiz steht
+hier, damit die nächste Session nicht dieselbe Frage noch einmal stellt.
+
+### Was der Bau von L an dieser Spezifikation korrigiert hat
+
+**Nachgetragen am 13.09.2026, nach 0.45.0.** Vier Stellen, an denen die
+Spezifikation vor dem ersten Handgriff nicht trug:
+
+**1 · L1 war nicht payload-fertig — und das war der halbe Umfang.** Die
+Spezifikation las sich, als müsse nur die Kachel gebaut werden. Tatsächlich trug
+das Archiv **ein Fenstermittel je Fahrt** (`hr_at_threshold` /
+`power_at_threshold`) und keinen Stundenverlauf: die Zahlen „Stunde 1: 151,5 W"
+und „Stunde 2: 142,2 W" existierten nirgends im Bestand, sie waren live gerechnet
+worden. Die Sekundenströme werden nach der Verdichtung weggeworfen. Daraus folgte
+der eigentliche Bau: `derive.dfa_hours()` beim Import, `DFA_ALGO_VERSION` 2 → 3,
+Neuberechnung aller Auswertungen über mehrere Abgleiche und eine sichtbare
+Fortschrittsanzeige, weil ein leerer Platz nach dem Update wie ein Defekt
+aussieht. **Das ist wörtlich Lehre 1 aus Paket A: am Feld prüfen, nicht am Text.**
+
+**2 · Die Ausdünnung trifft auf dem Importweg nicht zu** (siehe L1). Gerechnet
+wird sauberer als angenommen — und deshalb dürfen die gemessenen Zahlen dieser
+Spezifikation nicht als Erwartungswerte in Tests stehen.
+
+**3 · Der Variabilitätsindex kann strukturierte Einheiten nicht ausschließen.**
+L0 verlangt den Ausschluss, nennt aber kein Kriterium, und der VI liegt nahe. Er
+trennt nicht: die Bereiche überlappen vollständig, und `DURABILITY_VI_NONE`
+hätte alle drei Störer aus Runde 3 durchgelassen. Gemessen wurde stattdessen der
+Anteil der Zeit über Zone 2 (Lücke von 19 Punkten, kein Überlappungsfall). Die
+Tabelle steht im PROJEKTSTAND §7 — dort, wo die nächste Session sie sucht.
+
+**4 · L2–L6 existieren nicht** und wurden nicht erfunden (siehe oben).
+
+**Und eine Falle, die in „Tests L" fehlte:** die Falle aus L0 Runde 3 selbst.
+Sie ist jetzt der wichtigste Test des Pakets — mit der Gegenprobe, dass die
+Störer den gemessenen Abfall von +4,0 auf +42,0 W treiben, wenn man sie drin
+lässt. Beim Bau dieser Gegenprobe kam der Befund heraus, dass der Median dämpft,
+aber nicht schützt (PROJEKTSTAND §7).
 
 ### Hausmuster für die Kachel
 

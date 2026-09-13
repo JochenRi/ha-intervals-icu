@@ -6,8 +6,8 @@ Auslieferung über HACS aus `github.com/JochenRi/ha-intervals-icu`
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lokal
 archiviert, auswertet und in einem eigenen Seitenleisten-Panel darstellt.
 
-**Umfang:** ~12.420 Zeilen, davon ~4.460 Frontend · 26 WebSocket-Befehle · 16 Einheiten in
-9 Familien · 17 Testdateien mit **5.099** gezählten Einzelprüfungen · 49 Releases.
+**Umfang:** ~14.760 Zeilen, davon ~4.960 Frontend · 27 WebSocket-Befehle · 16 Einheiten in
+9 Familien · 17 Testdateien mit **5.099** gezählten Einzelprüfungen · 50 Releases.
 
 ---
 
@@ -193,6 +193,136 @@ Recherche:
 ---
 
 ## 7. Fehler und was sie gelehrt haben
+
+**0.45.0 — fünf Befunde aus dem Bau von Paket L.**
+
+**1 · Eine fehlende Versionsmarke heißt URALT, nicht aktuell.** Der Ausfall vom
+06.06.2026 (0,0 bpm über 24 Fenster) wurde von der Mathematik vor 0.9.0
+gerechnet. Der Fix kam in 0.9.0, zusammen mit `DFA_ALGO_VERSION = 2` und
+`drop_outdated_dfa()` — und erreichte den Wert trotzdem nie. Grund:
+`store.async_load` füllt das Grundgerüst auf (`base.update(stored)`), und ein
+Archiv aus der Zeit vor der Marke trägt keine. Also blieb der Wert des
+Grundgerüsts stehen — der AKTUELLE. Die Migration verglich danach aktuell gegen
+aktuell und verwarf nichts.
+
+**Ein Migrationsmechanismus, der beim Laden die aktuelle Marke einsetzt,
+deaktiviert sich selbst — und zwar still.** Er meldet keinen Fehler, er findet
+nur nie etwas. Dieselbe Klasse wie die 0.35.0-Lücke, eine Ebene höher: dort
+wurde ein fehlender Block nie angelegt, hier wurde eine fehlende Marke FALSCH
+angelegt.
+
+**Es sind ZWEI Marken, und das ist der eigentliche Befund:** `dfa_version` und
+`fields_version`. Die zweite hat denselben Defekt — der Feld-Refetch konnte bei
+Altarchiven ebenso nie feuern. Der Wächter hat sie im ALLERERSTEN Lauf gefunden,
+genau wie der Vorgabewert-Wächter aus 0.44.0 seine beiden übersehenen
+Funktionen. Ein Einzelfall wird zur Klasse, sobald man sie zählt.
+`durability_tests.migrate()` macht es seit Paket K richtig — die Marke sitzt IM
+RECORD statt obendrauf, wo kein Auffüllen sie erreicht. Die Bauart war im Haus,
+nur nicht an dieser Stelle.
+
+**2 · Eine Belegungszahl, die zu einem anderen Wert gehört als zu dem, neben dem
+sie steht.** `derive.dfa_summary()` meldete
+`"threshold_samples": len(hr_window) or len(watt_window)`. Fällt der Gurt aus,
+ist das linke Fenster leer, und das `or` schiebt die WATT-Belegung an die Stelle
+der Herzfrequenz-Belegung. Die Fahrt vom 06.06. zeigte „24 Fenster" neben einer
+Schwelle, die kein einziges Fenster hatte. Kein falscher Wert — eine falsche
+Begründung für einen Wert, und die ist schwerer zu sehen. Seit 0.45.0 zwei
+Felder, `hr_windows` und `power_windows`, jedes neben seinem eigenen Wert.
+
+**Und die Prüfung sitzt jetzt am ERGEBNIS statt am Eingang.** `dfa_summary`
+filterte jedes einzelne Sample und ließ den Mittelwert am Ende ungeprüft durch —
+genau deshalb sah es die Ausfälle nicht, die über die ganze Fahrt gehen: dann
+ist jedes Sample für sich schon verworfen, und übrig bleibt ein Mittelwert über
+nichts. `derive.threshold_verdict()` ist die eine Stelle, an der das Ergebnis
+beurteilt wird; vorher stand diese Regel in FÜNF Fassungen im Haus (vier
+verschiedene Grenzen, eine Stelle ganz ohne), weshalb die HF-Kurve im DFA-Reiter
+den Ausfall verwarf, während die Leistungskurve zwölf Zeilen darunter dieselbe
+Fahrt behielt.
+
+**3 · Der Variabilitätsindex misst Zappeligkeit, nicht Struktur.** Für Paket L
+mussten strukturierte Einheiten VOR der Messung ausgeschlossen werden. Der
+naheliegende Griff war der VI — er ist da, er ist belegt, er misst
+Gleichmäßigkeit. Er trennt nicht:
+
+| Einheit | Intensität | VI | über Zone 2 |
+|---|---|---|---|
+| SweetSpot 2×20 (24.08.) | 80,0 | 1,0955 | **51,4 %** |
+| volumen + SweetSpot 2×15 (20.08.) | 77,7 | **1,0309** | 33,3 % |
+| Tempo 2×20 (13.09.) | 77,0 | 1,0694 | 46,0 % |
+| VO2max 3×4 (01.09.) | 90,7 | 1,2745 | 38,8 % |
+| volumen Rad (30.08.) | 68,8 | **1,0882** | 14,4 % |
+| volumen Rad (04.09.) | 60,9 | 1,0738 | 4,4 % |
+| volumen Rolle (11.09.) | 61,9 | 1,0000 | 0,0 % |
+
+**Die VI-Bereiche überlappen vollständig** (strukturiert 1,031–1,275 gegen
+Grundlage 1,000–1,088): `DURABILITY_VI_NONE = 1,25` hätte ALLE DREI Störer aus
+L0 Runde 3 durchgelassen, und die SweetSpot-Fahrt vom 20.08. ist mit 1,0309
+gleichmäßiger als jede Ausfahrt draußen. Der Grund ist sachlich: ein
+20-Minuten-Block IST sehr gleichmäßig, nur auf einem anderen Niveau. NP/AP
+sieht ihn deshalb wie eine ruhige Ausfahrt. Der Anteil der Zeit über Zone 2
+trennt mit einer Lücke von 19 Punkten ohne Überlappungsfall — und fängt den
+Störer aus Runde 1 mit, weil eine Ausfahrt mit erstem Berg ebenfalls dort steht.
+**Zwei Kriterien, zwei Fragen, und keines ersetzt das andere.** Der Satz steht
+im Quelltext an der Stelle, wo beide Filter stehen — sonst greift die nächste
+Session wieder zum VI, weil er naheliegt.
+
+**4 · Robustheit ist kein Schutz.** Die Gegenprobe zum Ausschluss sollte zeigen,
+dass eine strukturierte Einheit den gemessenen Abfall verfälscht. Erste Fassung:
+eine Störfahrt unter acht Volumenfahrten — der Median rührte sich nicht, der
+Test blieb grün und bewies nichts. Nachgemessen:
+
+| Störer : Grundlage | Abfall Stunde 1 → 2 |
+|---|---|
+| 1 : 8 | +4,0 W (unverändert) |
+| 4 : 8 | +4,0 W (unverändert) |
+| **8 : 8** | **+42,0 W** |
+
+**Der Median dämpft, er rettet nicht.** Er hält, bis die Störer die Hälfte
+stellen — und bei diesem Athleten stellen sie sie: Rollen-SweetSpots und
+VO2max-Einheiten sind hier keine Ausreißer, sondern das halbe Training. **Wer
+aus der Dämpfung schließt, der Ausschluss sei entbehrlich, hält Robustheit für
+Schutz.**
+
+**Die Lehre über die Gegenprobe selbst, und sie gilt für jede künftige:** eine
+Mutation, die den Test nicht bewegt, beweist nicht die Robustheit des Codes,
+sondern die Stumpfheit des Tests. **Geprüft wird, AB WELCHER DOSIS sie beißt,
+nicht ob sie bei Dosis eins beißt.** Beide Enden stehen jetzt als Zusicherung in
+`test_fatigue.py` — auch die Nicht-Bewegung bei 1:8, sonst lernt die nächste
+Session die falsche Hälfte.
+
+**5 · Ein Wächter, der je Kachel eingetragen werden muss, schützt nur das, woran
+jemand gedacht hat.** Der Quelltext-Wächter aus Paket F läuft global über drei
+bekannte Zahlenklassen, im Detail aber je Kachel — und dort stand bis 0.45.0
+ausschließlich `rDurability`. Er hat die Durability-Kachel geprüft und wäre an
+der Ermüdungskachel vorbeigelaufen, ohne ein Wort zu sagen. Behoben, indem die
+Liste der geprüften Kacheln gegen den Quelltext gehalten wird.
+
+**Das ist jetzt drei Mal dieselbe Lösung für dasselbe Muster** — und damit ein
+Verfahren statt dreier Einzelfälle:
+
+| Liste | eingeführt | was die Vollständigkeitsprüfung beim ersten Lauf fand |
+|---|---|---|
+| `JUDGEMENT_FUNCTIONS` (Vorgabewerte) | 0.44.0 | `fatigued_session()` und `scaled()` |
+| Versionsmarken in `store.async_load` | 0.45.0 | `fields_version` |
+| geprüfte Kacheln im Quelltext-Wächter | 0.45.0 | `rFatigue` |
+
+**Regel: eine von Hand gepflegte Liste braucht eine Prüfung, die das Pflegen
+erzwingt.** Ohne sie schützt der Wächter genau bis zum nächsten Fall, an den
+jemand gedacht hat — und dass er dann schweigt, ist sein gefährlichster
+Zustand. Jede dieser drei Prüfungen hat beim ALLERERSTEN Lauf etwas gefunden;
+keine davon war Zierrat.
+
+**6 · Ein Modell außerhalb seines Gültigkeitsbereichs zu strecken erzeugt
+Unsinn, auch wenn die Rechnung formal aufgeht.** Das Unsicherheitsband der
+Ermüdungskurve sollte die publizierte Streuung des −5-%-Zeitpunkts tragen
+(139 ± 78 min). Erste Fassung: die Zeitachse strecken, `f(t · k)` — formal
+sauber, und bis zwei Stunden sah es richtig aus. Jenseits des Studienhorizonts
+von rund 3,4 h läuft die quadratische Form aus ihrem Gültigkeitsbereich, und die
+UNTERE Bandkante stieg über die Kurve. **Eine Unsicherheit, die sich selbst
+überholt, ist keine.** Jetzt skaliert die Streuung den VERLUST statt der Zeit;
+die Breite wächst monoton von 1,7 W nach einer halben Stunde auf 41,8 W nach
+4,5 h. Das ist die Verwandte der J1-Lehre — dort maß die Messung etwas anderes
+als behauptet, hier zeigt die Darstellung etwas anderes als gerechnet.
 
 **13.09.2026 — zwei Befunde aus der Vermessung für Paket L, die den Trainer
 schon heute betreffen.**
@@ -837,6 +967,17 @@ für jede Zahl, die sich als Umrechnung ausgibt. **Die Zahl wird aufgelöst, nic
 aufgeweicht** — `DURABILITY_TEST_WORK_J` steht jetzt in `const.py`, direkt neben der Größe in kJ,
 mit dem Grund daneben.
 
+**Fünfte Bauregel, aus 0.45.0: ein Erklärtext, der eine Schwelle nennt, nennt sie AUS DER
+PAYLOAD oder gar nicht.** Drei Mal hat inzwischen ein Wächter die eigene Begründung gerissen:
+beim F-Wächter, bei den 80 g/h und zuletzt an dem Satz, der erklärt, warum die Ermüdungskachel
+nicht behaupten darf, nach Andriolos Verfahren gerechnet zu haben. Jedes Mal hatte die Prüfung
+sachlich unrecht und in der Sache recht — ein Wächter kann eine Erklärung nicht von einer
+Behauptung unterscheiden. Statt sich weiter überraschen zu lassen: der Erklärtext holt seine
+Zahl aus derselben Payload wie die Anzeige, oder er nennt keine. **Das macht die Regel zur
+Bauvorschrift statt zur wiederkehrenden Überraschung** — und es gilt in beide Richtungen, denn
+ein Erklärtext, der seine Zahl aus der Payload zieht, bleibt auch dann richtig, wenn die
+Schwelle sich ändert.
+
 **Vierte Bauregel: ein Wächter über eine handgepflegte Liste braucht eine Prüfung, die das
 Pflegen erzwingt.** Der Vorgabewert-Wächter (§7) führt `JUDGEMENT_FUNCTIONS` von Hand — und
 prüft zugleich, dass **keine** Funktion in `workouts.py` Vorgabewerte für Urteilseingaben trägt,
@@ -956,6 +1097,7 @@ bzw. ein Reiter je Chat.
 | **Trainer (Wochenplan + Einheitenliste, Paket I)** | ✅ gebaut als **0.42.0**. Vier Urteilsstufen (grün / gelb / **Reiz** / rot) an EINER Stelle im Backend, beide Ansichten lesen sie aus der Payload — die Zusammenführung von Zustand und Budget stand bis dahin im Frontend. Bewertet wird nur die laufende Woche; spätere tragen einen Satz statt einer Stufe, weil ein Budget aus den letzten sechs Tagen nichts über Woche sechs sagt. Gefahren gegen vorgesehen aus dem Archiv, **ungepaart**. Die Spezifikation wurde vor dem Bau an sechs Stellen korrigiert: die Ansicht existierte bereits seit 0.33.0, die Stufenliste hatte drei Punkte bei vier Stufen, die Last der geplanten Einheit war die einer kürzeren (siehe §7), das Urteil über acht Wochen widersprach I4, „Erholung war da" war undefiniert, und der Trainer-Reiter musste mit. Verifikation am System steht aus |
 | **Durability-Messung als Einheit (Paket K, Stufe 1)** | ✅ gebaut als **0.44.0**. K1 und K2; K3 (die Hantel) bleibt zurückgestellt, bis zwei Messungen vorliegen. Die Spezifikation wurde vor dem Bau an drei Stellen korrigiert: K1 war **nicht** „nur `workouts.py`" (der 20-Minuten-Bestwert steht in keinem Feld, also zieht K2 das ganze J7 mit rein — Archivblock, Migration, Messweg aus den ungedünnten Strömen); die Lastregel aus I3 gilt bei **konstanter** Intensität und ist für eine Einheit mit fester Arbeit und abgeleiteter Dauer nicht anwendbar (jetzt gerechnet statt skaliert); und die Ausschlusswarnung zielte auf `DURABILITY_EXCLUDED_TYPES`, während in Wahrheit der **Intensitätsfilter** beißt. Verifikation am System steht aus |
 | **Durability-Kachel (Paket H)** | ✅ gebaut als **0.41.0**. Kopfbereich aus drei Zeilen: belegte Fähigkeit (längste gleichmäßige Fahrt nach ZEIT, mit der Leistung dieser Fahrt), Bezug der letzten 30 Tage mit sichtbarer Ausweitung, nächster Schritt ×1,10 auf fünf Minuten gerundet. Die Spezifikation wurde vor dem Bau an drei Stellen korrigiert: H war **nicht** frontend-only (Dauer und Leistung fehlten in der Payload), der Rückfall ist die **Regel** statt einer Ausnahme (am Livebestand 230 gegen 260 min bei gefülltem Fenster), und vier Fallen fehlten. Verifikation am System steht aus |
+| **DFA-Reiter (Ermüdungskurve, Paket L)** | ✅ gebaut als **0.45.0**. L1/L1a/L1b: Anker gemessen (Repräsentantenmethode je Fahrtstunde, aus den ungedünnten Strömen beim Import), Form nach Gallo gesetzt und daran verankert, Unsicherheitsband aus der publizierten Streuung. Die Bereichsgrenzen rechnen sich aus der Belegung — zwei Bestände ergeben nachweislich zwei Grenzen. Vorgeschaltet zwei Bugfixes, die heute schon wirken: die Plausibilitätsregel an EINER Stelle statt in fünf Fassungen, und der Historienbeginn. Die Spezifikation wurde vor dem Bau an vier Stellen korrigiert: L1 war NICHT payload-fertig (das Archiv trug ein Fenstermittel je Fahrt, keinen Stundenverlauf — also Algorithmus-Bump, Neuberechnung, Fortschrittsanzeige), die Ausdünnung ist auf dem Importweg gar nicht da, der VI kann strukturierte Einheiten nicht trennen (§7), und L2–L6 existieren nicht und wurden nicht erfunden. Verifikation am System steht aus |
 | **Konstanten-Dubletten (DFA/ACWR) + toter ring()/rd-Code** | ⬜ eigenes Paket, vom Wächter bei 2+2 eingefroren (docs/ausbau.md) |
 | Heute, Kalender (voller Audit), Fitness, Aktivitäten | offen |
 
