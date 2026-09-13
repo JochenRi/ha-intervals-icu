@@ -7,7 +7,7 @@ Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lok
 archiviert, auswertet und in einem eigenen Seitenleisten-Panel darstellt.
 
 **Umfang:** ~14.760 Zeilen, davon ~4.960 Frontend · 27 WebSocket-Befehle · 16 Einheiten in
-9 Familien · 18 Testdateien mit **5.276** gezählten Einzelprüfungen · 54 Releases.
+9 Familien · 18 Testdateien mit **5.276** gezählten Einzelprüfungen · 55 Releases.
 
 ---
 
@@ -516,11 +516,19 @@ Verfahren statt dreier Einzelfälle:
 | geprüfte Kacheln im Quelltext-Wächter | 0.45.0 | `rFatigue` |
 | `curve` unter den Urteilseingängen | 0.47.0 | die Wattvorgabe fiele sonst stillschweigend auf die FTP zurück |
 | Watt- gegen Pulsseite derselben Einheit | 0.47.1 | die Wattvorgabe saß auf der Schwelle, die Pulsvorgabe bei 88–97 % |
+| deutsche Zahlwörter für die Dateizahl | 0.44.0–0.48.0 | lief bei der achtzehnten Datei auf `None` — **abgeschafft statt gepflegt**: die Zahl steht als Ziffer da |
 
-**Vier Mal dieselbe Form, und die ZAHL DER FÄLLE ist selbst die Aussage:** das
+**Fünf Mal dieselbe Form in zwei Paketen, und die ZAHL DER FÄLLE ist selbst die
+Aussage:** das
 ist kein Muster mehr, das man erkennt, sondern eines, mit dem man rechnet. Jede
 neue handgepflegte Liste bekommt ihre Vollständigkeitsprüfung mit, bevor sie
 zum vierten Mal jemandem auffällt.
+
+**Und der fünfte Fall zeigt den besseren Ausweg: eine Liste, die man abschaffen
+kann, ist besser als eine, die man pflegt.** Die Zahlwörter waren nur nötig,
+weil die Dateizahl im Einleitungssatz ausgeschrieben stand. Als Ziffer braucht
+sie keine Liste, keinen Wächter und keine Pflege. **Vor dem Wächter kommt die
+Frage, ob die Liste überhaupt sein muss.**
 
 **Regel: eine von Hand gepflegte Liste braucht eine Prüfung, die das Pflegen
 erzwingt.** Ohne sie schützt der Wächter genau bis zum nächsten Fall, an den
@@ -1322,6 +1330,7 @@ bzw. ein Reiter je Chat.
 | **Durability-Kachel (Paket H)** | ✅ gebaut als **0.41.0**. Kopfbereich aus drei Zeilen: belegte Fähigkeit (längste gleichmäßige Fahrt nach ZEIT, mit der Leistung dieser Fahrt), Bezug der letzten 30 Tage mit sichtbarer Ausweitung, nächster Schritt ×1,10 auf fünf Minuten gerundet. Die Spezifikation wurde vor dem Bau an drei Stellen korrigiert: H war **nicht** frontend-only (Dauer und Leistung fehlten in der Payload), der Rückfall ist die **Regel** statt einer Ausnahme (am Livebestand 230 gegen 260 min bei gefülltem Fenster), und vier Fallen fehlten. Verifikation am System steht aus |
 | **Trainer (Ermüdungskurve, Paket L)** | ✅ gebaut als **0.45.0**, in **0.46.0** an ihren Platz gerückt: sie ist das Hauptbild der Durability-Kachel im Trainer und ersetzt dort die Punktwolke — vorher stand sie im DFA-Reiter neben einer zweiten Kachel zur selben Frage (§7). Dazu die fehlende Bedienung (Ablesestreifen, Zeiger, Wertetabelle, beide Leserichtungen) und die gepaarte Gegenrechnung zum Auswahleffekt. L1/L1a/L1b: Anker gemessen (Repräsentantenmethode je Fahrtstunde, aus den ungedünnten Strömen beim Import), Form nach Gallo gesetzt und daran verankert, Unsicherheitsband aus der publizierten Streuung. Die Bereichsgrenzen rechnen sich aus der Belegung — zwei Bestände ergeben nachweislich zwei Grenzen. Vorgeschaltet zwei Bugfixes, die heute schon wirken: die Plausibilitätsregel an EINER Stelle statt in fünf Fassungen, und der Historienbeginn. Die Spezifikation wurde vor dem Bau an vier Stellen korrigiert: L1 war NICHT payload-fertig (das Archiv trug ein Fenstermittel je Fahrt, keinen Stundenverlauf — also Algorithmus-Bump, Neuberechnung, Fortschrittsanzeige), die Ausdünnung ist auf dem Importweg gar nicht da, der VI kann strukturierte Einheiten nicht trennen (§7), und L2–L6 existieren nicht und wurden nicht erfunden. Verifikation am System steht aus |
 | **Trainer (Wattvorgaben, Paket L4)** | ✅ gebaut als **0.47.0**, korrigiert in **0.47.1** (die Vorgabe ist ein Anteil der Schwelle, nicht die Schwelle selbst — §7). Grundlage und lange Fahrt beziehen ihre Watt aus der gemessenen Kurve, gestaffelt nach Fahrtdauer auf der gepaarten Reihe; die übrigen Familien bleiben bei der FTP, die dort als **Rückfall** beschriftet ist. Die Einheitenkarte nennt je Abschnitt, ob die Zahl gemessen oder Studienform ist. Die Spezifikation wurde vor dem Bau an einer Stelle korrigiert: nicht „SweetSpot liegt außerhalb des Messbereichs" (falsch — es liegt drin), sondern „aus arbiträren Fahrten ist dort kein tragfähiger Fit zu gewinnen". Dazu `p050` und die Signalqualität unter alpha 0,5 erhoben, von nichts benutzt. Verifikation am System steht aus |
+| **Trainer (Leistung je Block, Paket M)** | ✅ gebaut als **0.48.0**. Ein Wert je Arbeitsblock, direkt abgelesen nach dem Verwerfen der ersten zwei Minuten (Rogers 2021, am Bestand bestätigt: Anlauf endet bei 90–120 s). Verlauf je Familie mit der Leistung im ersten eingeschwungenen Block als Leitzahl; dazu ein Regelkreis, der einen Vorschlag rechnet und nichts selbst tut. Blockgrenzen aus Intervals' eigenen Abschnitten (K2). Die Vermessung lief in drei Runden und korrigierte drei Zahlen, bevor eine Zeile entstand (§7). Verifikation am System steht aus |
 | **Konstanten-Dubletten (DFA/ACWR) + toter ring()/rd-Code** | ⬜ eigenes Paket, vom Wächter bei 2+2 eingefroren (docs/ausbau.md) |
 | Heute, Kalender (voller Audit), Fitness, Aktivitäten | offen |
 

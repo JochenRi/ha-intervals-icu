@@ -2499,6 +2499,19 @@ begründet: sie deckt den langsameren Fall mit ab.**
 Die Zwei-Minuten-Grenze gehört als Konstante nach `const.py`, **einmal**, mit
 Rogers als Quelle und dem eigenen Befund als Bestätigung daneben.
 
+**WO DIE METHODE IHRE GRENZE HAT — als Regel, nicht als Beobachtung.** Der
+Median ist gegen den Anlauf robust, **solange der Anlauf unter der Hälfte des
+Blocks liegt**. Bei einem 20-Minuten-Block sind zwei Minuten ein Zehntel und
+das Verwerfen ändert kaum etwas; bei einem 4-Minuten-Block sind sie die Hälfte,
+und dort kippt auch der Median. **Genau deshalb fiel der Fehler bei VO2max auf
+und bei SweetSpot nicht — es ist die Blocklänge, nicht die Regel.**
+
+**Daraus folgt die Untergrenze: unterhalb von rund vier Minuten Blockdauer
+trägt diese Methode nicht mehr.** Nach dem Verwerfen bliebe zu wenig übrig, um
+einen Median zu bilden, der etwas anderes misst als den Anlauf. Wer 3-Minuten-
+oder 30/15-Intervalle auswerten will, braucht ein anderes Verfahren — nicht
+eine kleinere Verwurfzeit.
+
 ### M2 · Was die Vermessung ergeben hat
 
 **a) Die Blockerkennung steht.** `derive.normalize_laps` liefert `start_s` /
