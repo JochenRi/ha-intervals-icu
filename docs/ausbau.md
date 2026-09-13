@@ -377,6 +377,95 @@ entschieden ist:
 
 ---
 
+## Paket D — Abgleich mit Intervals
+
+**Aufgenommen am 13.09.2026.** Vorrang vor Paket C: ein Archiv mit Karteileichen
+verfälscht jede Vergleichsgruppe, weil gelöschte Einheiten als Vergleichspartner
+mitzählen. Erst abgleichen, dann den Caliper verfeinern — sonst weiß niemand, ob
+sich ein Prozentrang wegen der neuen Toleranz verschoben hat oder wegen einer
+Leiche.
+
+### D1 · Der Befund
+
+`async_get_activities(oldest, newest)` holt ein Zeitfenster, und der Importer
+**fügt nur hinzu**. Im ganzen Code gibt es keinen Pfad, der eine Aktivität
+wieder entfernt. Was einmal im Archiv liegt, bleibt dort — auch wenn es in
+Intervals gelöscht wurde.
+
+### D2 · Was die API hergibt (recherchiert, nicht angenommen)
+
+Es gibt **keinen Lösch-Feed** und keinen Zeitstempel, über den sich Löschungen
+erkennen ließen. Die offizielle Swagger-Dokumentation ist nachweislich veraltet
+— sie erwähnt nicht einmal die `oldest`/`newest`-Parameter, die es längst gibt.
+Verlässlich ist nur, was der Endpunkt tatsächlich liefert.
+
+Damit bleibt der **Fenster-Abgleich**: die Antwort für ein Fenster ist
+autoritativ, was darin fehlt, existiert nicht mehr. Er ist billiger als
+befürchtet, weil der `fields`-Parameter die Antwort serverseitig trimmt —
+`fields=id,start_date_local` liefert eine winzige Nutzlast. **`api.py` kann das
+bereits:** `async_get_activities()` nimmt `fields` entgegen ("a full season then
+fits into a single request"). Die ganze Historie passt damit in einen Abruf,
+eine Zeitraumauswahl in der Bedienung entfällt.
+
+**Offen, an der echten API zu prüfen, nicht anzunehmen:** ob der
+Aktivitäten-Endpunkt ein `updated`-Feld führt. Für Wellness ist es belegt, für
+Aktivitäten nicht.
+
+### D3 · Abgleich, keine Löschfunktion — die Grenze
+
+**Entschieden am 13.09.2026.** Es wird **keine** Bedienhandlung „Aktivität
+löschen" gebaut, und sie soll auch später nicht gebaut werden. Gebaut wird ein
+Knopf „Mit Intervals abgleichen". Der Unterschied ist nicht Wortklauberei:
+
+- Die Entfernung ist **keine Entscheidung, sondern eine Folge**. Sie hat immer
+  nur ein Ergebnis — Gleichstand mit Intervals.
+- Sie lässt sich nicht auf eine einzelne Einheit anwenden und nicht
+  missbrauchen. Was in Intervals steht, kann in HEIMDALL nicht verschwinden.
+- Die Richtung bleibt einseitig: der Abgleich **liest nur**. Der einzige
+  Schreibweg der Integration bleibt die geplante Einheit auf den Kalender, und
+  der wird hiervon nicht berührt.
+
+### D4 · Die drei Sperren — der eigentliche Inhalt
+
+Ein Fehlschlag darf nie als „alles gelöscht" gelesen werden. Ein Timeout, ein
+500er, eine halb gelesene Antwort — und ein Jahr Historie ist weg.
+
+1. Entfernt wird **nur nach einer nachweislich vollständigen, fehlerfreien
+   Antwort**. Jede Ausnahme, jeder Fehlerstatus bricht den Abgleich ab, ohne
+   etwas anzufassen.
+2. **Nur innerhalb des abgefragten Fensters**, nie darüber hinaus.
+3. **Deckelung:** fehlen mehr als 20 % der Einheiten eines Fensters, wird
+   **nichts** entfernt, sondern gemeldet. Das ist die Sicherung gegen einen
+   API-Fehler, der wie eine leere Antwort aussieht.
+
+Dazu die Bestätigung vorher — nicht als Erlaubnis, sondern als Kontrolle:
+„3 Einheiten sind in Intervals nicht mehr vorhanden: 04.09. Rad, … — abgleichen?"
+Stehen dort beim ersten Lauf plötzlich 40, ist nicht das Archiv falsch, sondern
+der Abruf.
+
+### D5 · Drei Aufräumstellen, sonst bleiben Leichen zweiter Ordnung
+
+`activities` ist die offensichtliche. Dazu gehören der `dfa`-Block (an der
+Aktivitäts-ID hängend) und die `unavailable`-Liste. Die Zähler im Kopf
+("239 Einheiten · 57 DFA") lesen aus allen dreien — bleibt eine stehen, zeigt
+das Panel wieder zwei Zahlen, die nicht zusammenpassen.
+
+### Tests D
+
+- Fenster mit einer fehlenden ID: genau diese verschwindet, aus allen drei
+  Stellen, keine andere.
+- **Sperre 1:** die API wirft — nichts wird angefasst, der Bestand ist
+  bit-identisch.
+- **Sperre 2:** eine Einheit außerhalb des Fensters bleibt unberührt.
+- **Sperre 3:** Fenster liefert 50 % weniger — nichts entfernt, Meldung statt
+  Vollzug.
+- Der No-op-Fall: ein Abgleich ohne Abweichung verändert das Archiv nicht und
+  löst keinen Speichervorgang aus.
+- Gegenproben: jede der drei Sperren einzeln entfernen — jede Mutation muss
+  gezählt und benannt melden.
+
+---
+
 ## Paket C — Vergleichsgruppe
 
 ### C1 · Was heute dasteht
