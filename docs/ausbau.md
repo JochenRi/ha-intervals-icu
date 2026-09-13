@@ -2508,6 +2508,17 @@ liefert. **Und er folgt K2: die Zuordnung trifft der Athlet, nicht die
 Erkennung.** Eine Segmentierungsheuristik wäre Runde 1 in neuer Verkleidung —
 sie würde einen Berg, eine Ampel oder eine Pause für einen Block halten.
 
+**Erste Prüffrage, und sie ist billig:** ist das `dfa_a1`-Feld in den
+Abschnittsdaten dieses Kontos überhaupt **gefüllt**? `normalize_laps` mappt es,
+aber ob Intervals dort einen Abschnittsmittelwert liefert, ist nicht
+dokumentiert und wurde nie am echten Konto geprüft. **Liefert es einen, spart
+das womöglich die halbe Rechnung** — dann ist der Blockwert bereits da und muss
+nur noch archiviert werden. Liefert es keinen, weiß man es, bevor jemand darauf
+baut. Ein einziger lesender Abruf auf eine SweetSpot-Fahrt beantwortet das.
+**Vorbehalt auch im Erfolgsfall:** ein Mittelwert über den Block ist etwas
+anderes als eine Ablesung an der Schwelle — er wäre der Einstieg, nicht
+zwangsläufig die Antwort.
+
 **Architekturpunkt, der daran hängt:** Laps werden heute **nicht archiviert**,
 sie werden je geöffneter Aktivität live geholt. Die Ströme dagegen sind nach
 dem Import weg. Für einen Verlauf über Wochen müssen die Blockwerte deshalb
@@ -2551,6 +2562,19 @@ Dann wird nur gebaut, was trägt.**
    käme auch die SweetSpot-Vorgabe aus einer Messung statt aus einer
    Eintragung, die nachweislich rund 10 % zu hoch steht. **Die FTP bleibt
    Rückfall, sichtbar beschriftet** (Richtungsentscheidung, Punkt 1).
+
+### M3a · Randbedingung: Versions-Bumps werden gebündelt
+
+Paket M braucht mit hoher Wahrscheinlichkeit einen dritten Algorithmus-Bump
+(Blockwerte im Archiv). **Zwei Neuberechnungen kurz hintereinander sind dem
+Athleten nicht zuzumuten** — jede kostet rund drei Abgleiche, in denen die
+Kachel leer ist und der Trainer auf den Rückfall zurückgeht.
+
+**Verbindlich: wird M gebaut, wird es zusammen mit allem gebaut, was ebenfalls
+einen Bump braucht — nicht einzeln.** Vor dem nächsten Bump wird also geprüft,
+was sonst noch am Import hängt und mitgenommen werden kann. Wer einen Bump
+allein auslöst, obwohl ein zweiter absehbar ist, hat die Reihenfolge falsch
+geplant, nicht der Nutzer zu wenig Geduld.
 
 ### M4 · Reihenfolge, verbindlich
 
