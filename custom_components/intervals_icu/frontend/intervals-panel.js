@@ -1126,6 +1126,7 @@ class IntervalsIcuPanel extends HTMLElement {
           <b class="tn">${wann ? fmt(wann.t) + " h" : "mehr als der längsten Fahrt"}</b>,
           und das ist Studienform, keine Messung.</p>
       </div>
+      ${this._fatigueHr(f)}
       <details class="more"><summary>Rechenweg</summary>
         <table class="dfatab"><thead><tr><th></th><th>gemessen</th><th>Studienform</th>
           <th>Abweichung</th><th>Belegung</th></tr></thead><tbody>${rows}</tbody></table>
@@ -1146,6 +1147,44 @@ class IntervalsIcuPanel extends HTMLElement {
           Verlust gerechnet. Diese Form erreicht −5 % nach ${fmt(f.t5_minutes)} min.</p>
         ${this._fatigueDropped(f)}
       </details></div>`;
+  }
+
+  /* L1b - die HF-Korrektur. GLEICHWERTIGER Teil der Karte, aber vollständig
+     als SETZUNG beschriftet: die eigene Messung findet den Anstieg nicht, und
+     der Grund steht dabei. Die gemessene Spalte kommt aus denselben Fahrten
+     wie die Kurve darüber, damit "nicht wiederfindbar" eine eigene Zahl ist
+     und kein Zitat aus einer Studie. */
+  _fatigueHr(f) {
+    if (!f.aerobic_hr || !(f.hr_drift_expected || []).length) return "";
+    const rows = f.hr_drift_expected.map((e) => {
+      const m = (f.measured || []).find((r) => r.hour === e.hour);
+      const dev = m && m.hr != null ? m.hr - e.bpm : null;
+      return `<tr><td>Stunde ${e.hour}</td><td class="tn">${fmt(e.bpm)} bpm</td>
+        <td class="tn">${m && m.hr != null ? fmt(m.hr) + " bpm" : "–"}</td>
+        <td class="tn">${dev == null ? "–" : sign(Math.round(dev)) + " bpm"}</td>
+        <td class="mut">${m && m.hr_n ? fmt(m.hr_n) + (m.hr_n === 1 ? " Fahrt" : " Fahrten") : "–"}</td></tr>`;
+    }).join("");
+    return `<details class="more"><summary>Die Herzfrequenz zur Schwelle — und warum sie steigt</summary>
+      <p>Das Panel nennt <b class="tn">${fmt(f.aerobic_hr)} bpm</b> als aerobe Schwelle.
+        <b>Das gilt für den ausgeruhten Zustand.</b> Nach Stevenson steigt die Schwellen-HF
+        mit der Dauer, während die Leistung fällt — wer sich nach Stunden noch an die
+        ausgeruhte Zahl hält, fährt zu hart.</p>
+      <table class="dfatab"><thead><tr><th></th><th>erwartet (Setzung)</th>
+        <th>am eigenen Bestand</th><th>Abweichung</th><th>Belegung</th></tr></thead>
+        <tbody>${rows}</tbody></table>
+      <p class="src"><b>Die linke Spalte ist Literatur, keine Messung.</b> Stevenson misst
+        ${fmt(f.hr_drift_source_rest)} bpm ausgeruht gegen ${fmt(f.hr_drift_source_2h)} bpm
+        nach zwei Stunden; übertragen wird nur der prozentuale Anstieg
+        (${fmt(f.hr_drift_per_hour_pct, 2)} % je Stunde), auf deine eigene ausgeruhte Zahl.</p>
+      <p class="src"><b>Warum die rechte Spalte das nicht bestätigt.</b> Stevenson misst im
+        standardisierten Stufentest, wo die Belastung kontrolliert ist. Im Feld ist sie das
+        nie: dort folgt die HF-Änderung fast vollständig der Leistungsänderung — gemessen
+        wird dann nicht die Ermüdungsverschiebung, sondern dass in der zweiten Stunde eine
+        andere Leistung getreten wurde. Die Aussage bleibt richtig, sie ist an
+        Alltagsfahrten nur nicht prüfbar.</p>
+      <p class="src">Die Temperatur fehlt in den Daten und wird hier <b>benannt statt
+        nachgerüstet</b> — ein zusätzliches Feld löst einen Vollabruf aus, und die Leistung
+        ist ohnehin der stärkere Störer.</p></details>`;
   }
 
   /* Welche Fahrten NICHT zählen - namentlich, mit Grund und mit ihrer Zahl.

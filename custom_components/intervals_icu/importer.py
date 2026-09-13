@@ -257,7 +257,7 @@ async def async_import_dfa(
             # zu haben. Genau diese Luecke hat Paket L bis 0.44.0 blockiert:
             # das Archiv trug ein Fenstermittel je Fahrt und keinen Verlauf.
             summary["hours"] = derive.dfa_hours(
-                by_name.get("dfa_a1"), by_name.get("watts")
+                by_name.get("dfa_a1"), by_name.get("watts"), by_name.get("heartrate")
             )
         data["dfa"][key] = summary or {}
         done += 1

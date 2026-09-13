@@ -961,6 +961,17 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   ok(!/über Zone 2/.test(ohne.split("Rechenweg")[1] || ""),
      "L1: Ausschlussliste erscheint auch ohne Ausschlüsse");
 
+  // L1b: gleichwertiger Teil, aber als SETZUNG beschriftet - und die eigene
+  // Messung daneben, damit "nicht wiederfindbar" eine eigene Zahl ist.
+  contains(html, "gilt für den ausgeruhten Zustand", "L1b: die Einschränkung der HF-Zahl fehlt");
+  contains(html, "ist Literatur, keine Messung", "L1b: die Setzung ist nicht als solche beschriftet");
+  contains(html, "Stufentest, wo die Belastung kontrolliert ist", "L1b: der Grund für die Gegenrichtung fehlt");
+  contains(html, "benannt statt", "L1b: die fehlende Temperatur wird nicht benannt");
+  ok(/158 bpm/.test(html), "L1b: die eigene Messung steht nicht neben der Setzung");
+  // GEGENPROBE: ohne eigenen HF-Anker wird nichts hochgerechnet
+  const ohneHr = String(q.rFatigue(F.fatigue({ aerobic_hr: null, hr_drift_expected: [] })));
+  ok(!/ausgeruhten Zustand/.test(ohneHr), "L1b: Hochrechnung ohne eigenen Anker");
+
   // Der Zustand "rechnet noch" - mit Fortschritt, nicht als leerer Platz
   const rechnet = String(q.rFatigue(F.fatigue({
     measured: [], literature: [], anchor_watts: null, anchor_base: null,

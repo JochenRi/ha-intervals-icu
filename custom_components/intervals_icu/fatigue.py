@@ -62,6 +62,23 @@ GALLO_QUADRATIC = 0.0059
 GALLO_T5_MIN = 139.0
 GALLO_T5_SD = 78.0
 
+# --- L1b: die HF-Korrektur ----------------------------------------------------
+# Stevenson, Kilding, Plews, Maunder (Eur J Appl Physiol 2022): nach zwei
+# Stunden fiel die Schwellenleistung von 217 auf 196 W, waehrend die
+# Schwellen-HERZFREQUENZ von 142 auf 151 bpm STIEG. Praktisch ist das
+# wichtiger als die Kurve selbst - wer sich nach Stunden noch an die
+# ausgeruhte Schwellen-HF haelt, faehrt zu hart.
+#
+# REINE SETZUNG, und sie bleibt es. Am eigenen Bestand ist der Anstieg nicht
+# wiederfindbar, und der Grund ist sauber: Stevenson misst im standardisierten
+# Stufentest, wo die Belastung kontrolliert ist. Im Feld ist sie das nie - die
+# HF-Aenderung folgt dort fast vollstaendig der Leistungsaenderung. Die Aussage
+# "was das Panel als aerobe HF nennt, gilt fuer den ausgeruhten Zustand" bleibt
+# richtig; sie ist an Alltagsfahrten nur nicht pruefbar, und das steht dabei.
+STEVENSON_HR_REST = 142.0
+STEVENSON_HR_2H = 151.0
+STEVENSON_HOURS = 2.0
+
 
 def _t5_hours() -> float:
     """Wann erreicht die Form selbst -5 %? Gerechnet, nicht eingetragen."""
@@ -130,7 +147,7 @@ def _band(count: int) -> str:
     return "dashed"
 
 
-def curve(data: dict[str, Any]) -> dict[str, Any]:
+def curve(data: dict[str, Any], aerobic_hr: float | None = None) -> dict[str, Any]:
     """Anker, gemessene Stundenwerte, Literaturform und Belegungsgrenzen."""
     selection = rides(data)
     by_hour: dict[int, list[float]] = {}
@@ -139,6 +156,13 @@ def curve(data: dict[str, Any]) -> dict[str, Any]:
             value = row.get("p075")
             if value is not None:
                 by_hour.setdefault(int(row["hour"]), []).append(float(value))
+
+    by_hour_hr: dict[int, list[float]] = {}
+    for ride in selection["used"]:
+        for row in ride["hours"]:
+            value = row.get("hr075")
+            if value is not None:
+                by_hour_hr.setdefault(int(row["hour"]), []).append(float(value))
 
     measured = []
     for hour in sorted(by_hour):
@@ -151,6 +175,10 @@ def curve(data: dict[str, Any]) -> dict[str, Any]:
             "watts": round(median(values), 1),
             "n": len(values),
             "band": _band(len(values)),
+            # Die gemessene Gegenprobe zu Stevenson - aus DENSELBEN Fahrten,
+            # damit "nicht wiederfindbar" eine eigene Zahl ist und kein Zitat.
+            "hr": round(median(by_hour_hr[hour]), 1) if by_hour_hr.get(hour) else None,
+            "hr_n": len(by_hour_hr.get(hour) or []),
         })
 
     anchor = measured[0]["watts"] if measured else None
@@ -211,6 +239,20 @@ def curve(data: dict[str, Any]) -> dict[str, Any]:
         "min_minutes": FATIGUE_MIN_MINUTES,
         "solid_min_rides": FATIGUE_SOLID_MIN_RIDES,
         "thin_min_rides": FATIGUE_THIN_MIN_RIDES,
+        # L1b: die Setzung, je Stunde, relativ auf die eigene ausgeruhte
+        # Schwellen-HF gerechnet - Stevensons absolute bpm gehoeren seinen
+        # zwoelf Probanden, der PROZENTUALE Anstieg ist das Uebertragbare.
+        "hr_drift_per_hour_pct": round(
+            (STEVENSON_HR_2H / STEVENSON_HR_REST - 1) / STEVENSON_HOURS * 100, 2),
+        "hr_drift_source_rest": STEVENSON_HR_REST,
+        "hr_drift_source_2h": STEVENSON_HR_2H,
+        "hr_drift_expected": [
+            {"hour": row["hour"], "t": row["t"],
+             "bpm": round(aerobic_hr * (1 + (STEVENSON_HR_2H / STEVENSON_HR_REST - 1)
+                                        / STEVENSON_HOURS * row["t"]), 1)}
+            for row in measured
+        ] if aerobic_hr else [],
+        "aerobic_hr": aerobic_hr,
         "t5_minutes": round(_t5_hours() * 60),
         "t5_published": GALLO_T5_MIN,
         "t5_published_sd": GALLO_T5_SD,

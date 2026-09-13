@@ -181,6 +181,24 @@ check("doppelter Anker verdoppelt jeden Kurvenwert",
       [round(row["watts"] / 2, 1) for row in d["literature"]],
       [row["watts"] for row in a["literature"]])
 
+print("\n=== L1b: die HF-Setzung, und die eigene Messung daneben ===")
+mit_hr = fatigue.curve(bestand(kurz), aerobic_hr=160)
+check("die Setzung haengt am EIGENEN Anker",
+      mit_hr["hr_drift_expected"][0]["bpm"],
+      round(160 * (1 + mit_hr["hr_drift_per_hour_pct"] / 100 * 0.5), 1))
+ok("sie steigt mit der Dauer - Gegenrichtung zur Leistung",
+   mit_hr["hr_drift_expected"][1]["bpm"] > mit_hr["hr_drift_expected"][0]["bpm"])
+check("uebertragen wird der PROZENTSATZ, nicht Stevensons bpm",
+      mit_hr["hr_drift_per_hour_pct"],
+      round((fatigue.STEVENSON_HR_2H / fatigue.STEVENSON_HR_REST - 1) / 2 * 100, 2))
+ohne_hr = fatigue.curve(bestand(kurz))
+check("ohne eigenen Anker wird NICHTS hochgerechnet", ohne_hr["hr_drift_expected"], [])
+# Ein doppelter Anker verdoppelt die Erwartung - die Setzung skaliert, sie
+# verformt nicht.
+check("doppelter HF-Anker verdoppelt die Erwartung",
+      round(fatigue.curve(bestand(kurz), aerobic_hr=320)["hr_drift_expected"][0]["bpm"], 0),
+      round(mit_hr["hr_drift_expected"][0]["bpm"] * 2, 0))
+
 print("\n=== ein Bestand ohne Fahrt ueber einer Stunde sagt das ===")
 kurzfahrt = [("q1", "2026-08-01", "Feierabendrunde", [160], VOLUMEN, 45)]
 q = fatigue.curve(bestand(kurzfahrt))

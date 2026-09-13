@@ -275,9 +275,39 @@ DFA_BIN_WIDTH = 0.05
 FATIGUE_MIN_BINS = 3
 
 
+def _read_at_075(points: list[tuple[float, float]]) -> float | None:
+    """Bin, fit, read at alpha = 0.75 - ONE routine for power and heart rate.
+
+    Two copies of this would be two answers to one question; the same class
+    that has cost this project four releases.
+    """
+    if len(points) < 2:
+        return None
+    buckets: dict[int, list[tuple[float, float]]] = {}
+    for alpha, value in points:
+        buckets.setdefault(int(alpha / DFA_BIN_WIDTH), []).append((alpha, value))
+    mids = [
+        (sum(a for a, _ in items) / len(items), sum(v for _, v in items) / len(items))
+        for items in buckets.values()
+    ]
+    if len(mids) < FATIGUE_MIN_BINS:
+        return None
+    if not min(a for a, _ in mids) <= 0.75 <= max(a for a, _ in mids):
+        return None
+    n = len(mids)
+    mean_a = sum(a for a, _ in mids) / n
+    mean_v = sum(v for _, v in mids) / n
+    var = sum((a - mean_a) ** 2 for a, _ in mids)
+    if var <= 0:
+        return None
+    slope = sum((a - mean_a) * (v - mean_v) for a, v in mids) / var
+    return round(slope * 0.75 + (mean_v - slope * mean_a), 1)
+
+
 def dfa_hours(
     dfa: list[Any] | None,
     watts: list[Any] | None,
+    heartrate: list[Any] | None = None,
     sample_secs: int = 1,
     hour_secs: int = 3600,
 ) -> list[dict[str, Any]]:
@@ -302,12 +332,19 @@ def dfa_hours(
     while hour * per_hour < total:
         start, stop = hour * per_hour, min(total, (hour + 1) * per_hour)
         points: list[tuple[float, float]] = []
+        hr_points: list[tuple[float, float]] = []
         dropped = 0
         low = 0
         for index in range(start, stop):
             alpha = _number(dfa[index])
             watt = _number(watts[index]) if watts and index < len(watts) else None
-            if alpha is None or not 0.0 < alpha <= 2.0 or watt is None or watt <= 0:
+            pulse = _number(heartrate[index]) if heartrate and index < len(heartrate) else None
+            if alpha is None or not 0.0 < alpha <= 2.0:
+                dropped += 1
+                continue
+            if pulse is not None and pulse > 0:
+                hr_points.append((alpha, pulse))
+            if watt is None or watt <= 0:
                 dropped += 1
                 continue
             points.append((alpha, watt))
@@ -330,7 +367,12 @@ def dfa_hours(
             "p075": None,
             "alpha_min": None,
             "alpha_max": None,
+            # Dieselbe Ablesung fuer die HERZFREQUENZ. Sie ist die praktisch
+            # wichtigere Haelfte: wer sich nach Stunden noch an die ausgeruhte
+            # Schwellen-HF haelt, faehrt zu hart (docs/ausbau.md L1b).
+            "hr075": None,
         }
+        row["hr075"] = _read_at_075(hr_points)
         if len(points) >= 2:
             buckets: dict[int, list[tuple[float, float]]] = {}
             for alpha, watt in points:

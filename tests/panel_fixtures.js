@@ -230,10 +230,10 @@ function thresholds() {
  * sie mischte, koennte die Trennung im Bild nicht pruefen. */
 function fatigue(over) {
   const measured = [
-    { hour: 1, t: 0.5, watts: 152.5, n: 26, band: "solid" },
-    { hour: 2, t: 1.5, watts: 142.2, n: 23, band: "solid" },
-    { hour: 3, t: 2.5, watts: 131.5, n: 5, band: "thin" },
-    { hour: 4, t: 3.5, watts: 133.8, n: 1, band: "dashed" },
+    { hour: 1, t: 0.5, watts: 152.5, n: 26, band: "solid", hr: 160.1, hr_n: 26 },
+    { hour: 2, t: 1.5, watts: 142.2, n: 23, band: "solid", hr: 158.4, hr_n: 22 },
+    { hour: 3, t: 2.5, watts: 131.5, n: 5, band: "thin", hr: 157.0, hr_n: 5 },
+    { hour: 4, t: 3.5, watts: 133.8, n: 1, band: "dashed", hr: null, hr_n: 0 },
   ];
   const lit = [
     { hour: 1, t: 0.5, watts: 152.5, lo: 151.2, hi: 152.8 },
@@ -256,6 +256,12 @@ function fatigue(over) {
     dropped_counts: { structured: 2, short: 1 },
     max_above_z2: 20.0, min_minutes: 60, solid_min_rides: 10, thin_min_rides: 2,
     t5_minutes: 130, t5_published: 139.0, t5_published_sd: 78.0,
+    aerobic_hr: 160, hr_drift_per_hour_pct: 3.17,
+    hr_drift_source_rest: 142.0, hr_drift_source_2h: 151.0,
+    hr_drift_expected: [
+      { hour: 1, t: 0.5, bpm: 162.5 }, { hour: 2, t: 1.5, bpm: 167.6 },
+      { hour: 3, t: 2.5, bpm: 172.7 }, { hour: 4, t: 3.5, bpm: 177.8 },
+    ],
     progress: { done: 58, pending: 0, total: 58, batch: 25, importing: false },
   }, over || {});
 }
