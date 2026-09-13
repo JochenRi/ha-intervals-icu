@@ -157,14 +157,14 @@ print("\n=== Anker gemessen, Form gesetzt - und getrennt gehalten ===")
 check("der Anker ist der Median der ersten Stunde", a["anchor_watts"], 160.0)
 check("und traegt seine Belegung", a["anchor_n"], 12)
 ok("die Literaturkurve sitzt auf dem Anker",
-   abs(a["literature"][0]["watts"] - a["anchor_watts"]) < 0.2)
+   abs(next(r for r in a["literature"] if r["hour"] == 1)["watts"] - a["anchor_watts"]) < 0.2)
 ok("sie faellt monoton", all(
     a["literature"][i]["watts"] > a["literature"][i + 1]["watts"]
     for i in range(len(a["literature"]) - 1)))
 ok("sie reicht ueber den Bestand hinaus - dort ist sie reine Setzung",
    max(row["t"] for row in a["literature"]) > max(row["t"] for row in a["measured"]))
 check("jenseits des Bestands traegt sie KEINE Stundennummer aus der Messung",
-      [row["hour"] for row in a["literature"] if row["t"] > 1.5][:1], [None])
+      [row["hour"] for row in a["literature"] if row["t"] > 1.6][:1], [None])
 
 # Die Form selbst, gegen die publizierte Probe: -5 % zwischen 119 und 140 min.
 fuenf = next(m for m in range(60, 240)
@@ -180,6 +180,64 @@ d = fatigue.curve(bestand(doppelt))
 check("doppelter Anker verdoppelt jeden Kurvenwert",
       [round(row["watts"] / 2, 1) for row in d["literature"]],
       [row["watts"] for row in a["literature"]])
+ok("das Raster ist feiner als die Messstunden - der Zeiger rastet nicht ein",
+   len(a["literature"]) > 3 * len(a["measured"]))
+
+print("\n=== gepaart gegen ungepaart, und das Erkennungszeichen ===")
+
+# Der Auswahleffekt, den die Live-Messung gezeigt hat, nachgebaut: Fahrten, die
+# NUR eine zweite Stunde liefern (die lockeren erreichen die Schwelle erst,
+# wenn alpha gesunken ist), stehen neben durchgaengigen Fahrten. Ungepaart
+# faellt die Reihe dann steiler, als jede einzelne Fahrt es tut.
+durch = [(f"p{i}", f"2026-08-{i + 1:02d}", "volumen", [160, 156], VOLUMEN, 130)
+         for i in range(8)]
+# vier Fahrten, deren erste Stunde keinen Wert hergibt: tiefe alpha-Lage erst
+# ab Stunde 2, modelliert ueber eine erste Stunde ausserhalb des Fensters
+# ACHT solcher Fahrten, nicht vier: der Median daempft (§7, 0.45.0), er kippt
+# erst bei Paritaet - wer den Effekt mit einer Handvoll nachbaut, baut einen
+# stumpfen Test.
+nur_zwei = []
+for i in range(8):
+    key = f"n{i}"
+    dfa, watts = ride_streams([130])
+    # Stunde 1 kuenstlich ohne Ablesung: alpha-Lage komplett ueber 0,75
+    hoch_dfa = [round(1.20 + (k % 400) / 400 * 0.30, 3) for k in range(3600)]
+    hoch_w = [140.0] * 3600
+    nur_zwei.append((key, f"2026-09-{i + 1:02d}", "volumen", None, VOLUMEN, 130,
+                     hoch_dfa + dfa, hoch_w + watts))
+
+data = bestand(durch)
+for key, day, name, _lv, zone_times, minutes, dfa, watts in nur_zwei:
+    data["activities"][key] = {
+        "start_date_local": f"{day}T09:00:00", "name": name, "type": "Ride",
+        "moving_time": minutes * 60, "icu_zone_times": zone_times,
+        "icu_average_watts": 150, "icu_weighted_avg_watts": 155}
+    data["dfa"][key] = {"hours": derive.dfa_hours(dfa, watts)}
+
+schief = fatigue.curve(data)
+counts = [(r["hour"], r["n"]) for r in schief["measured"]]
+print(f"      Belegung je Stunde: {counts}")
+ok("Erkennungszeichen: die Belegung STEIGT, wo sie fallen muesste",
+   len(schief["occupancy_rising"]) > 0)
+check("und die Stunde wird benannt", schief["occupancy_rising"][0]["hour"], 2)
+check("mit beiden Zahlen, damit der Sprung sichtbar ist",
+      (schief["occupancy_rising"][0]["previous"], schief["occupancy_rising"][0]["n"]), (8, 16))
+# Die Gegenprobe, GEZAEHLT UND BENANNT: ein sauberer Bestand darf NICHT
+# anschlagen - sonst prueft die Regel oben nur, dass sie ueberhaupt feuert.
+check("Gegenprobe: sauberer Bestand meldet keinen Auswahleffekt",
+      fatigue.curve(bestand(durch))["occupancy_rising"], [])
+
+# Und die gepaarte Rechnung sieht, was die ungepaarte nicht sieht.
+ungepaart = schief["measured"][0]["watts"] - schief["measured"][1]["watts"]
+gepaart = next(p for p in schief["paired"] if p["from_hour"] == 1)
+print(f"      ungepaart {ungepaart:+.1f} W  |  gepaart {-gepaart['delta']:+.1f} W "
+      f"ueber {gepaart['n']} Paare")
+ok("gepaart faellt die Reihe FLACHER als ungepaart", -gepaart["delta"] < ungepaart)
+check("die gepaarte Rechnung nennt ihre Paarzahl", gepaart["n"], 8)
+ok("und sagt, ob sie ueberhaupt etwas aussagen darf", gepaart["enough"] is True)
+duenn = fatigue.curve(bestand(durch[:3]))
+knapp = next((p for p in duenn["paired"] if p["from_hour"] == 1), None)
+check("zu wenige Paare: die Zahl wird nicht behauptet", knapp["enough"], False)
 
 print("\n=== L1b: die HF-Setzung, und die eigene Messung daneben ===")
 mit_hr = fatigue.curve(bestand(kurz), aerobic_hr=160)

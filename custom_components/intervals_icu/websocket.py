@@ -294,7 +294,8 @@ def websocket_fatigue(hass, connection, msg) -> None:
     # Der ausgeruhte HF-Anker kommt aus dem Trainer - EINE Quelle, nicht eine
     # zweite Rechnung hier (L1b haengt an genau der Zahl, die das Panel nennt).
     anchors = coach_module.anchors(data)
-    result = fatigue.curve(data, aerobic_hr=anchors.get("aerobic_hr"))
+    result = fatigue.curve(data, aerobic_hr=anchors.get("aerobic_hr"),
+                           aerobic_power=anchors.get("aerobic_power"))
     # Nach einem Algorithmus-Bump ist das Archiv leer, bis die Stroeme neu
     # geholt sind - in Baendern von DFA_BATCH_SIZE je Sync. Der Fortschritt
     # reist mit, damit die Kachel "rechnet noch, x von y" sagen kann statt

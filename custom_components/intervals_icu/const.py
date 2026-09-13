@@ -104,6 +104,13 @@ FATIGUE_MIN_MINUTES = 60
 # duenn fuer Stunde 3 (5) und gestrichelt ab Stunde 4 (1).
 FATIGUE_SOLID_MIN_RIDES = 10
 FATIGUE_THIN_MIN_RIDES = 2
+# Wie viele PAARE die gepaarte Gegenrechnung braucht, bevor sie eine Zahl
+# zeigen darf. L0 Runde 3 hat es vorgefuehrt: bei drei Paaren kann der
+# Vorzeichentest strukturell nicht unter p = 0,25 fallen - der Test hat dort
+# keine Trennschaerfe, unabhaengig vom Ergebnis. Setzung, bewusst niedrig
+# genug, dass die Rechnung auf diesem Bestand ueberhaupt laeuft, und hoch
+# genug, dass sie nicht auf einer Handvoll Fahrten eine Zahl behauptet.
+FATIGUE_MIN_PAIRS = 6
 
 # Which sessions the durability tile may look at.
 DURABILITY_MIN_MINUTES = 45      # below this a decoupling reading is not usable

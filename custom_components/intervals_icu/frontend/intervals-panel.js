@@ -814,46 +814,15 @@ class IntervalsIcuPanel extends HTMLElement {
     const mark = d.decoupling_good;
     const pts = (d.points || []);
     if (!pts.length) return "";
-    const x1 = Math.max(100, Math.ceil(d.max_kj / 100) * 100);
-    const decs = pts.map((q) => q.dec);
-    const y1 = Math.max(mark * 1.15, ...decs) ;
-    const y0 = Math.min(0, ...decs);
-    const tick = (k) => Math.round((x1 / 4) * k);
-    // Gewicht wird Groesse UND Deckkraft: man sieht, worauf der Trend ruht.
-    const dots = pts.map((q, i) => ({
-      x: q.kj, v: q.dec, i,
-      r: 2.2 + 3.2 * q.w,
-      op: 0.28 + 0.72 * q.w,
-      id: q.id == null ? null : String(q.id),
-    }));
-    const series = [{ t: "dots", c: ROLE.series, p: dots }];
-    // Die Gerade wird NUR gezeichnet, wenn sie auch eine Leitzahl tragen darf.
-    // Eine blasse falsche Linie ist immer noch eine falsche Linie - dieselbe
-    // Regel wie bei der Medianlinie im DFA-Reiter.
-    if (!d.blocked && d.slope != null) {
-      const at = (kj) => (d.tipping_kj - kj) * (d.slope / 1000) * -1 + mark;
-      series.push({ t: "xyline", c: C.violet, w: 2, p: [{ x: 0, v: at(0) }, { x: x1, v: at(x1) }] });
-    }
-    const cloud = chart({
-      h: 250, n: pts.length, x0: 0, x1, y0, y1, grp: "dur",
-      hl: [{ y: mark, c: C.amber, d: 1, t: fmt(mark, 0) + " %" }],
-      s: series,
-      xtick: [0, 1, 2, 3, 4].map(tick),
-      xt: [0, 2, 4].map((k) => ({ i: tick(k), t: fmt(tick(k), 0) + " kJ" })),
-      label: "Entkopplung (%) ueber angesammelter Arbeit",
-      labelc: ROLE.series,
-    });
-    this._grp.dur = {
-      xy: true, n: pts.length,
-      pts: pts.map((q) => ({ x: q.kj, y: q.dec })),
-      xl: (i) => dMed(pts[i].date) + " · " + fmt(pts[i].kj, 0) + " kJ",
-      rows: [
-        { l: "Entkopplung", c: ROLE.series, u: "%", dec: 1, vals: pts.map((q) => q.dec) },
-        { l: "Gleichmaessigkeit (VI)", c: C.slate, u: "", dec: 2, vals: pts.map((q) => q.vi) },
-        { l: "Gewicht", c: C.slate, u: "", dec: 2, vals: pts.map((q) => q.w) },
-      ],
-    };
-
+    // 0.46.0: die Punktwolke ist als HAUPTBILD entfallen. Sie zeigte die
+    // Entkopplung ueber der Arbeit samt Trendgerade - und die Gerade durfte
+    // ohnehin nicht gezeichnet werden, weil die Steigung nicht von null zu
+    // unterscheiden ist. Was blieb, war ein Bild, das nichts traegt, neben
+    // einer zweiten Kachel in einem anderen Reiter, die DIESELBE Frage mit
+    // einer anderen Rechnung beantwortete (PROJEKTSTAND §7). Die Verweigerung
+    // der Leitzahl steht weiter im Text, die Bins und Bloecke rechnen
+    // unveraendert aus denselben Punkten - nur gezeichnet wird jetzt die
+    // Ermuedungskurve. Der Ablesestreifen haengt an ihr statt an der Wolke.
     const band = (b) => `<span class="durband">
       <em>${b.to_kj == null ? "ab " + fmt(b.from_kj, 0) : fmt(b.from_kj, 0) + "–" + fmt(b.to_kj, 0)} kJ</span>
       <b class="tn">${b.median == null ? "–" : sign(b.median, 1) + " %"}</b>
@@ -941,19 +910,20 @@ class IntervalsIcuPanel extends HTMLElement {
       : "";
 
     return `<h3 class="secname">Wie lange trägt die Grundlage?</h3>
-      <div class="card pad" data-grp="dur">
+      <div class="card pad" data-grp="fat">
         ${head}
         <p class="effect">${esc(d.headline)}</p>
-        <p class="hint">Ein Punkt ist eine Fahrt: rechts liegt mehr geleistete Arbeit, oben mehr
-          Entkopplung — die Herzfrequenz steigt, während die Leistung gleich bleibt. Die Waagerechte
-          ist die ${fmt(mark, 0)}-%-Marke. Große, kräftige Punkte sind gleichmäßig gefahren und zählen
-          voll; kleine, blasse zählen anteilig.</p>
-        ${readout("dur")}
-        ${cloud}
-        <p class="hint"><b>Mediane je Arbeitsband</b> — eine Beschreibung dessen, wo die Punkte liegen,
-          keine Vorhersage:</p>
+        ${this.rFatigue(this._fatigue)}
+        <h4 class="subsec">Wie stark entkoppelt es?</h4>
+        <p class="hint"><b>Mediane je Arbeitsband</b> — eine Beschreibung dessen, wo die Fahrten liegen,
+          keine Vorhersage. <b>Andere Achse als oben, mit Absicht:</b> die Schwellenleistung liest sich
+          über die DAUER (die Arbeit hängt an der Intensität und holte den Bergeffekt zurück), die
+          Entkopplung über die ANGESAMMELTE ARBEIT (ein Zeitschnitt hielt hier nicht). Beides ist
+          gemessen, beides am selben Bestand begründet — und deshalb steht es getrennt statt
+          vereinheitlicht:</p>
         <div class="durbands">${d.bins.map(band).join("")}</div>
-        <p class="hint"><b>Wird es besser?</b> Der Kipppunkt je ${fmt(d.block_weeks, 0)}-Wochen-Block.
+        <h4 class="subsec">Wird es besser?</h4>
+        <p class="hint">Der Kipppunkt je ${fmt(d.block_weeks, 0)}-Wochen-Block.
           Ein Block, der eine der drei Regeln reißt, bleibt leer und wird nicht überbrückt:</p>
         <div class="durbands">${d.blocks.map(blockRow).join("")}</div>
         ${blockWait ? `<p class="hint">${blockWait}</p>` : ""}
@@ -1043,6 +1013,10 @@ class IntervalsIcuPanel extends HTMLElement {
      Serienregister und volle Deckkraft, Gesetztes ist gestrichelt und grau.
      Keine Zahl dieser Kachel steht hier: jede kommt aus der Payload. */
   rFatigue(f) {
+    // Fehlt die Payload, SAGT die Kachel das. Die stille Luecke aus 0.42.1
+    // (rGoal und rPlanWeeks rendern nichts, weil ihre Payload nie angefordert
+    // wurde) darf sich nicht wiederholen - und sie wird ueber _need("fatigue")
+    // im Trainer-Zweig angefordert, auf dem einen Weg, nicht daneben.
     if (!f) return this._dataGap("fatigue", "Die Ermüdungskurve");
     const pr = f.progress || {};
     // Nach einem Algorithmus-Bump ist das Archiv leer, bis die Stroeme neu
@@ -1079,7 +1053,7 @@ class IntervalsIcuPanel extends HTMLElement {
     const beyond = lit.filter((r) => cut == null || r.t >= cut.t);
 
     const graph = chart({
-      h: 300, n: 2, x0: Math.min(...xs), x1: Math.max(...xs), y0, y1,
+      h: 300, n: 2, x0: Math.min(...xs), x1: Math.max(...xs), y0, y1, grp: "fat",
       yf: (v) => fmt(v), label: "Schwellenleistung (W) über der Fahrtdauer", labelc: ROLE.series,
       s: [
         // SETZUNG zuerst, damit sie hinter der Messung liegt
@@ -1095,6 +1069,34 @@ class IntervalsIcuPanel extends HTMLElement {
       ],
     });
 
+    // Der Ablesestreifen: FESTE Leiste im Kartenkopf, kein schwebender Kasten
+    // (die Fehlerklasse ist seit 0.9.3 raus). Der Zeiger laeuft ueber das
+    // feine Literaturraster, damit er gleitet statt auf vier Stunden
+    // einzurasten; die gemessenen Werte stehen an ihren Stunden und sind
+    // sonst null - eine Luecke im Streifen ist die ehrliche Auskunft
+    // "hier gibt es keine Messung".
+    const grid = lit;
+    const measuredAt = grid.map((q) => {
+      const m = f.measured.find((r) => r.hour != null && r.hour === q.hour);
+      return m ? m.watts : null;
+    });
+    this._grp.fat = {
+      xy: true, n: grid.length,
+      pts: grid.map((q) => ({ x: q.t, y: q.watts })),
+      xl: (i) => fmt(grid[i].t, 2) + " h Fahrtzeit"
+        + (grid[i].hour == null || measuredAt[i] == null ? " — Studienform, keine Messung" : ""),
+      rows: [
+        { l: "gemessen", c: ROLE.series, u: "W", dec: 0, vals: measuredAt },
+        { l: "Studienform", c: C.slate, u: "W", dec: 0, vals: grid.map((q) => q.watts) },
+        { l: "Bandbreite", c: C.slate, u: "W", dec: 0, vals: grid.map((q) => q.hi - q.lo) },
+        { l: "Belegung", c: C.tx2, u: "", dec: 0,
+          vals: grid.map((q) => {
+            const m = f.measured.find((r) => r.hour != null && r.hour === q.hour);
+            return m ? m.n : null;
+          }) },
+      ],
+    };
+
     const rows = f.measured.map((r) => {
       const l = lit.find((q) => q.hour === r.hour);
       const dev = l ? r.watts - l.watts : null;
@@ -1109,22 +1111,41 @@ class IntervalsIcuPanel extends HTMLElement {
     const letzte = f.measured[f.measured.length - 1];
     const ziel = f.measured[0].watts - (f.measured[0].watts - (letzte.watts || 0)) / 2;
     const wann = f.literature.find((r) => r.watts <= ziel);
+    const wannGemessen = wann && wann.hour != null
+      ? f.measured.find((r) => r.hour === wann.hour) : null;
     return `<div class="card pad"><h3 class="secname">Ermüdungskurve der aeroben Schwelle</h3>
       <div class="statgrid lead"><div class="stat wide"><small>Ausgeruht, bei Dauer null</small>
         <b class="tn lead1" style="color:${ROLE.series}">${fmt(f.anchor_base)} <span class="unit">W</span></b>
         <span class="mut">gemessen: ${fmt(f.anchor_n)} Fahrten in Stunde 1, Repräsentantenmethode
         nach Andriolo, auf Intervals' eigener DFA-Fensterung</span></div></div>
+      ${readout("fat")}
       ${graph}
       <p class="hint">${ico("info", C.blue, 13)} <b>Dick und farbig ist gemessen</b>, dünn und grau
         ist die Studienform nach Gallo, an deiner Zahl verankert — ab Stunde
         ${fmt((thin || 0) + 1)} gestrichelt, weil der Bestand dort endet.
         ${solid ? `Getragen wird die Aussage bis Stunde ${fmt(solid)}.` : ""}</p>
+      ${this._fatigueHistory(f)}
+      ${this._fatigueDoubt(f)}
+      <h4 class="subsec">Ablesen</h4>
+      <table class="dfatab"><thead><tr><th>Dauer</th><th>gemessen</th><th>Studienform</th>
+        <th>Band</th><th>Belegung</th></tr></thead><tbody>${
+        f.measured.map((r) => {
+          const l = lit.find((q) => q.hour === r.hour) || {};
+          return `<tr><td>${fmt(r.hour)} h</td>
+            <td class="tn">${fmt(r.watts)} W</td>
+            <td class="tn">${l.watts == null ? "–" : fmt(l.watts) + " W"}</td>
+            <td class="tn mut">${l.lo == null ? "–" : fmt(l.lo) + "–" + fmt(l.hi) + " W"}</td>
+            <td>${badge(r.band === "solid" ? "green" : r.band === "thin" ? "amber" : "slate",
+              r.n + (r.n === 1 ? " Fahrt" : " Fahrten"))}</td></tr>`;
+        }).join("")}</tbody></table>
       <div class="twoway">
-        <p>${fmt(letzte.t)} h Fahrtzeit — die Schwelle liegt dann bei
-          <b class="tn">${fmt(letzte.watts)} W</b> (${fmt(letzte.n)} ${letzte.n === 1 ? "Fahrt" : "Fahrten"}).</p>
-        <p>${fmt(Math.round(ziel))} W — erreicht nach
-          <b class="tn">${wann ? fmt(wann.t) + " h" : "mehr als der längsten Fahrt"}</b>,
-          und das ist Studienform, keine Messung.</p>
+        <p><b>${fmt(letzte.t)} h — wie viel Watt?</b> ${fmt(letzte.watts)} W
+          (${fmt(letzte.n)} ${letzte.n === 1 ? "Fahrt" : "Fahrten"}).</p>
+        <p><b>${fmt(Math.round(ziel))} W — wie lange?</b> ${wann
+          ? `bis <b class="tn">${fmt(wann.t, 2)} h</b>${wannGemessen
+              ? ` (gemessen, ${fmt(wannGemessen.n)} ${wannGemessen.n === 1 ? "Fahrt" : "Fahrten"})`
+              : " — Studienform, keine Messung"}`
+          : "länger als deine längste Fahrt — darüber sagt die Karte nichts"}.</p>
       </div>
       ${this._fatigueHr(f)}
       <details class="more"><summary>Rechenweg</summary>
@@ -1142,11 +1163,78 @@ class IntervalsIcuPanel extends HTMLElement {
         <p class="src"><b>Die Zeitachse ist die Bewegungszeit</b>, nicht die angesammelte Arbeit:
           die Belegung ist praktisch dieselbe, und eine Arbeitsachse koppelt an die Intensität
           und holt damit den Bergeffekt zurück.</p>
+        <p class="src"><b>Zwei Zahlen für dieselbe Sache, und das ist bekannt.</b> Der Trainer
+          verankert seine Einheiten auf der Schwellenleistung aus dem Anker-Median
+          (${f.aerobic_power != null ? fmt(f.aerobic_power) + " W" : "eigene Rechnung"}), diese
+          Karte auf ${fmt(f.anchor_base)} W. Es sind verschiedene Rechnungen: dort das Mittel
+          aller Messpunkte im Schwellenfenster über die GANZE Fahrt, über die letzten fünf
+          Fahrten; hier der Fit bei genau alpha 0,75 auf der ERSTEN Stunde, über alle
+          unstrukturierten Fahrten. Methodisch ist der Fit der sauberere Weg, und die erste
+          Stunde ist der unermüdete Zustand — die Zusammenführung steht an, ist aber ein
+          eigener Schritt, weil der Anker heute die Einheiten steuert. <b>Bis dahin: ein
+          bekannter Unterschied, kein unbemerkter.</b></p>
         <p class="src"><b>Das Unsicherheitsband</b> ist die publizierte Streuung des
           −5-%-Zeitpunkts (${fmt(f.t5_published)} ± ${fmt(f.t5_published_sd)} min), auf den
           Verlust gerechnet. Diese Form erreicht −5 % nach ${fmt(f.t5_minutes)} min.</p>
         ${this._fatigueDropped(f)}
       </details></div>`;
+  }
+
+  /* Warum die Belegung so dünn ist: nicht weil zu wenig gefahren wurde,
+     sondern weil der alpha-Strom erst ab einem bestimmten Datum existiert. Wer
+     das nicht sieht, hält die dünne Kurve für einen Fehler. */
+  _fatigueHistory(f) {
+    const miss = (f.dropped_counts || {}).no_dfa || 0;
+    if (!miss) return "";
+    const list = (f.dropped || {}).no_dfa || [];
+    const lang = list.filter((x) => (x.minutes || 0) >= f.min_minutes).length;
+    return `<p class="hint">${ico("info", C.blue, 13)} <b>${fmt(miss)} Fahrten fehlen dieser Kurve,
+      weil sie keinen DFA-Strom tragen</b>${lang ? `, davon ${fmt(lang)} über ${fmt(f.min_minutes)}
+      Minuten` : ""} — sie liegen vor dem Beginn der DFA-Aufzeichnung. Es sind genau die langen
+      ruhigen Fahrten, die die Kurve tragen würden. <b>Die dünne Belegung ist kein Fehler der
+      Auswertung, sondern der Zuschnitt der Daten.</b></p>`;
+  }
+
+  /* Was an der gemessenen Reihe ZWEIFELHAFT ist, steht im Hauptbild - nicht im
+     Rechenweg, wo es niemand sucht. Zwei Dinge koennen sie kippen, und beide
+     haben dieselbe Wurzel: die Stundenwerte stammen aus VERSCHIEDENEN Fahrten. */
+  _fatigueDoubt(f) {
+    const out = [];
+    const rising = f.occupancy_rising || [];
+    if (rising.length) {
+      const r = rising[0];
+      out.push(`<p class="hint">${ico("warn", C.amber, 13)} <b>Die Belegung steigt, wo sie fallen
+        müsste:</b> Stunde ${fmt(r.hour)} trägt ${fmt(r.n)} Fahrten, Stunde ${fmt(r.hour - 1)}
+        nur ${fmt(r.previous)}. Jede Fahrt mit einer späteren Stunde hat auch die frühere — also
+        liefern nicht alle Fahrten in der frühen Stunde einen Wert. Der Grund ist die Regel gegen
+        Hochrechnung: abgelesen wird nur, wo die Schwelle im tatsächlich gefahrenen Bereich lag,
+        und ausgeruht ist das nur bei den härteren Fahrten der Fall. <b>Die frühe Stunde steht
+        damit auf einer anderen Auswahl als die späte</b>, und ein Teil des Abfalls ist diese
+        Auswahl, nicht Ermüdung.</p>`);
+    }
+    const pair = (f.paired || []).find((q) => q.from_hour === 1);
+    if (pair) {
+      const un = (f.measured || []).length > 1
+        ? f.measured[0].watts - f.measured[1].watts : null;
+      const gp = -pair.delta;
+      if (!pair.enough) {
+        out.push(`<p class="hint">${ico("info", C.blue, 13)} Gepaart gerechnet — nur Fahrten, die
+          beide Stunden selbst befüllen — stehen ${fmt(pair.n)} Paare zur Verfügung, nötig sind
+          ${fmt(f.min_pairs)}. <b>Es wird deshalb keine gepaarte Zahl gezeigt</b>, statt eine auf
+          einer Handvoll Fahrten zu behaupten.</p>`);
+      } else if (un != null && Math.abs(un - gp) >= Math.max(2, Math.abs(un) * 0.25)) {
+        out.push(`<p class="hint">${ico("warn", C.amber, 13)} <b>Gepaart fällt die Reihe anders:</b>
+          ${sign(Math.round(un))} W ungepaart gegen ${sign(Math.round(gp))} W über ${fmt(pair.n)}
+          Paare, bei denen jede Fahrt ihre eigene Kontrolle ist. <b>Die gepaarte Zahl ist die
+          belastbarere.</b> Laufen beide auseinander, misst die ungepaarte Reihe zum Teil den
+          Unterschied zwischen Fahrten und nicht den Verlauf innerhalb einer.</p>`);
+      } else if (un != null) {
+        out.push(`<p class="hint">${ico("ok", C.green, 13)} Gepaart und ungepaart liegen nah
+          beieinander (${sign(Math.round(un))} W gegen ${sign(Math.round(gp))} W über
+          ${fmt(pair.n)} Paare) — es gibt keinen Hinweis auf einen Auswahlfehler.</p>`);
+      }
+    }
+    return out.join("");
   }
 
   /* L1b - die HF-Korrektur. GLEICHWERTIGER Teil der Karte, aber vollständig
@@ -1200,17 +1288,23 @@ class IntervalsIcuPanel extends HTMLElement {
       no_dfa: ["ohne DFA-Strom", "die Uhr hat für diese Fahrt kein alpha-1 aufgezeichnet"],
       no_activity: ["unbrauchbar", "kein verwertbarer Datensatz"],
     };
-    const total = Object.values(d).reduce((sum, items) => sum + items.length, 0);
+    // Gezaehlt wird aus den ZAEHLFELDERN, nicht aus den Listen: die Listen
+    // koennen gekappt sein, die Zahl darf es nie. Sonst behauptet die Karte
+    // eine kleinere Luecke, als der Bestand hat.
+    const counts = f.dropped_counts || {};
+    const countOf = (reason, items) => (counts[reason] != null ? counts[reason] : items.length);
+    const total = Object.keys(d).reduce((sum, reason) => sum + countOf(reason, d[reason]), 0);
     if (!total) return "";
     const blocks = Object.entries(d).map(([reason, items]) => {
+      const shown = countOf(reason, items);
       const [label, why] = words[reason] || [reason, ""];
       const list = items.slice(-8).reverse().map((x) =>
         `<li>${esc(x.name || "ohne Namen")} vom ${dMed(x.date)}${x.above_z2 != null
           ? ` — <b class="tn">${fmt(x.above_z2, 1)} %</b> über Zone 2` : ""}${
           reason === "short" ? ` — <b class="tn">${fmt(x.minutes)} min</b>` : ""}</li>`).join("");
-      return `<p class="src"><b>${label}: ${fmt(items.length)}</b> — ${why}</p>
-        <ul class="droplist">${list}${items.length > 8
-          ? `<li class="mut">… und ${fmt(items.length - 8)} weitere</li>` : ""}</ul>`;
+      return `<p class="src"><b>${label}: ${fmt(shown)}</b> — ${why}</p>
+        <ul class="droplist">${list}${shown > 8
+          ? `<li class="mut">… und ${fmt(shown - 8)} weitere</li>` : ""}</ul>`;
     }).join("");
     return `<p class="src"><b>Von ${fmt(total + (f.rides_used || 0))} Einheiten zählen
       ${fmt(f.rides_used)}</b> — ${fmt(total)} bleiben draußen:</p>${blocks}`;
@@ -1426,7 +1520,7 @@ class IntervalsIcuPanel extends HTMLElement {
       if (what === "pmc" && !this._pmc) this._pmc = await this._ws("pmc");
       if (what === "akt" && !this._acts) this._acts = await this._ws("activities", { limit: 300 });
       if (what === "thr" && !this._thr) this._thr = await this._ws("thresholds");
-      if (what === "thr" && !this._fatigue) this._fatigue = await this._ws("fatigue");
+      if (what === "fatigue" && !this._fatigue) this._fatigue = await this._ws("fatigue");
       if (what === "cal" && !this._cal) this._cal = await this._ws("calendar");
       delete this._failed[what];
     } catch (err) {
@@ -1440,7 +1534,8 @@ class IntervalsIcuPanel extends HTMLElement {
     // parallel, not one after the other: three round trips in sequence is the
     // difference between "instant" and "why is this still loading"
     if (t === "trainer") {
-      await Promise.all([this._need("coach"), this._need("workouts"), this._need("goal")]);
+      await Promise.all([this._need("coach"), this._need("workouts"), this._need("goal"),
+                         this._need("fatigue")]);
     }
     if (t === "heute") await this._need("today");
     if (t === "signale") await this._need("signals");
@@ -1544,7 +1639,7 @@ class IntervalsIcuPanel extends HTMLElement {
     else if (this._tab === "fitness") html = this.rFitness(this._pmc, this._range);
     else if (this._tab === "akt") html = this.rAkt(this._acts, this._sel);
     else if (this._tab === "belastung") html = this.rBelastung(this._load);
-    else if (this._tab === "dfa") html = this.rDfa(this._thr, this._dfaSport) + this.rFatigue(this._fatigue);
+    else if (this._tab === "dfa") html = this.rDfa(this._thr, this._dfaSport);
     if (this._ctxDlg) html += this._ctxPopover();
     if (this._syncDlg) html += this._syncPopover();
     this._view.innerHTML = html;

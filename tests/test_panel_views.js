@@ -946,15 +946,19 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   contains(html, "Studienform", "L1: die Setzung wird nicht als solche benannt");
 
   // BEIDE LESERICHTUNGEN
-  ok(/h Fahrtzeit/.test(html), "L1: Leserichtung Zeit -> Watt fehlt");
-  ok(/W — erreicht nach/.test(html), "L1: Leserichtung Watt -> Zeit fehlt");
+  ok(/h — wie viel Watt\?/.test(html), "L1: Leserichtung Zeit -> Watt fehlt");
+  ok(/W — wie lange\?/.test(html), "L1: Leserichtung Watt -> Zeit fehlt");
 
   // Die namentliche Ausschlussliste, mit Grund und Zahl
   contains(html, "Tempo 2×20 min", "L1: ausgeschlossene Fahrt nicht namentlich");
   ok(/46[.,]0 %/.test(html), "L1: ausgeschlossene Fahrt ohne ihren Zahlenwert");
-  ok(/Von 29 Einheiten zählen\s*\n?\s*26/.test(html.replace(/\s+/g, " ").replace("Von 29 Einheiten zählen 26", "Von 29 Einheiten zählen 26"))
-     || /Von 29 Einheiten zählen/.test(html.replace(/\s+/g, " ")),
+  ok(/Von 74 Einheiten zählen/.test(html.replace(/\s+/g, " ")),
      "L1: die Gesamtzahl fehlt - wie viel vom Bestand bleibt übrig");
+  // Gezaehlt wird aus den Zaehlfeldern, nicht aus den Listen: die Fixture
+  // fuehrt 45 no_dfa-Fahrten, zeigt aber nur zwei davon. Eine Karte, die aus
+  // der gekappten Liste zaehlt, behauptet eine kleinere Luecke als der Bestand.
+  ok(/<b>ohne DFA-Strom: 45<\/b>/.test(html),
+     "L1: die Ausschlusszahl kommt aus der gekappten Liste (2) statt aus dem Zählfeld (45)");
 
   // GEGENPROBE: ohne Ausschluesse gibt es auch keine Liste
   const ohne = String(q.rFatigue(F.fatigue({ dropped: {}, dropped_counts: {} })));
@@ -971,6 +975,28 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   // GEGENPROBE: ohne eigenen HF-Anker wird nichts hochgerechnet
   const ohneHr = String(q.rFatigue(F.fatigue({ aerobic_hr: null, hr_drift_expected: [] })));
   ok(!/ausgeruhten Zustand/.test(ohneHr), "L1b: Hochrechnung ohne eigenen Anker");
+
+  // 0.46.0: die Ehrlichkeitsregel, UEBERTRAGEN von der Wolke auf die Kurve.
+  // Dort hiess sie "keine Trendgerade ohne gesicherte Steigung", hier: keine
+  // durchgezogene Messlinie ueber Stunden, die sie nicht tragen.
+  const dickeLinien = (html.match(/stroke-width="2\.6"/g) || []).length;
+  ok(dickeLinien === 1, `L1: ${dickeLinien} durchgezogene Messlinien statt einer`);
+  const nurDuenn = String(q.rFatigue(F.fatigue({
+    measured: F.fatigue().measured.map((r) => ({ ...r, band: "thin", n: 3 })),
+    solid_until_hour: null })));
+  ok(!/stroke-width="2\.6"/.test(nurDuenn),
+     "L1: durchgezogene Messlinie, obwohl keine Stunde sie traegt");
+
+  // Der Historienbeginn als Grund fuer die duenne Belegung - im Hauptteil,
+  // nicht im Rechenweg, wo ihn niemand sucht.
+  contains(html.split("Rechenweg")[0], "keinen DFA-Strom tragen",
+           "L1: die fehlenden Fahrten werden nicht erklärt");
+  const ohneLuecke = String(q.rFatigue(F.fatigue({ dropped_counts: { structured: 2 } })));
+  ok(!/keinen DFA-Strom tragen/.test(ohneLuecke),
+     "L1 Gegenprobe: der Hinweis erscheint auch ohne fehlende Ströme");
+
+  // Die zwei Zahlen im Haus: benannt statt unbemerkt
+  contains(html, "Zwei Zahlen für dieselbe Sache", "L1: der bekannte Unterschied wird verschwiegen");
 
   // Der Zustand "rechnet noch" - mit Fortschritt, nicht als leerer Platz
   const rechnet = String(q.rFatigue(F.fatigue({
@@ -1403,23 +1429,19 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
     clean(tileFlat, "durability flach");
     clean(tileClear, "durability klar");
 
-    const dots = [...tileFlat.matchAll(/<circle cx="([\d.]+)" cy="([\d.]+)" r="([\d.]+)"[^>]*opacity="([\d.]+)"/g)];
-    ok(dots.length === flat.points.length,
-       `durability: ${dots.length} Punkte gezeichnet, ${flat.points.length} in der Payload`);
-    // Das Gewicht muss SICHTBAR sein - sonst sieht man nicht, worauf der Trend
-    // ruht, und die Gewichtung bliebe eine reine Backend-Behauptung.
-    ok(new Set(dots.map((m) => m[3])).size > 1 && new Set(dots.map((m) => m[4])).size > 1,
-       "durability: Gewicht ist im Bild nicht zu sehen (eine Groesse, eine Deckkraft)");
-    // Die Punkte liegen nach ARBEIT, nicht nach Reihenfolge.
-    const xs = dots.map((m) => +m[1]), kj = flat.points.map((q) => q.kj);
-    const span = (xs[xs.length - 1] - xs[0]) / (kj[kj.length - 1] - kj[0]);
-    ok(Math.abs((xs[1] - xs[0]) / (kj[1] - kj[0]) - span) < 0.01,
-       "durability: die x-Achse laeuft ueber den Index statt ueber die Arbeit");
-
-    // Regel 2 im Bild: ohne gesicherte Steigung KEINE Gerade.
+    // 0.46.0: die Punktwolke ist als Hauptbild entfallen (PROJEKTSTAND §7,
+    // "zwei Kacheln, eine Frage"). DREI Zusicherungen fallen mit dem Bild, weil
+    // es das Bild nicht mehr gibt: die Zahl der gezeichneten Punkte, das
+    // Gewicht als Groesse UND Deckkraft, und die Arbeits-x-Achse. Sie hatten
+    // kein Gegenstueck an der neuen Kurve - dort gibt es keine Fahrtpunkte,
+    // sondern Stundenmediane.
+    // Die Ehrlichkeitsregel dagegen wird UEBERTRAGEN, nicht gestrichen: sie
+    // steht jetzt an der Kurve (keine durchgezogene Messlinie ohne getragene
+    // Belegung) und wird im Ermuedungskurven-Block geprueft.
+    ok(!/<circle cx="[\d.]+" cy="[\d.]+" r="[\d.]+"[^>]*opacity=/.test(tileFlat),
+       "durability: die Punktwolke wird immer noch gezeichnet");
     ok(!tileFlat.includes(M.C.violet),
-       "durability flach: es wird eine Trendgerade gezeichnet, obwohl keine Leitzahl erlaubt ist");
-    ok(tileClear.includes(M.C.violet), "durability klar: die gesicherte Trendgerade fehlt");
+       "durability: die Trendgerade der Wolke ist noch da");
     contains(tileFlat, "Streuung", "durability flach: sagt nicht, WORAN es liegt");
     ok(!/Bis etwa/.test(tileFlat), "durability flach: nennt trotzdem einen Kipppunkt");
     contains(tileFlat, String(flat.needed_sessions),
@@ -1427,15 +1449,13 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
     contains(tileClear, "Bis etwa", "durability klar: keine Leitzahl trotz gesicherter Steigung");
     ok(tileFlat !== tileClear, "durability: gesperrter und tragender Fall sind nicht unterscheidbar");
 
-    // Zwei Farbregister, die sich nie mischen: die Marke darf urteilen, die
-    // Punkte nicht.
-    const dotColour = /<circle[^>]*fill="([^"]+)"/.exec(tileFlat)[1].toLowerCase();
-    for (const judge of [M.C.green, M.C.amber, M.C.red]) {
-      ok(dotColour !== String(judge).toLowerCase(),
-         `durability: die Punkte tragen mit ${judge} eine Urteilsfarbe`);
-    }
-    ok(tileFlat.includes(`stroke="${M.C.amber}"`),
-       "durability: die Marke ist nicht im Urteilsregister gezeichnet");
+    // Die beiden Achsen stehen jetzt unter EINER Ueberschrift - und der
+    // Unterschied wird benannt, sonst waere es ein Widerspruch statt einer
+    // Entscheidung.
+    contains(tileFlat, "Andere Achse als oben, mit Absicht",
+             "durability: die zwei Achsen stehen unkommentiert nebeneinander");
+    ok(/Wie stark entkoppelt es\?/.test(tileFlat) && /Wird es besser\?/.test(tileFlat),
+       "durability: die Abschnitte tragen keine eigenen Ueberschriften");
 
     // Baender und Bloecke sagen, warum sie schweigen.
     ok(flat.bins.some((b) => b.thin) && /zu dünn/.test(tileFlat),
@@ -1460,8 +1480,9 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
     contains(tileFlat, "Durability, spezifisch", "durability: der Verweis auf die Einheit fehlt (G5)");
     contains(tileFlat, "Hungerast", "durability: die Warnung zum Fuettern fehlt (G5)");
 
-    ok(p._grp.dur && p._grp.dur.xy === true && p._grp.dur.pts.length === flat.points.length,
-       "durability: die Wolke ist nicht als xy-Gruppe fuer den Zeiger angemeldet");
+    // Die Zeigergruppe haengt jetzt an der KURVE statt an der Wolke - umgehaengt,
+    // nicht geloescht. Geprueft wird sie im Ermuedungskurven-Block.
+    ok(p._grp.dur == null, "durability: die Zeigergruppe der Wolke lebt noch");
   }
 
   /* ── Paket H: der Kopfbereich ───────────────────────────────────────────

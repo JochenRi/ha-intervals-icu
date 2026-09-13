@@ -654,6 +654,67 @@ const acts = F.activities(), thr = F.thresholds();
   }
 }
 
+/* ── 0.46.0: der Zeiger ueber der Ermuedungskurve, SIMULIERT ──────────────
+   Aussagen ueber DOM-Verhalten gehoeren simuliert, nicht gegrept (Lehre 3 aus
+   Paket A). Geprueft wird, was der Ablesestreifen beim Ueberfahren ANZEIGT -
+   und zwar an drei Stellen: ueber einer gemessenen Stunde, ueber dem
+   gestrichelten Bereich, und dass der Zeiger die Ansicht nicht neu baut. */
+{
+  const q = new M.Panel();
+  q._nowIso = F.TODAY;
+  const fat = F.fatigue();
+  q.rFatigue(fat);            // meldet die Zeigergruppe an
+  ok(q._grp.fat && q._grp.fat.xy === true,
+     "zeiger: die Kurve ist nicht als xy-Gruppe angemeldet");
+  ok(q._grp.fat.pts.length === fat.literature.length,
+     `zeiger: ${q._grp.fat.pts.length} Rasterpunkte gegen ${fat.literature.length} in der Payload`);
+
+  // Der Streifen, an dem sich ablesen laesst, was der Zeiger schreibt.
+  let text = "", html = "";
+  const strip = { querySelector: (sel) => (/rdox/.test(sel)
+    ? { set textContent(v) { text = v; }, get textContent() { return text; } }
+    : { set innerHTML(v) { html = v; }, get innerHTML() { return html; } }) };
+  q.shadowRoot.querySelector = (sel) => (/data-rdo="fat"/.test(sel) ? strip : null);
+
+  // ueber einer GEMESSENEN Stunde
+  const iMeasured = fat.literature.findIndex((r) => r.hour === 2);
+  q._fillReadout("fat", iMeasured);
+  ok(/1[.,]50 h Fahrtzeit/.test(text), `zeiger: falsche Dauer im Streifen (${text})`);
+  ok(!/Studienform, keine Messung/.test(text),
+     "zeiger: eine gemessene Stunde wird als Studienform ausgegeben");
+  for (const [label, want] of [["gemessen", "142"], ["Studienform", "149"],
+                               ["Bandbreite", "7"], ["Belegung", "23"]]) {
+    ok(html.includes(label), `zeiger: der Streifen zeigt "${label}" nicht`);
+    ok(html.includes(want), `zeiger: "${label}" traegt nicht den Wert ${want} (${html.slice(0, 200)})`);
+  }
+
+  // ueber dem GESTRICHELTEN Bereich: die Leiste sagt es ausdruecklich
+  const iBeyond = fat.literature.findIndex((r) => r.hour == null);
+  q._fillReadout("fat", iBeyond);
+  ok(/Studienform, keine Messung/.test(text),
+     `zeiger: jenseits des Bestands fehlt der Hinweis (${text})`);
+  ok(/gemessen[\s\S]{0,120}–/.test(html),
+     "zeiger: dort steht ein gemessener Wert, wo keiner ist");
+
+  // GEGENPROBE, gezaehlt und benannt: ohne die Hinweis-Logik faende der Test
+  // nichts - also muss ein Raster OHNE gestrichelten Teil auch keinen Hinweis
+  // erzeugen.
+  const q2 = new M.Panel();
+  q2._nowIso = F.TODAY;
+  const nurGemessen = F.fatigue({ literature: fat.literature.filter((r) => r.hour != null) });
+  q2.rFatigue(nurGemessen);
+  q2.shadowRoot.querySelector = (sel) => (/data-rdo="fat"/.test(sel) ? strip : null);
+  q2._fillReadout("fat", 0);
+  ok(!/Studienform, keine Messung/.test(text),
+     "zeiger Gegenprobe: der Hinweis erscheint auch ohne gestrichelten Bereich");
+
+  // und der Zeiger baut die Ansicht NICHT neu (0.9.3)
+  let renders = 0;
+  q._render = () => { renders++; };
+  q._fillReadout("fat", 3);
+  ok(renders === 0, "zeiger: das Ablesen baut die Ansicht neu");
+}
+
 /* ── Wächter: keine Urteilsregel im Frontend (docs/ausbau.md I5) ───────────
    Bis 0.41.0 hat rWorkouts Zustand und Budget SELBST zusammengeführt
    (fit === "ok" && fits_budget === false -> amber), während das Backend die
@@ -757,7 +818,11 @@ const acts = F.activities(), thr = F.thresholds();
   const setTab = src.slice(src.indexOf("async _setTab(t)"), src.indexOf("async _openAct("));
   const render = src.slice(src.indexOf("  _render() {"), src.indexOf("this._view.innerHTML = html"));
   const needsOf = {
-    trainer: ["coach", "workouts", "goal"], heute: ["today"], signale: ["signals"],
+    // fatigue seit 0.46.0: die Ermuedungskurve sitzt in der Durability-Kachel
+    // im TRAINER. Auf dem EINEN Weg angefordert, nicht ueber einen zweiten
+    // Ladepfad daneben - sonst ist es die stille Luecke aus 0.42.1 mit einer
+    // neuen Payload.
+    trainer: ["coach", "workouts", "goal", "fatigue"], heute: ["today"], signale: ["signals"],
     fitness: ["pmc"], akt: ["akt"], dfa: ["thr"],
   };
   for (const [tab, keys] of Object.entries(needsOf)) {
@@ -773,6 +838,13 @@ const acts = F.activities(), thr = F.thresholds();
         src.indexOf("const TABS")).includes(`"${key}"`),
        `ladepfad: ${key} steht nicht unter den Boot-Payloads`);
   }
+
+  // Und sie darf NICHT mehr am DFA-Reiter haengen: eine Payload an zwei Orten
+  // anzufordern waere der zweite Ladepfad, den dieser Waechter verhindert.
+  ok(!/dfa[\s\S]{0,80}rFatigue/.test(render),
+     "ladepfad: die Ermuedungskurve haengt noch am DFA-Reiter");
+  ok(/rFatigue/.test(src.slice(src.indexOf("rDurability(d) {"), src.indexOf("_fatigueHistory(f) {"))),
+     "ladepfad: die Ermuedungskurve sitzt nicht in der Durability-Kachel");
 
   // Gegenprobe: ein _boot ohne _setTab muss auffallen
   ok(!/await this\._setTab\(this\._tab\)/.test("this._render();\n    this._routeFromHash();"),

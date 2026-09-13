@@ -30,6 +30,7 @@ try:  # inside the package (Home Assistant)
     from .const import (
         FATIGUE_MAX_ABOVE_Z2,
         FATIGUE_MIN_MINUTES,
+        FATIGUE_MIN_PAIRS,
         FATIGUE_SOLID_MIN_RIDES,
         FATIGUE_THIN_MIN_RIDES,
     )
@@ -38,6 +39,7 @@ except ImportError:  # standalone (test suite loads this file directly)
     from const import (  # type: ignore[no-redef]
         FATIGUE_MAX_ABOVE_Z2,
         FATIGUE_MIN_MINUTES,
+        FATIGUE_MIN_PAIRS,
         FATIGUE_SOLID_MIN_RIDES,
         FATIGUE_THIN_MIN_RIDES,
     )
@@ -147,7 +149,8 @@ def _band(count: int) -> str:
     return "dashed"
 
 
-def curve(data: dict[str, Any], aerobic_hr: float | None = None) -> dict[str, Any]:
+def curve(data: dict[str, Any], aerobic_hr: float | None = None,
+          aerobic_power: float | None = None) -> dict[str, Any]:
     """Anker, gemessene Stundenwerte, Literaturform und Belegungsgrenzen."""
     selection = rides(data)
     by_hour: dict[int, list[float]] = {}
@@ -181,6 +184,40 @@ def curve(data: dict[str, Any], aerobic_hr: float | None = None) -> dict[str, An
             "hr_n": len(by_hour_hr.get(hour) or []),
         })
 
+    # --- GEPAART, als Gegenrechnung zur ungepaarten Reihe oben ---------------
+    # Die Mediane je Stunde stammen aus VERSCHIEDENEN Fahrten. Das ist genau
+    # das Laengenartefakt aus J1 - und hier hat es eine eigene Quelle: p075
+    # wird nur ausgegeben, wenn 0,75 im gefahrenen alpha-Bereich LIEGT (keine
+    # Extrapolation, und das bleibt richtig). Ausgeruht liegt alpha hoch, die
+    # Schwelle wird in Stunde 1 also nur beruehrt, wenn HAERTER gefahren wurde.
+    # Der Schutz vor Hochrechnung erzeugt damit eine Auswahl, und die Auswahl
+    # korreliert mit der gesuchten Groesse. Gepaart gerechnet ist jede Fahrt
+    # ihre eigene Kontrolle.
+    paired = []
+    for hour in sorted(by_hour):
+        deltas = []
+        for ride in selection["used"]:
+            rows = {int(r["hour"]): r.get("p075") for r in ride["hours"]}
+            here, nxt = rows.get(hour), rows.get(hour + 1)
+            if here is not None and nxt is not None:
+                deltas.append(float(nxt) - float(here))
+        if deltas:
+            paired.append({
+                "from_hour": hour, "to_hour": hour + 1,
+                "delta": round(median(deltas), 1), "n": len(deltas),
+                "enough": len(deltas) >= FATIGUE_MIN_PAIRS,
+            })
+
+    # DAS ERKENNUNGSZEICHEN, als Regel statt als Beobachtung: die Belegung
+    # zeitlich aufeinanderfolgender Bins muss MONOTON FALLEN - jede Fahrt mit
+    # einer zweiten Stunde hat auch eine erste. Steigt sie, liegt ein
+    # Auswahleffekt vor, und dann ist der ungepaarte Verlauf kein Verlauf.
+    counts = [row["n"] for row in measured]
+    rising = [
+        {"hour": measured[i + 1]["hour"], "n": counts[i + 1], "previous": counts[i]}
+        for i in range(len(counts) - 1) if counts[i + 1] > counts[i]
+    ]
+
     anchor = measured[0]["watts"] if measured else None
     anchor_n = measured[0]["n"] if measured else 0
     literature = []
@@ -210,11 +247,16 @@ def curve(data: dict[str, Any], aerobic_hr: float | None = None) -> dict[str, An
 
         for row in measured:
             literature.append(_point(row["t"], row["hour"]))
+        # Feineres Raster als die Messstunden: der Zeiger soll ueber der Kurve
+        # gleiten, nicht auf vier Punkte einrasten. Payload-Seite, damit
+        # chart() unberuehrt bleibt.
         last = measured[-1]["t"]
-        t = last + 0.5
+        t = 0.25
         while t <= last + 2.0:
-            literature.append(_point(t, None))
-            t += 0.5
+            if all(abs(t - row["t"]) > 0.01 for row in measured):
+                literature.append(_point(t, None))
+            t += 0.25
+        literature.sort(key=lambda row: row["t"])
     else:
         base = None
 
@@ -231,6 +273,9 @@ def curve(data: dict[str, Any], aerobic_hr: float | None = None) -> dict[str, An
         "solid_until_hour": solid_until,
         "thin_until_hour": thin_until,
         "rides_used": len(selection["used"]),
+        "paired": paired,
+        "occupancy_rising": rising,
+        "min_pairs": FATIGUE_MIN_PAIRS,
         "dropped": selection["dropped"],
         "dropped_counts": {reason: len(items) for reason, items in selection["dropped"].items()},
         # Die Grenzen reisen mit, damit die Kachel sie NENNEN kann, ohne sie
@@ -253,6 +298,10 @@ def curve(data: dict[str, Any], aerobic_hr: float | None = None) -> dict[str, An
             for row in measured
         ] if aerobic_hr else [],
         "aerobic_hr": aerobic_hr,
+        # Die ZWEITE Zahl im Haus, bewusst mitgeschickt: der Rechenweg nennt
+        # beide und sagt, warum sie auseinanderliegen. Ein bekannter
+        # Unterschied ist etwas anderes als ein unbemerkter.
+        "aerobic_power": aerobic_power,
         "t5_minutes": round(_t5_hours() * 60),
         "t5_published": GALLO_T5_MIN,
         "t5_published_sd": GALLO_T5_SD,
