@@ -2235,7 +2235,19 @@ class IntervalsIcuPanel extends HTMLElement {
           : "";
         return `<span><b>${min}′</b> ${esc(label)} <em>${entry.blocks_w ? val + " W" : val + " % FTP"}</em>${mark}</span>`;
       }).join("")}</div>
-      ${entry.watt_source === "curve"
+      ${entry.watt_source === "blocks"
+        ? `<p class="fitwhy">${ico("info", C.blue, 14)} <b>Watt und Puls kommen aus deiner
+            Blockmessung</b> — ${fmt((entry.block_source || {}).watts)} W bei alpha
+            ${fmt((entry.block_source || {}).alpha, 3)}, gemessen am
+            ${dMed((entry.block_source || {}).date)} über
+            ${fmt((entry.block_source || {}).n_blocks)} Blöcke; das Pulsfenster aus
+            ${fmt((entry.hr_source || {}).n)} Einheiten
+            (${dMed((entry.block_source || {}).from)}–${dMed((entry.block_source || {}).to)}).
+            <b>Beide aus derselben Quelle</b>, damit sie gemeinsam wandern.
+            ${ico("warn", C.amber, 13)} <b>Gilt für diese Einheit auf der Rolle</b>, nicht
+            für dieselbe Familie draußen — derselbe alpha-Wert steht dort für eine andere
+            Leistung. Ein- und Ausrollen bleiben Prozent der FTP.</p>`
+        : entry.watt_source === "curve"
         ? `<p class="fitwhy">${ico("info", C.blue, 14)} <b>Die Watt kommen aus deiner eigenen
             Messung</b>, nicht mehr aus der FTP — gestaffelt nach Fahrtdauer, deshalb trägt
             dieselbe Einheit andere Zahlen als früher. Gefahren wird
@@ -2247,7 +2259,11 @@ class IntervalsIcuPanel extends HTMLElement {
         : entry.watt_source === "ftp" && (entry.family === "endurance" || entry.family === "long")
           ? `<p class="fitwhy">${ico("warn", C.amber, 14)} <b>Rückfall auf die FTP:</b> für diese
               Einheit liegt keine tragfähige eigene Messung vor.</p>`
-          : ""}
+          : entry.watt_source === "ftp" && (entry.family === "vo2max" || entry.family === "sweetspot")
+            ? `<p class="fitwhy">${ico("warn", C.amber, 14)} <b>Rückfall auf die FTP:</b> noch zu
+                wenige gemessene Einheiten dieser Familie — bis dahin bleibt die alte Vorgabe
+                stehen, statt halb umgestellt zu werden.</p>`
+            : ""}
       ${entry.effect ? `<p class="effect"><b>Was das bringt:</b> ${esc(entry.effect)}</p>` : ""}
       ${entry.fit_reason && !(opts.saidAbove || new Set()).has(entry.fit_reason)
         ? `<p class="fitwhy">${ico(st.key === "red" ? "warn" : "info",

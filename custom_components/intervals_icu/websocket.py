@@ -761,6 +761,7 @@ def websocket_workouts(hass, connection, msg) -> None:
         # Kurve, die die Kachel zeigt.
         curve=fatigue.curve(data, aerobic_hr=anchors.get("aerobic_hr"),
                             aerobic_power=anchors.get("aerobic_power")),
+        blocks=blocks_lib.series(data),
     )
     connection.send_result(msg["id"], {
         "ftp": ftp,
@@ -986,6 +987,7 @@ def websocket_goal(hass, connection, msg) -> None:
             max_hr=_max_hr(data),
             curve=fatigue.curve(data, aerobic_hr=anchors.get("aerobic_hr"),
                                 aerobic_power=anchors.get("aerobic_power")),
+            blocks=blocks_lib.series(data),
         )
         weeks[0]["rated"] = True
         weeks[0]["done"] = analytics.week_done(data, weeks[0]["start"])

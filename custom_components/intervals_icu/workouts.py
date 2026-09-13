@@ -726,7 +726,8 @@ def curve_watts(curve: dict[str, Any] | None, hours: float) -> dict[str, Any] | 
 
 
 def scaled(entry: dict[str, Any], ftp: float | None, aerobic_hr: int | None,
-           max_hr: float | None = None, curve: dict[str, Any] | None = None) -> dict[str, Any]:
+           max_hr: float | None = None, curve: dict[str, Any] | None = None,
+           blocks: dict[str, Any] | None = None) -> dict[str, Any]:
     """Fill in the athlete's own numbers: watts from the MEASURED curve where
     it carries, from the FTP where it does not - and the origin travels with
     the session, so a changed number is explainable instead of surprising."""
@@ -736,7 +737,36 @@ def scaled(entry: dict[str, Any], ftp: float | None, aerobic_hr: int | None,
                            for block in entry["blocks"]]
         out["text_w"] = _text_in_watts(entry, ftp)
         out["watt_source"] = "ftp"
-    if curve and (entry.get("family") or _family_of(entry.get("key"))) in CURVE_FAMILIES:
+    # Die harten Familien: Watt UND Herzfrequenz aus DERSELBEN Messung. Eine
+    # Wattvorgabe, die mitwandert, neben einem HF-Fenster aus einer fremden
+    # Schwelle waere in drei Monaten auseinander - gemessen wandern beide
+    # gemeinsam (216 -> 251 W bei 176 -> 185 bpm, PROJEKTSTAND §7).
+    fam = entry.get("family") or _family_of(entry.get("key"))
+    measured = ((blocks or {}).get("families") or {}).get(fam) if blocks else None
+    if measured and measured.get("source_ok") and measured.get("latest"):
+        latest = measured["latest"]
+        staged = []
+        for block in entry["blocks"]:
+            if len(block) > 3 and block[3] or str(block[2]).lower().startswith(("block", "1", "2", "3", "4")):
+                staged.append((block[0], latest["median_watts"], block[2], *block[3:]))
+            else:
+                staged.append((block[0], round(ftp * block[1] / 100) if ftp else None,
+                               block[2], *block[3:]))
+        out["blocks_w"] = staged
+        out["text_w"] = steps_text(staged, None)
+        out["watt_source"] = "blocks"
+        out["block_source"] = {
+            "date": latest["date"], "alpha": latest["median_alpha"],
+            "n_blocks": latest["n_blocks"], "watts": latest["median_watts"],
+            "sessions": measured["sessions"], "from": measured["from"], "to": measured["to"],
+        }
+        window = measured.get("hr_window")
+        if window:
+            out["hr_window"] = (window["low"], window["high"])
+            out["hr_source"] = {**window, "family": fam}
+        return out
+
+    if curve and fam in CURVE_FAMILIES:
         staged, elapsed, changed = [], 0.0, False
         for block in entry["blocks"]:
             minutes = float(block[0])
@@ -1148,7 +1178,8 @@ def suggest(state: str, ftp: float | None = None, aerobic_hr: int | None = None,
             layoff_days: int | None = None, limit: int = 9,
             goal: str | None = None,
             recovery_offered: bool = False,
-            curve: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+            curve: dict[str, Any] | None = None,
+            blocks: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """One session per family, each judged for today - never filtered away.
 
     The earlier version filtered: in a rebound state everything hard vanished
@@ -1176,7 +1207,7 @@ def suggest(state: str, ftp: float | None = None, aerobic_hr: int | None = None,
             continue
 
         key = _variant(keys, state, ftp, budget, hard_days_last_7)
-        entry = dict(scaled(BY_KEY[key], ftp, aerobic_hr, max_hr, curve))
+        entry = dict(scaled(BY_KEY[key], ftp, aerobic_hr, max_hr, curve, blocks))
         verdict, reason = fit_for(
             family_key, state, entry["intensity"],
             hard_days_last_7=hard_days_last_7, layoff_days=layoff_days,
@@ -1253,7 +1284,8 @@ def rate_sessions(sessions: list[dict[str, Any]], state: str,
                   infection: bool = False, ftp: float | None = None,
                   aerobic_hr: int | None = None,
                   max_hr: float | None = None,
-                  curve: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+                  curve: dict[str, Any] | None = None,
+                  blocks: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """Grade the planned sessions of the CURRENT week - a view, not a planner.
 
     Every session the plan produced carries a `workout` key into the catalogue.
@@ -1288,7 +1320,7 @@ def rate_sessions(sessions: list[dict[str, Any]], state: str,
             template["blocks"] = stretched
             template["minutes"] = sum(block[0] for block in stretched)
             template["text"] = steps_text(stretched, None)
-        full = scaled(template, ftp, aerobic_hr, max_hr, curve)
+        full = scaled(template, ftp, aerobic_hr, max_hr, curve, blocks)
         if stretched and ftp:
             full["text_w"] = steps_text(stretched, ftp)
         load = session_load(entry, session.get("hours"))

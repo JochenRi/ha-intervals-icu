@@ -39,7 +39,7 @@ PANEL_COMPONENT = "intervals-icu-panel"
 PANEL_FILE = "intervals-panel.js"
 PANEL_TITLE = "Intervals"
 PANEL_ICON = "mdi:chart-timeline-variant"
-PANEL_VERSION = "0.48.1"
+PANEL_VERSION = "0.49.0"
 
 # --- thresholds shared by backend and panel -----------------------------------
 # One definition per number, here, because the panel has to show several of them
@@ -161,6 +161,17 @@ BLOCK_CORRIDORS = {
 # eine Abweichung, die kleiner ist als die uebliche Schwankung, ist keine.
 BLOCK_STEP_NEAR_PCT = 5
 BLOCK_STEP_FAR_PCT = 10
+# Wie breit das HF-Fenster einer Familie ist: der Median der Block-Herzfrequenzen
+# plus/minus ZWEI Streuungen ZWISCHEN den Einheiten. Keine gesetzte Zahl - sie
+# reproduziert das Beobachtete. Gemessen: die Block-HF streut INNERHALB einer
+# Einheit kaum (SweetSpot Median 1 bpm, VO2max 6), fast die ganze Streuung sitzt
+# zwischen den Einheiten, also in der Tagesform (SD 3,2 bzw. 3,6). Mit Faktor 2
+# ergibt das VO2max 171-186 (beobachtet 171,5-185,0) und SweetSpot 159-171
+# (beobachtet 159,5-168,5).
+BLOCK_HR_WINDOW_SD_FACTOR = 2.0
+# Unter so vielen Einheiten bleibt das alte Fenster stehen - dieselbe
+# Belegungsstaffelung wie bei den Watt. Kein halb umgestelltes Fenster.
+BLOCK_MIN_FOR_SOURCE = 3
 
 # Which sessions the durability tile may look at.
 DURABILITY_MIN_MINUTES = 45      # below this a decoupling reading is not usable

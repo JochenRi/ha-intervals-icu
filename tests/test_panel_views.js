@@ -1015,10 +1015,29 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
     blocks_w: [[12, 118, "Einrollen"]] };
   contains(String(q._sessionCard(rueckfall, opts)), "Rückfall auf die FTP",
            "L4: der Rückfall auf die FTP wird verschwiegen");
-  const hart = { ...base, watt_source: "ftp", family: "sweetspot",
-    blocks_w: [[20, 189, "Block 1"]] };
+  // Seit 0.49.0 ist der Rueckfall bei VO2max und SweetSpot eine echte
+  // Auskunft: dort SOLL gemessen werden, und wenn es nicht reicht, gehoert es
+  // gesagt. Fuer die uebrigen Familien gibt es nichts zurueckzufallen.
+  const hart = { ...base, watt_source: "ftp", family: "threshold",
+    blocks_w: [[10, 194, "1"]] };
   ok(!/Rückfall auf die FTP/.test(String(q._sessionCard(hart, opts))),
-     "L4: die harten Familien melden einen Rückfall, den es dort nicht gibt");
+     "L4: eine Familie ohne eigene Messung meldet einen Rückfall, den es nicht gibt");
+  const duenn = { ...base, watt_source: "ftp", family: "vo2max",
+    blocks_w: [[4, 220, "1"]] };
+  contains(String(q._sessionCard(duenn, opts)).replace(/\s+/g, " "),
+           "noch zu wenige gemessene Einheiten",
+           "0.49.0: der Rückfall bei den gemessenen Familien wird verschwiegen");
+  // Und die gemessene Einheit nennt beide Quellen samt Rolle-Grenze.
+  const gemessen = { ...base, watt_source: "blocks", family: "vo2max",
+    blocks_w: [[4, 250, "1"]],
+    block_source: { date: "2026-09-01", alpha: 0.405, n_blocks: 4, watts: 250,
+                    sessions: 15, from: "2026-06-03", to: "2026-09-01" },
+    hr_source: { low: 171, high: 186, n: 15, source: "measured" } };
+  const gm = String(q._sessionCard(gemessen, opts)).replace(/\s+/g, " ");
+  contains(gm, "Watt und Puls kommen aus deiner Blockmessung",
+           "0.49.0: die Herkunft fehlt an der Einheit");
+  contains(gm, "Beide aus derselben Quelle", "0.49.0: es steht nicht da, dass beide Seiten mitwandern");
+  contains(gm, "Gilt für diese Einheit auf der Rolle", "0.49.0: die Rolle-Grenze fehlt an der Einheit");
 }
 
 /* ── die Ermuedungskurve: Beleg und Setzung getrennt, im Bild UND im Text ─ */

@@ -289,6 +289,10 @@ JUDGEMENT_INPUTS = {
     # und keinen Hinweis darauf. Genau die Klasse, fuer die dieser Waechter
     # gebaut wurde (PROJEKTSTAND §7, 0.44.0).
     "curve",
+    # seit 0.49.0: fehlt `blocks`, faellt nicht nur die Wattvorgabe der harten
+    # Familien still auf die FTP zurueck, sondern auch ihr Pulsfenster - und
+    # zwar getrennt voneinander, was genau das halb umgestellte Paar ergaebe.
+    "blocks",
 }
 
 

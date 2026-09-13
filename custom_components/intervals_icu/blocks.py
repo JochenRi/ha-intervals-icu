@@ -33,6 +33,8 @@ try:  # inside the package (Home Assistant)
         BLOCK_STEP_FAR_PCT,
         BLOCK_STEP_NEAR_PCT,
         BLOCK_WARMUP_DISCARD_S,
+        BLOCK_HR_WINDOW_SD_FACTOR,
+        BLOCK_MIN_FOR_SOURCE,
     )
 except ImportError:  # standalone (test suite loads this file directly)
     import derive  # type: ignore[no-redef]
@@ -42,6 +44,8 @@ except ImportError:  # standalone (test suite loads this file directly)
         BLOCK_STEP_FAR_PCT,
         BLOCK_STEP_NEAR_PCT,
         BLOCK_WARMUP_DISCARD_S,
+        BLOCK_HR_WINDOW_SD_FACTOR,
+        BLOCK_MIN_FOR_SOURCE,
     )
 
 
@@ -75,6 +79,7 @@ def _sessions(data: dict[str, Any]) -> list[dict[str, Any]]:
             continue
         alphas = [float(b["alpha"]) for b in work if b.get("alpha") is not None]
         powers = [float(b["watts"]) for b in work if b.get("watts")]
+        pulses = [float(b["hr"]) for b in work if b.get("hr")]
         if not alphas or not powers:
             continue
         # DIE GEGENPROBE AUS FREMDER QUELLE: Intervals' eigener Abschnittswert
@@ -114,6 +119,8 @@ def _sessions(data: dict[str, Any]) -> list[dict[str, Any]]:
             "first_watts": work[0].get("watts"),
             "median_alpha": round(derive._median(alphas), 3),
             "median_watts": round(derive._median(powers)),
+            "median_hr": round(derive._median(pulses)) if pulses else None,
+            "block_hr": [b.get("hr") for b in work],
             "alpha_span": round(max(alphas) - min(alphas), 3),
         })
     out.sort(key=lambda row: row["date"])
@@ -172,12 +179,30 @@ def series(data: dict[str, Any]) -> dict[str, Any]:
                 "first_alpha": row["first_alpha"], "first_watts": row["first_watts"],
                 # Steuergröße
                 "median_alpha": row["median_alpha"], "median_watts": row["median_watts"],
+                "median_hr": row["median_hr"], "block_hr": row["block_hr"],
                 "step_pct": step["pct"], "step_gap": step["gap"], "step_where": step["where"],
                 "suggested_watts": round(row["median_watts"] * (1 + step["pct"] / 100.0)),
             })
         # Wo die fremde Quelle widerspricht, sagt es die Karte - eine
         # Gegenprobe, die niemand sieht, ist keine.
         disagree = [p["date"] for p in points if p["order_ok"] is False]
+        # DAS HF-FENSTER AUS DERSELBEN QUELLE wie die Wattvorgabe. Beide bewegen
+        # sich damit gemeinsam: ueber drei Monate wandert die Blockleistung von
+        # 216 auf 251 W und die Block-HF von 176 auf 185 - ein Fenster aus einer
+        # FREMDEN Schwelle waere dabei stehengeblieben, und der Unterschied
+        # faellt erst auf, wenn er weh tut.
+        hr_medians = [p["median_hr"] for p in points if p["median_hr"]]
+        hr_window = None
+        if len(hr_medians) >= BLOCK_MIN_FOR_SOURCE:
+            mid = derive._median(hr_medians)
+            mean_hr = sum(hr_medians) / len(hr_medians)
+            sd_hr = (sum((x - mean_hr) ** 2 for x in hr_medians) / len(hr_medians)) ** 0.5
+            half = BLOCK_HR_WINDOW_SD_FACTOR * sd_hr
+            hr_window = {
+                "low": round(mid - half), "high": round(mid + half),
+                "median": round(mid, 1), "sd": round(sd_hr, 1),
+                "n": len(hr_medians), "source": "measured",
+            }
         newest = points[-1]
         families[family] = {
             "corridor": list(corridor),
@@ -194,6 +219,11 @@ def series(data: dict[str, Any]) -> dict[str, Any]:
             # MEHR Leistung bei gleichem alpha ist die Verbesserung.
             "first_block_watts": [p["first_watts"] for p in points],
             "order_conflicts": disagree,
+            "hr_window": hr_window,
+            # Belegung entscheidet, OB umgestellt wird - fuer beide Seiten
+            # gleich. Zu duenn heisst: die FTP bleibt, und die Karte sagt warum.
+            "source_ok": len(points) >= BLOCK_MIN_FOR_SOURCE,
+            "min_for_source": BLOCK_MIN_FOR_SOURCE,
             # Der Zeitraum, ueber den geschaut wird - sonst weiss niemand,
             # worauf der Verlauf ruht.
             "from": points[0]["date"], "to": points[-1]["date"],

@@ -864,6 +864,39 @@ _lo, _hi = W.BY_KEY["z2_60"]["hr_hint"]
 check(not (_lo <= 1.0 <= _hi),
       "Gegenprobe: ein Anteil von 100 % waere im HF-Fenster - die Pruefung ist blind")
 
+# --- 0.49.0: Watt UND Puls aus DERSELBEN Quelle ------------------------------
+BLK = {"families": {"vo2max": {
+    "source_ok": True, "sessions": 15, "from": "2026-06-03", "to": "2026-09-01",
+    "min_for_source": 3,
+    "latest": {"date": "2026-09-01", "median_alpha": 0.405, "n_blocks": 4, "median_watts": 250},
+    "hr_window": {"low": 171, "high": 186, "median": 178.5, "sd": 3.6, "n": 15,
+                  "source": "measured"}}}}
+vo = W.scaled(W.BY_KEY["vo2_4x4"], 200, 160, 195, None, BLK)
+eq(vo["watt_source"], "blocks", "VO2max: die Watt kommen aus der Blockmessung")
+eq([b[1] for b in vo["blocks_w"] if b[1] == 250].__len__(), 4, "alle vier Bloecke tragen die Messung")
+eq(vo["hr_window"], (171, 186), "und das Pulsfenster ebenfalls")
+eq(vo["hr_source"]["source"], "measured", "die Herkunft des Fensters reist mit")
+eq(vo["block_source"]["date"], "2026-09-01", "die Einheit, aus der die Zahl stammt")
+
+# DER GLEICHSTANDSTEST, umgeschrieben: er prueft die QUELLE, nicht zwei
+# verschiedene Bezugsgroessen. Bis 0.48.1 verglich er den Wattanteil mit dem
+# HF-Faktor - bei den harten Familien sind das Aepfel und Birnen, weil die
+# Watt aus der Messung und der Puls aus der aeroben Schwelle kaemen.
+check(vo.get("watt_source") == "blocks" and vo.get("hr_source", {}).get("source") == "measured",
+      "Gleichstand: Watt gemessen, Puls aber nicht - die Seiten laufen auseinander")
+# GEGENPROBE, GEZAEHLT UND BENANNT: faellt eine Seite auf die FTP zurueck,
+# muss die andere mitfallen. Ein halb umgestelltes Paar waere genau der Fehler.
+duenn = {"families": {"vo2max": {**BLK["families"]["vo2max"], "source_ok": False}}}
+zurueck = W.scaled(W.BY_KEY["vo2_4x4"], 200, 160, 195, None, duenn)
+eq(zurueck["watt_source"], "ftp", "zu duenn belegt: die Watt fallen auf die FTP zurueck")
+check("hr_source" not in zurueck,
+      "Gleichstand: die Watt fielen zurueck, das Pulsfenster blieb gemessen")
+check(zurueck.get("hr_window") != (171, 186),
+      "Gleichstand: das gemessene Fenster steht noch, obwohl die Watt zurueckfielen")
+# Und ohne jede Messung bleibt alles wie bisher.
+ohne = W.scaled(W.BY_KEY["vo2_4x4"], 200, 160, 195, None, None)
+eq(ohne["watt_source"], "ftp", "ohne Blockmessung: unveraendert FTP")
+
 # Gegenprobe, GEZAEHLT UND BENANNT: traegt der gepaarte Schritt nicht, wird er
 # NICHT verwendet - sonst staffelte die Vorgabe auf einer Zahl, die die Kachel
 # selbst nicht zeigen darf.
