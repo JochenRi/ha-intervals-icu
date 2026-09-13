@@ -2459,132 +2459,154 @@ Vorgaben für die übrigen Familien, und die zu dünne Gegenprobe aus L4a.
 
 ## Paket M — Ein Wert je Block, aufgetragen über die Zeit
 
-**Vereinbart am 13.09.2026, nach 0.47.0. Noch nichts gebaut.**
+**Vermessen in drei Runden am 13.09.2026. Noch nichts gebaut.**
 
 ### M0 · Warum die Stundeneinteilung hier NICHT gilt
 
-Die Fahrtstunden-Einteilung aus Paket L ist für die **Grundlagenkurve** gebaut
-und gehört dorthin. Auf strukturierte Rolleneinheiten angewandt misst sie
-etwas anderes, als sie behauptet — und das ist belegt, nicht befürchtet:
+Die Fahrtstunden-Einteilung aus Paket L ist für die **Grundlagenkurve** gebaut.
+Auf strukturierte Rolleneinheiten angewandt misst sie etwas anderes, als sie
+behauptet:
 
 > SweetSpot 2×20 vom 24.08.2026. Stunde 1 (Einrollen, zwei Blöcke, Pause):
 > P(0,75) = **181,1 W**. Stunde 2 (Ausrollen): **153,8 W**. Dieselbe Fahrt,
-> dieselbe Person, 27 W Unterschied — und alpha-Spanne 0,25 bis 1,77 **in einer
-> einzigen Stunde**.
+> 27 W Unterschied, alpha-Spanne 0,25 bis 1,77 in einer einzigen Stunde.
 
-Der Unterschied ist kein Ermüdungsverlauf, sondern **der Unterschied zwischen
-Block und Ausrollen**. Eine Rolleneinheit unter 90 Minuten hat keine
-Fahrtstunden im Sinne der Kurve; sie hat Abschnitte. **Die Stundeneinteilung
-wird deshalb für strukturierte Einheiten ausdrücklich nicht verwendet**, und
-der Ausschluss aus der Grundlagenkurve (`fatigue_curve_reason` → `structured`)
-bleibt bestehen.
+Der Unterschied ist **der zwischen Block und Ausrollen**, kein Ermüdungsverlauf.
+Der Ausschluss strukturierter Einheiten aus der Grundlagenkurve bleibt.
 
-### M1 · Die andere Frage
+### M1 · DIE AUSSCHNITTSREGEL — zwei Minuten, publiziert und am Bestand bestätigt
 
-Nicht „wie fällt es innerhalb der Fahrt", sondern: **bei welcher Leistung lag
-mein alpha in den SweetSpot-Blöcken, und wie hat sich das über Wochen
-verändert.** Jeder Block ein Punkt, aufgetragen über die Zeit.
+**Die ersten zwei Minuten jedes Blocks werden verworfen.** Rogers
+(Front Sports Act Living 2021): die ersten zwei Minuten eines Abschnitts sind
+nicht im metabolischen Gleichgewicht; für die Schwellenbestimmung taugen die
+Werte bei Minute 4 und 6, weshalb sein Protokoll mit 6-Minuten-Stufen arbeitet.
+Andriolo wertet aus demselben Grund nur die Minuten 5 bis 20.
 
-Die Bedingungen sind günstiger als bei allem bisher: Rolle, fester Widerstand,
-gleiche Blockstruktur, dieselbe Person, wöchentliche Wiederholung — genau die
-Lage, in der die Literatur dem Wert am meisten zutraut (siehe
-Richtungsentscheidung). **Gemessen wird trotzdem, nicht angenommen.**
+**Am eigenen Bestand gemessen** (Median je 30-Sekunden-Segment ab Blockstart,
+VO2max, drei typische Blöcke):
 
-### M2 · Was VOR dem Bau zu messen ist — fünf Fragen, jede mit Zahlen
+```
+1,66 → 1,67 → 1,06 → 0,51 → 0,70 → 0,60 → 0,28 → 0,36
+1,68 → 1,28 → 0,90 → 0,42 → 0,33 → 0,42 → 0,63 → 0,34
+1,04 → 1,21 → 0,62 → 0,49 → 0,42 → 0,43 → 0,36 → 0,32
+```
 
-**a) Werden die Blöcke erkannt, und auf welchem Weg?**
-Zwei Wege stehen offen, und der Unterschied ist der, an dem dieses Projekt
-schon dreimal gescheitert ist:
+**Der Anlauf endet bei 90 bis 120 Sekunden.** Bei SweetSpot dauert er länger
+(Umschlag erst im fünften Segment). Die publizierte Grenze ist damit bei VO2max
+leicht konservativ und bei SweetSpot eher knapp — **sie bleibt, und zwar
+begründet: sie deckt den langsameren Fall mit ab.**
 
-| Weg | Grenzen kommen von | Kosten |
-|---|---|---|
-| **Intervals' eigene Abschnitte** (`async_get_intervals`, `derive.normalize_laps`) | dem Gerät bzw. der geplanten Einheit | ein zweiter API-Abruf je Aktivität beim Import |
-| Segmentierung aus dem Wattstrom | einer eigenen Erkennung | kein Abruf, dafür eine Heuristik |
+Die Zwei-Minuten-Grenze gehört als Konstante nach `const.py`, **einmal**, mit
+Rogers als Quelle und dem eigenen Befund als Bestätigung daneben.
 
-**Empfehlung: der erste Weg.** `normalize_laps` mappt bereits `start_s` /
-`end_s` (exakte Zeitgrenzen zum Schneiden des Stroms), `avg_watts`, `np_watts`
-und sogar ein `dfa_a1`-Feld, falls Intervals einen Abschnittsmittelwert
-liefert. **Und er folgt K2: die Zuordnung trifft der Athlet, nicht die
-Erkennung.** Eine Segmentierungsheuristik wäre Runde 1 in neuer Verkleidung —
-sie würde einen Berg, eine Ampel oder eine Pause für einen Block halten.
+### M2 · Was die Vermessung ergeben hat
 
-**Erste Prüffrage, und sie ist billig:** ist das `dfa_a1`-Feld in den
-Abschnittsdaten dieses Kontos überhaupt **gefüllt**? `normalize_laps` mappt es,
-aber ob Intervals dort einen Abschnittsmittelwert liefert, ist nicht
-dokumentiert und wurde nie am echten Konto geprüft. **Liefert es einen, spart
-das womöglich die halbe Rechnung** — dann ist der Blockwert bereits da und muss
-nur noch archiviert werden. Liefert es keinen, weiß man es, bevor jemand darauf
-baut. Ein einziger lesender Abruf auf eine SweetSpot-Fahrt beantwortet das.
-**Vorbehalt auch im Erfolgsfall:** ein Mittelwert über den Block ist etwas
-anderes als eine Ablesung an der Schwelle — er wäre der Einstieg, nicht
-zwangsläufig die Antwort.
+**a) Die Blockerkennung steht.** `derive.normalize_laps` liefert `start_s` /
+`end_s` und die Labels `WORK` / `RECOVERY`; das `dfa_a1`-Feld war in **48 von
+48** Abschnitten gefüllt. Keine Segmentierungsheuristik — die Zuordnung trifft
+der Athlet (K2).
 
-**Architekturpunkt, der daran hängt:** Laps werden heute **nicht archiviert**,
-sie werden je geöffneter Aktivität live geholt. Die Ströme dagegen sind nach
-dem Import weg. Für einen Verlauf über Wochen müssen die Blockwerte deshalb
-**beim Import mitgerechnet und archiviert** werden — in der Bauart von
-`dfa_hours` (J7/K2: Archivblock, Versionsmarke, Migration). Das bedeutet einen
-zweiten Abruf je Aktivität im Importweg und einen Algorithmus-Bump.
+**b) und c) Nach dem Verwerfen der ersten zwei Minuten:**
 
-**b) Sind die Blöcke lang genug?** Die Methode braucht 2-Minuten-Fenster. Ein
-4-Minuten-VO2max-Block trägt ein bis zwei, ein 20-Minuten-SweetSpot-Block
-deutlich mehr. **Zu messen: auswertbare Fenster je Blocktyp**, nicht je Fahrt.
+| Familie | Blöcke | alpha (Median) | Spanne | Streuung (SD) | Punkte je Block |
+|---|---|---|---|---|---|
+| **VO2max** | 11 | **0,40** | 0,34–0,52 | **0,087** | 39 |
+| SweetSpot | 6 | 0,73 | 0,65–0,91 | 0,156 | 180 |
+| Tempo | 4 | 0,97 | 0,85–1,53 | 0,144 | 103 |
 
-**c) Die Kernfrage: lässt sich alpha DIREKT ablesen?** Nicht „wo schneidet die
-Gerade 0,5", sondern „bei welcher Leistung lag mein alpha tatsächlich". **Wenn
-innerhalb eines Blocks die Leistung konstant ist, braucht es keinen Fit** — und
-genau damit entfällt der Fehler vom 24.08. Der Fit war dort das Problem, nicht
-alpha.
+Abgelesen wird **direkt** — Median über den eingeschwungenen Teil, kein Fit,
+keine Interpolation. Damit entfällt der Fehler vom 24.08. (Gerade über zwei
+getrennte Punktwolken).
 
-**d) Gegenprobe, und sie entscheidet:** streuen die Werte zwischen
-GLEICHARTIGEN Blöcken DERSELBEN Fahrt? Liegen Block 1 und Block 2 einer
-SweetSpot-Einheit weit auseinander, misst die Rechnung nicht die Belastung.
-**Dann wird nichts gebaut.** Das ist die billigste Gegenprobe im ganzen Paket,
-weil sie zwei Messungen unter praktisch identischen Bedingungen vergleicht.
+**Streuungsgewinn durch das Verwerfen: 69 bis 83 % bei VO2max.** Aus SD 0,53
+wird 0,165, aus 0,25 wird 0,043.
 
-**e) Belegung:** wie viele Blöcke liegen in sechs Wochen vor, wie viele in
-zwölf? **Zwei Punkte je Familie sind kein Verlauf.** Zu melden ist, welcher
-Zeitraum trägt — nicht, dass es „genug" sei.
+**d) VO2max trägt — und zwar am besten von allen drei.** Die kleinste Streuung
+liegt ausgerechnet dort, wo die Gurtliteratur sie am größten vermuten lässt.
+Der frühere Ausschluss stand auf einem Blockmedian, der den Anlauf
+mitgemittelt hatte (PROJEKTSTAND §7).
 
-**Und die Signalfrage, die vor allem VO2max betrifft:** der Gurt wird unter
-alpha 0,5 unzuverlässig (Polar H10 gegen EKG: +58 bis −41 % dort gegen rund
-±10 % bei niedriger Intensität). Die Streuung ist **in den eigenen Blöcken** zu
-messen. Explodiert sie dort, trägt VO2max nicht — **auch wenn SweetSpot trägt.
-Dann wird nur gebaut, was trägt.**
+**e) Belegung:** SweetSpot etwa wöchentlich mit zwei Blöcken je Einheit,
+VO2max mit drei bis vier Blöcken — rund zwölf bis zwanzig Punkte in sechs
+Wochen je Familie. Trägt.
 
-### M3 · Was daraus wird, WENN es trägt
+### M3 · Die Zahl, die am meisten hergibt: der erste eingeschwungene Block
 
-1. **Eine Verlaufsanzeige je Familie** — SweetSpot und VO2max über die letzten
-   Wochen, Leistung bei alpha 0,75 bzw. 0,5. Hausmuster wie überall: Leitzahl
-   oben, Belegung dabei, Rechenweg aufklappbar, und unterscheidbar, was Messung
-   ist und was zu dünn belegt.
-2. **Der aktuelle Wert ersetzt die FTP-Skalierung für diese Familien.** Damit
-   käme auch die SweetSpot-Vorgabe aus einer Messung statt aus einer
-   Eintragung, die nachweislich rund 10 % zu hoch steht. **Die FTP bleibt
-   Rückfall, sichtbar beschriftet** (Richtungsentscheidung, Punkt 1).
+| Einheit | Blöcke (Watt / alpha, eingeschwungen) |
+|---|---|
+| 01.09. | **260/0,49** · 250/0,40 · 250/0,37 · 247/0,41 |
+| 19.08. | **259/0,52** · 246/0,36 · 230/0,34 |
+| 11.08. | **259/0,43** · 250/0,40 · 237/0,34 · 231/0,43 |
 
-### M3a · Randbedingung: Versions-Bumps werden gebündelt
+**Der erste eingeschwungene Block liegt über sechs Wochen bei 260 / 259 /
+259 W** — bei alpha um 0,5, also an der anaeroben Schwelle. Direkt abgelesen,
+ohne Modell. **Steigt diese Zahl bei gleichem alpha, ist das eine belegbare
+Verbesserung** (Olieslagers et al. 2026: nicht „welcher alpha-Wert IST die
+Schwelle", sondern „bei welcher Leistung erreiche ich MEINEN Wert").
 
-Paket M braucht mit hoher Wahrscheinlichkeit einen dritten Algorithmus-Bump
-(Blockwerte im Archiv). **Zwei Neuberechnungen kurz hintereinander sind dem
-Athleten nicht zuzumuten** — jede kostet rund drei Abgleiche, in denen die
-Kachel leer ist und der Trainer auf den Rückfall zurückgeht.
+**Und der Leistungsabfall kompensiert die Ermüdung nicht, er verlangsamt sie
+nur:** am 19.08. werden 29 W abgegeben und alpha liegt trotzdem 0,18 tiefer.
+Ein Vergleich bei ungleicher Leistung misst also nicht Ermüdungsresistenz — der
+Abfall ist der Sinn der Einheit, nicht ihr Mangel, und er gehört
+mitgerechnet statt vorausgesetzt.
 
-**Verbindlich: wird M gebaut, wird es zusammen mit allem gebaut, was ebenfalls
-einen Bump braucht — nicht einzeln.** Vor dem nächsten Bump wird also geprüft,
-was sonst noch am Import hängt und mitgenommen werden kann. Wer einen Bump
-allein auslöst, obwohl ein zweiter absehbar ist, hat die Reihenfolge falsch
-geplant, nicht der Nutzer zu wenig Geduld.
+### M4 · Was gebaut wird, wenn freigegeben
 
-### M4 · Reihenfolge, verbindlich
+1. **Blockwerte beim Import mitrechnen und archivieren**, in der Bauart von
+   `dfa_hours` (Archivblock, Versionsmarke, Migration). Laps werden heute nicht
+   archiviert und die Ströme sind nach dem Import weg — ohne das gibt es keinen
+   Verlauf über Wochen. **Zweiter Abruf je Aktivität im Importweg, plus
+   Algorithmus-Bump.**
+2. **Verlaufsanzeige je Familie** — SweetSpot und VO2max über die letzten
+   Wochen. Hausmuster: Leitzahl oben, Belegung dabei, Rechenweg aufklappbar,
+   unterscheidbar was Messung ist und was zu dünn belegt.
+3. **Die Leitzahl ist der erste eingeschwungene Block**, über die Zeit
+   aufgetragen.
+4. **Zu prüfen, bevor daraus Vorgaben werden:** taugen die 260 W als Anker für
+   die harten Familien anstelle der FTP? Das ist der Punkt, an dem auch
+   SweetSpot und VO2max aus einer Messung kämen statt aus einer Eintragung, die
+   nachweislich rund 10 % zu hoch steht.
 
-1. 0.47.0 einspielen, **Neuberechnung abwarten** (Version 4, rund drei Abgleiche).
-2. `p050` und die Signalqualität unterhalb alpha 0,5 auslesen und melden.
-3. Dann erst a) bis e) messen.
-4. Dann entscheiden, was gebaut wird — und nur das, was trägt.
+### M5 · Offen: die Fensterbreite und der hrv-Strom
 
-**Nichts davon wird vorgezogen.** Jede der drei gescheiterten Runden aus L0 hat
-damit angefangen, dass eine plausible Idee vor ihrer Messung gebaut wurde.
+Die DFA-Fensterbreite liegt **nicht bei uns** — Intervals liefert `dfa_a1` als
+fertigen Strom, jeder Wert bereits gefenstert, die Breite undokumentiert. Ein
+nachträgliches Mittel über fertige alpha-Werte ist **nicht** dasselbe wie ein
+alpha über ein kürzeres Fenster: rechnet Intervals mit zwei Minuten, enthält
+der Wert bei Minute 3 noch Daten aus Minute 1 — also genau den Anlauf, den M1
+verwirft. Er käme durch die Hintertür zurück.
+
+Seit **0.47.2** wird der `hrv`-Kanal mit abgerufen, **ausschließlich um zu
+messen**, ob RR-Intervalle darin stehen. Zu prüfen an mehreren Merkmalen, nicht
+an einem: Wertebereich und Einheit, Verhältnis zur gleichzeitig aufgezeichneten
+Herzfrequenz (600 ms entsprächen 100 bpm), ob die Summe der Werte über einen
+Abschnitt dessen Dauer ergibt, und ob die Zahl der Werte zur Zahl der
+Herzschläge passt oder zum Sekundenraster.
+
+**Wenn es RR ist:** die Fensterbreite läge bei uns, die Arbeit zur
+intensitätsabhängigen Fensterlänge (bioRxiv 02/2026: 1-min-Fenster gegen das
+2-min-Fenster, ICC 0,95 beim Zeitfahren gegen 0,37 bei niedriger Intensität —
+kürzere Fenster gewinnen mit steigender Herzfrequenz, weil die Rechnung eine
+Mindestzahl an HERZSCHLÄGEN braucht, nicht an Sekunden) wäre direkt anwendbar,
+und die vier Abweichungen von Andriolo aus 0.45.0 wären teilweise hinfällig.
+**Das ist dann ein eigener Befund und gehört gemeldet, bevor daraus ein
+Bauauftrag wird.**
+
+**Wenn es kein RR ist:** ebenfalls ein Ergebnis. Dann bleibt es bei Intervals'
+Fensterung — eine Grenze der Datenquelle, keine Rechenfrage.
+
+**Es ist kein Blocker.** Mit der Zwei-Minuten-Regel trägt VO2max bereits; RR
+würde es verbessern, nicht erst ermöglichen. M kann unabhängig davon gebaut
+werden.
+
+### M6 · Randbedingung: Versions-Bumps werden gebündelt
+
+Paket M braucht einen weiteren Algorithmus-Bump. **Zwei Neuberechnungen kurz
+hintereinander sind nicht zuzumuten** — jede kostet rund drei Abgleiche, in
+denen die Kachel leer ist und der Trainer auf den Rückfall zurückgeht. **Wird M
+gebaut, wird es zusammen mit allem gebaut, was ebenfalls einen Bump braucht.**
+Wer einen Bump allein auslöst, obwohl ein zweiter absehbar ist, hat die
+Reihenfolge falsch geplant.
 
 ### Hausmuster für die Kachel
 
