@@ -1365,24 +1365,38 @@ sie muss **nachweisbar** bleiben, nicht dauerhaft sichtbar. Ein Wächter prüft
 beides: nichts von der Hochrechnung im Kartenkopf, und sie steht vollständig
 im aufgeklappten Teil.
 
-### Offen nach 0.42.2 · Der Segmentbalken einer gestreckten Einheit
+### I12 · Elastizität ist eine Eigenschaft des Abschnitts (0.43.0)
 
-Der Balken zeigt den Aufbau der **Vorlage**. Bei der langen Fahrt weicht deren
-Dauer von der geplanten ab (95 min gegen 4,0 h), und beide Zahlen stehen
-nebeneinander in der Kopfzeile. Ob der Balken proportional auf die geplante
-Dauer gestreckt werden soll, ist eine Trainingsentscheidung und keine
-Darstellungsfrage:
+**Entschieden am 13.09.2026**, nachdem 0.42.2 die Frage offengelassen hatte.
+Der Segmentbalken wird auf die geplante Dauer gebracht — aber **nicht** über
+eine Schwelle, die jemand herleitet, sondern über eine **Autorenangabe je
+Abschnitt** im Katalog:
 
-- **Streckung proportional** wäre konsistent mit der Lastrechnung (die genau
-  das annimmt), macht aus 10 Minuten Einrollen aber 25.
-- **Nur die gleichmäßigen Blöcke strecken** ist das, was ein Trainer täte,
-  braucht aber eine neue Schwelle dafür, welcher Block elastisch ist — also
-  eine Zahl, die niemand gemessen hat.
-- **Gar nicht strecken** (der jetzige Stand) zeigt einen Balken, der auf 95
-  Minuten summiert, während darüber 4,0 h steht. Ehrlich, weil beides
-  dasteht, aber erklärungsbedürftig.
+- Einrollen, Ausrollen, Intervalle und Pausen sind **fest**.
+- Gleichmäßige Blöcke sind **elastisch** und nehmen die Differenz auf.
 
-Nicht entschieden, nicht still gebaut.
+Die Marke steht am Block selbst (`(80, 68, "gleichmäßig", True)`), und sie wird
+als das beschriftet, was sie ist: eine Angabe des Autors der Einheit, keine
+gemessene Größe. Damit gibt es keine neue Zahl im Haus — nur eine Aussage, die
+derjenige trifft, der die Einheit ohnehin geschrieben hat.
+
+**Wo es keinen elastischen Abschnitt gibt, wird nicht gestreckt.** Die
+40-Minuten-Regenerationsfahrt, der abgestufte Wiedereinstieg und jedes
+Intervallprotokoll **sind** ihre Dauer; eine längere Fassung zu erfinden hieße,
+dem Autor Worte in den Mund zu legen. Für diese Einheiten bleibt die
+Doppelangabe „geplant X · Vorlage Y" stehen — sichtbar, statt still etwas zu
+dehnen. Ein Test geht jede Vorlage durch: entweder sie hat einen dehnbaren
+Abschnitt, oder sie wird nachweislich nicht gestreckt.
+
+Heute betrifft das die vier Z2-Vorlagen (dehnbar) gegen elf feste. Die
+Schrittliste wird bei gestreckten Einheiten **aus den Blöcken gebaut**: der
+handgeschriebene Text der Vorlage nennt ihre eigenen Minuten, und zwei Dauern
+für eine Einheit sind die Form des Lastfehlers, eine Ebene höher.
+
+**Die Last bleibt, wo sie war.** Sie kommt weiterhin aus `session_load()` —
+lineare Skalierung der Kataloglast über die Dauer — und *nicht* aus der
+gestreckten Blockliste. Zwei Wege auf dieselbe Zahl wären genau das, was Paket
+I ausschließt; ein Test hält das fest.
 
 ### Tests I
 
@@ -1406,6 +1420,43 @@ Nicht entschieden, nicht still gebaut.
   dass die Ansicht sich für keine entscheidet.
 - Der Quellenblock trägt beide Hälften des Javaloyes-Befunds: die Zahlen der
   Nicht-Responder **und** die kleine, unsichere Überlegenheit bei der Leistung.
+
+---
+
+## Paket E — Der Kalender läuft rechts aus dem Bild
+
+### E1 · `1fr` ist nicht „ein Siebtel"
+
+**Live-Befund, 13.09.2026.** Der Kalender-Reiter schiebt sich rechts aus dem
+Fenster. `.wkrow` und `.calhead` benutzen `grid-template-columns: 190px
+repeat(7, 1fr)`. `1fr` ist die Kurzform von `minmax(auto, 1fr)` — die Spalte
+darf also **nicht unter ihre Inhaltsbreite schrumpfen**. Eine Tageszelle mit
+einem langen Aktivitätsnamen setzt damit ihre eigene Mindestbreite, sieben
+davon plus 190 px sprengen die Zeile, und das Raster wächst über den
+Viewport hinaus statt umzubrechen.
+
+Das ist kein Kalender-Sonderfall, sondern die häufigste Grid-Falle überhaupt:
+`1fr` verteilt den ÜBRIGEN Platz, garantiert aber keine Obergrenze.
+
+**Der Fix, drei Teile — keiner allein reicht:**
+
+- `minmax(0, 1fr)` statt `1fr`: die Spalte darf jetzt kleiner werden als ihr
+  Inhalt.
+- `min-width: 0` auf den Zellinhalten: Flex- und Grid-Kinder haben
+  `min-width: auto`, das dieselbe Sperre eine Ebene tiefer noch einmal
+  aufbaut. Ohne das schiebt der Chip die Zelle weiter auf.
+- Lange Namen werden **gekürzt** — Auslassungspunkte plus `title`-Attribut, so
+  dass der volle Name beim Überfahren lesbar bleibt. Abschneiden ohne `title`
+  wäre Informationsverlust; abschneiden ohne Zeichen dafür wäre eine stille
+  Kürzung, und still ist in diesem Haus die falsche Antwort.
+
+**Tests E1:**
+
+- Quelltext-Wächter: kein `repeat(7, 1fr)` in den Rasterregeln des Kalenders,
+  und `minmax(0, 1fr)` steht dort. Gegenprobe mit wiedereingebautem `1fr`.
+- Die Zellinhalte tragen `min-width: 0`.
+- Ein langer Aktivitätsname erscheint gekürzt UND vollständig im
+  `title`-Attribut. Gegenprobe: `title` entfernt — muss fallen.
 
 ---
 

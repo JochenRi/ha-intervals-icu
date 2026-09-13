@@ -47,7 +47,7 @@ LIBRARY: list[dict[str, Any]] = [
         "minutes": 60,
         "intensity": 62,
         "load": 45,
-        "blocks": [(10, 55, "Einrollen"), (45, 68, "gleichmäßig"), (5, 50, "Ausrollen")],
+        "blocks": [(10, 55, "Einrollen"), (45, 68, "gleichmäßig", True), (5, 50, "Ausrollen")],
         "text": "- 10m 55% 85rpm\n- 45m 65-70% 85rpm\n- 5m 50%",
         "hr_hint": (0.88, 0.97),
         "dfa": "durchgehend über 0,75 — wenn er darunter rutscht, bist du zu schnell",
@@ -66,7 +66,7 @@ LIBRARY: list[dict[str, Any]] = [
         "minutes": 95,
         "intensity": 63,
         "load": 72,
-        "blocks": [(10, 55, "Einrollen"), (80, 68, "gleichmäßig"), (5, 50, "Ausrollen")],
+        "blocks": [(10, 55, "Einrollen"), (80, 68, "gleichmäßig", True), (5, 50, "Ausrollen")],
         "text": "- 10m 55% 85rpm\n- 80m 65-70% 85rpm\n- 5m 50%",
         "hr_hint": (0.88, 0.97),
         "dfa": "über 0,75; ein langsames Absinken gegen Ende ist die Ermüdung, "
@@ -85,7 +85,7 @@ LIBRARY: list[dict[str, Any]] = [
         "minutes": 150,
         "intensity": 63,
         "load": 115,
-        "blocks": [(12, 55, "Einrollen"), (130, 67, "gleichmäßig"), (8, 50, "Ausrollen")],
+        "blocks": [(12, 55, "Einrollen"), (130, 67, "gleichmäßig", True), (8, 50, "Ausrollen")],
         "text": "- 12m 55% 85rpm\n- 130m 64-70% 85rpm\n- 8m 50%",
         "hr_hint": (0.88, 0.97),
         "dfa": "über 0,75; sinkt er im letzten Drittel, ist die Grundlage am Ende",
@@ -104,7 +104,7 @@ LIBRARY: list[dict[str, Any]] = [
         "minutes": 210,
         "intensity": 68,
         "load": 175,
-        "blocks": [(12, 55, "Einrollen"), (150, 67, "gleichmäßig"), (10, 88, "Endblock 1"),
+        "blocks": [(12, 55, "Einrollen"), (150, 67, "gleichmäßig", True), (10, 88, "Endblock 1"),
                    (5, 55, "locker"), (10, 88, "Endblock 2"), (23, 50, "Ausrollen")],
         "text": ("- 12m 55% 85rpm\n- 150m 64-70% 85rpm\n\n2x\n- 10m 86-90% 88rpm\n"
                  "- 5m 55%\n\n- 23m 50%"),
@@ -373,8 +373,8 @@ def scaled(entry: dict[str, Any], ftp: float | None, aerobic_hr: int | None,
     measured aerobic threshold. Without those the shape still stands."""
     out = dict(entry)
     if ftp:
-        out["blocks_w"] = [(minutes, round(ftp * pct / 100), label)
-                           for minutes, pct, label in entry["blocks"]]
+        out["blocks_w"] = [(block[0], round(ftp * block[1] / 100), block[2], *block[3:])
+                           for block in entry["blocks"]]
         out["text_w"] = _text_in_watts(entry, ftp)
     if aerobic_hr and entry.get("hr_hint"):
         low, high = entry["hr_hint"]
@@ -556,6 +556,87 @@ def session_load(entry: dict[str, Any], hours: float | None = None) -> int:
     return round(base * (float(hours) * 60.0) / minutes)
 
 
+# --- stretching a template to the planned duration (docs/ausbau.md I12) -------
+# Elasticity is a PROPERTY OF THE SECTION, written down per session in the
+# catalogue by whoever wrote the session - not a threshold somebody derived.
+# Warm-up, cool-down, intervals and their rests are fixed; a steady block is
+# elastic and absorbs the difference. A template WITHOUT an elastic section is
+# not stretched at all: its duration is part of what it is (the 40-minute
+# recovery ride, the graded return, every interval protocol), and inventing a
+# longer version of it would be putting words in the author's mouth.
+#
+# The honest label travels with it: this is an AUTHOR'S STATEMENT per session,
+# not a measurement.
+ELASTIC_NOTE = (
+    "Der Aufbau stammt aus der Vorlage und wurde auf die geplante Dauer gestreckt: "
+    "Einrollen, Ausrollen, Intervalle und Pausen bleiben, wie sie sind — die "
+    "gleichmäßigen Abschnitte nehmen die Differenz auf. Welcher Abschnitt dehnbar "
+    "ist, steht je Einheit im Katalog. Das ist eine Angabe des Autors, keine "
+    "gemessene Größe."
+)
+
+FIXED_NOTE = (
+    "Diese Vorlage hat keinen dehnbaren Abschnitt — Intervalle, Pausen und feste "
+    "Dosierungen sind das, was die Einheit ausmacht. Der Aufbau steht deshalb so da, "
+    "wie er geschrieben wurde, und die geplante Dauer daneben."
+)
+
+
+def is_elastic(block: Any) -> bool:
+    """Whether a catalogue block may absorb a change in duration."""
+    return bool(len(block) > 3 and block[3])
+
+
+def stretch_blocks(entry: dict[str, Any], hours: float | None) -> list[tuple] | None:
+    """Fit a template's sections to the planned duration, or refuse.
+
+    Returns None - and the caller then keeps the template AND the planned
+    duration side by side - when there is nothing to stretch: no hours given,
+    no elastic section, the duration already matches, or the fixed sections
+    alone already fill (or overfill) the planned ride. Silence would be the
+    worse answer in every one of those cases.
+    """
+    blocks = entry.get("blocks") or []
+    if not hours or not blocks:
+        return None
+    elastic = [index for index, block in enumerate(blocks) if is_elastic(block)]
+    if not elastic:
+        return None
+
+    target = round(float(hours) * 60)
+    fixed = sum(block[0] for index, block in enumerate(blocks) if index not in elastic)
+    room = target - fixed
+    current = sum(block[0] for index, block in enumerate(blocks) if index in elastic)
+    if room < 1 or current <= 0 or room == current:
+        return None
+
+    out = [list(block) for block in blocks]
+    share = room / current
+    for index in elastic:
+        out[index][0] = max(1, round(out[index][0] * share))
+    # rounding never silently changes the total: the drift lands on the
+    # longest elastic section, and the sum matches the planned duration
+    drift = target - sum(row[0] for row in out)
+    if drift:
+        biggest = max(elastic, key=lambda i: out[i][0])
+        out[biggest][0] = max(1, out[biggest][0] + drift)
+    return [tuple(row) for row in out]
+
+
+def steps_text(blocks: list[tuple], ftp: float | None) -> str:
+    """The step list for stretched sessions, built FROM the blocks.
+
+    The hand-written `text` of a template states its own minutes. Printing it
+    next to a stretched bar would be two durations for one session - the exact
+    shape of the load bug, one layer up.
+    """
+    lines = []
+    for block in blocks:
+        value = f"{round(ftp * block[1] / 100)}w" if ftp else f"{block[1]}%"
+        lines.append(f"- {block[0]}m {value}  ({block[2]})")
+    return "\n".join(lines)
+
+
 def stage(fit: str, fits_budget: bool | None, recovery: bool = False) -> dict[str, Any]:
     """The one rule that turns state + budget into one of four grades.
 
@@ -706,7 +787,18 @@ def rate_sessions(sessions: list[dict[str, Any]], state: str,
         # the same card. The week view used to get a thinner record and grew a
         # poorer card around it - segments, heart-rate window and purpose line
         # all missing, five paragraphs of prose instead (docs/ausbau.md I9).
-        full = scaled(BY_KEY[str(session.get("workout"))], ftp, aerobic_hr, max_hr)
+        # The sections are fitted to the planned duration where the catalogue
+        # says they may be. Where it does not, nothing is stretched and the
+        # card keeps BOTH durations side by side (docs/ausbau.md I12).
+        stretched = stretch_blocks(entry, session.get("hours"))
+        template = dict(entry)
+        if stretched:
+            template["blocks"] = stretched
+            template["minutes"] = sum(block[0] for block in stretched)
+            template["text"] = steps_text(stretched, None)
+        full = scaled(template, ftp, aerobic_hr, max_hr)
+        if stretched and ftp:
+            full["text_w"] = steps_text(stretched, ftp)
         load = session_load(entry, session.get("hours"))
         verdict, reason = fit_for(
             family, state, entry.get("intensity") or 0,
@@ -718,7 +810,12 @@ def rate_sessions(sessions: list[dict[str, Any]], state: str,
             "key": entry.get("key"),
             "family": family,
             "family_label": next((label for fam, label, _ in FAMILIES if fam == family), family),
-            "minutes": entry.get("minutes"),
+            "minutes": template.get("minutes"),
+            "template_minutes": entry.get("minutes"),
+            "stretched": bool(stretched),
+            "stretch_note": ELASTIC_NOTE if stretched else FIXED_NOTE,
+            "elastic_sections": [block[2] for block in (entry.get("blocks") or [])
+                                 if is_elastic(block)],
             "intensity": entry.get("intensity"),
             "blocks": full.get("blocks"),
             "blocks_w": full.get("blocks_w"),

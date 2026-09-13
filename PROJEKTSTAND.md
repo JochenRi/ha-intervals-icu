@@ -1,13 +1,13 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 13.09.2026 · **Version:** 0.42.2 · **Status:** produktiv auf HEIMDALL,
+**Stand:** 13.09.2026 · **Version:** 0.43.0 · **Status:** produktiv auf HEIMDALL,
 Auslieferung über HACS aus `github.com/JochenRi/ha-intervals-icu`
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lokal
 archiviert, auswertet und in einem eigenen Seitenleisten-Panel darstellt.
 
 **Umfang:** ~12.420 Zeilen, davon ~4.460 Frontend · 24 WebSocket-Befehle · 15 Einheiten in
-8 Familien · 15 Testdateien mit **4.295** gezählten Einzelprüfungen · 45 Releases.
+8 Familien · 15 Testdateien mit **4.499** gezählten Einzelprüfungen · 46 Releases.
 
 ---
 
@@ -191,6 +191,33 @@ Recherche:
 ---
 
 ## 7. Fehler und was sie gelehrt haben
+
+**0.43.0 — zwei Befunde, beide über Grenzen, die niemand gesetzt hatte.**
+
+1. **`1fr` ist nicht „ein Siebtel".** Der Kalender-Reiter schob sich rechts aus
+   dem Bild. `repeat(7, 1fr)` ist `minmax(auto, 1fr)`: die Spalte darf **nicht**
+   unter ihre Inhaltsbreite schrumpfen, also setzte ein langer Aktivitätsname
+   die Mindestbreite seiner Spalte, und sieben davon sprengten die Zeile. Der
+   Fix braucht **drei** Teile — `minmax(0, 1fr)`, `min-width: 0` auf den
+   Zellinhalten (Grid- und Flex-Kinder bauen dieselbe Sperre eine Ebene tiefer
+   wieder auf), und Kürzung mit `title`, damit der volle Name nicht verloren
+   geht. Keiner allein reicht. **Lehre: eine Regel, die nur eine der drei
+   Ebenen anfasst, sieht aus wie ein Fix und ist keiner.**
+2. **Die Streckung brauchte keine Schwelle, sondern eine Autorenangabe.** Ob
+   ein Abschnitt gedehnt werden darf, ist am Block selbst notiert —
+   Einrollen, Ausrollen, Intervalle und Pausen fest, gleichmäßige Blöcke
+   elastisch. Damit kommt keine neue gemessene Zahl ins Haus, sondern eine
+   Aussage dessen, der die Einheit geschrieben hat, und sie ist als solche
+   beschriftet. Wo es nichts Elastisches gibt, wird **nicht** gestreckt und
+   beide Dauern bleiben sichtbar: eine 40-Minuten-Regenerationsfahrt *ist*
+   ihre Dauer.
+
+**Und ein Prüfstandsfund nebenbei:** die erste Fassung des Streckungstests griff
+direkt auf `stretched[1][0]` zu. Bei der Gegenprobe — Elastizitätsmarke entfernt
+— wurde `stretched` zu `None`, der Test **stürzte ab** und meldete am Ende
+nichts. Genau der Fall, vor dem §9 warnt: ein Test, der bei der Mutation
+abstürzt, überspringt alles Folgende. Nachgezogen, Gegenprobe wiederholt, 13
+benannte Fehler.
 
 **0.42.2 — drei Befunde aus dem aufgeklappten Zustand, alle drei dieselbe Wurzel.**
 
@@ -637,7 +664,7 @@ den Non-Responder-Befund (Manresa-Rocamora 2021).
 
 ## 9. Prüfstand
 
-**Fünfzehn Dateien, 4.295 gezählte Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
+**Fünfzehn Dateien, 4.499 gezählte Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
 HA-Instanz oder einen Browser.
 
 | Datei | prüft | Umfang |

@@ -1518,8 +1518,13 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   contains(open1, "118 W", "wochenplan: die Wattzahlen der Segmente fehlen");
   contains(open1, "138–152 bpm", "wochenplan: das Pulsfenster fehlt");
   contains(open1, "Aerobe Basis", "wochenplan: die Zweckzeile fehlt");
-  contains(open1, "Vorlage 95 min", "wochenplan: die Dauer der Vorlage fehlt neben der geplanten");
-  contains(open1, "geplant 3,5 h", "wochenplan: die geplante Dauer fehlt");
+  // gestreckt: EINE Dauer im Kopf, weil der Aufbau auf sie gebracht wurde
+  contains(open1, "<b>195′</b> gleichmäßig", "wochenplan: der Aufbau wurde nicht auf die Dauer gestreckt");
+  ok(!/Vorlage 95 min/.test(open1),
+     "wochenplan: gestreckte Einheit nennt trotzdem zwei Dauern");
+  // NICHT gestreckt (SweetSpot hat keinen dehnbaren Abschnitt): beide Dauern
+  contains(open1, "geplant 1,2 h · Vorlage 70 min",
+           "wochenplan: ungestreckte Einheit nennt nicht beide Dauern");
 
   // Die HERLEITUNG der Last gehört in den Rechenweg, nicht in die Kopfzeile:
   // die Zahl muss nachweisbar bleiben, nicht dauerhaft sichtbar.

@@ -508,6 +508,97 @@ del FAILURES[before:]
 check("Woche selbst" in W.NO_VERDICT_NOTE, "späte Wochen: der Satz nennt den Grund nicht")
 check("sechs Tagen" in W.NO_VERDICT_NOTE, "späte Wochen: das Budgetfenster wird nicht genannt")
 
+
+# --- 17  elasticity is a property of the SECTION (ausbau.md I12) --------------
+# Warm-up, cool-down, intervals and rests are fixed; a steady block absorbs the
+# difference. Written per session by the author, not derived from a threshold.
+for entry in W.LIBRARY:
+    for block in entry["blocks"]:
+        check(len(block) in (3, 4), f"elastisch: {entry['key']} hat einen Block falscher Form")
+        if len(block) == 4:
+            check(block[3] is True, f"elastisch: {entry['key']} markiert einen Block anders als True")
+
+# Every template is checked: it either HAS an elastic section, or it is never
+# stretched. The second case is not a gap - a 40-minute recovery ride and every
+# interval protocol ARE their duration - but it has to be visible, and the card
+# then keeps both durations instead of quietly dehnen.
+no_elastic = [entry["key"] for entry in W.LIBRARY
+              if not any(W.is_elastic(block) for block in entry["blocks"])]
+for key in no_elastic:
+    check(W.stretch_blocks(W.BY_KEY[key], 3.0) is None,
+          f"elastisch: {key} hat keinen dehnbaren Abschnitt, wird aber gestreckt")
+check(set(no_elastic) >= {"recovery_40", "return_45", "sweetspot_2x20", "vo2_4x4"},
+      f"elastisch: eine feste Dosierung gilt als dehnbar ({sorted(no_elastic)})")
+for key in ("z2_60", "z2_90", "z2_150", "z2_210_late"):
+    check(any(W.is_elastic(block) for block in W.BY_KEY[key]["blocks"]),
+          f"elastisch: die lange Fahrt {key} hat keinen dehnbaren Abschnitt")
+
+# the stretch itself: the total matches, and ONLY the elastic sections moved
+stretched = W.stretch_blocks(W.BY_KEY["z2_90"], 4.0)
+check(stretched is not None, "streckung: z2_90 auf 4 h wird gar nicht gestreckt")
+stretched = stretched or []
+eq(sum(block[0] for block in stretched), 240, "streckung: Gesamtdauer trifft die geplante nicht")
+eq(stretched[0][0] if len(stretched) > 0 else None, 10, "streckung: das Einrollen wurde gedehnt")
+eq(stretched[2][0] if len(stretched) > 2 else None, 5, "streckung: das Ausrollen wurde gedehnt")
+eq(stretched[1][0] if len(stretched) > 1 else None, 225,
+   "streckung: der gleichmäßige Abschnitt nimmt die Differenz nicht auf")
+for before, after in zip(W.BY_KEY["z2_90"]["blocks"], stretched):
+    eq(after[1], before[1], "streckung: die Intensität eines Abschnitts hat sich geändert")
+    eq(after[2], before[2], "streckung: die Beschriftung eines Abschnitts hat sich geändert")
+
+# the long ride with quality at the end: the END BLOCKS keep their length -
+# that is the whole point of the session ("Qualität im ermüdeten Zustand")
+big = W.stretch_blocks(W.BY_KEY["z2_210_late"], 5.0)
+check(big is not None, "streckung: der große Tag wird gar nicht gestreckt")
+big = big or []
+eq(sum(block[0] for block in big), 300, "streckung: der große Tag trifft die geplante Dauer nicht")
+for index, block in enumerate(W.BY_KEY["z2_210_late"]["blocks"]):
+    if not W.is_elastic(block):
+        eq(big[index][0] if index < len(big) else None, block[0],
+           f"streckung: der feste Abschnitt '{block[2]}' des großen Tages wurde gedehnt")
+
+# and it refuses where it must
+check(W.stretch_blocks(W.BY_KEY["z2_90"], None) is None, "streckung: ohne Stunden gestreckt")
+check(W.stretch_blocks(W.BY_KEY["z2_90"], 95 / 60) is None,
+      "streckung: gleiche Dauer erzeugt trotzdem eine Streckung")
+check(W.stretch_blocks(W.BY_KEY["z2_90"], 0.2) is None,
+      "streckung: die festen Abschnitte allein füllen die Dauer schon — trotzdem gestreckt")
+check(W.stretch_blocks({"blocks": []}, 3.0) is None, "streckung: leere Vorlage gestreckt")
+
+# rounding never changes the total silently
+for minutes in range(80, 400, 7):
+    out = W.stretch_blocks(W.BY_KEY["z2_150"], minutes / 60)
+    if out is not None:
+        eq(sum(block[0] for block in out), minutes, f"streckung: Summe bei {minutes} min")
+
+# what the session payload says about it
+long_day = W.rate_sessions([{"title": "Langer Tag", "workout": "z2_90", "hours": 4.0}],
+                           "ready", budget=400, ftp=215)[0]
+check(long_day["stretched"] is True, "streckung: der lange Tag gilt als ungestreckt")
+eq(long_day["minutes"], 240, "streckung: die Payload nennt nicht die gestreckte Dauer")
+eq(long_day["template_minutes"], 95, "streckung: die Dauer der Vorlage fehlt in der Payload")
+eq(long_day["elastic_sections"], ["gleichmäßig"], "streckung: der gedehnte Abschnitt wird nicht benannt")
+check("Autors" in long_day["stretch_note"],
+      "streckung: die Angabe wird nicht als Autorenangabe beschriftet")
+check("gemessene" in long_day["stretch_note"],
+      "streckung: der Hinweis grenzt nicht gegen eine Messung ab")
+# the step list follows the stretched sections, not the template's own text
+check("225m" in (long_day["text_w"] or ""), "streckung: die Schrittliste zeigt weiter die Vorlage")
+check("80m" not in (long_day["text_w"] or ""), "streckung: die alte Dauer steht noch in der Schrittliste")
+
+quality = W.rate_sessions([{"title": "SweetSpot", "workout": "sweetspot_2x20", "hours": 1.2}],
+                          "ready", budget=400, ftp=215)[0]
+check(quality["stretched"] is False, "streckung: eine Intervalleinheit wurde gestreckt")
+eq(quality["minutes"], 70, "streckung: die Vorlage wurde verändert")
+eq(quality["template_minutes"], 70, "streckung: die ungestreckte Einheit meldet zwei Dauern")
+check("kein" in quality["stretch_note"], "streckung: der Festfall wird nicht begründet")
+eq(quality["elastic_sections"], [], "streckung: eine Intervalleinheit meldet dehnbare Abschnitte")
+
+# the load does NOT come from the stretched block list - it stays the linear
+# scaling of the catalogue load, one place (Befund 3 aus Paket I)
+eq(long_day["load"], W.session_load(W.BY_KEY["z2_90"], 4.0),
+   "streckung: die Last wird jetzt aus den Blöcken gerechnet — zweiter Rechenweg")
+
 print(f"test_workouts: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

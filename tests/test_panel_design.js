@@ -434,4 +434,48 @@ const CHART_FROZEN = {
   }
 }
 
+/* ── E1: der Kalender bleibt im Bild ──────────────────────────────────────
+   `1fr` ist `minmax(auto, 1fr)` - die Spalte darf NICHT unter ihre
+   Inhaltsbreite schrumpfen, und ein langer Aktivitätsname schob damit das
+   ganze Raster nach rechts aus dem Fenster. Drei Teile, keiner allein
+   reicht (docs/ausbau.md E1). */
+{
+  const css = H.source();
+  const grids = css.split("\n").filter((line) =>
+    /^\.(wkrow|calhead|tweek)\{/.test(line.trim()) && /grid-template-columns/.test(line));
+  ok(grids.length === 3, `kalender: ${grids.length} statt 3 Rasterregeln gefunden`);
+  for (const rule of grids) {
+    ok(/repeat\(7,\s*minmax\(0,\s*1fr\)\)/.test(rule),
+       `kalender: ${rule.slice(0, 18)} schrumpft nicht unter die Inhaltsbreite`);
+    ok(!/repeat\(7,\s*1fr\)/.test(rule),
+       `kalender: ${rule.slice(0, 18)} benutzt weiter 1fr`);
+  }
+  // Gegenprobe: der Wächter muss ein wiedereingebautes 1fr auch finden
+  ok(/repeat\(7,\s*1fr\)/.test(".wkrow{display:grid;grid-template-columns:190px repeat(7,1fr)}"),
+     "kalender Gegenprobe: ein wiedereingebautes 1fr wird NICHT gefunden — der Wächter ist blind");
+
+  // zweiter Teil: dieselbe Sperre eine Ebene tiefer
+  for (const sel of [".wkrow>*", ".day{", ".chip{", ".chip .cn{"]) {
+    const line = css.split("\n").find((l) => l.trim().startsWith(sel));
+    ok(line && /min-width:\s*0/.test(line + (css.split(sel)[1] || "").slice(0, 160)),
+       `kalender: ${sel} ohne min-width:0 — die Zelle wird von innen aufgeschoben`);
+  }
+
+  // dritter Teil: gekürzt, aber nicht verloren
+  const q = new M.Panel();
+  q._nowIso = F.TODAY;
+  q._dayctx = F.dayContext();
+  const longName = "Lange Ausfahrt über Steinhuder Meer und zurück mit Gegenwind";
+  const cell = q._dayCell({
+    date: "2026-09-10", weekday: 3, week: "2026-W37", load: 120,
+    activities: [{ id: "x", name: longName, type: "Ride", moving_time: 7200, load: 120 }],
+  }, F.TODAY);
+  ok(/text-overflow/.test(css), "kalender: keine Kürzung mit Auslassungspunkten im CSS");
+  contains(cell, `title="${longName}"`, "kalender: der volle Name fehlt im title-Attribut");
+  contains(cell, longName, "kalender: der Name fehlt ganz");
+  // Gegenprobe: ohne title wäre der gekürzte Name Informationsverlust
+  ok(!/title="/.test('<span class="cn">x</span>'),
+     "kalender Gegenprobe: ein fehlendes title wird NICHT bemerkt — der Wächter ist blind");
+}
+
 report("test_panel_design");

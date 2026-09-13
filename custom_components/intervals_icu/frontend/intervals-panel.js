@@ -1772,12 +1772,13 @@ class IntervalsIcuPanel extends HTMLElement {
     const hrw = entry.hr_window;
     const blocks = entry.blocks_w || entry.blocks;
     const planned = opts.plannedHours;
-    // The duration line states BOTH numbers where they differ: the template is
-    // 95 minutes, the planned ride is 4 hours, and hiding either would be the
-    // half-truth the load bug was made of.
-    const dur = planned
-      ? `geplant ${fmt(planned, 1)} h · Vorlage ${entry.minutes} min`
-      : `${entry.minutes} min`;
+    // Where the catalogue marks a section elastic, the backend fitted the
+    // sections to the planned duration and one number is enough. Where it does
+    // not, BOTH stand there - the template's minutes and the planned hours -
+    // because hiding either would be the half-truth the load bug was made of.
+    const dur = !planned ? `${entry.minutes} min`
+      : entry.stretched ? `${fmt(planned, 1)} h`
+      : `geplant ${fmt(planned, 1)} h · Vorlage ${entry.template_minutes || entry.minutes} min`;
     const loadTxt = `Last ${fmt(entry.load)}${opts.budget != null ? ` · Budget ${fmt(opts.budget)}` : ""}`;
     const openKey = opts.openKey || entry.key;
 
@@ -1825,6 +1826,11 @@ class IntervalsIcuPanel extends HTMLElement {
             Intensität wächst die Last linear mit der Dauer, also ${fmt(entry.load)}.
             Nach der Vorlage allein wären es ${fmt(entry.catalogue_load)}, und genau diese
             Verwechslung hat die lange Fahrt bis 0.42.0 zu freundlich bewertet.</p></div>` : ""}
+        ${entry.stretch_note ? `<div class="kv2"><small>${entry.stretched
+          ? "Wie der Aufbau auf die Dauer kam" : "Warum der Aufbau so bleibt"}</small>
+          <p class="src">${esc(entry.stretch_note)}${entry.stretched && (entry.elastic_sections || []).length
+            ? ` Gedehnt wurde hier: ${esc(entry.elastic_sections.join(", "))} — aus ${
+                entry.template_minutes} min Vorlage wurden ${entry.minutes} min.` : ""}</p></div>` : ""}
         ${entry.evidence ? `<div class="kv2"><small>Beleg</small><p class="src">${esc(entry.evidence)}</p></div>` : ""}
         ${entry.limit ? `<div class="kv2"><small>Grenze</small><p class="src">${esc(entry.limit)}</p></div>` : ""}
         ${st.evidence ? `<div class="kv2"><small>Zur Stufe „${esc(st.label)}"</small>
@@ -2851,7 +2857,7 @@ class IntervalsIcuPanel extends HTMLElement {
       : "";
     return `<button class="chip" style="--sc:${sp.c}" data-act="act" data-id="${esc(a.id)}" title="${esc(a.name || sp.l)} öffnen">
       ${ico(sp.ic, sp.c, 16)}
-      <span class="cn">${esc(a.name || sp.l)}</span>
+      <span class="cn" title="${esc(a.name || sp.l)}">${esc(a.name || sp.l)}</span>
       <span class="cd tn">${dur(a.moving_time)}</span>
       ${a.load != null ? `<span class="cl tn">${fmt(a.load)}</span>` : ""}
       ${zb}</button>`;
@@ -2861,9 +2867,10 @@ class IntervalsIcuPanel extends HTMLElement {
     const sp = sportOf(p.group || p.type);
     const missed = !p.done && d.date < today;
     const stateIc = p.done ? ico("ok", C.green, 15) : missed ? ico("stop", C.red, 15) : ico("cal", C.tx3, 15);
-    return `<div class="chip plan ${p.done ? "done" : ""} ${missed ? "missed" : ""}" style="--sc:${sp.c}" title="${p.done ? "erledigt" : missed ? "ausgelassen" : "geplant"}">
+    return `<div class="chip plan ${p.done ? "done" : ""} ${missed ? "missed" : ""}" style="--sc:${sp.c}" title="${
+      esc(p.name || sp.l)} — ${p.done ? "erledigt" : missed ? "ausgelassen" : "geplant"}">
       ${stateIc}
-      <span class="cn">${esc(p.name || sp.l)}</span>
+      <span class="cn" title="${esc(p.name || sp.l)}">${esc(p.name || sp.l)}</span>
       ${p.moving_time ? `<span class="cd tn">${dur(p.moving_time)}</span>` : ""}
       ${p.load != null ? `<span class="cl tn">${fmt(p.load)}</span>` : ""}
     </div>`;
@@ -4036,10 +4043,15 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
 .spklbl{color:${C.tx3};font-size:11.5px;margin-top:2px}
 .nospark{color:${C.tx3};font-size:12.5px;padding:12px 0;border-top:1px dashed ${C.line}}
 /* Kalender */
-.calhead{display:grid;grid-template-columns:190px repeat(7,1fr);gap:8px;padding:0 2px 6px;
+/* minmax(0,1fr), nicht 1fr: 1fr ist minmax(auto,1fr), und auto laesst die
+   Spalte nicht unter ihre Inhaltsbreite schrumpfen - ein langer Name in einer
+   Tageszelle schob damit das ganze Raster aus dem Bild (docs/ausbau.md E1). */
+.calhead{display:grid;grid-template-columns:190px repeat(7,minmax(0,1fr));gap:8px;padding:0 2px 6px;
   color:${C.tx3};font-size:12.5px;font-weight:600;letter-spacing:.06em}
 .calhead span{text-align:left;padding-left:8px}
-.wkrow{display:grid;grid-template-columns:190px repeat(7,1fr);gap:8px;margin-bottom:8px}
+.wkrow{display:grid;grid-template-columns:190px repeat(7,minmax(0,1fr));gap:8px;margin-bottom:8px}
+/* dieselbe Sperre eine Ebene tiefer: Grid- und Flex-Kinder haben min-width:auto */
+.wkrow>*,.calhead>*{min-width:0}
 .wksum{margin:0;padding:12px}
 .wkkw{font-weight:700;font-size:14.5px}
 .yr{color:${C.tx3};font-weight:500;font-size:12px}
@@ -4052,7 +4064,8 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
 .wkmeta{display:flex;gap:10px;color:${C.tx2};font-size:12.5px;flex-wrap:wrap}
 .wkmeta span{display:inline-flex;align-items:center;gap:3px}
 .wkfit{color:${C.tx3};font-size:12px;margin-top:5px}
-.day{background:${C.card};border:1px solid ${C.line};border-radius:10px;padding:8px;min-height:96px}
+.day{background:${C.card};border:1px solid ${C.line};border-radius:10px;padding:8px;min-height:96px;
+  min-width:0;overflow:hidden}
 .day.is-fut{background:${C.bg};border-style:dashed}
 .day.is-today{border-color:${C.blue};box-shadow:0 0 0 1px ${C.blue}}
 .day.off{background:none;border:none}
@@ -4061,11 +4074,11 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
 .dload{color:${C.blue};font-size:14px}
 .wln{display:flex;gap:8px;flex-wrap:wrap;color:${C.tx3};font-size:12px;margin-bottom:6px}
 .wln span{display:inline-flex;align-items:center;gap:2.5px}
-.chip{position:relative;display:flex;align-items:center;gap:6px;width:100%;text-align:left;
+.chip{position:relative;display:flex;align-items:center;gap:6px;width:100%;min-width:0;text-align:left;
   background:${C.card2};border:1px solid ${C.line};border-left:3px solid var(--sc);border-radius:8px;
   padding:6px 8px 8px;margin-top:5px;color:${C.tx};font:inherit;font-size:13px;cursor:pointer}
 .chip:hover{border-color:var(--sc)}
-.chip .cn{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.chip .cn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
 .chip .cd{color:${C.tx2}}
 .chip .cl{background:#0009;border-radius:6px;padding:1px 6px;font-weight:700;font-size:12.5px}
 .chip.plan{border-left-style:dashed;border-style:dashed;cursor:default;color:${C.tx2}}
@@ -4230,7 +4243,8 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
 .tsigfill{position:absolute;top:2px;bottom:2px;border-radius:2px}
 .tsigfoot{display:flex;justify-content:space-between;gap:10px;margin-top:6px;font-size:12px}
 .tsigfoot em{font-style:normal;color:${C.tx3};font-size:11px;text-align:right;max-width:60%}
-.tweek{display:grid;grid-template-columns:repeat(7,1fr);gap:8px}
+.tweek{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px}
+.tweek>*{min-width:0}
 .tday{display:grid;grid-template-rows:64px auto auto auto;justify-items:center;gap:2px;
   padding:4px 2px 5px;border-radius:8px}
 .tday.now{background:${C.card2};outline:1px solid ${C.line}}
