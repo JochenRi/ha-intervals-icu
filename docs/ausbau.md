@@ -846,6 +846,134 @@ nachgezogen.
 
 ---
 
+## Paket G — Die Durability-Kachel wird eine Kurve
+
+**Aufgenommen am 13.09.2026** nach dem Live-Befund zu 0.39.0. Die Kachel rechnet
+seit F das Richtige, aber sie zeigt es nicht: zwei Balken bei 0,0 % und 1,4 %
+gegen eine Skala bis 5 % zeigen nichts, kJ ist keine Größe, die ein Fahrer
+fühlt, und die Zweiteilung beantwortet die Frage der Überschrift nicht. Gefragt
+ist: **wie lange halte ich durch, bevor es kippt — und wird es besser?**
+
+### G1 · Punktwolke statt Balken
+
+Die Feldforschung wertet Durability über eine **Reihe** von Arbeitsschwellen aus
+(0–50 kJ/kg; WorldTour-Fahrer heben sich oberhalb 7,5 kJ/kg ab), und die
+Praxisauswertung legt Leistungskurven bei mehreren Vorbelastungen übereinander
+(frisch / 1.000 / 1.500 / 2.000 kJ). Das Muster ist eine **Kurve über der
+Arbeit**, kein Vorher–Nachher.
+
+- x = angesammelte Arbeit der Einheit (kJ), y = Entkopplung (%), ein Punkt je
+  qualifizierte Einheit.
+- Gewichtete Trendgerade darüber, die 5-%-Marke als Waagerechte.
+- Punktdichte und Streuung werden damit sichtbar — heute steckt beides in zwei
+  Medianen und ist nicht prüfbar.
+- Balken entfallen. Bei Werten von 0,0 % und 1,4 % gegen eine 5er-Skala ist
+  Länge das falsche Mittel; Lage auf gemeinsamer Skala schlägt Länge.
+
+### G2 · Die Leitzahl ist der Kipppunkt, in Stunden
+
+Schnittpunkt der Trendgeraden mit der 5-%-Marke, umgerechnet in Zeit:
+*„Bis etwa 1.400 kJ bleibst du unter 5 % — rund 2 h 40 bei deiner üblichen
+Grundlagenleistung."*
+
+**Umrechnung über die Medianleistung der qualifizierten Einheiten**, nicht über
+die aerobe Schwellenleistung — der Pool, der die Punkte liefert, liefert auch
+den Umrechnungsfaktor, sonst rechnet die Kachel mit einer Leistung, die in ihren
+eigenen Daten nicht vorkommt. Die Schwellenleistung steht als Alternativwert im
+Rechenweg. Die verwendete Leistung wird immer genannt.
+
+**Drei Ehrlichkeitsregeln, nicht verhandelbar:**
+
+1. **Nie über den Bestand hinaus hochrechnen.** Liegt der Schnittpunkt jenseits
+   der arbeitsreichsten ausgewerteten Fahrt, wird er nicht genannt. Stattdessen:
+   „Bis 1.100 kJ — deine längste ausgewertete Fahrt — bleibst du unter der
+   Marke. Weiter reichen deine Daten nicht."
+2. **Keine Leitzahl ohne erkennbare Steigung.** Die Steigung muss sich von null
+   unterscheiden lassen (Vorschlag: Betrag größer als das Doppelte ihres
+   Standardfehlers, als Setzung beschriftet). Sonst: „kein Zusammenhang mit der
+   Arbeit erkennbar" — das ist eine Aussage, keine Lücke.
+3. **Keine Leitzahl unter Mindestbelegung** (effektives n, siehe G3).
+
+### G3 · Gleichmäßigkeit gewichten statt ausschließen
+
+Heute fallen 64 Einheiten als „zu wellig" heraus — mehr als durch jedes andere
+Kriterium, und aus 239 Aktivitäten bleiben 45. Das ist eine dünne Grundlage für
+eine Trendgerade, und es ist das falsche Werkzeug: **ein Ausschluss ist eine
+Ja/Nein-Entscheidung über eine stufenlose Größe.**
+
+- Der Variabilitätsindex wird zum **Gewicht**, nicht zum Türsteher:
+  `w = clamp((1,25 − VI) / (1,25 − 1,05), 0, 1)` — VI 1,05 zählt voll, 1,15 zur
+  Hälfte, ab 1,25 gar nicht. Die Grenzen sind eine **Setzung** und werden so
+  beschriftet.
+- Sichtbar im Bild: volles Gewicht = voller Punkt, geringes Gewicht = kleiner
+  und blasser. Man sieht, worauf der Trend ruht.
+- Die Trendgerade ist eine **gewichtete** Ausgleichsgerade, Mindestbelegung über
+  die Summe der Gewichte (Vorschlag Σw ≥ 20, Setzung).
+- **Hart bleiben:** Mindestdauer 45 min, Intensitätsgrenze (hält
+  Intervalleinheiten draußen — andere Frage als Gleichmäßigkeit), und
+  Rollenfahrten (Homogenität, entschieden in F). Der Rechenweg nennt weiter
+  jeden Ausschlussgrund mit Anzahl.
+
+Erwartete Wirkung: Datenbasis von 45 auf ~110 Einheiten.
+
+### G4 · Der Verlauf über die Saison
+
+Zweites, kleineres Feld: der Kipppunkt je Block (Vorschlag 8 Wochen) über die
+Zeit, nur für Blöcke mit ausreichender Belegung; leere Blöcke bleiben leer und
+werden nicht interpoliert. **Das ist die eigentliche Frage des Athleten** —
+„wird es besser?" —, und zugleich die methodisch sauberere Auswertung: der
+Verlauf im eigenen Athleten ist belegt, der Abstand zu einer Populationsgrenze
+nicht.
+
+### G5 · „Was das ausbaut" — die Kachel verweist auf die Einheit
+
+Die Kachel sagt heute, dass es kippt, aber nicht, was dagegen hilft. Belegt ist:
+Durability wird **sowohl durch niedrig- als auch durch hochintensives
+Ausdauertraining** verbessert (Maunder et al. 2023) und ist unabhängig von der
+VO2max trainierbar. Der Reiz entsteht durch Qualität **unter bestehender
+Ermüdung**, nicht durch mehr Kilometer.
+
+Eine Zeile mit Verweis auf den Trainer-Reiter (`workouts.py` führt bereits eine
+Einheit mit dem Zweck „Durability, spezifisch"), dazu im Rechenweg die drei
+Formen: negativ gesplittete Fahrt (letzte 30–60 min zwischen aerober Schwelle
+und FTP) · Intervalle an den Anfang einer langen Fahrt, danach 1–2 h ruhig ·
+späte Anstiege von 5–20 min, 6–8 Wochen vor einem Ziel.
+
+**Mit der Warnung, die dazugehört:** der Reiz soll aus der Anstrengung kommen,
+nicht aus dem Hungerast — schlecht gefütterte Fahrten sind kein
+Durability-Training (Empfehlung über 80 g Kohlenhydrate je Stunde).
+
+### G6 · Was NICHT hineingehört
+
+- **Der Amateur-Vergleichsmaßstab** (erfolgreiche Amateure verlieren nach
+  1.000 kJ 6,5 % Leistung, weniger erfolgreiche 12,5 %) gehört zum
+  **Leistungserhalt**, nicht zur Entkopplung. Er darf als Kontextsatz auftauchen,
+  **niemals** als Marke an dieser Skala. Zwei Kennzahlen in einen Maßstab zu
+  legen wäre genau die Sorte Fehler, die dieses Paket behebt.
+- **Leistungserhalt selbst** (beste 20-min-Leistung frisch gegen nach 1.000 kJ)
+  ist die Kennzahl, die der Forschung am nächsten liegt — braucht aber
+  Verlaufsdaten, die heute nur live geholt werden. Eigene Stufe, erst prüfen,
+  ob rechenbar.
+- **Temperatur als Randnotiz** am Punkt (Entkopplung hängt stark an Hitze und
+  Flüssigkeit): nur wenn das Feld in den Aktivitäten vorliegt. Prüfen, nicht
+  annehmen.
+
+### Tests G
+
+- Der Kipppunkt wird bei Extrapolation über den Bestand hinaus **nicht** genannt;
+  Gegenprobe: Bestand künstlich verkürzen, die Aussage muss umschlagen.
+- Keine Leitzahl bei flacher Steigung, keine bei Σw < Mindestbelegung — beide
+  einzeln geprüft.
+- Gewichtung wirkt: derselbe Bestand einmal mit, einmal ohne Gewichte muss
+  verschiedene Trendgeraden ergeben (sonst prüft der Test nichts).
+- Zeitumrechnung: die genannte Leistung stammt aus dem Pool, nicht aus einer
+  Konstante; Gegenprobe mit verändertem Pool.
+- Blockverlauf: leere Blöcke werden nicht interpoliert.
+- Alle Schwellen (VI-Gewichtsgrenzen, Σw, Blocklänge, Steigungskriterium) liegen
+  in const.py, genau einmal, und in der Payload — unter dem Wächter aus F.
+
+---
+
 ## Reihenfolge und Modellwahl
 
 | Session | Paket | Warum |
