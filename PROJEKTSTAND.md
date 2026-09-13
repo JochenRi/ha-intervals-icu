@@ -1,13 +1,13 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 13.09.2026 · **Version:** 0.43.1 · **Status:** produktiv auf HEIMDALL,
+**Stand:** 13.09.2026 · **Version:** 0.44.0 · **Status:** produktiv auf HEIMDALL,
 Auslieferung über HACS aus `github.com/JochenRi/ha-intervals-icu`
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lokal
 archiviert, auswertet und in einem eigenen Seitenleisten-Panel darstellt.
 
-**Umfang:** ~12.420 Zeilen, davon ~4.460 Frontend · 24 WebSocket-Befehle · 15 Einheiten in
-8 Familien · 16 Testdateien mit **4.943** gezählten Einzelprüfungen · 47 Releases.
+**Umfang:** ~12.420 Zeilen, davon ~4.460 Frontend · 26 WebSocket-Befehle · 16 Einheiten in
+9 Familien · 16 Testdateien mit **4.943** gezählten Einzelprüfungen · 48 Releases.
 
 ---
 
@@ -40,14 +40,16 @@ custom_components/intervals_icu/
 ├── coach.py          Zustand, Anker, Signalmatrix, Nachtreaktion, Einordnung (HA-frei)
 ├── workouts.py       Einheitenbibliothek mit Belegen und Intervals-Syntax (HA-frei)
 ├── plan.py           Zielprofil und Wochenlogik (HA-frei)
+├── durability_tests.py  markierte Protokolltests und ihre Messwerte (HA-frei)
 ├── sensor.py         49 Entitäten
 ├── calendar.py       Kalender-Entität mit geplanten Workouts
-├── websocket.py      21 Kommandos für das Panel
+├── websocket.py      26 Kommandos für das Panel
 └── frontend/
     └── intervals-panel.js   Panel, eine Datei ohne Abhängigkeiten (3.137 Zeilen)
 ```
 
-**Fünf HA-freie Module** (`derive`, `analytics`, `coach`, `workouts`, `plan`) importieren
+**Sechs HA-freie Module** (`derive`, `analytics`, `coach`, `workouts`, `plan`,
+`durability_tests`) importieren
 nichts von Home Assistant. Jede Rechnung und jede Regel lässt sich außerhalb von HA gegen
 echte Datensätze durchspielen — der gesamte Prüfstand beruht darauf.
 
@@ -191,6 +193,76 @@ Recherche:
 ---
 
 ## 7. Fehler und was sie gelehrt haben
+
+**0.44.0 — drei Befunde beim Bau von Paket K.**
+
+**1 · Der Vorgabewert ist die Schwester von Fehlerklasse 3.** `websocket_workouts`
+hat `recovery_offered` nie an `suggest()` übergeben. Der Vorgabewert `False` ist
+stillschweigend eingesprungen, und damit konnte die **Reiz-Stufe auf dem
+Trainer-Reiter nie erscheinen** — während die Wochenansicht sie korrekt zeigt,
+weil `rate_sessions()` den Wert bekommt.
+
+Das ist nicht Fehlerklasse 3. Dort stehen **zwei Rechenwege** auf dieselbe Frage.
+Hier gibt es genau einen, an genau einem Ort: `stage()`. Es gibt nur **zwei
+Aufrufer, von denen einer die Frage mit einem Vorgabewert füttert**. Ein
+Vorgabewert ist eine zweite Wahrheit in Tarnung, weil er unauffällig richtig
+aussieht — es steht ja nichts Falsches da, es steht nur nichts da.
+
+**Was es gekostet hat:** 0.42.0 hat die vierte Stufe eingeführt, eine
+Wahrheitstabelle über alle vier Stufen geschrieben und **elf Gegenproben**
+gefahren. Keine davon hat gesehen, dass die neue Stufe auf genau dem Reiter, für
+den sie gebaut wurde, nicht erscheinen kann. Der Grund ist derselbe bei allen
+elf: sie haben `stage()` geprüft, **nicht den Weg dorthin**. Eine Funktion, die
+unter allen Eingaben richtig antwortet, sagt nichts darüber, ob sie die richtigen
+Eingaben bekommt.
+
+**Die Klassenaussage, und sie ist der eigentliche Befund:** `suggest()` trägt
+**neun Urteilseingänge mit Vorgabewert** (`ftp`, `aerobic_hr`, `max_hr`,
+`infection`, `budget`, `hard_days_last_7`, `layoff_days`, `goal`,
+`recovery_offered`), `rate_sessions()` acht. Nichts zwingt einen Aufrufer, einen
+davon zu nennen. Das ist kein Fehler, der passiert ist — das ist ein Fehler, der
+**auf seinen Anlass wartet**. Dass es diesmal nur **eine** Stelle war, war
+Zufall und keine Eigenschaft des Entwurfs; nachgezählt wurde es mit dem AST, nicht
+mit dem Auge. Nach dem Fix fehlt an den Aufrufstellen noch `limit` — eine
+Anzeigegrenze, kein Urteilseingang, und deshalb bewusst nicht im Wächter: eine
+Prüfung, die Harmloses mitzählt, wird abgeschaltet statt befolgt.
+
+**Lehre: ein Vorgabewert an einem Urteilseingang gehört geprüft wie ein zweiter
+Rechenweg.** Der Wächter in `test_websocket_registration` tut zweierlei — jeder
+Aufruf nennt jeden Urteilseingang ausdrücklich, **und** die Liste der
+Urteilsfunktionen ist vollständig. Ohne den zweiten Teil schützte er genau bis zur
+nächsten Funktion mit Vorgabewerten und wäre wieder Einzelfall statt Klasse.
+
+**2 · Eine Regel, die nur in eine Richtung schützt, ist keine Absicherung,
+sondern eine halbe.** Die Plausibilitätsregel aus K0 fängt eine Zielleistung, die
+**unter** der gemessenen aeroben Schwelle liegt — dann war Termin 1 kein All-out.
+Gegen einen zu **hohen** Anker fängt sie nichts: 80 % der aus 215 W abgeleiteten
+Schwelle wären 181 W, 35 W über der gemessenen aeroben Schwelle, und die Regel
+schwiege dazu.
+
+Die einzige Verteidigung nach oben ist, dass der Anker **gar nicht aus dem
+FTP-Feld kommt**. Das ist keine Vorsichtsmaßnahme, sondern die einzige, und
+deshalb hat sie eine eigene Gegenprobe: ein Gitter aus **zwei FTP-Werten (215,
+260) mal zwei frischen Tests (192 W, 164 W)**. Über die FTP-Spalte darf sich
+Zielleistung, Blockdauer, Gesamtdauer und jede einzelne Blockleistung um kein
+Watt und keine Minute bewegen; über die Test-Zeile muss alles mitwandern. Dazu
+eine Zeile, die ausdrücklich ausschließt, dass der FTP-Weg zufällig dieselbe Zahl
+ergibt — ohne sie bestünde der Test auch dann, wenn beide Wege zusammenfielen.
+
+**Die erste Fassung dieser Gegenprobe war stumpf:** sie fiel bei der Mutation nur
+über die **Dauer**, nicht über die Zielleistung selbst. Ein FTP-Weg, der zufällig
+auf dieselbe Leistung käme, wäre durchgekommen. Geschärft, nicht gelobt — die
+Mutation meldet jetzt 26 benannte Fehler statt drei.
+
+**3 · Ein Wächter, den man für einen Sonderfall lockert, ist ab dann keiner
+mehr.** Die neue Prüfung „keine Schwelle als Zahl im Protokollteil von
+`workouts.py`" hat eine nackte `1000` gemeldet. Sie war eine **Einheitenumrechnung**
+(kJ → J), keine Schwelle — die Prüfung hatte sachlich unrecht und formal recht,
+denn ein Wächter kann das eine vom anderen nicht unterscheiden. Also ist die Zahl
+nach `const.py` aufgelöst worden (`DURABILITY_TEST_WORK_J`), statt die Prüfung um
+eine Ausnahme zu erweitern. Siehe §9.
+
+---
 
 **0.43.1 — eine Begründung war zu bescheiden, und das ist auch ein Fehler.**
 
@@ -718,6 +790,22 @@ Und jeder Regex-Treffer wird auf `null` geprüft, bevor auf `[0]` zugegriffen wi
 eigenen benannten Prüfung für das Fehlen. Ohne beides stürzt der Test bei der Mutation ab, statt
 sie zu zählen.
 
+**Dritte Bauregel, aus 0.44.0: wer einen Wächter für einen Sonderfall lockert, hat ab dann
+keinen mehr.** Die Prüfung „keine Schwelle als Zahl im Protokollteil von `workouts.py`" meldete
+eine nackte `1000`. Die war eine **Einheitenumrechnung** (kJ → J) und keine Schwelle — die Prüfung
+hatte also sachlich unrecht. Sie hatte trotzdem recht, denn ein Wächter kann eine Umrechnung von
+einer Schwelle nicht unterscheiden, und die Ausnahme, die man ihm dafür beibringt, gilt ab dann
+für jede Zahl, die sich als Umrechnung ausgibt. **Die Zahl wird aufgelöst, nicht die Prüfung
+aufgeweicht** — `DURABILITY_TEST_WORK_J` steht jetzt in `const.py`, direkt neben der Größe in kJ,
+mit dem Grund daneben.
+
+**Vierte Bauregel: ein Wächter über eine handgepflegte Liste braucht eine Prüfung, die das
+Pflegen erzwingt.** Der Vorgabewert-Wächter (§7) führt `JUDGEMENT_FUNCTIONS` von Hand — und
+prüft zugleich, dass **keine** Funktion in `workouts.py` Vorgabewerte für Urteilseingaben trägt,
+ohne darin zu stehen. Dass das kein Zierrat ist, hat der **allererste Lauf** gezeigt: er meldete
+sofort zwei übersehene Funktionen, `fatigued_session()` — die in derselben Sitzung geschriebene —
+und `scaled()`. Eine Liste ohne Vollständigkeitsprüfung schützt genau bis zur nächsten Funktion.
+
 ---
 
 ## 10. Offen — ehrlich priorisiert
@@ -828,6 +916,7 @@ bzw. ein Reiter je Chat.
 | **Durability-Kachel (Paket F)** | ✅ Arbeitsachse statt Dauer, VirtualRide raus, VI ≤ 1,10, Leitzahl mit Dünn-Regel als **0.39.0 gebaut** — Verifikation am System steht aus |
 | **Durability-Kachel (Paket G)** | ✅ auditiert 13.09. **an den eigenen Livedaten, vor dem Bau**: die Zweiteilung beantwortet die Überschrift nicht, und die in G2 geforderte Leitzahl trägt auf diesem Bestand nicht (Steigung +2,95 ± 2,22 %/1.000 kJ, |t| 1,33; Kipppunkt 2.398 kJ jenseits der längsten Fahrt von 2.153 kJ; keine Krümmung nachweisbar). Punktwolke über der Arbeit, VI als Gewicht statt als Türsteher, gebinnte Mediane, Blockverlauf über 12 Wochen — als **0.40.0 gebaut**; die Kachel verweigert die Leitzahl und sagt, woran es liegt. Verifikation am System steht aus |
 | **Trainer (Wochenplan + Einheitenliste, Paket I)** | ✅ gebaut als **0.42.0**. Vier Urteilsstufen (grün / gelb / **Reiz** / rot) an EINER Stelle im Backend, beide Ansichten lesen sie aus der Payload — die Zusammenführung von Zustand und Budget stand bis dahin im Frontend. Bewertet wird nur die laufende Woche; spätere tragen einen Satz statt einer Stufe, weil ein Budget aus den letzten sechs Tagen nichts über Woche sechs sagt. Gefahren gegen vorgesehen aus dem Archiv, **ungepaart**. Die Spezifikation wurde vor dem Bau an sechs Stellen korrigiert: die Ansicht existierte bereits seit 0.33.0, die Stufenliste hatte drei Punkte bei vier Stufen, die Last der geplanten Einheit war die einer kürzeren (siehe §7), das Urteil über acht Wochen widersprach I4, „Erholung war da" war undefiniert, und der Trainer-Reiter musste mit. Verifikation am System steht aus |
+| **Durability-Messung als Einheit (Paket K, Stufe 1)** | ✅ gebaut als **0.44.0**. K1 und K2; K3 (die Hantel) bleibt zurückgestellt, bis zwei Messungen vorliegen. Die Spezifikation wurde vor dem Bau an drei Stellen korrigiert: K1 war **nicht** „nur `workouts.py`" (der 20-Minuten-Bestwert steht in keinem Feld, also zieht K2 das ganze J7 mit rein — Archivblock, Migration, Messweg aus den ungedünnten Strömen); die Lastregel aus I3 gilt bei **konstanter** Intensität und ist für eine Einheit mit fester Arbeit und abgeleiteter Dauer nicht anwendbar (jetzt gerechnet statt skaliert); und die Ausschlusswarnung zielte auf `DURABILITY_EXCLUDED_TYPES`, während in Wahrheit der **Intensitätsfilter** beißt. Verifikation am System steht aus |
 | **Durability-Kachel (Paket H)** | ✅ gebaut als **0.41.0**. Kopfbereich aus drei Zeilen: belegte Fähigkeit (längste gleichmäßige Fahrt nach ZEIT, mit der Leistung dieser Fahrt), Bezug der letzten 30 Tage mit sichtbarer Ausweitung, nächster Schritt ×1,10 auf fünf Minuten gerundet. Die Spezifikation wurde vor dem Bau an drei Stellen korrigiert: H war **nicht** frontend-only (Dauer und Leistung fehlten in der Payload), der Rückfall ist die **Regel** statt einer Ausnahme (am Livebestand 230 gegen 260 min bei gefülltem Fenster), und vier Fallen fehlten. Verifikation am System steht aus |
 | **Konstanten-Dubletten (DFA/ACWR) + toter ring()/rd-Code** | ⬜ eigenes Paket, vom Wächter bei 2+2 eingefroren (docs/ausbau.md) |
 | Heute, Kalender (voller Audit), Fitness, Aktivitäten | offen |

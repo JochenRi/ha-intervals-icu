@@ -837,12 +837,29 @@ Konstanten-Umbau werden:
 | `DFA_AEROBIC` / `DFA_ANAEROBIC` | `coach.py` | 2 (Achsenmarken im DFA-Reiter) |
 | `ACWR_HIGH` / `ACWR_RISK` | `analytics.py` | 2 (Korridor-Ampel im Belastungs-Reiter) |
 
-Dazu gehört in dasselbe Paket: der **tote `ring()`/`rd`-Code aus 0.37.0**, der
-seit dem Umbau der Hauptanzeige nicht mehr gerufen wird.
+Dazu gehörte in dasselbe Paket der **tote `ring()`/`rd`-Code aus 0.37.0**.
 
-Der Wächter hält die Zahl bei 2 und 2 fest. Steigt sie, ist eine neue Dublette
-dazugekommen; fällt sie, ist dieses Paket gelaufen und der Wächter gehört
-nachgezogen.
+**Korrigiert am 13.09.2026 beim Bau von Paket K, nachgesehen statt geglaubt.**
+Dieser Absatz stand hier in zwei Punkten falsch, und beide waren aus einem
+früheren Sessionbericht übernommen, nicht am Quelltext geprüft. Wer danach
+sucht, sucht nach totem Code, den es nicht gibt:
+
+- **`ring()` war tot — `rd` nicht.** `ring()` war einmal definiert und nirgends
+  gerufen; es ist in 0.44.0 entfernt, samt `.ring`, `.ringbox`, `.ringword` und
+  `.ringsub`, dem Export im Harness und der einen Prüfung in
+  `test_panel_views.js` (deshalb 1.165 statt 1.166). **`rd` ist die
+  Bereitschafts-Payload:** `_boot()` holt sie, `this._rd` hält sie,
+  `rTrainer(c, rd)` verarbeitet sie, drei Testdateien fassen sie an. Sie bleibt.
+- **`decoupling_series` hat sehr wohl einen Konsumenten.** `analytics.py`
+  Zeile 437 legt sie als `decoupling` in die Payload, und `rBelastung` zeichnet
+  daraus das Entkopplungs-Diagramm im Belastungs-Reiter, mit der Marke aus
+  `thresholds.decoupling_good`. Wer sie entfernt, entfernt ein laufendes
+  Diagramm. **Nichts daran anfassen.**
+
+**Was von diesem Paket übrig ist:** ausschließlich die vier Frontend-Dubletten
+oben. Der Wächter hält die Zahl bei 2 und 2 fest. Steigt sie, ist eine neue
+Dublette dazugekommen; fällt sie, ist dieses Paket gelaufen und der Wächter
+gehört nachgezogen.
 
 ---
 
@@ -1908,6 +1925,46 @@ das System nichts weiß. Genau die Fehlerklasse aus J1 und aus dem
   All-outs), braucht aber denselben grünen Zustand: der frische Bezugswert ist
   der Anker für alles Weitere, und ein zu niedriger Anker macht den
   Ermüdungsblock zu leicht und den gemessenen Erhalt zu gut.
+
+### Was der Bau von K an dieser Spezifikation korrigiert hat
+
+**Nachgetragen am 13.09.2026, nach 0.44.0.** Drei Stellen, alle vor dem Bau
+gemeldet und freigegeben — nach dem Muster aus „Was Paket A über diese
+Spezifikation gelehrt hat".
+
+**1 · K1 war nicht „zwei Katalogeinheiten in `workouts.py`" — geprüft am Feld,
+nicht am Text.** Die Zielleistung von Termin 2 ist 80 % der frischen
+20-Minuten-Leistung. Dieser Wert steht in **keinem** archivierten Feld:
+`ACTIVITY_FIELDS` führt `icu_average_watts`, `icu_weighted_avg_watts` und
+`icu_joules`, aber keinen Wert aus der Leistungskurve. Also zieht K2 das ganze
+**J7** mit herein — Archivblock, Eintrag in `importer.empty_data()`, Migration
+in `store.async_load`, und ein Messweg, der beim Markieren die **ungedünnten**
+Ströme holt und das beste 5- und 20-Minuten-Mittel über eine Bewegungszeit-Achse
+rechnet. Ohne das wäre `durability_test_fatigued` toter Katalogcode gewesen.
+Das ist wörtlich Muster 1 aus der Paket-A-Lehre, diesmal im Auftrag selbst.
+
+**2 · „`load` wird wie in I3 auf die gerechnete Dauer skaliert" gilt hier
+nicht.** `session_load()` streckt einen Katalogwert im Verhältnis der Stunden,
+und sein eigener Docstring nennt die Bedingung: **konstante Intensität**. Eine
+längere Grundlagenfahrt ist dieselbe Fahrt, nur länger. Der Ermüdungsblock ist
+das nicht: er hält die **Arbeit** fest, also macht eine niedrigere Zielleistung
+ihn zugleich **länger** und **lockerer**. Der Stunden-Skalierer sieht nur die
+erste Hälfte und zöge die Last in die Richtung, der die zweite widerspricht.
+Deshalb wird sie aus den Abschnitten **gerechnet** (`protocol_load`), mit
+`icu_ftp` als Bezug — nicht mit dem Anker, weil das Budget, gegen das die Zahl
+gehalten wird, aus Intervals' eigener Lastrechnung kommt und zwei verglichene
+Zahlen auf derselben Bezugsgröße stehen müssen. **Der Anker entscheidet die
+Watt, die FTP entscheidet, was sie kosten.** Der Grund steht im Rechenweg auf
+der Karte, nicht nur im Code, sonst baut es die nächste Sitzung wieder als
+Konstante.
+
+**3 · Die Ausschlusswarnung zielte auf den falschen Filter.** K1 warnt vor
+`DURABILITY_EXCLUDED_TYPES`. Es sind aber **drei** Tore in
+`derive.steady_endurance_reason()`, und der frische Test (65 min, zwei
+All-outs) fliegt über das **Intensitätstor** (`DURABILITY_MAX_INTENSITY`, ≥ 80)
+raus, bevor der Typ überhaupt geprüft wird. Für die Entkopplungswolke ist das
+richtig — dort hat er nichts verloren. Der Markierungs- und Messweg aus K2 läuft
+deshalb an **allen dreien** vorbei, mit Gegenprobe in beide Richtungen.
 
 ### Tests K
 
