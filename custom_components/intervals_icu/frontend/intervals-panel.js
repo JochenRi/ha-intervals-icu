@@ -740,6 +740,91 @@ class IntervalsIcuPanel extends HTMLElement {
     } finally { this._ctxBusy = false; }
   }
 
+  /* "Wie lange trägt die Grundlage?" — Leitzahl oben, die beiden Gruppen als
+     Beleg darunter, auf EINER Skala gegen die Marke. Ein Gruppenvergleich als
+     Längendifferenz statt als Kopfrechnen; der Abstand zur Marke steht ohne
+     Erklärung da. Jede Zahl hier kommt aus der Payload — Schwelle, Trennstelle,
+     Mindestzahlen, Filtergrenzen. Keine davon steht in dieser Datei. */
+  rDurability(d) {
+    const mark = d.decoupling_good;
+    const vals = [mark, d.low, d.high].filter((v) => v != null).map(Math.abs);
+    const span = Math.max(...vals, 1) * 1.25;
+    const pos = (v) => Math.max(0, Math.min(100, (v / span) * 100));
+    const split = fmt(d.split_kj, 0);
+
+    const bar = (label, value, n, thin) => {
+      const col = thin ? C.tx3 : (mark != null && value > mark ? C.amber : C.green);
+      return `<div class="durbar">
+        <span class="durlab">${esc(label)}
+          <em>${n} ${n === 1 ? "Einheit" : "Einheiten"}${thin ? " — zu dünn für eine Aussage" : ""}</em></span>
+        <span class="durtrack">
+          ${mark != null ? `<i class="durmark" style="left:${pos(mark).toFixed(1)}%"></i>` : ""}
+          ${value != null && !thin ? `<i class="durfill" style="width:${pos(value).toFixed(1)}%;background:${col}"></i>` : ""}
+        </span>
+        <b class="tn durval" style="color:${col}">${value != null && !thin ? fmt(value, 1) + " %" : "–"}</b>
+      </div>`;
+    };
+
+    const weight = d.weight
+      ? ` Umgerechnet mit dem zuletzt gemessenen Gewicht (${fmt(d.weight.kg, 1)} kg vom ${dMed(d.weight.day)}) sind das rund ${fmt(d.split_kj / d.weight.kg, 1)} kJ/kg — Nebeninformation, gerechnet wird in kJ.`
+      : " Eine Umrechnung in kJ/kg steht nicht dabei: im Archiv liegt kein Gewicht.";
+
+    return `<h3 class="secname">Wie lange trägt die Grundlage?</h3>
+      <div class="card">
+        <p class="effect">${esc(d.headline)}</p>
+        <p class="hint">Entkopplung: die Herzfrequenz steigt, während die Leistung gleich bleibt.
+          ${mark != null ? `Die Linie ist die ${fmt(mark, 0)}-%-Marke.` : ""}</p>
+        ${bar(`unter ${split} kJ`, d.low, d.n_low, d.low_thin)}
+        ${bar(`ab ${split} kJ`, d.high, d.n_high, d.high_thin)}
+        <p class="hint">Entkopplung ist nur auf gleichmäßigen Einheiten aussagekräftig — deshalb
+          zählen hier längst nicht alle Fahrten mit: ${fmt(d.n, 0)} von ihnen erfüllen die Bedingungen.</p>
+        <details class="more"><summary>Der Rechenweg</summary>
+          <p class="src"><b>Welche Einheiten zählen:</b> ab ${fmt(d.min_minutes, 0)} Minuten,
+            Intensität unter ${fmt(d.max_intensity, 0)}, und gleichmäßig gefahren —
+            Variabilitätsindex (normalisierte durch mittlere Leistung) höchstens
+            ${fmt(d.max_vi, 2)}. Ausgelassen wurden
+            ${d.dropped.short} zu kurze, ${d.dropped.intense} zu intensive,
+            ${d.dropped.variable} zu wellige, ${d.dropped.indoor} auf der Rolle,
+            ${d.dropped.no_decoupling} ohne Entkopplungswert und
+            ${d.dropped.no_work} ohne Arbeitswert.</p>
+          <p class="src"><b>Warum Rollenfahrten nicht mitzählen:</b> das ist eine Setzung, kein
+            Studienergebnis. Belegt ist, dass die Entkopplung stark von der Umgebung abhängt, und
+            bei fester Last (ERG) ist auch das Belastungsmuster ein anderes — im eigenen Bestand
+            liegt der Variabilitätsindex auf der Rolle bei 1,03 gegen 1,06 draußen. Ein gemischter
+            Vergleich misst dann teilweise drinnen gegen draußen statt klein gegen groß.</p>
+          <p class="src"><b>Warum nach Arbeit und nicht nach Dauer getrennt wird:</b> Durability
+            wird in der Literatur über angesammelte Arbeit gemessen, nicht über die Uhr
+            (Maunder 2021; Spragg trennt das Leistungsprofil bei 2000 kJ). Die <i>Achse</i> ist
+            belegt.</p>
+          <p class="src"><b>Warum die Trennstelle bei ${split} kJ liegt:</b> das ist eine Setzung.
+            Sie liegt dort, weil die obere Gruppe dort gerade noch belastbar besetzt ist — weiter
+            oben fällt sie unter ${fmt(d.min_per_group, 0)} Einheiten und die Werte werden
+            sprunghaft. Sie liegt NICHT dort, wo der Unterschied am größten aussieht.${weight}</p>
+          <p class="src"><b>Was gerechnet wird:</b> je Gruppe der <i>Median</i> der Entkopplung,
+            nicht der Mittelwert — einzelne Ausreißer sollen die Gruppe nicht tragen. Die Leitzahl
+            ist die Differenz der beiden <i>angezeigten</i> Werte. Unter
+            ${fmt(d.min_per_group, 0)} Einheiten wird eine Gruppe nicht behauptet, sondern als zu
+            dünn ausgewiesen, und dann gibt es auch keine Leitzahl: eine Leitzahl aus einer leeren
+            Gruppe wäre schlimmer als keine.</p>
+          <p class="src"><b>Die Grenze:</b> ${esc(d.source)}</p>
+        </details>
+      </div>`;
+  }
+
+  /* Die 5-%-Marke gibt es im Haus genau einmal: in const.py. Hier kommt sie
+     ausschließlich aus einer Payload — steht keine bereit, wird NICHT
+     eingefärbt, statt die Zahl zu erfinden. Quelltext-Wächter dagegen in
+     test_panel_fixes.js: eine Ziffer 5 neben "decoupling"/"drop" lässt die
+     Suite fallen. */
+  _decGood() {
+    const a = this._status && this._status.decoupling_good;
+    if (a != null) return a;
+    const b = this._load && this._load.thresholds && this._load.thresholds.decoupling_good;
+    if (b != null) return b;
+    const c = this._coach && this._coach.durability && this._coach.durability.decoupling_good;
+    return c != null ? c : null;
+  }
+
   /* Abgleich mit Intervals. Zwei Gänge: erst zeigen, was verschwinden würde,
      dann auf Bestätigung ausführen - und der zweite Gang schickt genau die
      IDs mit, die im ersten angezeigt wurden. Hat sich der Befund zwischen
@@ -753,6 +838,14 @@ class IntervalsIcuPanel extends HTMLElement {
     this._render();
     try {
       this._syncDlg = { state: "report", report: await this._ws("reconcile") };
+      // Der Handler hat den Coordinator neu geladen. Beides hier hält Events:
+      // ohne das Verwerfen zeigt der offene Tab die Liste vom Öffnen weiter,
+      // auch wenn die geplante Einheit drüben längst gelöscht ist.
+      // _cal wird faul nachgeladen (_need prüft auf null), _days NICHT - der
+      // Kalender-Reiter bekommt es nur beim Start und beim Wochenwechsel. Ohne
+      // den ausdrücklichen Nachzug stünde er leer da.
+      this._cal = null;
+      this._days = await this._ws("days", { weeks: this._weeks });
     } catch (err) {
       this._syncDlg = { state: "error", msg: String((err && err.message) || err) };
     } finally {
@@ -795,6 +888,21 @@ class IntervalsIcuPanel extends HTMLElement {
     }
     this._render();
     this.scrollTop = scroll;
+  }
+
+  /* Was der Abgleich geprüft hat, in Worten. Die Aufschlüsselung kommt aus dem
+     Bericht (checked_activities / checked_unavailable / checked_dfa) und wird
+     NICHT aus dem Kopfbereich zusammengerechnet - das wäre eine zweite
+     Wahrheit über denselben Vorgang (docs/ausbau.md D6a). */
+  _syncWhat(rep) {
+    const parts = [];
+    const add = (n, one, many) => { if (n) parts.push(`<b>${fmt(n)}</b> ${n === 1 ? one : many}`); };
+    add(rep.checked_activities, "gefahrene Einheit", "gefahrene Einheiten");
+    add(rep.checked_unavailable, "Platzhalter", "Platzhalter");
+    add(rep.checked_dfa, "DFA-Auswertung ohne Einheit", "DFA-Auswertungen ohne Einheit");
+    if (!parts.length) return `<b>${fmt(rep.checked || 0)}</b> archivierte Einträge`;
+    return parts.length === 1 ? parts[0]
+      : parts.slice(0, -1).join(", ") + " und " + parts[parts.length - 1];
   }
 
   _syncRow(item) {
@@ -841,8 +949,8 @@ class IntervalsIcuPanel extends HTMLElement {
           der Anzeige geändert - es wurde nichts entfernt. Bitte neu ansehen.</span></div>`;
       }
       if (!missing.length) {
-        body += `<p class="ctxcur">${ico("ok", C.green, 15)} Gleichstand: alle
-          <b>${fmt(rep.checked || 0)}</b> archivierten Einheiten sind in Intervals vorhanden.</p>`;
+        body += `<p class="ctxcur">${ico("ok", C.green, 15)} Gleichstand: ${this._syncWhat(rep)}
+          ${rep.checked === 1 ? "ist" : "sind"} in Intervals vorhanden.</p>`;
       } else if (rep.capped) {
         body += `<div class="ctxerr">${ico("warn", C.amber, 15)}<span><b>${fmt(missing.length)}</b>
           von ${fmt(rep.checked || 0)} Einheiten fehlen drüben (${String(pct).replace(".", ",")} %).
@@ -863,6 +971,12 @@ class IntervalsIcuPanel extends HTMLElement {
       }
       body += `<p class="ctxwhy">Der Abgleich liest nur. Nach Intervals geht dabei nichts -
         was dort steht, kann hier nicht verschwinden.</p>`;
+      // Was NICHT geprüft wurde. Ohne diesen Satz klingt eine wahre Aussage
+      // über das Archiv wie eine Aussage über den Kalender (docs/ausbau.md D6).
+      body += `<p class="ctxwhy">Geprüft wird das <b>Archiv</b> — gefahrene Einheiten und
+        Platzhalter. <b>Geplante Einheiten gehören nicht dazu:</b> sie stehen im Kalender von
+        Intervals und werden bei jedem Abruf neu geholt, nicht archiviert. Eine drüben gelöschte
+        Planung verschwindet deshalb von selbst; dieser Knopf stößt den Abruf mit an.</p>`;
     }
     return `<div class="ctxback" data-act="syncclose"></div>
       <div class="ctxdlg" role="dialog" aria-modal="true" aria-label="Mit Intervals abgleichen">
@@ -1861,16 +1975,7 @@ class IntervalsIcuPanel extends HTMLElement {
         ? `Mehr Leistung bei praktisch gleicher Herzfrequenz an der aeroben Schwelle — das ist die Anpassung, auf die Grundlagentraining zielt.`
         : `Die Leistung an der aeroben Schwelle hat sich nicht verbessert.`}</p>` : ""}
 
-      ${dur ? `<h3 class="secname">Wie lange trägt die Grundlage?</h3>
-      <div class="card">
-        <div class="durrow">
-          <div class="stat"><small>unter 90 min</small><b class="tn small2">${dur.short != null ? fmt(dur.short,1) + " %" : "–"}</b></div>
-          <div class="stat"><small>ab 90 min</small><b class="tn small2">${dur.long != null ? fmt(dur.long,1) + " %" : "–"}</b></div>
-          <div class="stat"><small>Einheiten</small><b class="tn small2">${dur.n}</b></div>
-        </div>
-        <p class="effect">${esc(dur.verdict)}</p>
-        <details class="more"><summary>Quelle und Grenzen</summary><p class="src">${esc(dur.source)} — Entkopplung ist nur auf gleichmäßigen Einheiten aussagekräftig; Intervalle sind hier ausgeschlossen.</p></details>
-      </div>` : ""}
+      ${dur ? this.rDurability(dur) : ""}
 
       <div class="card pad">
         <details class="more"><summary>Worauf diese Empfehlung beruht — und was sie nicht kann</summary>
@@ -2417,6 +2522,7 @@ class IntervalsIcuPanel extends HTMLElement {
          zuletzt geladenen ${fmt(list.length)} Einheiten — sie ist älter als der geladene Bereich.
          Die Schwellenmessung dazu steht weiterhin im DFA-Reiter.</div>` : "";
     const detail = sel ? this._aktDetail(sel) : "";
+    const decGood = this._decGood();
     const rows = list.slice(0, 120).map((a) => {
       const sp = sportOf(a.type);
       const dfaShares = this._dfaShares(a.dfa);
@@ -2424,7 +2530,7 @@ class IntervalsIcuPanel extends HTMLElement {
         ? `<i class="zb w"><s style="width:${dfaShares[0]}%;background:${C.green}"></s><s style="width:${dfaShares[1]}%;background:${C.amber}"></s><s style="width:${dfaShares[2]}%;background:${C.red}"></s></i>`
         : `<span class="mut">–</span>`;
       const dec = a.decoupling;
-      const decCls = dec == null ? "mut" : dec > 5 ? "warncol" : "okcol";
+      const decCls = (dec == null || decGood == null) ? "mut" : dec > decGood ? "warncol" : "okcol";
       const thr = a.dfa && a.dfa.hr_at_threshold
         ? `${fmt(a.dfa.hr_at_threshold)} bpm${a.dfa.threshold_samples < 5 ? " ⚠" : ""}` : "–";
       return `<button class="arow ${sel && String(sel.id) === String(a.id) ? "on" : ""}" data-act="act" data-id="${esc(a.id)}">
@@ -2829,10 +2935,13 @@ class IntervalsIcuPanel extends HTMLElement {
         drop > 3 ? "Mehr Puls für weniger Leistung bei gleicher Vorgabe — das ist Ermüdung über die Serie."
                  : "Leistung je Herzschlag praktisch unverändert — die Serie war verkraftbar."}`;
     } else {
-      tone = drop > 5 ? "worse" : "held";
-      const grade = drop <= 3 ? "unter 3 % — das ist das Niveau, das trainierte Fahrer halten"
-        : drop <= 5 ? "unter 5 % — Friels Richtwert für eine tragende Grundlage"
-        : drop <= 10 ? "zwischen 5 und 10 % — der Bereich, in dem Freizeitfahrer typischerweise liegen"
+      const mark = this._decGood();
+      tone = (mark != null && drop > mark) ? "worse" : "held";
+      const grade = mark == null
+        ? "die Einordnung braucht die Marke aus dem Archiv-Status — sie steht gerade nicht bereit"
+        : drop <= 3 ? "unter 3 % — das ist das Niveau, das trainierte Fahrer halten"
+        : drop <= mark ? `unter ${fmt(mark, 0)} % — Friels Richtwert, eine Trainerfaustregel und keine Studiengrenze`
+        : drop <= 10 ? `zwischen ${fmt(mark, 0)} und 10 % — der Bereich, in dem Freizeitfahrer typischerweise liegen`
         : "über 10 % — die Einheit lag wahrscheinlich über der aeroben Schwelle, oder die Grundlage trägt diese Dauer noch nicht";
       head = `Entkopplung über die Fahrt: ${fmt(drop, 1)} %`;
       body = `${grade}. ${dh != null ? `Der Puls stieg um ${sign(dh)} Schläge` : ""}${
@@ -2899,7 +3008,7 @@ class IntervalsIcuPanel extends HTMLElement {
           <span class="ctxlab"><b>${esc(m.label)}</b></span>
           <span class="ctxval tn">${fmt(m.value, 2)}<small>${esc(m.unit)}</small></span>
           <span class="ctxbar"></span>
-          <span class="ctxsay">nur ${m.n} vergleichbare Einheiten — zu wenig für eine Einordnung</span>
+          <span class="ctxsay">${esc(m.say || `nur ${m.n} vergleichbare Einheiten — zu wenig für eine Einordnung`)}</span>
         </div>`;
       }
       const lo = Math.min(m.best, m.worst, m.value);
@@ -2913,7 +3022,9 @@ class IntervalsIcuPanel extends HTMLElement {
       const share = m.good === "up" ? m.rank : 100 - m.rank;
       return `<div class="ctxrow">
         <span class="ctxlab"><b>${esc(m.label)}</b>
-          <em>Median ${fmt(m.median, 2)}${esc(m.unit)} · ${m.n} Einheiten</em></span>
+          <em>Median ${fmt(m.median, 2)}${esc(m.unit)} · ${m.n} Einheiten<br>
+          ${fmt(m.stage, 1)} SD: Dauer ${sign(m.duration_low_pct, 0)} % bis ${sign(m.duration_high_pct, 0)} %,
+          Intensität ±${fmt(m.intensity_points, 1)}</em></span>
         <span class="ctxval tn" style="color:${col}">${fmt(m.value, 2)}<small>${esc(m.unit)}</small></span>
         <span class="ctxbar" title="mittlere Hälfte deiner Vergleichseinheiten: ${fmt(m.p25, 2)} bis ${fmt(m.p75, 2)}">
           <i class="ctxband" style="left:${band[0].toFixed(1)}%;width:${Math.max(1, band[1] - band[0]).toFixed(1)}%"></i>
@@ -2926,7 +3037,8 @@ class IntervalsIcuPanel extends HTMLElement {
     }).join("");
 
     return `<h3 class="secname">Wie diese Einheit dasteht
-      <span class="hint">— gegen ${c.peers} eigene Einheiten derselben Sportart, ähnlicher Intensität und Dauer</span></h3>
+      <span class="hint">— gegen deine ${c.earlier} früheren Einheiten derselben Sportart; die Toleranz
+      weitet sich je Kennzahl, bis mindestens ${c.min_peers} Vergleichswerte zusammenkommen</span></h3>
       <div class="ctxbox">
         <div class="ctxscale"><span>schlechter</span><span>mittlere Hälfte</span><span>besser</span></div>
         ${rows}
@@ -3110,14 +3222,16 @@ class IntervalsIcuPanel extends HTMLElement {
     if (dcp.length) {
       const vals = dcp.map((x) => x.decoupling);
       const [d0, d1] = domainOf([{ v: vals }, { v: [-2, 8] }]);
+      const mark = (load.thresholds || {}).decoupling_good;
       const pts = dcp.map((x, i) => ({
         i, v: x.decoupling,
-        c: x.decoupling > 5 ? C.amber : x.decoupling <= 0 ? C.green : ROLE.series, r: 4,
+        c: (mark != null && x.decoupling > mark) ? C.amber : x.decoupling <= 0 ? C.green : ROLE.series, r: 4,
       }));
       const xt = monthTicks(dcp.map((x) => x.date));
       dcpHtml = chart({
         h: 190, n: dcp.length, y0: d0, y1: d1, xt, yf: (v) => fmt(v, 0) + " %",
-        hl: [{ y: 5, c: C.amber, d: 1, t: "5 %-Marke" }, { y: 0, c: C.tx3 }],
+        hl: [...(mark != null ? [{ y: mark, c: C.amber, d: 1, t: `${fmt(mark, 0)} %-Marke` }] : []),
+             { y: 0, c: C.tx3 }],
         s: [{ t: "dots", p: pts, c: ROLE.series }],
       });
     }
@@ -3294,6 +3408,7 @@ class IntervalsIcuPanel extends HTMLElement {
     const CAP = 50;
     const shown = rows.slice(-CAP).reverse();
     const capped = w.kept > CAP;
+    const decGood = this._decGood();
     const tableRows = shown.map((x) => {
       const weak = (x.samples || 0) < 5;
       const sp = sportOf(x.type);
@@ -3301,7 +3416,7 @@ class IntervalsIcuPanel extends HTMLElement {
       const dev = (!weak && x.hr != null && base != null) ? x.hr - base : null;
       const devCls = dev == null ? "mut" : Math.abs(dev) >= 3 ? "warncol" : "okcol";
       const dec = x.decoupling;
-      const decCls = dec == null ? "mut" : dec > 5 ? "warncol" : "okcol";
+      const decCls = (dec == null || decGood == null) ? "mut" : dec > decGood ? "warncol" : "okcol";
       const marked = this._dfaPick === x.activity_id;
       return `<button class="trow ${weak ? "weak" : ""} ${marked ? "brushed" : ""}"
           data-aid="${esc(x.activity_id)}" data-act="dfapick" data-id="${esc(x.activity_id)}"
@@ -3946,6 +4061,13 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
 .qq{display:block;color:${C.tx3};font-size:12px;font-style:normal}
 .ancgrid{display:grid;grid-template-columns:minmax(250px,1fr) 2fr;gap:22px;align-items:center}
 .durrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:14px;margin-bottom:6px}
+.durbar{display:grid;grid-template-columns:minmax(120px,1.1fr) 3fr auto;align-items:center;gap:10px;margin:8px 0}
+.durlab{display:flex;flex-direction:column;font-size:13px;color:${C.tx2}}
+.durlab em{font-style:normal;font-size:11px;color:${C.tx3}}
+.durtrack{position:relative;height:14px;border-radius:7px;background:${C.card2};overflow:visible}
+.durfill{position:absolute;left:0;top:0;bottom:0;border-radius:7px;opacity:.85}
+.durmark{position:absolute;top:-3px;bottom:-3px;width:2px;background:${C.amber};z-index:2}
+.durval{font-size:15px;min-width:56px;text-align:right}
 .catrow{display:grid;grid-template-columns:190px 110px 190px 1fr;gap:12px;align-items:baseline;
   padding:10px 14px;border-bottom:1px solid ${C.line}44;font-size:13px}
 @media(max-width:980px){

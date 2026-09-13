@@ -46,9 +46,34 @@ from statistics import mean, median, pstdev
 from typing import Any, NamedTuple
 
 try:  # inside the package (Home Assistant)
-    from . import day_context
+    from . import day_context, derive
+    from .const import (
+        DECOUPLING_GOOD,
+        DURABILITY_EXCLUDED_TYPES,
+        DURABILITY_MAX_INTENSITY,
+        DURABILITY_MAX_VI,
+        DURABILITY_MIN_MINUTES,
+        DURABILITY_SPLIT_KJ,
+        MIN_PEERS_TO_RANK_METRIC,
+        MIN_SESSIONS_FOR_TILE,
+        MIN_SESSIONS_TO_CLAIM_GROUP,
+        PEER_CALIPER_STAGES,
+    )
 except ImportError:  # standalone (test suite loads this file directly)
     import day_context
+    import derive
+    from const import (
+        DECOUPLING_GOOD,
+        DURABILITY_EXCLUDED_TYPES,
+        DURABILITY_MAX_INTENSITY,
+        DURABILITY_MAX_VI,
+        DURABILITY_MIN_MINUTES,
+        DURABILITY_SPLIT_KJ,
+        MIN_PEERS_TO_RANK_METRIC,
+        MIN_SESSIONS_FOR_TILE,
+        MIN_SESSIONS_TO_CLAIM_GROUP,
+        PEER_CALIPER_STAGES,
+    )
 
 # --- thresholds, all of them sourced ------------------------------------------
 HRV_DROP_SD = 2.0          # PLEWS: an acute drop of this size is not noise
@@ -57,7 +82,8 @@ RECOVERY_WINDOW = 10       # days a slump keeps colouring the picture
 LAYOFF_DAYS = 4            # MUJIKA: below this, nothing measurable is lost
 DFA_AEROBIC = 0.75         # ROGERS
 DFA_ANAEROBIC = 0.5        # ROGERS
-DECOUPLING_GOOD = 5.0      # FRIEL
+# DECOUPLING_GOOD lives in const.py - it is shown in the panel, so it may exist
+# exactly once in the whole house (docs/ausbau.md F4).
 SWC_SD = 0.5               # PLEWS/ALTINI: smallest worthwhile change
 
 
@@ -418,31 +444,125 @@ def layoff(data: dict[str, Any]) -> dict[str, Any]:
     return {"days": gap, "last": last, "phase": "wiedereinstieg", "note": note}
 
 
-def durability(data: dict[str, Any], min_minutes: int = 45) -> dict[str, Any] | None:
-    """How well the athlete holds up over duration - measured, not assumed."""
-    rows = []
-    for activity in (data.get("activities") or {}).values():
-        minutes = (activity.get("moving_time") or 0) / 60
-        dec = _f(activity.get("decoupling"))
-        if minutes < min_minutes or dec is None:
+def _last_known_weight(data: dict[str, Any]) -> dict[str, Any] | None:
+    """Return the newest wellness weight with the day it was measured.
+
+    The day travels with the value on purpose: the kJ/kg conversion is a side
+    note in the explanation, and a side note that silently keeps computing with
+    a weight from two years ago is worse than none.
+    """
+    best_day, best_value = None, None
+    for day, row in (data.get("wellness") or {}).items():
+        if not isinstance(row, dict):
             continue
-        if (_f(activity.get("icu_intensity")) or 0) >= 80:
-            continue
-        rows.append({"min": minutes, "dec": dec})
-    if len(rows) < 8:
+        value = _f(row.get("weight"))
+        if value and (best_day is None or str(day) > best_day):
+            best_day, best_value = str(day), value
+    if best_day is None:
         return None
-    short = [r["dec"] for r in rows if r["min"] < 90]
-    long = [r["dec"] for r in rows if r["min"] >= 90]
+    return {"kg": round(best_value, 1), "day": best_day}
+
+
+def durability(data: dict[str, Any], min_minutes: int = DURABILITY_MIN_MINUTES) -> dict[str, Any] | None:
+    """How well the athlete holds up as WORK accumulates - measured, not assumed.
+
+    Split by accumulated work, not by duration. Durability is indexed by
+    accumulated work throughout the literature (Maunder 2021; Spragg 2023 splits
+    the power profile at 2000 kJ), and on this athlete's own archive the
+    duration split hid the effect entirely: 90 minutes gave -0.1 pp, 800 kJ
+    gives +1.5 pp. The AXIS is what the sources support; the split VALUE is a
+    house setting, chosen where the upper group is still populated well enough
+    to carry a claim - see docs/ausbau.md F1.
+    """
+    rows = []
+    dropped = {"short": 0, "intense": 0, "variable": 0, "indoor": 0,
+               "no_activity": 0, "no_decoupling": 0, "no_work": 0}
+    for activity in (data.get("activities") or {}).values():
+        reason = derive.steady_endurance_reason(activity, min_minutes)
+        if reason is not None:
+            dropped[reason] += 1
+            continue
+        variability = derive.variability_index(activity)
+        decoupling = _f(activity.get("decoupling"))
+        if decoupling is None:
+            dropped["no_decoupling"] += 1
+            continue
+        work = _f(activity.get("icu_joules"))
+        if not work:
+            dropped["no_work"] += 1
+            continue
+        rows.append({"kj": work / 1000.0, "dec": decoupling, "vi": variability})
+    if len(rows) < MIN_SESSIONS_FOR_TILE:
+        return None
+
+    low = [r["dec"] for r in rows if r["kj"] < DURABILITY_SPLIT_KJ]
+    high = [r["dec"] for r in rows if r["kj"] >= DURABILITY_SPLIT_KJ]
+    # Rounded FIRST, then compared. Showing 0.9 and 0.7 next to a lead of
+    # "0.1 pp" invites the reader to subtract and get 0.2 - three numbers out of
+    # one calculation have to agree (docs/ausbau.md F3).
+    low_value = round(median(low), 1) if low else None
+    high_value = round(median(high), 1) if high else None
+    low_thin = len(low) < MIN_SESSIONS_TO_CLAIM_GROUP
+    high_thin = len(high) < MIN_SESSIONS_TO_CLAIM_GROUP
+
+    # No lead number out of a group that cannot carry one. A headline computed
+    # from an empty or thin group is worse than no headline: it answers the
+    # heading with something that was never measured.
+    if low_thin or high_thin:
+        missing = "ab" if high_thin else "unter"
+        count = len(high) if high_thin else len(low)
+        lead = None
+        headline = (
+            f"Keine Aussage über Einheiten {missing} "
+            f"{round(DURABILITY_SPLIT_KJ):.0f} kJ: nur {count} "
+            f"{'Einheit' if count == 1 else 'Einheiten'} in dieser Gruppe."
+        )
+        verdict = headline
+    else:
+        lead = round(high_value - low_value, 1)
+        headline = (
+            "Die Entkopplung hält mit der angesammelten Arbeit"
+            if lead <= 0 else
+            f"Die Entkopplung steigt um {lead:.1f} Prozentpunkte, sobald die Arbeit wächst"
+        )
+        verdict = (
+            "die aerobe Basis trägt auch die langen Einheiten"
+            if lead <= 0 and high_value <= DECOUPLING_GOOD else
+            "die Entkopplung steigt mit der angesammelten Arbeit — die Grundlage "
+            "trägt lange Einheiten noch nicht"
+        )
+
     return {
         "n": len(rows),
-        "short": round(median(short), 1) if short else None,
-        "long": round(median(long), 1) if long else None,
-        "verdict": ("die aerobe Basis trägt auch lange Einheiten"
-                    if (long and median(long) <= DECOUPLING_GOOD) or
-                       (not long and short and median(short) <= DECOUPLING_GOOD)
-                    else "die Entkopplung steigt mit der Dauer — die Grundlage trägt lange "
-                         "Einheiten noch nicht"),
-        "source": "Friel: bis 5 % Entkopplung auf ruhigen Dauereinheiten ist unauffällig",
+        "n_low": len(low),
+        "n_high": len(high),
+        "low": low_value,
+        "high": high_value,
+        "low_thin": low_thin,
+        "high_thin": high_thin,
+        "lead": lead,
+        "headline": headline,
+        "verdict": verdict,
+        # Everything the panel has to print. None of these may be repeated as a
+        # literal in the frontend - there is a source guard against it.
+        "decoupling_good": DECOUPLING_GOOD,
+        "split_kj": DURABILITY_SPLIT_KJ,
+        "min_minutes": min_minutes,
+        "max_intensity": DURABILITY_MAX_INTENSITY,
+        "max_vi": DURABILITY_MAX_VI,
+        "min_per_group": MIN_SESSIONS_TO_CLAIM_GROUP,
+        "min_sessions": MIN_SESSIONS_FOR_TILE,
+        "excluded_types": list(DURABILITY_EXCLUDED_TYPES),
+        "dropped": dropped,
+        "weight": _last_known_weight(data),
+        "source": (
+            "Setzung: die 5-%-Marke ist eine Trainerfaustregel (Friel), keine "
+            "Studiengrenze. Belegt ist das Phänomen dahinter — der kardiovaskuläre "
+            "Drift — und dass es stark von Hitze, Flüssigkeit und Umgebung abhängt. "
+            "Belegt ist auch die Achse: Durability wird über angesammelte Arbeit "
+            "gemessen (Maunder 2021; Spragg trennt bei 2000 kJ). Die Trennstelle "
+            "hier ist eine Setzung."
+        ),
     }
 
 
@@ -1023,45 +1143,85 @@ def _percentile_rank(values: list[float], value: float) -> int:
     return round((below + 0.5 * equal) / len(values) * 100)
 
 
+def _sport_group(entry: dict[str, Any]) -> str:
+    """Return the comparison group an activity belongs to."""
+    kind = str(entry.get("type") or "")
+    if kind in ("Ride", "VirtualRide", "GravelRide", "MountainBikeRide"):
+        return "ride"
+    if kind in ("Run", "TrailRun", "VirtualRun"):
+        return "run"
+    return kind or "other"
+
+
+def _caliper_percent(width: float) -> tuple[float, float]:
+    """Return the (lower, upper) percent bounds of a log-duration caliper.
+
+    A caliper that is symmetric in the log is NOT symmetric in percent. Showing
+    it as a single "±x %" is a lie in one direction, so both numbers travel
+    (docs/ausbau.md C3).
+    """
+    return (round((math.exp(-width) - 1) * 100, 1), round((math.exp(width) - 1) * 100, 1))
+
+
 def session_context(data: dict[str, Any], activity_id: str) -> dict[str, Any]:
     """Place this session's key numbers among the athlete's comparable sessions.
 
-    Comparable means: same sport group, intensity within 10 points, duration
-    within 40%. Without that narrowing a three-hour base ride would be judged
-    against a 45-minute interval session, and the comparison would be noise.
+    Comparable means: same sport group, and duration and intensity inside a
+    CALIPER measured in the athlete's own standard deviations - on the log
+    duration, because durations are right-skewed and 45 min to 3 h is not a
+    symmetric plus/minus. The caliper widens in fixed steps until a metric has
+    enough peers to be ranked, and the step that was reached is always reported.
+
+    The widening runs against the n OF THE METRIC, not against the number of
+    peers: only some sessions carry a decoupling value, and widening against
+    the peer count would print "8 sessions" beside "too thin" (docs/ausbau.md C3).
     """
     activities = data.get("activities") or {}
     activity = activities.get(str(activity_id))
     if not activity:
         return {"available": False}
 
-    def _group(entry: dict[str, Any]) -> str:
-        kind = str(entry.get("type") or "")
-        if kind in ("Ride", "VirtualRide", "GravelRide", "MountainBikeRide"):
-            return "ride"
-        if kind in ("Run", "TrailRun", "VirtualRun"):
-            return "run"
-        return kind or "other"
-
     day = str(activity.get("start_date_local") or "")[:10]
-    group = _group(activity)
+    group = _sport_group(activity)
     intensity = _f(activity.get("icu_intensity")) or 0.0
     minutes = (activity.get("moving_time") or 0) / 60
 
-    peers = []
+    # The spread is measured over the whole group, not only over the earlier
+    # sessions - otherwise the caliper of an old session would be computed from
+    # a handful of values. It therefore MOVES as the archive grows, and the
+    # panel says so.
+    population = [
+        other for other in activities.values()
+        if isinstance(other, dict) and _sport_group(other) == group
+        and (other.get("moving_time") or 0) > 0
+    ]
+    log_durations = [math.log((other.get("moving_time") or 0) / 60) for other in population]
+    intensities = [_f(other.get("icu_intensity")) or 0.0 for other in population]
+    sd_log = pstdev(log_durations) if len(log_durations) > 1 else 0.0
+    sd_intensity = pstdev(intensities) if len(intensities) > 1 else 0.0
+
+    earlier = []
     for key, other in activities.items():
-        if key == str(activity_id) or _group(other) != group:
+        if key == str(activity_id) or _sport_group(other) != group:
             continue
         other_day = str(other.get("start_date_local") or "")[:10]
         if not other_day or other_day >= day:
             continue
-        other_int = _f(other.get("icu_intensity")) or 0.0
-        other_min = (other.get("moving_time") or 0) / 60
-        if abs(other_int - intensity) > 10:
-            continue
-        if minutes > 0 and abs(other_min - minutes) > minutes * 0.4:
-            continue
-        peers.append(other)
+        earlier.append(other)
+
+    log_minutes = math.log(minutes) if minutes > 0 else None
+
+    def within(other: dict[str, Any], stage: float) -> bool:
+        if sd_intensity > 0:
+            if abs((_f(other.get("icu_intensity")) or 0.0) - intensity) > stage * sd_intensity:
+                return False
+        if sd_log > 0 and log_minutes is not None:
+            other_minutes = (other.get("moving_time") or 0) / 60
+            if other_minutes <= 0:
+                return False
+            if abs(math.log(other_minutes) - log_minutes) > stage * sd_log:
+                return False
+        return True
 
     metrics = (
         ("decoupling", "Entkopplung", "%", "down", lambda e: _f(e.get("decoupling"))),
@@ -1073,15 +1233,40 @@ def session_context(data: dict[str, Any], activity_id: str) -> dict[str, Any]:
     )
 
     out: dict[str, Any] = {}
+    widest = None
     for key, label, unit, good, getter in metrics:
         value = getter(activity)
         if value is None:
             continue
-        history = [v for v in (getter(p) for p in peers) if v is not None]
-        if len(history) < 6:
-            out[key] = {"label": label, "unit": unit, "value": round(value, 2),
-                        "n": len(history), "enough": False}
+        # Two different reasons for "no group", two different sentences. The
+        # first heals by itself as the archive grows, the second does not.
+        available = [v for v in (getter(other) for other in earlier) if v is not None]
+        chosen, history = None, []
+        for stage in PEER_CALIPER_STAGES:
+            history = [
+                v for v in (getter(other) for other in earlier if within(other, stage))
+                if v is not None
+            ]
+            if len(history) >= MIN_PEERS_TO_RANK_METRIC:
+                chosen = stage
+                break
+        if chosen is None:
+            too_early = len(available) < MIN_PEERS_TO_RANK_METRIC
+            out[key] = {
+                "label": label, "unit": unit, "value": round(value, 2),
+                "n": len(history), "enough": False,
+                "why": "too_early" if too_early else "too_few",
+                "say": (
+                    f"zu früh in deiner Historie — davor liegen erst {len(available)} "
+                    f"Einheiten mit diesem Wert"
+                ) if too_early else (
+                    f"zu wenige vergleichbare Einheiten — auch auf der weitesten Stufe "
+                    f"({PEER_CALIPER_STAGES[-1]:.1f} SD) nur {len(history)}"
+                ),
+            }
             continue
+        widest = chosen if widest is None else max(widest, chosen)
+        low_pct, high_pct = _caliper_percent(chosen * sd_log)
         ordered = sorted(history)
         rank = _percentile_rank(ordered, value)
         # The verdict hangs on leaving the MIDDLE HALF, not on the percentile.
@@ -1101,6 +1286,10 @@ def session_context(data: dict[str, Any], activity_id: str) -> dict[str, Any]:
             "p25": round(ordered[max(0, len(ordered) // 4 - 1)], 2),
             "p75": round(ordered[min(len(ordered) - 1, (3 * len(ordered)) // 4)], 2),
             "n": len(history), "enough": True, "rank": rank, "good": good,
+            "stage": chosen,
+            "duration_low_pct": low_pct,
+            "duration_high_pct": high_pct,
+            "intensity_points": round(chosen * sd_intensity, 1),
             "verdict": ("besser als sonst" if favourable else
                         "schlechter als sonst" if unfavourable else "im üblichen Bereich"),
         }
@@ -1108,16 +1297,27 @@ def session_context(data: dict[str, Any], activity_id: str) -> dict[str, Any]:
     return {
         "available": bool(out),
         "group": group,
-        "peers": len(peers),
+        "earlier": len(earlier),
+        "stages": list(PEER_CALIPER_STAGES),
+        "widest_used": widest,
+        "min_peers": MIN_PEERS_TO_RANK_METRIC,
+        "sd_log_duration": round(sd_log, 3),
+        "sd_intensity": round(sd_intensity, 2),
+        "population": len(population),
         "window": {"intensity": round(intensity), "minutes": round(minutes)},
         "metrics": out,
         "note": (
-            "Verglichen wird mit deinen eigenen früheren Einheiten derselben Sportart, "
-            "deren Intensität um höchstens 10 Punkte und deren Dauer um höchstens 40 % "
-            "abweicht. Ohne diese Eingrenzung stünde eine Dreistundenfahrt neben einer "
-            "45-Minuten-Intervalleinheit, und der Vergleich wäre Rauschen. Der "
-            "Prozentrang sagt, wie viele der Vergleichseinheiten schlechter lagen — "
-            "50 heißt genau im Mittelfeld."
+            "Verglichen wird mit deinen eigenen FRÜHEREN Einheiten derselben Sportart. "
+            "Die Toleranz ist keine feste Prozentzahl, sondern ein Vielfaches deiner "
+            "eigenen Streuung — bei der Dauer auf dem Logarithmus gerechnet, weil "
+            "45 Minuten und 3 Stunden kein symmetrisches Plus/Minus sind. Deshalb "
+            "steht die Spanne mit zwei Zahlen da und nicht als ±. Reicht die engste "
+            "Stufe nicht, wird in festen Schritten geweitet, bis genug Einheiten "
+            "zusammenkommen; die erreichte Stufe steht bei jeder Zeile. Geweitet wird "
+            "gegen die Zahl der Einheiten MIT DIESEM WERT, nicht gegen die Zahl der "
+            "Vergleichseinheiten. Die Streuung wird aus deinem gesamten Bestand dieser "
+            "Sportart gerechnet und wandert deshalb mit: dieselbe alte Einheit kann in "
+            "einigen Monaten eine etwas andere Gruppe bekommen."
         ),
     }
 

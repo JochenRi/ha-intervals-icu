@@ -9,7 +9,7 @@ const { ok, clean, contains, report } = H;
 
 const M = H.load();
 const p = new M.Panel();
-p._status = { activities: 238, wellness_days: 487, dfa_done: 56, importing: false, athlete: "Test" };
+p._status = { activities: 238, wellness_days: 487, dfa_done: 56, importing: false, decoupling_good: 5.0, athlete: "Test" };
 // Pin "today". A window that asks the wall clock makes this suite go red on
 // its own some months from now, and a test that fails for calendar reasons
 // teaches nothing about the code.

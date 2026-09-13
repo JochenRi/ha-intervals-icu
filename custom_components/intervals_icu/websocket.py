@@ -16,7 +16,7 @@ from homeassistant.util import dt as dt_util
 
 from . import analytics, coach as coach_module, day_context as day_context_lib, derive, importer, plan as plan_lib, reconcile as reconcile_lib, workouts as workout_lib
 from .api import IntervalsError
-from .const import DOMAIN
+from .const import DECOUPLING_GOOD, DOMAIN
 
 # Streams offered to the panel's activity detail view. Fetched live on
 # demand and thinned before they cross the socket - they are never stored.
@@ -293,6 +293,11 @@ def websocket_status(hass, connection, msg) -> None:
     stats = importer.archive_stats(coordinator.archive.data)
     stats["importing"] = bool(getattr(coordinator, "import_running", False))
     stats["athlete"] = coordinator.config_entry.title
+    # The decoupling mark is drawn in views that load neither the coach nor the
+    # load payload (activity list, DFA table). Status is fetched at boot, so it
+    # is the one carrier that is always there. Still ONE definition - const.py;
+    # several carriers of the same value are fine, a second value is not.
+    stats["decoupling_good"] = DECOUPLING_GOOD
     connection.send_result(msg["id"], stats)
 
 
@@ -812,6 +817,16 @@ async def websocket_reconcile(hass, connection, msg) -> None:
     except ValueError as err:
         connection.send_error(msg["id"], "bad_response", str(err))
         return
+
+    # The calendar is not the archive. Planned sessions come from the events
+    # endpoint on every coordinator refresh, so a session deleted in Intervals
+    # falls out by itself - but nothing here triggered that refresh, and a
+    # parity result changes no state, so the panel kept showing the stale list
+    # until the next scheduled poll. async_refresh() and NOT
+    # async_request_refresh(): the debouncer would skip exactly this case.
+    # A refresh is a read. The boundary from D3 is untouched - there is still
+    # no "delete one session" action and still nothing goes to Intervals.
+    await coordinator.async_refresh()
 
     confirmed = msg.get("confirm")
     if confirmed is None:

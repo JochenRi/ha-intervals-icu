@@ -350,3 +350,70 @@ def normalize_laps(payload: Any) -> dict[str, Any]:
         laps.append(lap)
 
     return {"laps": laps, "seen_keys": sorted(seen), "source": source}
+
+
+# --- what counts as a steady endurance session --------------------------------
+# ONE definition, used by the durability tile and by the decoupling series in
+# the load tab. Before 0.39.0 the series filtered on duration alone while its
+# own docstring promised "steady" - the tile and the chart could therefore show
+# decoupling from two different populations without anything saying so.
+
+try:  # inside the package (Home Assistant)
+    from .const import (
+        DURABILITY_EXCLUDED_TYPES,
+        DURABILITY_MAX_INTENSITY,
+        DURABILITY_MAX_VI,
+        DURABILITY_MIN_MINUTES,
+    )
+except ImportError:  # standalone (test suite loads this file directly)
+    from const import (
+        DURABILITY_EXCLUDED_TYPES,
+        DURABILITY_MAX_INTENSITY,
+        DURABILITY_MAX_VI,
+        DURABILITY_MIN_MINUTES,
+    )
+
+
+def _number(value: Any) -> float | None:
+    """Return a float, or None when the field is missing or unusable."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def variability_index(activity: dict[str, Any]) -> float | None:
+    """Return normalised power / average power, or None when not computable.
+
+    The criterion for an interpretable decoupling reading is a STEADY effort,
+    not a low average intensity: a rolling group ride at intensity 70 passes an
+    intensity filter while a steady tempo ride at 81 does not. Both fields this
+    needs are already in the archive.
+    """
+    normalised = _number(activity.get("icu_weighted_avg_watts"))
+    average = _number(activity.get("icu_average_watts"))
+    if not normalised or not average:
+        return None
+    return normalised / average
+
+
+def steady_endurance_reason(
+    activity: dict[str, Any], min_minutes: float = DURABILITY_MIN_MINUTES
+) -> str | None:
+    """Return None when the session qualifies, else why it does not.
+
+    Reasons are returned rather than a bare False so the panel can say what was
+    left out instead of showing a number whose population is invisible.
+    """
+    if not isinstance(activity, dict):
+        return "no_activity"
+    if (activity.get("moving_time") or 0) / 60 < min_minutes:
+        return "short"
+    if str(activity.get("type") or "") in DURABILITY_EXCLUDED_TYPES:
+        return "indoor"
+    if (_number(activity.get("icu_intensity")) or 0) >= DURABILITY_MAX_INTENSITY:
+        return "intense"
+    index = variability_index(activity)
+    if index is None or index > DURABILITY_MAX_VI:
+        return "variable"
+    return None

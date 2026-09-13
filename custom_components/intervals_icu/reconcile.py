@@ -166,6 +166,13 @@ def plan(
     missing.sort(key=lambda item: (item["date"] or "", item["id"]))
 
     checked = len(candidates)
+    # What was checked, BY KIND. The dialog has to be able to say "239 ridden
+    # sessions and 1 placeholder" instead of a bare 240 - and it must take the
+    # breakdown from here rather than adding up the header's own numbers, which
+    # would be a second truth (docs/ausbau.md D6a).
+    by_kind = {"activity": 0, "unavailable": 0, "dfa": 0}
+    for _key, kind, _day in candidates:
+        by_kind[kind] += 1
     # Lock 3. An empty window has nothing to be a share OF - and nothing can
     # be missing from it either, so zero is the honest answer, not a division.
     share = (len(missing) / checked) if checked else 0.0
@@ -176,6 +183,14 @@ def plan(
         "newest": newest.isoformat(),
         "full_history": full_history,
         "checked": checked,
+        "checked_activities": by_kind["activity"],
+        "checked_unavailable": by_kind["unavailable"],
+        "checked_dfa": by_kind["dfa"],
+        # The comparison covers the ARCHIVE. Planned sessions live on the
+        # events endpoint, never enter the archive and are therefore outside
+        # this answer - the dialog says so instead of letting a correct number
+        # sound like a statement about the calendar (docs/ausbau.md D6).
+        "scope": "archive",
         "remote": len(remote),
         "missing": missing,
         "share": share,

@@ -7,6 +7,7 @@ from pathlib import Path
 COMP = Path(__file__).resolve().parents[1] / "custom_components" / "intervals_icu"
 sys.path.insert(0, str(COMP))
 import analytics  # noqa: E402
+import derive  # noqa: E402
 
 failures = []
 CHECKS = 0
@@ -103,12 +104,39 @@ check("DFA-Verteilung aerob", measured["aerobic"], 83.3)
 check("DFA-Verteilung anaerob", measured["anaerobic"], 5.6)
 
 # --- decoupling ------------------------------------------------------------------------
+# "Steady endurance session" is now enforced, not promised. Until 0.39.0 this
+# filtered on duration alone while its docstring claimed otherwise - so the
+# chart and the durability tile next to it could draw from two different
+# populations without anything saying so. One rejected case per criterion.
 acts["short"] = {"start_date_local": "2026-09-01T09:00:00", "moving_time": 1200,
-                 "decoupling": 12.0, "type": "Ride"}
+                 "decoupling": 12.0, "type": "Ride", "icu_intensity": 60,
+                 "icu_average_watts": 120, "icu_weighted_avg_watts": 122}
 acts["long"] = {"start_date_local": "2026-09-02T09:00:00", "moving_time": 7200,
-                "decoupling": 3.4, "type": "Ride", "icu_training_load": 120}
+                "decoupling": 3.4, "type": "Ride", "icu_training_load": 120,
+                "icu_intensity": 60, "icu_average_watts": 120,
+                "icu_weighted_avg_watts": 122}
+acts["wellig"] = {"start_date_local": "2026-09-03T09:00:00", "moving_time": 7200,
+                  "decoupling": 9.9, "type": "Ride", "icu_intensity": 60,
+                  "icu_average_watts": 120, "icu_weighted_avg_watts": 160}
+acts["rolle"] = {"start_date_local": "2026-09-04T09:00:00", "moving_time": 7200,
+                 "decoupling": 8.8, "type": "VirtualRide", "icu_intensity": 60,
+                 "icu_average_watts": 120, "icu_weighted_avg_watts": 122}
+acts["hart"] = {"start_date_local": "2026-09-05T09:00:00", "moving_time": 7200,
+                "decoupling": 7.7, "type": "Ride", "icu_intensity": 95,
+                "icu_average_watts": 120, "icu_weighted_avg_watts": 122}
 dec = analytics.decoupling_series({"wellness": {}, "activities": acts, "dfa": {}})
 check("kurze Einheit fliegt raus", [item["decoupling"] for item in dec], [3.4])
+# Fixture-Beweis: jede der drei neuen Zeilen wird von GENAU EINEM Kriterium
+# gehalten - ohne diesen Nachweis könnte eine einzige Bedingung alle drei
+# erledigen und die Prüfung sähe trotzdem grün aus.
+check("Fixture-Beweis: wellige Einheit scheitert an der Gleichmäßigkeit",
+      derive.steady_endurance_reason(acts["wellig"]), "variable")
+check("Fixture-Beweis: Rollenfahrt scheitert an der Umgebung",
+      derive.steady_endurance_reason(acts["rolle"]), "indoor")
+check("Fixture-Beweis: harte Einheit scheitert an der Intensität",
+      derive.steady_endurance_reason(acts["hart"]), "intense")
+check("Fixture-Beweis: die ruhige Langfahrt kommt durch",
+      derive.steady_endurance_reason(acts["long"]), None)
 
 # --- HRV against the smallest worthwhile change -------------------------------------------
 hrv_days = {}

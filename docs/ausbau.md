@@ -504,6 +504,66 @@ beim Hinzufügen. Beim Abgleich hieße dieselbe Nachsicht „diese Einheit gibt 
 drüben nicht mehr", also bricht `remote_index()` bei allem ab, wofür die
 Antwort nicht geradesteht. Zwei Wege, zwei Urteile, beide geprüft.
 
+### D6 · Der Kalender ist nicht das Archiv (Live-Befund, 13.09.2026)
+
+**Zur Nummer:** die Spezifikation nannte diesen Fix „D2". D2 ist vergeben
+(„Was die API hergibt"). Er steht deshalb als D6 hinter den Präzisierungen —
+eine zweite D2 wäre genau die Art von Doppelbelegung, gegen die dieses Kapitel
+sonst anschreibt.
+
+**Der Befund.** Eine für den 16.09.2026 **geplante** Einheit in Intervals
+gelöscht, danach „Abgleichen". Der Dialog meldete Gleichstand über 240
+archivierte Einheiten. Die Einheit stand weiter im Kalender. Die Meldung war
+wörtlich richtig und trotzdem irreführend. Drei Schichten, nicht eine:
+
+**1 · Der Abgleich sieht geplante Einheiten prinzipiell nicht.**
+`reconcile.plan()` baut seine Kandidaten aus `activities`, `unavailable` und den
+DFA-Waisen — alles Archiv — und vergleicht gegen `/athlete/{id}/activities`.
+Geplante Einheiten liegen auf `/athlete/{id}/events`, gehen über
+`coordinator.data["planned"]`/`["events"]` in Kalenderkachel und Kalender-Reiter
+und berühren das Archiv **nie**. Der Abgleich kann sie weder finden noch
+vermissen. Das ist eine Lücke der Spezifikation, kein Umsetzungsfehler: sie hat
+die geplanten Einheiten nirgends erwähnt.
+
+**2 · Die Zahl beschreibt das Archiv und klingt wie eine Aussage über den
+Kalender.** Live: `activities: 239`, `unavailable: 1` → `checked = 240`. Der
+Satz „alle 240 archivierten Einheiten sind in Intervals vorhanden" sagt nicht,
+**was** geprüft wurde und erst recht nicht, was nicht.
+
+**3 · Selbst ein frischer Stand erreicht den offenen Browser-Tab nicht.**
+Events werden bei jedem Coordinator-Refresh frisch geholt (Fenster −30/+60 Tage,
+Intervall 30 min) — eine gelöschte geplante Einheit fällt also von allein raus.
+Aber der Abgleich stößt keinen Refresh an (`async_update_listeners()` rendert
+aus den **vorhandenen** Daten), und das Panel hält `_cal` und `_days` für die
+ganze Browser-Sitzung: geleert werden sie nur nach einem **angewandten**
+Abgleich. Ein Gleichstand wendet nichts an, leert also nichts.
+
+**Was daraus wird:**
+
+- **D6a · Die Meldung sagt, was sie geprüft hat.** Die Aufschlüsselung kommt aus
+  der Payload (`checked_activities`, `checked_unavailable`, `checked_dfa`), nicht
+  im Frontend aus `status` zusammengerechnet — das wäre die zweite Wahrheit.
+  Text: „239 gefahrene Einheiten und 1 Platzhalter". Und sie nennt die Grenze:
+  geplante Einheiten sind **nicht** Teil des Abgleichs.
+- **D6b · Der Knopf stößt den Refresh mit an.** `await coordinator.async_refresh()`
+  nach der Auswertung, in beiden Zweigen. Bewusst `async_refresh()` und nicht
+  `async_request_refresh()`: der Entpreller würde genau den Fall überspringen,
+  um den es geht. Ein Refresh ist ein Lesevorgang — die Grenze aus D3 bleibt
+  unberührt, es gibt weiterhin keine Bedienhandlung „Einheit löschen" und es geht
+  weiterhin nichts nach Intervals.
+- **D6c · Das Panel leert seine Kalender-Caches nach **jedem** Abgleich**, nicht
+  nur nach einem angewandten, und lädt den offenen Reiter neu.
+
+**Tests D6:**
+
+- Der Bericht führt die drei `checked_*`-Zahlen, und ihre Summe ist `checked`.
+- Gegenprobe: eine der drei weglassen — die Summenprüfung muss **gezählt und
+  benannt** fallen.
+- Der Handler ruft den Refresh in beiden Zweigen (Gleichstand und Vollzug).
+  Gegenprobe: Refresh nur im Vollzugszweig — muss fallen.
+- Quelltext-Wächter: der Abgleich fasst weiterhin keine `events` an und ruft
+  keinen schreibenden Endpunkt.
+
 ---
 
 ## Paket C — Vergleichsgruppe
@@ -515,7 +575,7 @@ deren Intensität um höchstens 10 Punkte und deren Dauer um höchstens 40 %
 abweicht." 40 % ist geraten, und der Text behauptet eine Strenge, die die Zahl
 nicht hat.
 
-### C2 · Was die Forschung macht
+### C2 · Was die Forschung macht — und wo sie hier nicht hinreicht
 
 Matching mit **Caliper**. Austin (*Optimal caliper widths for propensity-score
 matching*, Pharmaceutical Statistics 10 (2), 2011) empfiehlt aus
@@ -525,29 +585,91 @@ Verzerrung des rohen Schätzers. Der Kern ist der Handel dahinter: ein enger
 Caliper verbessert die Balance und verwirft Fälle (mehr Streuung), ein weiter
 behält Fälle und lässt schlechtere Treffer zu (mehr Verzerrung).
 
+**Nachgerechnet am 13.09.2026 am echten Bestand (137 Radeinheiten von 239
+Aktivitäten) — die wörtliche Übernahme trägt nicht:**
+
+| | |
+|---|---|
+| SD der log-Dauer | **0,511** |
+| 0,2 SD in Prozent | **−9,7 % / +10,8 %** — nicht ±20 % |
+| 0,2 SD auf der Intensität | **2,8 Punkte** (heute: 10) |
+| Vergleichseinheiten bei 0,2 SD | **Median 1**, 98,5 % unter n ≥ 8 |
+| Leiter 0,2 → 0,3 → 0,4 → 0,6 SD | **75 von 137 erreichen auf keiner Stufe n ≥ 8** |
+| heutige Regel (40 % / 10 Punkte) | Median **11** Peers, 36,5 % unter 8 |
+| 40 % Dauer entspricht | **0,66 SD** |
+| 10 Intensitätspunkte entsprechen | **0,71 SD** |
+
+Zwei Sätze aus dieser Tabelle:
+
+**1 · Die Klammer „0,2 SD ≈ ±20 %" war auf diesen Daten um Faktor zwei daneben**,
+und die Leiter „20 → 30 → 40 %" mischte zwei Register: sie will weg von festen
+Prozenten und misst die Stufen dann wieder in festen Prozenten. Die heutige
+Regel ist bereits ein ≈0,7-SD-Caliper — 40 % war nicht die weiteste denkbare
+Stufe, sondern ungefähr die engste, die noch trägt.
+
+**2 · Austin gilt hier nicht 1:1.** Er rechnet Propensity-Score-Matching mit
+großem Spenderpool. Hier ist der Pool ≤ 137, und Vergleichspartner müssen
+**früher** liegen (`other_day >= day → continue`). Für die ersten Dutzend
+Einheiten ist er strukturell leer: nur **129** haben überhaupt acht Vorgänger,
+nur **112** haben sechs Vorgänger mit Entkopplungswert. 0,2 SD ist hier kein
+strengerer Wert, sondern ein Kategorienfehler.
+
 ### C3 · Übersetzung
 
-- Toleranz **nicht in Prozent der Dauer**, sondern als 0,2 SD der eigenen
+- Toleranz **nicht in Prozent der Dauer**, sondern als SD-Vielfaches der eigenen
   Dauer-Verteilung derselben Sportart, gerechnet auf der **log-Dauer** — Dauern
-  sind rechtsschief, 45 min ↔ 3 h ist kein symmetrisches ±40 %. Anzeige darf
-  weiter in Prozent erfolgen.
-- **Automatische Weitung mit Mindest-n:** eng starten (0,2 SD ≈ ±20 %), in
-  Stufen weiten (20 → 30 → 40 %), bis `n ≥ 8`. Immer ausweisen, welche Stufe
-  gegriffen hat: „±20 %, 14 Einheiten" bzw. „auf ±40 % geweitet, sonst nur 5".
-- Intensität („höchstens 10 Punkte") nach derselben Logik als SD-Caliper.
-- Bedienung im aufklappbaren Quellenblock der Karte, wo der Satz heute schon
-  steht: zwei Schieber (Dauer, Intensität), Schalter „automatisch weiten",
-  darunter live `n = 14 · Median-Dauer 1:52 · diese Einheit 2:05`. Einstellung
-  und Wirkung im selben Blickfeld.
-- Der Beschreibungstext nennt die Weitung — sonst behauptet die Karte wieder
-  eine Strenge, die sie nicht hat.
+  sind rechtsschief, 45 min ↔ 3 h ist kein symmetrisches ±40 %.
+- **Gemessene Leiter: 0,2 → 0,4 → 0,6 → 0,8 → 1,0 SD**, auf beiden Achsen,
+  **Abbruch bei 1,0 SD**. Das sind schon −40 % / +67 %, breiter als die heutigen
+  40 %. 1,5 SD würde 14 weitere Fälle retten, ist mit +115 % aber keine
+  Vergleichsgruppe mehr. Ergebnis am Bestand: **91 von 137 bekommen eine Gruppe,
+  46 nicht — davon 25 strukturell unmöglich.**
+- **Die Weitung läuft gegen das `n` DER KENNZAHL, nicht gegen die Zahl der
+  Peers.** Nur 115 von 137 Radeinheiten tragen überhaupt einen
+  Entkopplungswert; 14 Fälle haben Peers ≥ 8, aber Entkopplung < Mindestzahl.
+  Gegen die Peers zu weiten hieße „±11 %, 8 Einheiten" auszuweisen und daneben
+  „zu dünn" zu schreiben — zwei Zahlen im Haus, Lehre 4.
+- **Zwei Gründe für „keine Gruppe", zwei Sätze.** Ist der Bestand vor dieser
+  Einheit zu klein, heißt das **„zu früh in deiner Historie"** — die 25 Fälle
+  oben. Reicht der Bestand, aber kein Fenster füllt ihn, heißt es **„zu wenige
+  vergleichbare Einheiten"**. Die beiden dürfen nicht denselben Satz bekommen:
+  der erste heilt von selbst, der zweite nicht.
+- **Anzeige nie als gelogenes „±".** Ein Log-Caliper ist in Prozent
+  unsymmetrisch. Es stehen **beide** Zahlen da („−10 % / +11 %") oder der Faktor
+  („0,90× bis 1,11×"). Die gegriffene Stufe wird immer ausgewiesen: „0,4 SD,
+  −18 % / +23 %, 11 Einheiten".
+- **Die SD wandert.** Sie wird aus dem wachsenden Bestand gerechnet — dieselbe
+  alte Einheit zeigt in einem Monat eine andere Gruppe und einen anderen
+  Prozentrang. Das steht im Quellenblock, und die Fixture friert dafür einen
+  Bestand ein (Lehre 2).
+- **Intensität nach derselben Logik** als SD-Caliper, dieselben Stufen.
+- **Keine Bedienung, kein Schlüssel im Archiv.** Die Schieber aus der ersten
+  Fassung entfallen: sie hätten ein Archivschema samt Migration in ein sonst
+  kleines Paket gezwungen, ohne begründbaren Nutzen. Die Leiter läuft
+  automatisch. Sollte sich später zeigen, dass daran gedreht werden soll, kommt
+  es als `localStorage`-Einstellung in der Bauart des Zeitwählers aus A2 — eine
+  **Anzeigepräferenz, kein Datum**.
+- Der Beschreibungstext nennt die Weitung und die gegriffene Stufe — sonst
+  behauptet die Karte wieder eine Strenge, die sie nicht hat.
 
 ### Tests C
 
-- Vertrag: die gewählte Stufe ist immer die engste, die `n ≥ 8` liefert.
-- Bei zu dünner Lage auch auf der weitesten Stufe: keine Einordnung, sondern
-  die Aussage, dass es zu wenige Vergleichseinheiten gibt.
-- Gegenprobe: feste 40 % wieder einbauen — der Vertragstest muss fallen.
+- Vertrag: die gewählte Stufe ist immer die **engste**, die das Mindest-`n` der
+  Kennzahl liefert.
+- Vertrag **Reziprozität**: ist A Vergleichspartner von B, dann ist B es von A
+  (zeitliche Reihenfolge ausgenommen). Die heutige Regel
+  `abs(other_min - minutes) > minutes * 0.4` misst am *aktuellen* Datensatz und
+  verletzt das; der Log-Caliper heilt es. Eigener Test, sonst geht die
+  Eigenschaft beim nächsten Umbau wieder verloren.
+- Beide Dünn-Fälle getrennt: „zu früh in deiner Historie" (zu wenige Vorgänger
+  überhaupt) und „zu wenige vergleichbare Einheiten" (Vorgänger da, Fenster
+  leer). Die Fixture enthält **beide unterscheidbar**.
+- Die Anzeige enthält nie ein symmetrisches „±" für den Dauer-Caliper —
+  Quelltext-Wächter.
+- Gegenproben, jede **gezählt und benannt**: feste 40 % wieder einbauen; gegen
+  die Peer-Zahl statt gegen das Kennzahl-`n` weiten; die Stufe nicht ausweisen;
+  die beiden Dünn-Gründe zu einem Satz zusammenziehen.
+
 
 ---
 

@@ -444,24 +444,38 @@ function goal(kind) {
 function context(kind) {
   if (kind === "leer") return { available: false };
   const full = {
-    available: true, group: "ride", peers: 18,
+    /* ab 0.39.0: "peers" gibt es nicht mehr - die Zahl war zweideutig, weil je
+       Kennzahl unterschiedlich viele Einheiten einen Wert tragen. Geweitet wird
+       gegen das n DER KENNZAHL, und die gegriffene Stufe steht bei der Zeile. */
+    available: true, group: "ride", earlier: 18, min_peers: 6,
+    stages: [0.2, 0.4, 0.6, 0.8, 1.0], widest_used: 0.4,
+    sd_log_duration: 0.511, sd_intensity: 14.0, population: 137,
     window: { intensity: 61, minutes: 208 },
     metrics: {
       decoupling: { label: "Entkopplung", unit: "%", value: 10.6, median: 2.1,
         best: -0.6, worst: 16.9, p25: 0.9, p75: 5.4, n: 17, enough: true,
-        rank: 94, good: "down", verdict: "schlechter als sonst" },
+        rank: 94, good: "down", verdict: "schlechter als sonst",
+        stage: 0.4, duration_low_pct: -18.5, duration_high_pct: 22.7, intensity_points: 5.6 },
       ef: { label: "Watt pro Herzschlag", unit: "", value: 0.923, median: 0.695,
         best: 0.98, worst: 0.55, p25: 0.63, p75: 0.79, n: 17, enough: true,
-        rank: 76, good: "up", verdict: "besser als sonst" },
+        rank: 76, good: "up", verdict: "besser als sonst",
+        stage: 0.4, duration_low_pct: -18.5, duration_high_pct: 22.7, intensity_points: 5.6 },
       hr: { label: "Ø Herzfrequenz", unit: "bpm", value: 142, median: 139,
         best: 128, worst: 151, p25: 134, p75: 144, n: 17, enough: true,
-        rank: 55, good: "down", verdict: "im üblichen Bereich" },
+        rank: 55, good: "down", verdict: "im üblichen Bereich",
+        stage: 0.2, duration_low_pct: -9.7, duration_high_pct: 10.8, intensity_points: 2.8 },
     },
-    note: "Verglichen wird mit deinen eigenen früheren Einheiten derselben Sportart, deren Intensität um höchstens 10 Punkte und deren Dauer um höchstens 40 % abweicht. Der Prozentrang sagt, wie viele der Vergleichseinheiten schlechter lagen.",
+    note: "Verglichen wird mit deinen eigenen FRÜHEREN Einheiten derselben Sportart. Die Toleranz ist keine feste Prozentzahl, sondern ein Vielfaches deiner eigenen Streuung — bei der Dauer auf dem Logarithmus gerechnet. Die Streuung wandert mit dem Bestand.",
   };
   if (kind === "duenn") {
-    return { ...full, peers: 3, metrics: { decoupling: {
-      label: "Entkopplung", unit: "%", value: 10.6, n: 3, enough: false } } };
+    /* Zwei Dünn-Gründe, zwei Sätze - der erste heilt mit der Zeit, der zweite
+       nicht. Die Fixture führt beide, sonst prüft der Test nur einen davon. */
+    return { ...full, earlier: 3, metrics: {
+      decoupling: { label: "Entkopplung", unit: "%", value: 10.6, n: 2, enough: false,
+        why: "too_early", say: "zu früh in deiner Historie — davor liegen erst 3 Einheiten mit diesem Wert" },
+      ef: { label: "Watt pro Herzschlag", unit: "", value: 0.923, n: 4, enough: false,
+        why: "too_few", say: "zu wenige vergleichbare Einheiten — auch auf der weitesten Stufe (1.0 SD) nur 4" },
+    } };
   }
   return full;
 }
@@ -531,8 +545,31 @@ function coach(kind) {
     trend_power: { power_before: 155, power_now: 158, hr_before: 157, hr_now: 157,
                    power_change_pct: 2.2, hr_change: -0.4 },
     source: "Median der letzten fünf belastbaren DFA-Messungen (Rogers/Gronwald) — als Trend brauchbar, als alleinige Verankerung nicht" };
-  const durability = { n: 73, short: 0.0, long: 0.4, verdict: "die aerobe Basis trägt auch lange Einheiten",
-                       source: "Friel: bis 5 % Entkopplung" };
+  /* Durability ab 0.39.0: getrennt nach ANGESAMMELTER ARBEIT, nicht nach Dauer.
+     Jede Zahl, die die Kachel zeigt, kommt aus dieser Payload - die Schwelle,
+     die Trennstelle, die Filtergrenzen, die Mindestzahlen. Im Frontend darf
+     keine davon ein zweites Mal stehen (Quelltext-Wächter). */
+  const durability = {
+    n: 56, n_low: 40, n_high: 16, low: 0.0, high: 2.2,
+    low_thin: false, high_thin: false, lead: 2.2,
+    headline: "Die Entkopplung steigt um 2.2 Prozentpunkte, sobald die Arbeit wächst",
+    verdict: "die Entkopplung steigt mit der angesammelten Arbeit — die Grundlage trägt lange Einheiten noch nicht",
+    decoupling_good: 5.0, split_kj: 800.0, min_minutes: 45, max_intensity: 80,
+    max_vi: 1.1, min_per_group: 5, min_sessions: 8,
+    excluded_types: ["VirtualRide"],
+    dropped: { short: 61, intense: 14, variable: 11, indoor: 25, no_activity: 0,
+               no_decoupling: 22, no_work: 0 },
+    weight: { kg: 73.5, day: "2026-09-09" },
+    source: "Setzung: die 5-%-Marke ist eine Trainerfaustregel (Friel), keine Studiengrenze.",
+  };
+  /* Derselbe Bestand, nur die große Gruppe zu dünn - die Kachel darf daraus
+     KEINE Leitzahl bilden. Zwei unterscheidbare Fälle, sonst prüft der Test
+     die Dünn-Regel nur dem Namen nach. */
+  const durabilityThin = Object.assign({}, durability, {
+    n: 44, n_low: 41, n_high: 3, high: null, high_thin: true, lead: null,
+    headline: "Keine Aussage über Einheiten ab 800 kJ: nur 3 Einheiten in dieser Gruppe.",
+    verdict: "Keine Aussage über Einheiten ab 800 kJ: nur 3 Einheiten in dieser Gruppe.",
+  });
   const evidence = { rule: "Javaloyes 2019/2020, Vesterinen 2016 — HRV-gesteuerte Steuerung.",
                      limit: "Düking 2021: kleiner, nicht signifikanter Effekt auf die Spitzenleistung; dafür weniger Non-Responder (Manresa-Rocamora 2021).",
                      own_data: "Schwellen aus eigenen DFA-Messungen." };
@@ -560,7 +597,7 @@ function coach(kind) {
     return { state: states.rebound,
       layoff: { days: 7, last: "2026-09-04", phase: "wiedereinstieg",
                 note: "Bis etwa zwei Wochen Pause kostet vor allem das Plasmavolumen Leistung." },
-      anchors, durability, habit: { n: 6, median_intensity: 85, hard_share: 83 },
+      anchors, durability, durabilityThin, habit: { n: 6, median_intensity: 85, hard_share: 83 },
       hard_days_last_7: 0, trained_today: false,
       reasons: [{ weil: "Erholung nach Einbruch", quelle: "Plews", text: "Signal zum Wiedereinstieg, nicht zur Intensität." },
                 { weil: "7 Tage ohne Einheit", quelle: "Mujika/Coyle; Rückkehr nach Infekt", text: "Plasmavolumen, kein Trainingsverlust." }],

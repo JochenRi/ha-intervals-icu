@@ -9,7 +9,7 @@ const { ok, clean, contains, report } = H;
 
 const M = H.load();
 const p = new M.Panel();
-p._status = { activities: 238, wellness_days: 487, dfa_done: 56, importing: false, athlete: "Test" };
+p._status = { activities: 238, wellness_days: 487, dfa_done: 56, importing: false, decoupling_good: 5.0, athlete: "Test" };
 // Pin "today". A window that asks the wall clock makes this suite go red on
 // its own some months from now, and a test that fails for calendar reasons
 // teaches nothing about the code.
@@ -593,7 +593,14 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
     const html = p.rAkt(acts, acts[0]);
     clean(html, "einordnung");
     contains(html, "Wie diese Einheit dasteht", "einordnung");
-    contains(html, "gegen 18 eigene Einheiten", "einordnung: Vergleichsgruppe nicht benannt");
+    contains(html, "gegen deine 18 früheren Einheiten", "einordnung: Vergleichsgruppe nicht benannt");
+    contains(html, "bis mindestens 6 Vergleichswerte", "einordnung: die Weitung wird verschwiegen");
+    // Die gegriffene Stufe steht bei der Zeile, und die Dauerspanne NIE als
+    // symmetrisches ± - der Log-Caliper ist in Prozent unsymmetrisch, ein
+    // einzelnes ± wäre in einer Richtung gelogen.
+    contains(html, "0,4 SD", "einordnung: gegriffene Stufe nicht ausgewiesen");
+    contains(html, "-19 % bis +23 %", "einordnung: Dauerspanne nicht mit beiden Zahlen");
+    ok(!/±\s*\d+(,\d+)?\s*%/.test(html), "einordnung: Dauerspanne als symmetrisches ± ausgewiesen");
     // the number alone says nothing - the rider's own median must be there
     contains(html, "Median 2,10", "einordnung: eigener Median fehlt");
     contains(html, "17 Einheiten", "einordnung: Umfang der Vergleichsgruppe fehlt");
@@ -621,7 +628,12 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
     p._ctx[acts[0].id] = F.context("duenn");
     const thin = p.rAkt(acts, acts[0]);
     clean(thin, "einordnung dünn");
-    contains(thin, "zu wenig für eine Einordnung", "einordnung: Urteil trotz dünner Basis");
+    // Zwei Gründe, zwei Sätze. Der Anfangsfall heilt mit der Zeit, der andere
+    // nicht - sie dürfen nicht dieselbe Formulierung bekommen.
+    contains(thin, "zu früh in deiner Historie", "einordnung: Anfangsfall ohne eigenen Satz");
+    contains(thin, "zu wenige vergleichbare Einheiten", "einordnung: dünner Fall ohne eigenen Satz");
+    ok(thin.indexOf("zu früh in deiner Historie") !== thin.indexOf("zu wenige vergleichbare"),
+       "einordnung: die beiden Dünn-Gründe sind im Panel nicht unterscheidbar");
     ok(!thin.includes("ctxband"), "einordnung: Streuungsband ohne Datenbasis gezeichnet");
 
     p._ctx[acts[0].id] = F.context("leer");

@@ -387,12 +387,18 @@ class FakeCoordinator:
         self.client = FakeClient(rows)
         self.import_running = import_running
         self.listeners = 0
+        self.refreshed = 0
 
     def history_start(self):
         return OLDEST
 
     def async_update_listeners(self):
         self.listeners += 1
+
+    async def async_refresh(self):
+        # The calendar is not the archive: planned sessions are re-fetched on
+        # every coordinator refresh, and the button has to trigger one.
+        self.refreshed += 1
 
 
 def run(coordinator, msg=None):
@@ -404,6 +410,58 @@ def run(coordinator, msg=None):
 
 eq("Handler: der Abruf nimmt die schlanke Feldliste",
    reconcile.RECONCILE_FIELDS, ("id", "start_date_local"))
+
+
+# --- D6: der Kalender ist nicht das Archiv ------------------------------------
+# Der Dialog meldete Gleichstand über 240 archivierte Einheiten, während eine
+# in Intervals gelöschte GEPLANTE Einheit weiter im Kalender stand. Die Zahl war
+# wörtlich richtig: geplante Einheiten liegen auf dem events-Endpunkt, nie im
+# Archiv. Zwei Konsequenzen, beide hier festgenagelt.
+
+report = reconcile.plan(build_archive(), remote_rows(BASE), OLDEST, NEWEST)
+parts = ("checked_activities", "checked_unavailable", "checked_dfa")
+for key in parts:
+    check(f"D6a: {key} fehlt im Bericht", isinstance(report.get(key), int))
+eq("D6a: die Aufschlüsselung summiert sich nicht auf checked",
+   sum(report[key] for key in parts), report["checked"])
+eq("D6a: der Bericht sagt nicht, worüber er spricht", report.get("scope"), "archive")
+# Fixture-Beweis: mindestens zwei der drei Töpfe sind besetzt, sonst prüft die
+# Summe oben nur, dass eine Zahl gleich sich selbst ist.
+check("D6a: Fixture-Beweis - die Aufschlüsselung hat nur einen besetzten Topf",
+      sum(1 for key in parts if report[key] > 0) >= 2)
+
+# Gegenprobe, gezählt und benannt: fehlt einer der drei Töpfe, muss die
+# Summenprüfung fallen - und zwar als gezählter Fehler, nicht als Absturz.
+mutated = dict(report)
+mutated.pop("checked_unavailable", None)
+check("D6a Gegenprobe: eine fehlende Teilzahl bleibt unbemerkt",
+      sum(mutated.get(key, 0) for key in parts) != mutated["checked"])
+
+# D6b: der Knopf stößt den Abruf mit an, in BEIDEN Zweigen. Ohne den Refresh
+# im Gleichstandsfall passiert genau dann nichts, wenn nichts zu entfernen ist -
+# also im Fall des Befunds.
+data = build_archive()
+coordinator = FakeCoordinator(data, remote_rows(data))
+conn = run(coordinator)
+eq("D6b: Gleichstand ohne Refresh - die gelöschte Planung bleibt stehen",
+   coordinator.refreshed, 1)
+check("D6b: der Gleichstandslauf hat doch etwas entfernt", conn.results[-1].get("applied") is False)
+
+data = build_archive()
+coordinator = FakeCoordinator(data, remote_rows(data, drop={ALL_KEYS[1]}))
+conn = run(coordinator)
+ids = conn.results[-1]["removable"]
+conn = run(coordinator, {"confirm": ids})
+check("D6b: Vollzug ohne Refresh", coordinator.refreshed >= 1)
+
+# Die Grenze aus D3 bleibt: ein Refresh ist ein Lesevorgang.
+# Die Grenze bleibt: der Abgleich fasst geplante Einheiten nicht an. Geprüft
+# wird der ZUGRIFF, nicht das Wort - der Kommentar, der die Grenze erklärt,
+# enthält es selbst, und ein Wächter, der an seiner eigenen Begründung
+# scheitert, erzieht nur dazu, die Begründung wegzulassen.
+source = open(reconcile.__file__, encoding="utf-8").read()
+for pattern in ('get("events")', '["events"]', "get('events')", "['events']"):
+    check(f"D6: der Abgleich greift auf {pattern} zu", pattern not in source)
 
 # preview: reports, changes nothing, saves nothing
 data = build_archive()

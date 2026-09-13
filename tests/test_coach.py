@@ -48,7 +48,8 @@ def build(days=120, hrv=50.0, rhr=56.0, noise=True, activities=None, overrides=N
         acts[f"a{index}"] = {"id": f"a{index}", "start_date_local": day + "T09:00:00",
                              "type": "Ride", "moving_time": 4500, "icu_intensity": 62,
                              "icu_training_load": 60, "decoupling": 1.5,
-                             "average_heartrate": 140, "icu_average_watts": 135}
+                             "average_heartrate": 140, "icu_average_watts": 135,
+                             "icu_weighted_avg_watts": 138, "icu_joules": 607500}
     if activities is not None:
         acts = activities
     dfa = {key: {"hr_at_threshold": 157, "power_at_threshold": 158, "threshold_samples": 40,
@@ -180,15 +181,116 @@ check(all(w["fits_budget"] is True for w in wide), "8 budget: passende Einheit p
 free = workouts.suggest("ready", budget=None)
 check(all(w["fits_budget"] is None for w in free), "8 budget: erfundene Aussage ohne Budget")
 
-# --- 9  durability from real decoupling --------------------------------------
-dur = coach.durability(data)
-check(dur is not None and dur["n"] >= 8, "9 durability: nicht berechnet")
-check("Friel" in dur["source"], "9 durability: Quelle fehlt")
-bad = build()
-for a in bad["activities"].values():
-    a["decoupling"] = 12.0
-    a["moving_time"] = 7200
-check("noch nicht" in coach.durability(bad)["verdict"], "9 durability: hohe Entkopplung gelobt")
+# --- 9  durability: split by WORK, and no claim out of an empty group --------
+# The tile used to split at 90 minutes. On the live archive that hid the effect
+# entirely (-0.1 pp) while the work split showed it (+1.5 pp), because duration
+# is a poor stand-in for work. Everything below is about the new contract.
+
+_RIDE_DAY = [0]
+
+
+def ride(key, kj, dec, *, minutes=90, intensity=60, kind="Ride", vi=1.02, watts=120):
+    seconds = minutes * 60
+    # Dates run forward deterministically. hash() is salted per process, so a
+    # date built from it would make this file's fixture differ between runs -
+    # exactly the kind of test that fails for reasons that teach nothing.
+    _RIDE_DAY[0] += 1
+    stamp = (TODAY - timedelta(days=400 - _RIDE_DAY[0])).isoformat()
+    return {
+        "id": key, "start_date_local": stamp + "T09:00:00",
+        "type": kind, "moving_time": seconds, "icu_intensity": intensity,
+        "decoupling": dec, "average_heartrate": 140,
+        "icu_average_watts": watts, "icu_weighted_avg_watts": round(watts * vi, 1),
+        "icu_joules": kj * 1000,
+    }
+
+
+def dur_data(rows):
+    return {"wellness": {}, "activities": {r["id"]: r for r in rows}, "dfa": {}}
+
+
+SPLIT = coach.DURABILITY_SPLIT_KJ
+# Two groups, both populated, and a clear difference between them.
+both = dur_data(
+    [ride(f"lo{i}", SPLIT - 200, 1.0) for i in range(8)]
+    + [ride(f"hi{i}", SPLIT + 200, 3.0) for i in range(6)]
+)
+dur = coach.durability(both)
+check(dur is not None, "9 durability: nicht berechnet")
+eq(dur["n_low"] + dur["n_high"], dur["n"], "9 durability: Gruppen summieren sich nicht auf n")
+eq(dur["n_low"], 8, "9 durability: kleine Gruppe falsch besetzt")
+eq(dur["n_high"], 6, "9 durability: große Gruppe falsch besetzt")
+check(dur["lead"] is not None, "9 durability: keine Leitzahl trotz zweier voller Gruppen")
+# The lead must come out of the SHOWN numbers. Computing it from the unrounded
+# medians let the card print 0,9 and 0,7 beside a lead of 0,1 - the reader
+# subtracts and gets 0,2, and three numbers out of one calculation disagree.
+eq(dur["lead"], round(dur["high"] - dur["low"], 1),
+   "9 durability: Leitzahl nicht aus den angezeigten Werten gerechnet")
+check("noch nicht" in dur["verdict"], "9 durability: steigende Entkopplung gelobt")
+check("Setzung" in dur["source"] and "faustregel" in dur["source"].lower(),
+      "9 durability: die 5-%-Marke wird als Befund ausgegeben")
+
+# Every number the panel prints has to be IN the payload - there is a source
+# guard in the panel suite against a second copy of any of them.
+for key in ("decoupling_good", "split_kj", "min_minutes", "max_intensity",
+            "max_vi", "min_per_group", "min_sessions"):
+    check(dur.get(key) is not None, f"9 durability: {key} fehlt in der Payload")
+
+# The fixture proves it can tell the two cases apart: same archive, one group
+# emptied, and the outcome must differ.
+thin = dur_data(
+    [ride(f"lo{i}", SPLIT - 200, 1.0) for i in range(10)]
+    + [ride(f"hi{i}", SPLIT + 200, 3.0) for i in range(2)]
+)
+dur_thin = coach.durability(thin)
+check(dur_thin is not None, "9 durability dünn: nicht berechnet")
+eq(dur_thin["n_high"], 2, "9 durability dünn: Fixture besetzt die große Gruppe falsch")
+check(dur_thin["high_thin"], "9 durability dünn: dünne Gruppe nicht als dünn gemeldet")
+check(dur_thin["lead"] is None,
+      "9 durability dünn: Leitzahl aus einer Gruppe gebildet, die nichts trägt")
+check("Keine Aussage" in dur_thin["headline"],
+      "9 durability dünn: Überschrift behauptet etwas über die dünne Gruppe")
+check(dur["lead"] != dur_thin["lead"] and dur["headline"] != dur_thin["headline"],
+      "9 durability: Fixture-Beweis - voller und dünner Fall sind nicht unterscheidbar")
+
+# The bug this replaces: with NO session in the big group the old verdict fell
+# back to the small one and announced that the base carries long sessions.
+none_high = dur_data([ride(f"lo{i}", SPLIT - 200, 1.0) for i in range(12)])
+dur_none = coach.durability(none_high)
+eq(dur_none["n_high"], 0, "9 durability leer: Fixture hat doch eine große Einheit")
+check(dur_none["lead"] is None, "9 durability leer: Leitzahl aus einer leeren Gruppe")
+check("trägt" not in dur_none["verdict"],
+      "9 durability leer: Aussage über große Einheiten ohne eine einzige große Einheit")
+
+# What the pool may contain. Each of these three is dropped for its own reason,
+# and the reason is counted so the panel can name it.
+mixed = dur_data(
+    [ride(f"lo{i}", SPLIT - 200, 1.0) for i in range(8)]
+    + [ride(f"hi{i}", SPLIT + 200, 3.0) for i in range(6)]
+    + [ride("rolle", SPLIT + 200, 0.1, kind="VirtualRide"),
+       ride("wellig", SPLIT + 200, 0.1, vi=1.30),
+       ride("hart", SPLIT + 200, 0.1, intensity=95),
+       ride("kurz", SPLIT + 200, 0.1, minutes=20)]
+)
+dur_mixed = coach.durability(mixed)
+eq(dur_mixed["n"], dur["n"], "9 durability: aussortierte Einheiten sind doch mitgezählt")
+eq(dur_mixed["dropped"]["indoor"], 1, "9 durability: Rollenfahrt nicht aussortiert")
+eq(dur_mixed["dropped"]["variable"], 1, "9 durability: wellige Einheit nicht aussortiert")
+eq(dur_mixed["dropped"]["intense"], 1, "9 durability: Intervalleinheit nicht aussortiert")
+eq(dur_mixed["dropped"]["short"], 1, "9 durability: zu kurze Einheit nicht aussortiert")
+
+# Gegenprobe, gezählt und benannt: fällt der Arbeits-Schnitt auf die Dauer
+# zurück, muss die Gruppentrennung nachweislich eine andere werden. Ohne diesen
+# Nachweis prüft der Vertrag oben nur, dass irgendetwas geteilt wurde.
+by_duration_low = sum(1 for r in both["activities"].values() if r["moving_time"] < 90 * 60)
+check(by_duration_low != dur["n_low"],
+      "9 durability Gegenprobe: Dauer- und Arbeitsschnitt liefern dieselbe Aufteilung — "
+      "die Fixture kann den Umbau nicht belegen")
+
+# Too little history: no tile at all, rather than a tile on four sessions.
+check(coach.durability(dur_data([ride(f"x{i}", SPLIT - 200, 1.0) for i in range(4)])) is None,
+      "9 durability: Kachel aus zu wenigen Einheiten gebaut")
+
 
 # --- 10  thin and broken data must not produce confident advice --------------
 for label, payload in (("leer", {}), ("nur wellness", {"wellness": build()["wellness"]}),
@@ -401,18 +503,86 @@ mixed["activities"]["long"] = {
     "decoupling": 10.6, "average_heartrate": 142.0, "icu_average_watts": 131.0,
 }
 long_ctx = coach.session_context(mixed, "long")
-check(long_ctx["peers"] == 0 or not long_ctx["metrics"]["decoupling"]["enough"],
-      f"21 einordnung: Langfahrt gegen Kurzeinheiten verglichen ({long_ctx['peers']} Partner)")
+long_dec = long_ctx["metrics"]["decoupling"]
+check(not long_dec["enough"],
+      "21 einordnung: Langfahrt gegen Kurzeinheiten verglichen")
+# Two reasons for "no group", two sentences. This one HAS predecessors - the
+# caliper simply never fills. The other case below has none at all, and they
+# must not get the same wording: the first does not heal, the second does.
+eq(long_dec["why"], "too_few", "21 einordnung: Langfahrt als 'zu früh' abgetan")
+check("weitesten Stufe" in long_dec["say"], "21 einordnung: die erreichte Stufe fehlt im Satz")
 # a run must never be compared against rides
 mixed["activities"]["run"] = {
     "id": "run", "start_date_local": day(-1) + "T09:00", "type": "Run",
     "icu_training_load": 60.0, "icu_intensity": 62.0, "moving_time": 3600,
     "decoupling": 3.0, "average_heartrate": 140.0,
 }
-eq(coach.session_context(mixed, "run")["peers"], 0, "21 einordnung: Lauf gegen Radfahrten verglichen")
+eq(coach.session_context(mixed, "run")["earlier"], 0,
+   "21 einordnung: Lauf gegen Radfahrten verglichen")
 # only sessions BEFORE this one count - no peeking into the future
 early = coach.session_context(rides, "r2")
-check(early["peers"] <= 2, f"21 einordnung: spätere Einheiten im Vergleich ({early['peers']})")
+check(early["earlier"] <= 2, f"21 einordnung: spätere Einheiten im Vergleich ({early['earlier']})")
+early_dec = early["metrics"]["decoupling"]
+eq(early_dec["why"], "too_early", "21 einordnung: dünner Anfang als 'zu wenige vergleichbare' abgetan")
+check("zu früh" in early_dec["say"], "21 einordnung: der Anfangsfall bekommt nicht seinen eigenen Satz")
+# Fixture-Beweis: die beiden dünnen Fälle sind unterscheidbar, sonst prüfen die
+# beiden Zusicherungen oben dieselbe Sache zweimal.
+check(early_dec["why"] != long_dec["why"] and early_dec["say"] != long_dec["say"],
+      "21 einordnung: Fixture-Beweis - die beiden Dünn-Gründe sind nicht unterscheidbar")
+
+# --- 21b  the caliper: narrowest step that fills, and reciprocal -------------
+cal = coach.session_context(rides, "r39")
+dec39 = cal["metrics"]["decoupling"]
+check(dec39["enough"], "21b caliper: keine Einordnung trotz voller Historie")
+check(dec39["stage"] in cal["stages"], "21b caliper: gegriffene Stufe ist keine der Stufen")
+# The chosen step must be the NARROWEST that reaches the minimum - a wider one
+# that also works would quietly buy peers with worse matches.
+narrower = [st for st in cal["stages"] if st < dec39["stage"]]
+for step in narrower:
+    values = []
+    for key, other in rides["activities"].items():
+        if key == "r39" or str(other["start_date_local"])[:10] >= str(
+                rides["activities"]["r39"]["start_date_local"])[:10]:
+            continue
+        if abs(other["icu_intensity"] - 62.0) > step * cal["sd_intensity"]:
+            continue
+        values.append(other["decoupling"])
+    check(len(values) < cal["min_peers"],
+          f"21b caliper: engere Stufe {step} hätte gereicht, genommen wurde {dec39['stage']}")
+# Never a symmetric plus/minus on the duration - the log caliper is asymmetric
+# in percent, and a single "±" is a lie in one direction.
+check(dec39["duration_low_pct"] <= 0 <= dec39["duration_high_pct"],
+      "21b caliper: die Dauerspanne liegt nicht um die Einheit herum")
+check(abs(dec39["duration_low_pct"]) != dec39["duration_high_pct"]
+      or dec39["duration_high_pct"] == 0.0,
+      "21b caliper: Spanne symmetrisch ausgewiesen, obwohl auf dem Logarithmus gerechnet")
+
+# Reciprocity: if A is a comparison partner of B, then B is one of A. The old
+# rule measured the tolerance against the CURRENT session's duration, so it was
+# not - and nothing would have noticed.
+spread = ride_history()
+for index, act in enumerate(spread["activities"].values()):
+    act["moving_time"] = 2400 + index * 120
+    act["icu_intensity"] = 62.0
+
+
+def partner(data, left, right):
+    """True when `right` falls inside `left`'s caliper, ignoring the date."""
+    import math as _math
+    ctx_left = coach.session_context(data, left)
+    stage = ctx_left["metrics"]["decoupling"].get("stage") or ctx_left["stages"][-1]
+    a = data["activities"][left]["moving_time"] / 60
+    b = data["activities"][right]["moving_time"] / 60
+    return abs(_math.log(a) - _math.log(b)) <= stage * ctx_left["sd_log_duration"]
+
+
+pairs = [("r10", "r30"), ("r5", "r20"), ("r12", "r13")]
+for left, right in pairs:
+    check(partner(spread, left, right) == partner(spread, right, left),
+          f"21b caliper: {left}/{right} ist einseitig Vergleichspartner")
+check(any(partner(spread, a, b) for a, b in pairs),
+      "21b caliper: Fixture-Beweis - kein einziges Paar liegt im Fenster, "
+      "die Gegenseitigkeit wäre nur zufällig erfüllt")
 check(coach.session_context(rides, "nope")["available"] is False,
       "21 einordnung: unbekannte Einheit ausgewertet")
 

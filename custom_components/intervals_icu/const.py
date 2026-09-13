@@ -39,4 +39,32 @@ PANEL_COMPONENT = "intervals-icu-panel"
 PANEL_FILE = "intervals-panel.js"
 PANEL_TITLE = "Intervals"
 PANEL_ICON = "mdi:chart-timeline-variant"
-PANEL_VERSION = "0.38.0"
+PANEL_VERSION = "0.39.0"
+
+# --- thresholds shared by backend and panel -----------------------------------
+# One definition per number, here, because the panel has to show several of them
+# and a second copy in the frontend (or in a second module) is a second truth.
+# The NAMES carry the question the number answers, not the place it is used.
+
+DECOUPLING_GOOD = 5.0  # FRIEL - a coach's rule of thumb, NOT a study threshold
+
+# Which sessions the durability tile may look at.
+DURABILITY_MIN_MINUTES = 45      # below this a decoupling reading is not usable
+DURABILITY_MAX_INTENSITY = 80    # interval sessions are a different question
+DURABILITY_MAX_VI = 1.10         # variability index: only steady rides qualify
+DURABILITY_EXCLUDED_TYPES = ("VirtualRide",)  # different environment, fixed load
+
+# Where the tile splits. The AXIS (accumulated work) is what the literature
+# supports; the NUMBER is a house setting - see docs/ausbau.md F1.
+DURABILITY_SPLIT_KJ = 800.0
+
+# Three minimum counts, three different questions. Collapsing them into one
+# number would be the same error as the duplicated 5.0, only inverted.
+MIN_SESSIONS_FOR_TILE = 8          # is there enough history for the tile at all?
+MIN_SESSIONS_TO_CLAIM_GROUP = 5    # may a single group's value be asserted?
+MIN_PEERS_TO_RANK_METRIC = 6       # may one metric be placed as a percentile?
+
+# Comparison group (docs/ausbau.md C3): caliper widths as multiples of the
+# athlete's own standard deviation, widened in steps until the metric has
+# enough peers. Stops at 1.0 SD - wider is no longer a comparison group.
+PEER_CALIPER_STAGES = (0.2, 0.4, 0.6, 0.8, 1.0)

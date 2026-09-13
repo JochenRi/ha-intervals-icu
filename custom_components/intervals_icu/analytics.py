@@ -33,6 +33,13 @@ from datetime import date, datetime, timedelta
 from statistics import mean, pstdev
 from typing import Any
 
+try:  # inside the package (Home Assistant)
+    from . import derive
+    from .const import DECOUPLING_GOOD
+except ImportError:  # standalone (test suite loads this file directly)
+    import derive
+    from const import DECOUPLING_GOOD
+
 _LOGGER = logging.getLogger(__name__)
 
 # --- Form / TSB zones ---------------------------------------------------------
@@ -50,7 +57,7 @@ ACWR_LOW = 0.8
 ACWR_HIGH = 1.3
 ACWR_RISK = 1.5
 MONOTONY_WATCH = 2.0
-DECOUPLING_GOOD = 5.0
+# DECOUPLING_GOOD comes from const.py - one definition for the whole house.
 POLARIZED_LOW = 75.0
 POLARIZED_MIDDLE = 8.0
 
@@ -340,15 +347,18 @@ def dfa_distribution(data: dict[str, Any], days: int = 90) -> dict[str, Any] | N
 def decoupling_series(data: dict[str, Any], min_minutes: int = 45) -> list[dict[str, Any]]:
     """Return decoupling per steady endurance session, oldest first.
 
-    Only sessions long enough to say anything are kept; on a short or spiky
-    ride the number is noise.
+    "Steady" is now enforced instead of promised: until 0.39.0 this filtered on
+    duration alone, so a rolling group ride and a trainer session sat in the
+    same chart as a steady outdoor ride - and the durability tile, which does
+    filter, showed decoupling from a different population than the chart right
+    next to it. Both now ask derive.steady_endurance_reason().
     """
     out: list[dict[str, Any]] = []
     for activity in (data.get("activities") or {}).values():
         value = activity.get("decoupling")
         if value is None:
             continue
-        if float(activity.get("moving_time") or 0) < min_minutes * 60:
+        if derive.steady_endurance_reason(activity, min_minutes) is not None:
             continue
         out.append(
             {
