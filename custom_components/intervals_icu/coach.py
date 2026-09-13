@@ -67,6 +67,9 @@ try:  # inside the package (Home Assistant)
         MIN_SESSIONS_FOR_TILE,
         MIN_SESSIONS_TO_CLAIM_GROUP,
         PEER_CALIPER_STAGES,
+        PROGRESSION_FACTOR,
+        PROGRESSION_ROUND_MINUTES,
+        PROGRESSION_WINDOWS_DAYS,
     )
 except ImportError:  # standalone (test suite loads this file directly)
     import day_context
@@ -91,6 +94,9 @@ except ImportError:  # standalone (test suite loads this file directly)
         MIN_SESSIONS_FOR_TILE,
         MIN_SESSIONS_TO_CLAIM_GROUP,
         PEER_CALIPER_STAGES,
+        PROGRESSION_FACTOR,
+        PROGRESSION_ROUND_MINUTES,
+        PROGRESSION_WINDOWS_DAYS,
     )
 
 # --- thresholds, all of them sourced ------------------------------------------
@@ -589,19 +595,110 @@ def _season_blocks(points: list[dict[str, Any]], mark: float) -> list[dict[str, 
             "n": len(inside), "w": round(w_sum, 1),
             "max_kj": round(max(p["kj"] for p in inside)),
             "tipping_kj": None, "reason": None,
+            # What the block is WAITING for. A field of dashes that does not say
+            # when it will show something is a field one stops reading.
+            "need_w": None, "need_n": None, "slope_t": None,
         }
         fit = _weighted_line(inside)
         crossing = _tipping_kj(fit, mark) if fit else None
+        if fit is not None:
+            block["slope_t"] = round(fit["t"], 2)
         if w_sum < DURABILITY_MIN_WEIGHT_SUM_BLOCK:
             block["reason"] = "thin"
+            block["need_w"] = round(DURABILITY_MIN_WEIGHT_SUM_BLOCK - w_sum, 1)
         elif fit is None or fit["t"] < DURABILITY_MIN_SLOPE_T:
             block["reason"] = "flat"
+            if fit is not None and fit["t"] > 0:
+                block["need_n"] = max(
+                    len(inside) + 1,
+                    math.ceil(len(inside) * (DURABILITY_MIN_SLOPE_T / fit["t"]) ** 2),
+                )
         elif crossing is None or crossing > max(p["kj"] for p in inside):
             block["reason"] = "beyond"
         else:
             block["tipping_kj"] = round(crossing)
         blocks.append(block)
     return blocks
+
+
+def _archive_today(data: dict[str, Any], fallback: date) -> date:
+    """The archive's own clock, not the machine's.
+
+    `layoff()` already reads "today" off the newest wellness day, and the
+    progression window has to agree with it: two clocks in one module is the
+    same error class as two truths about one threshold. Wellness arrives daily
+    from the watch, so it keeps running when the athlete does not - which is
+    exactly what makes the 30-day window able to run empty at all.
+    """
+    days = sorted(data.get("wellness") or {})
+    if days:
+        try:
+            return date.fromisoformat(days[-1])
+        except ValueError:
+            pass
+    return fallback
+
+
+def _progression(points: list[dict[str, Any]], today: date) -> dict[str, Any] | None:
+    """The head of the tile: what is demonstrated, what is recent, what is next.
+
+    The first line is DEMONSTRATED ability, not an estimated ceiling: it is the
+    longest steady ride in the pool, with that ride's OWN average power. The
+    pool median from `_conversion_power()` must never appear here - a figure
+    borrowed from another calculation inside a line that says "demonstrated"
+    is the same mistake as the amateur yardstick in G6, one floor down.
+
+    Longest means longest BY TIME, and the tile's own axis is work, so the two
+    superlatives can point at different rides. They are labelled apart for that
+    reason. On the live archive of 13.09.2026 they happen to be the same ride -
+    which is precisely why the fixture must force them apart.
+
+    Everything here is drawn from the SAME list, so "recent <= demonstrated"
+    follows from the data structure rather than from a test standing guard.
+    """
+    if not points:
+        return None
+    longest = max(points, key=lambda p: (p["minutes"], p["kj"]))
+    demonstrated = {
+        "minutes": longest["minutes"], "watts": round(longest["watts"]) if longest["watts"] else None,
+        "kj": round(longest["kj"]), "date": longest["date"], "id": longest["id"],
+    }
+
+    recent = None
+    for days in PROGRESSION_WINDOWS_DAYS:
+        inside = (points if days is None
+                  else [p for p in points if 0 <= (today - p["day"]).days < days])
+        if not inside:
+            continue
+        best = max(inside, key=lambda p: (p["minutes"], p["kj"]))
+        recent = {
+            "minutes": best["minutes"], "watts": round(best["watts"]) if best["watts"] else None,
+            "kj": round(best["kj"]), "date": best["date"], "id": best["id"],
+            "days": days, "n": len(inside), "widened": days != PROGRESSION_WINDOWS_DAYS[0],
+        }
+        break
+    if recent is None:  # unreachable while points is non-empty - the last rung is the whole stock
+        return None
+
+    step = PROGRESSION_ROUND_MINUTES
+    # Rounded HERE, so the printed minutes are the minutes one lands on when
+    # multiplying the printed reference by the printed factor.
+    next_minutes = int(round(recent["minutes"] * PROGRESSION_FACTOR / step) * step)
+    return {
+        "demonstrated": demonstrated,
+        "recent": recent,
+        "next_minutes": next_minutes,
+        # NOT a special case: this is the rule whenever a single outlier long
+        # ride sits more than the factor above the recent best - which is most
+        # of the year for most people. On the live archive it is true today
+        # with a well-filled window (260 against 230 minutes).
+        "below_demonstrated": next_minutes < demonstrated["minutes"],
+        "factor": PROGRESSION_FACTOR,
+        "round_minutes": step,
+        "window_days": PROGRESSION_WINDOWS_DAYS[0],
+        "windows_days": [d for d in PROGRESSION_WINDOWS_DAYS if d is not None],
+        "today": today.isoformat(),
+    }
 
 
 def durability(data: dict[str, Any], min_minutes: int = DURABILITY_MIN_MINUTES) -> dict[str, Any] | None:
@@ -637,6 +734,12 @@ def durability(data: dict[str, Any], min_minutes: int = DURABILITY_MIN_MINUTES) 
         points.append({
             "kj": work / 1000.0,
             "dec": decoupling,
+            # Duration and the ride's OWN power travel with the point from here
+            # on. Both already sat in the archive; until 0.40.0 the emitted
+            # point dropped them, which is why H1 could not be drawn at all.
+            # Carrying them means the head line and the cloud come out of one
+            # list - the "same pool" assurance follows from the structure.
+            "minutes": round((activity.get("moving_time") or 0) / 60),
             "vi": derive.variability_index(activity),
             "w": derive.steady_weight(activity),
             "watts": _f(activity.get("icu_average_watts")),
@@ -716,7 +819,8 @@ def durability(data: dict[str, Any], min_minutes: int = DURABILITY_MIN_MINUTES) 
         "n_zero": sum(1 for p in points if p["w"] <= 0),
         "points": [
             {"kj": round(p["kj"]), "dec": round(p["dec"], 1), "w": round(p["w"], 2),
-             "vi": round(p["vi"], 3) if p["vi"] is not None else None, "date": p["date"], "id": p["id"]}
+             "vi": round(p["vi"], 3) if p["vi"] is not None else None, "date": p["date"], "id": p["id"],
+             "minutes": p["minutes"], "watts": round(p["watts"]) if p["watts"] else None}
             for p in points
         ],
         "max_kj": round(max_kj),
@@ -732,6 +836,11 @@ def durability(data: dict[str, Any], min_minutes: int = DURABILITY_MIN_MINUTES) 
         "bins": _bin_medians(points),
         "blocks": _season_blocks(points, DECOUPLING_GOOD),
         "headline": headline,
+        # The head (docs/ausbau.md H1/H2). It stands there from the first ride,
+        # it never disappears because the statistics do not carry, and it never
+        # comes out of a model - which is why it is computed before any of the
+        # three honesty rules above can block anything.
+        "progression": _progression(points, _archive_today(data, newest)),
         # Everything the panel prints. None of these may appear as a literal in
         # the frontend - there is a source guard against exactly that.
         "decoupling_good": DECOUPLING_GOOD,

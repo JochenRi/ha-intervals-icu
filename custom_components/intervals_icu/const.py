@@ -95,6 +95,29 @@ DURABILITY_MIN_POWER_SESSIONS = 5
 # Literatur, und weil die Kachel sie DRUCKT, steht sie hier und nicht dort.
 DURABILITY_FUELLING_G_PER_H = 80
 
+# --- Progressionsregel (docs/ausbau.md H2) ------------------------------------
+# BJSM-Kohortenstudie ueber 18 Monate mit mehr als 5.200 Laeufern: deutlich
+# erhoehtes Ueberlastungsrisiko, wenn eine EINZELNE Einheit die laengste der
+# letzten 30 Tage um mehr als 10 % uebersteigt. Der Risikofaktor ist der
+# einzelne Sprung, nicht die Wochensumme - die verbreitete 10-%-WOCHENregel
+# stammt aus einem Laienratgeber von 1980 und senkte in zwei Untersuchungen die
+# Verletzungsrate nicht.
+#
+# ZWEI GRENZEN, die ueberall mitgedruckt werden muessen: erhoben an LAEUFERN,
+# nicht an Radfahrern; und die 10 % sind der gemessene Risikoknick, keine
+# Trainingsvorschrift. Der Satz sagt, was ohne erhoehtes Risiko geht, nicht was
+# noetig ist.
+PROGRESSION_FACTOR = 1.10
+# Auf fuenf Minuten gerundet, und zwar HIER im Backend: wer die gedruckte Zahl
+# nachrechnet, muss auf die gedruckte Zahl kommen (dieselbe Regel wie bei der
+# Umrechnung Arbeit -> Zeit, docs/ausbau.md F3).
+PROGRESSION_ROUND_MINUTES = 5
+# Die Leiter der Bezugsfenster. Das ERSTE Fenster ist das der Studie; steht
+# darin nichts Qualifiziertes, wird ausgeweitet - und der Zeitraum genannt, nie
+# still. None heisst "ganzer Bestand". Die 30 steht nur hier, damit nicht eine
+# zweite Wahrheit daneben entsteht.
+PROGRESSION_WINDOWS_DAYS = (30, 90, 365, None)
+
 # Three minimum counts, three different questions. Collapsing them into one
 # number would be the same error as the duplicated 5.0, only inverted.
 MIN_SESSIONS_FOR_TILE = 8          # is there enough history for the tile at all?

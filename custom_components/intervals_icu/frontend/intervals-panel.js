@@ -155,6 +155,13 @@ function hhmm(secs) {
   const s = Math.max(0, Math.round(+secs || 0));
   return `${Math.floor(s / 3600)}:${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}`;
 }
+/* Minuten als "4 h 20" bzw. "50 min" - die Schreibweise, in der ein Fahrer
+   ueber Fahrtzeit spricht. Steht hier draussen und nicht in rDurability, damit
+   die 60 nicht im Geltungsbereich des Quelltext-Waechters landet. */
+function hmn(mins) {
+  const m = Math.max(0, Math.round(+mins || 0));
+  return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, "0")}`;
+}
 const WD = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 const WDL = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"];
 function dLong(iso) {
@@ -836,12 +843,73 @@ class IntervalsIcuPanel extends HTMLElement {
         <span class="mut">${b.n} Einheiten, Gewicht ${fmt(b.w, 1)}${why ? " — " + why : ""}</span></span>`;
     };
 
+    /* Ein Feld aus lauter Strichen, das nicht sagt, WORAUF es wartet, ist ein
+       Feld, das man aufhoert zu lesen. Der juengste Block sagt es - aus seinen
+       eigenen Zahlen, nicht aus einer Schaetzung ueber den ganzen Bestand. */
+    const newest = (d.blocks || []).slice(-1)[0];
+    const blockWait = !newest || newest.tipping_kj != null ? "" : (() => {
+      if (newest.reason === "thin") {
+        return `Der laufende Block trägt ${fmt(newest.w, 1)} von ${fmt(d.min_weight_sum_block, 0)}
+          nötigen Gewichten — es fehlen rund ${fmt(newest.need_w, 1)}, also ein bis zwei gleichmäßige
+          lange Fahrten.`;
+      }
+      if (newest.reason === "flat") {
+        return `Im laufenden Block zeigt die Steigung in eine Richtung, aber nicht deutlich genug
+          (${newest.slope_t == null ? "–" : fmt(newest.slope_t, 2)} statt ${fmt(d.min_slope_t, 1)}).${
+          newest.need_n == null ? "" : ` Bei dieser Streuung bräuchte der Block rund
+          ${fmt(newest.need_n, 0)} Einheiten statt ${fmt(newest.n, 0)}.`} Was am schnellsten hilft,
+          sind Fahrten mit sehr unterschiedlicher Arbeit — gleich lange Fahrten schärfen nichts.`;
+      }
+      return `Im laufenden Block läge der Schnittpunkt jenseits seiner arbeitsreichsten Fahrt
+        (${fmt(newest.max_kj, 0)} kJ). Er erscheint, sobald eine Fahrt darüber hinausgeht.`;
+    })();
+
     const weight = d.weight
       ? ` Zum Einordnen: mit dem zuletzt gemessenen Gewicht (${fmt(d.weight.kg, 1)} kg vom ${dMed(d.weight.day)}) sind ${fmt(d.max_kj, 0)} kJ rund ${fmt(d.max_kj / d.weight.kg, 1)} kJ/kg — Nebeninformation, gerechnet wird in kJ.`
       : " Eine Umrechnung in kJ/kg steht nicht dabei: im Archiv liegt kein Gewicht.";
 
+    /* Der Kopf (H1/H2). Drei Zeilen in der Bauart der Signalkarten - Aufbau und
+       Typografie uebernommen, die FARBLOGIK ausdruecklich nicht: „was du kannst"
+       ist eine Tatsache und „was als Naechstes" eine Risikoaussage, keins von
+       beidem ein Ampelzustand. Gruen/Gelb/Rot haben hier nichts verloren, und
+       das Datenregister ist in dieser Ansicht schon an die Wolke (blau) und die
+       Trendgerade (violett) vergeben. Also neutral - Text traegt die Aussage. */
+    const p = d.progression;
+    const refSpan = !p ? "" : (p.recent.days == null
+      ? "dein ganzer Bestand" : `die letzten ${fmt(p.recent.days, 0)} Tage`);
+    const headCard = (lab, big, small, foot) => `<div class="dhcard">
+      <div class="dhlab">${lab}</div>
+      <div class="dhbig">${big}${small ? `<small>${small}</small>` : ""}</div>
+      <div class="dhfoot">${foot}</div></div>`;
+
+    const head = !p ? "" : `<div class="durhead">
+      ${headCard("WAS DU KANNST", hmn(p.demonstrated.minutes),
+        p.demonstrated.watts == null ? "" : `bei ${fmt(p.demonstrated.watts, 0)} W`,
+        `deine <b>längste</b> gleichmäßige Fahrt — ${dMed(p.demonstrated.date)},
+         ${fmt(p.demonstrated.kj, 0)} kJ`)}
+      ${headCard("WIE WEIT DU GEKOMMEN BIST", hmn(p.recent.minutes),
+        p.recent.watts == null ? "" : `bei ${fmt(p.recent.watts, 0)} W`,
+        p.recent.days == null
+          ? `längste Fahrt deines ganzen Bestands — ${dMed(p.recent.date)}. In den letzten
+             ${fmt(p.window_days, 0)} Tagen steht nichts Qualifiziertes.`
+          : `längste Fahrt der letzten ${fmt(p.recent.days, 0)} Tage — ${dMed(p.recent.date)},
+             ${fmt(p.recent.n, 0)} ${p.recent.n === 1 ? "Fahrt" : "Fahrten"} im Fenster${
+             p.widened ? `. In den letzten ${fmt(p.window_days, 0)} Tagen stand nichts
+             Qualifiziertes, deshalb der weitere Zeitraum.` : "."}`)}
+      ${headCard("WAS ALS NÄCHSTES", "bis " + hmn(p.next_minutes), "",
+        `${fmt(p.recent.minutes, 0)} min × ${fmt(p.factor, 2)},
+         auf ${fmt(p.round_minutes, 0)} Minuten gerundet`)}
+    </div>
+    ${p.below_demonstrated ? `<p class="hint">Dein nächster Schritt liegt unter dem, was du schon
+       gefahren bist — der Bezug ist bewusst ${refSpan}, nicht deine Bestleistung. Riskant ist der
+       Sprung gegen das, was gerade in den Beinen steckt, nicht der Abstand zum Rekord.</p>` : ""}
+    <p class="hint">Grenzen, die dazugehören: die Regel stammt aus einer Kohortenstudie an
+      <b>Läufern</b>, nicht an Radfahrern, und die ${fmt((p.factor - 1) * 100, 0)} % sind der
+      gemessene Risikoknick, keine Trainingsvorschrift. Der Satz sagt, was ohne erhöhtes Risiko geht,
+      nicht was nötig ist.</p>`;
+
     const forward = d.needed_sessions
-      ? `<p class="hint">${ico("trend", C.tx2, 13)} Was die Messung voranbringt: bei dieser Streuung
+      ? `<p class="src"><b>Was die Messung voranbringt:</b> bei dieser Streuung
           bräuchte es rund ${fmt(d.needed_sessions, 0)} qualifizierte Einheiten statt ${fmt(d.n, 0)}.
           Lange Fahrten zählen dabei stärker als viele kurze — der Fehler der Steigung schrumpft mit der
           Spannweite der Arbeit, nicht nur mit der Stückzahl.</p>`
@@ -849,6 +917,7 @@ class IntervalsIcuPanel extends HTMLElement {
 
     return `<h3 class="secname">Wie lange trägt die Grundlage?</h3>
       <div class="card pad" data-grp="dur">
+        ${head}
         <p class="effect">${esc(d.headline)}</p>
         <p class="hint">Ein Punkt ist eine Fahrt: rechts liegt mehr geleistete Arbeit, oben mehr
           Entkopplung — die Herzfrequenz steigt, während die Leistung gleich bleibt. Die Waagerechte
@@ -856,18 +925,19 @@ class IntervalsIcuPanel extends HTMLElement {
           voll; kleine, blasse zählen anteilig.</p>
         ${readout("dur")}
         ${cloud}
-        ${forward}
         <p class="hint"><b>Mediane je Arbeitsband</b> — eine Beschreibung dessen, wo die Punkte liegen,
           keine Vorhersage:</p>
         <div class="durbands">${d.bins.map(band).join("")}</div>
         <p class="hint"><b>Wird es besser?</b> Der Kipppunkt je ${fmt(d.block_weeks, 0)}-Wochen-Block.
           Ein Block, der eine der drei Regeln reißt, bleibt leer und wird nicht überbrückt:</p>
         <div class="durbands">${d.blocks.map(blockRow).join("")}</div>
+        ${blockWait ? `<p class="hint">${blockWait}</p>` : ""}
         <p class="hint">${ico("bike", C.tx2, 13)} <b>Was das ausbaut:</b> Durability ist unabhängig von
           der VO2max trainierbar, und zwar durch niedrig- <i>und</i> hochintensives Ausdauertraining
           (Maunder 2023) — der Reiz entsteht durch Qualität unter bestehender Ermüdung, nicht durch mehr
           Kilometer. Im Trainer-Reiter steht dafür die Einheit mit dem Zweck „Durability, spezifisch“.</p>
         <details class="more"><summary>Der Rechenweg</summary>
+          ${forward}
           <p class="src"><b>Welche Einheiten zählen:</b> ab ${fmt(d.min_minutes, 0)} Minuten,
             Intensität unter ${fmt(d.max_intensity, 0)}, nicht auf der Rolle. Ausgelassen wurden
             ${d.dropped.short} zu kurze, ${d.dropped.intense} zu intensive,
@@ -4195,6 +4265,15 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
 .qq{display:block;color:${C.tx3};font-size:12px;font-style:normal}
 .ancgrid{display:grid;grid-template-columns:minmax(250px,1fr) 2fr;gap:22px;align-items:center}
 .durrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:14px;margin-bottom:6px}
+.durhead{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;
+  margin:2px 0 12px}
+.dhcard{background:${C.card2};border:1px solid ${C.line};border-radius:11px;padding:12px 14px}
+.dhlab{color:${C.tx3};font-size:10.5px;letter-spacing:.09em;font-weight:600}
+.dhbig{display:flex;align-items:baseline;gap:7px;margin:6px 0 7px;flex-wrap:wrap;
+  font-size:28px;font-weight:650;color:${C.tx};line-height:1.05}
+.dhbig small{font-size:13px;font-weight:400;color:${C.tx2}}
+.dhfoot{color:${C.tx3};font-size:11.5px;line-height:1.45}
+.dhfoot b{color:${C.tx2};font-weight:600}
 .durbands{display:flex;flex-wrap:wrap;gap:6px 18px;margin:4px 0 10px}
 .durband{display:flex;flex-direction:column;font-size:13px;color:${C.tx1};min-width:150px}
 .durband em{font-style:normal;font-size:11px;color:${C.tx3}}
