@@ -1070,6 +1070,26 @@ worden, wird der Bezug ausgeweitet und der Zeitraum genannt — nie still.
 Radfahrern; die 10 % sind der gemessene Risikoknick, keine Trainingsvorschrift.
 Der Satz sagt, was ohne erhöhtes Risiko geht, nicht was nötig ist.
 
+**Der Rückfall ist die REGEL, nicht der Sonderfall — korrigiert am 13.09.2026,
+gemessen.** Diese Fassung las sich, als sei „nächster Schritt liegt unter der
+Bestleistung" eine Ausnahme nach einer Pause. Am Livebestand tritt er bei **gut
+gefülltem** Fenster ein: längste Fahrt 260 min, längste der letzten 30 Tage
+208 min, Schritt 230 — und damit 30 Minuten unter dem, was schon gefahren ist.
+Er greift, sobald eine einzelne Ausreißer-Langfahrt mehr als den Faktor über dem
+nahen Bezug liegt, also für jeden, der einmal eine hatte, den größten Teil des
+Jahres. Also: **kein Sonderzweig, sondern die Regel, sobald Zeile 3 unter Zeile 1
+liegt**, mit einem eigenen Satz, der keine Ursache behauptet, die die Kachel
+nicht kennt:
+
+> Dein nächster Schritt liegt unter dem, was du schon gefahren bist — der Bezug
+> ist bewusst die letzten 30 Tage, nicht deine Bestleistung. Riskant ist der
+> Sprung gegen das, was gerade in den Beinen steckt, nicht der Abstand zum
+> Rekord.
+
+Eine frühere Fassung endete mit „Nach einer Pause baust du wieder auf." Das ist
+gestrichen: die Kachel kann nicht nachweisen, dass eine war — am Livebestand
+liegen drei qualifizierte Fahrten im Fenster.
+
 ### H3 · Der Rest wandert nach unten
 
 Punktwolke, Bänder, Blockverlauf und die Steigung mit ihrem Standardfehler
@@ -1085,6 +1105,42 @@ die Stückzahl wandert in den Rechenweg.
 - Der Progressionsfaktor liegt in const.py, einmal, und in der Payload.
 - Gegenprobe: Faktor auf 1,0 setzen — der Satz muss seine Aussage verlieren und
   der Test fallen.
+
+**Nachgetragen am 13.09.2026 aus dem Bau von 0.41.0 — vier Fallen, die hier
+fehlten.** Die ersten beiden sind am Livebestand **unsichtbar**, siehe unten.
+
+- **Längste (nach Zeit) ist nicht arbeitsreichste (nach kJ).** Die Kachel druckt
+  unten `max_kj` als „arbeitsreichste ausgewertete Fahrt"; oben steht eine Dauer.
+  Das können verschiedene Fahrten sein. Beide Superlative werden beschriftet, und
+  die Fixture **erzwingt** den Unterschied: eine lange leichte gegen eine kurze
+  arbeitsreiche Fahrt.
+- **Die Wattzahl in Zeile 1 ist die der Fahrt, nie der Pool-Median aus der
+  Umrechnung.** Eine Leihgabe aus einer anderen Rechnung in einer Zeile, die
+  „demonstriert" heißt, ist derselbe Fehler wie der Amateur-Maßstab in G6. Die
+  Fixture erzwingt eine Kopf-Wattzahl, die vom Pool-Median abweicht.
+- **Zeile 2 kann Zeile 1 nie übersteigen**, und beide stammen aus demselben
+  Prädikat. „Konstruktiv unmöglich" war in 0.39.0 auch die Annahme, bis `verdict`
+  auf die leere Gruppe zurückfiel. Über vier Bestände geprüft.
+- **Der Kopf trägt kein Urteilsregister.** Die Bauart der Signalkarten zu
+  übernehmen heißt Aufbau und Typografie zu übernehmen, nicht deren Farblogik:
+  „was du kannst" ist eine Tatsache, „was als Nächstes" eine Risikoaussage,
+  keins von beidem ein Ampelzustand. Das Datenregister ist in dieser Ansicht
+  außerdem schon an Wolke (blau) und Trendgerade (violett) vergeben — der Kopf
+  bleibt neutral, und ein Test prüft beide Register gegen den Kopfausschnitt.
+
+### H ist NICHT frontend-only — korrigiert am 13.09.2026, vor dem Bau
+
+Die Einordnung „klein, ohne neue Daten" stimmte, „ohne Backend" nicht.
+`durability()` emittierte je Punkt `{kj, dec, w, vi, date, id}` — **weder Dauer
+noch Leistung**. Beide lagen im Archiv (`moving_time`, `icu_average_watts`), und
+`durability()` las die Leistung intern sogar schon, warf sie beim Emittieren aber
+weg. „3 h 10 bei 128 W" war aus der Payload von 0.40.0 nicht darstellbar.
+
+Das ist wörtlich Muster 1 aus „Was Paket A über diese Spezifikation gelehrt hat":
+vor dem ersten Handgriff nachsehen, welche Felder überhaupt existieren. Der
+Umbau hat einen Nebennutzen, der eine Zusicherung ersetzt: Kopf und Punktwolke
+kommen jetzt aus **einer** Liste, „gleicher Pool" folgt damit aus der
+Datenstruktur statt aus einem Test, der danebensteht.
 
 ---
 

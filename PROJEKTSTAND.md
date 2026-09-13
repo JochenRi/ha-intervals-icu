@@ -1,13 +1,13 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 13.09.2026 · **Version:** 0.40.0 · **Status:** produktiv auf HEIMDALL,
+**Stand:** 13.09.2026 · **Version:** 0.41.0 · **Status:** produktiv auf HEIMDALL,
 Auslieferung über HACS aus `github.com/JochenRi/ha-intervals-icu`
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lokal
 archiviert, auswertet und in einem eigenen Seitenleisten-Panel darstellt.
 
 **Umfang:** ~10.870 Zeilen, davon ~4.020 Frontend · 24 WebSocket-Befehle · 15 Einheiten in
-8 Familien · 15 Testdateien mit **3.421** gezählten Einzelprüfungen · 41 Releases.
+8 Familien · 15 Testdateien mit **3.538** gezählten Einzelprüfungen · 42 Releases.
 
 ---
 
@@ -191,6 +191,69 @@ Recherche:
 ---
 
 ## 7. Fehler und was sie gelehrt haben
+
+**0.41.0 — was der Bau von Paket H zutage gefördert hat:**
+
+1. **Die Ausweitung des Bezugsfensters wäre STILL passiert.** Im Panel stand
+   `p.widened` statt `p.recent.widened` — das Feld liegt eine Ebene tiefer, der
+   Ausdruck war damit immer `undefined`, also immer falsch. Ausgerechnet H2
+   schreibt vor: „wird der Bezug ausgeweitet und der Zeitraum genannt — **nie
+   still**." Gefunden von einer der neuen Gegenproben, nicht von Hand.
+   **Und das Gefährliche daran ist nicht, dass der Fall selten ist, sondern
+   dass er selten ist:** aufgefallen wäre er erst nach 30 Tagen ohne
+   qualifizierte Fahrt — also genau dann, wenn der Athlet lange nicht gefahren
+   ist und den Satz zum ersten Mal wirklich liest. Ein Fehler, der nur im
+   seltenen Fall zuschlägt, ist schlimmer als einer, der immer zuschlägt: der
+   zweite wird sofort gemeldet.
+
+2. **Zwei verschiedene Fehler wären am eigenen Livebestand beide unsichtbar
+   geblieben — die Zufalls-Lehre in ihrer schärfsten Form.** Der Kopf der Kachel
+   nennt die *längste* Fahrt (nach Zeit) mit *deren eigener* Leistung. Am Archiv
+   vom 13.09.2026 gilt zufällig beides:
+
+   | Größe | Wert | Womit sie zusammenfällt |
+   |---|---|---|
+   | längste Fahrt nach Zeit | 260 min, 08.08.2026 | ist **dieselbe Fahrt** wie die arbeitsreichste (2.153 kJ) |
+   | Leistung dieser Fahrt | 136 W | ist **genau** der Pool-Median aus `_conversion_power()` (136 W) |
+
+   Wer im Kopf versehentlich nach Arbeit sortiert oder versehentlich den
+   Pool-Median druckt, bekommt an diesen Daten **dieselbe Ausgabe**. Eine aus dem
+   Livebestand abgeleitete Fixture hätte keinen der beiden Fehler finden können.
+   **Die Regel:** an einem Bestand, in dem zwei Größen zufällig zusammenfallen,
+   prüft kein Test die Unterscheidung — wer eine Fixture aus Livedaten ableitet,
+   muss die Größen, die auseinandergehalten werden sollen, **absichtlich
+   auseinanderziehen**. Das ist Muster 2 aus Paket A („eine Prüfung ist erst eine
+   Prüfung, wenn die Fixture die Fälle unterscheidbar macht"), zweimal in einer
+   einzigen Kachel. Beide Fälle liegen jetzt erzwungen in der Fixture: eine lange
+   leichte gegen eine kurze arbeitsreiche Fahrt, und eine Kopf-Wattzahl abseits
+   des Pool-Medians.
+
+3. **Neue Tests stürzen ab, statt zu zählen — zum dritten Mal, also ein Muster
+   und keine Panne.** Zwei der elf Gegenproben (Dauer/Leistung aus der Payload
+   entfernt; Kopfbereich ganz entfernt) brachten den Prüfstand mit `KeyError`
+   bzw. einem `null`-Regex-Treffer zum Absturz. Ein abgestürzter Test überspringt
+   alles Folgende und meldet am Ende „0 Fehler" — dieselbe Klasse wie der
+   Zählfehler aus 0.35.0 und die nicht beißende Gegenprobe aus 0.38.0.
+   **Zwei Bauregeln daraus, ab sofort für jeden neuen Test:**
+   - **Feldzugriffe im Testcode gehen über `.get()` / `?.`, nie über `[]`** —
+     ein fehlendes Feld ist genau das, was die Mutation herstellt, und es muss
+     als gezählter, benannter Fehler erscheinen.
+   - **Jeder Regex-Treffer wird auf `null` geprüft, bevor auf `[0]` zugegriffen
+     wird**, und das Fehlen bekommt eine eigene benannte Prüfung.
+
+   Beide Tests wurden danach nachgeschärft und die Mutationen wiederholt: 24
+   bzw. 17 gezählte, benannte Fehler.
+
+4. **Die eigene Erklärung hätte den eigenen Wächter gerissen.** Der Text zu den
+   Grenzen der Progressionsregel soll „die 10 % sind der gemessene Risikoknick"
+   sagen, und der Rundungsschritt „auf fünf Minuten". Beides sind Literale im
+   Frontend, also genau das, was der F-Wächter verbietet. Der richtige Zug ist
+   nicht, den Wächter zu umgehen, sondern die Zahlen dorthin zu schaffen, wo sie
+   hingehören: der Prozentsatz wird als `(Faktor − 1) × 100` aus der Payload
+   gerechnet, der Rundungsschritt kommt aus `const.py`, und gerundet wird im
+   Backend. Der Wächter wurde dabei um vier Muster erweitert — eines davon
+   (`\b30\b`) war zunächst zu stumpf und traf den unbeteiligten Satz „die letzten
+   30–60 min" aus G5: **ein Wächter muss die Klasse treffen, nicht die Ziffer.**
 
 **0.40.0 — was der Bau von Paket G zutage gefördert hat:**
 
@@ -451,7 +514,7 @@ den Non-Responder-Befund (Manresa-Rocamora 2021).
 
 ## 9. Prüfstand
 
-**Fünfzehn Dateien, 3.421 gezählte Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
+**Fünfzehn Dateien, 3.538 gezählte Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
 HA-Instanz oder einen Browser.
 
 | Datei | prüft | Umfang |
@@ -462,14 +525,14 @@ HA-Instanz oder einen Browser.
 | `test_analytics.py` | Trainingsmetriken gegen bekannte Ergebnisse, Ebene-3-Wächter (Last kennt keine Etiketten, Quelltext und Verhalten) | 90 |
 | `test_setup_simulation.py` | Entity-Aufbau, Übersetzungen, unique_ids | 22 |
 | `test_laps.py` | Runden-Normalisierung | 34 |
-| `test_coach.py` | Zustandsregeln, Trigger-Schärfung, Infektverlauf, Nachtreaktion, Einordnung, Bereiche, benannter 42-Tage-Verlauf, Basislinien-Primitive mit AST-Wächter, eingefrorene No-op-Referenz, gewichtete Basislinie mit Fixture-Beweis, **Durability: die drei Ehrlichkeitsregeln einzeln, Gewichtungs- und Umrechnungs-Gegenprobe, Blockverlauf** | 333 |
+| `test_coach.py` | Zustandsregeln, Trigger-Schärfung, Infektverlauf, Nachtreaktion, Einordnung, Bereiche, benannter 42-Tage-Verlauf, Basislinien-Primitive mit AST-Wächter, eingefrorene No-op-Referenz, gewichtete Basislinie mit Fixture-Beweis, **Durability: die drei Ehrlichkeitsregeln einzeln, Gewichtungs- und Umrechnungs-Gegenprobe, Blockverlauf; der Kopf: belegte Dauer am gesperrten Fall, längste ≠ arbeitsreichste und Fahrt-Watt ≠ Pool-Median je erzwungen, Fensterausweitung mit Gegenfall, Progressionsfaktor mit 1,0-Gegenprobe** | 398 |
 | `test_plan.py` | Zielprofil, Wochenmuster, Zeitbudget, Progressions- und Kalender-Anker-Vertrag, Profil-Migration | 405 |
 | `test_workouts.py` | Einheitenauswahl, HF-Klemme, Infektleiter, Wattumrechnung, Intervals-Syntax | 575 |
 | `test_websocket_registration.py` | Registrierung, Dekoratoren, FTP-Quelle, eine Ankerregel, day_context-Lese/Schreibweg, Ampel-Herkunftsnotiz | 180 |
 | `test_reconcile.py` | Abgleich mit Intervals: die drei Sperren einzeln, die datumslosen Aufräumstellen, No-op ohne Speichervorgang, der Handler am echten Aufruf (Import läuft, Historie nie geholt, Zwischenstand) | 129 |
 | `test_suite_hygiene.py` | der Prüfstand prüft sich selbst: **genau eine** Summary je Datei, die etwas zählt, nichts Gezähltes dahinter, Fehler werden gedruckt | 66 |
-| `test_panel_views.js` | alle Ansichten gegen volle, leere, löchrige, entartete Daten; Zeitfenster, Brushing, Achsenregel; Tagesbeschriftung und Abgleich-Dialog mit Schreibweg und Scroll-Erhalt; **die Durability-Wolke: Gewicht als Größe und Deckkraft, Gerade nur bei gesicherter Steigung, Register getrennt** | 1014 |
-| `test_panel_fixes.js` | je ein Nachweis pro behobenem Fehler, plus die Zeiger-Simulation; Quelltext-Wächter über das ganze Frontend, beidseitig (keine Zahl im Quelltext, jede Schwelle nachweislich aus der Payload) | 256 |
+| `test_panel_views.js` | alle Ansichten gegen volle, leere, löchrige, entartete Daten; Zeitfenster, Brushing, Achsenregel; Tagesbeschriftung und Abgleich-Dialog mit Schreibweg und Scroll-Erhalt; **die Durability-Wolke: Gewicht als Größe und Deckkraft, Gerade nur bei gesicherter Steigung, Register getrennt; der Kopf: drei Zeilen, weder Urteils- noch Datenregister, Rückfall-Satz und Ausweitungshinweis je mit Gegenfall** | 1057 |
+| `test_panel_fixes.js` | je ein Nachweis pro behobenem Fehler, plus die Zeiger-Simulation; Quelltext-Wächter über das ganze Frontend, beidseitig (keine Zahl im Quelltext, jede Schwelle nachweislich aus der Payload), seit 0.41.0 auch über Progressionsfaktor, Risikoknick, Rundungsschritt und Bezugsfenster | 265 |
 | `test_panel_design.js` | Gestaltungsregeln als Zusicherung, Auswahl als Form, Achse im Aufklappen, Etiketten im Kategorienregister; **eingefrorene `chart()`-Referenz aus dem Stand vor dem Eingriff** und der Zeiger-Unverändert-Beweis über vier Ansichten | 187 |
 
 **Das Prinzip:** Ein Test, der den alten Fehler nicht nachweislich findet, ist kein Test. Bei
@@ -478,6 +541,12 @@ und zwar **gezählt und benannt**: ein Test, der bei der Mutation abstürzt, üb
 Folgende und meldet am Ende „0 Fehler".
 Diese Gegenproben haben mehrfach gezeigt, dass ein Test *nicht* scharf war — dann wurde er
 geschärft, nicht der Code gelobt.
+
+**Zwei Bauregeln für neue Tests, aus 0.41.0 (§7 Punkt 3):** Feldzugriffe im Testcode gehen über
+`.get()` / `?.`, nie über `[]` — ein fehlendes Feld ist genau das, was eine Mutation herstellt.
+Und jeder Regex-Treffer wird auf `null` geprüft, bevor auf `[0]` zugegriffen wird, mit einer
+eigenen benannten Prüfung für das Fehlen. Ohne beides stürzt der Test bei der Mutation ab, statt
+sie zu zählen.
 
 ---
 
@@ -588,6 +657,7 @@ bzw. ein Reiter je Chat.
 | **Vergleichsgruppe (Paket C)** | ✅ SD-Caliper auf der log-Dauer als **0.39.0 gebaut**, Leiter 0,2–1,0 SD, Weitung gegen das Kennzahl-n — Verifikation am System steht aus |
 | **Durability-Kachel (Paket F)** | ✅ Arbeitsachse statt Dauer, VirtualRide raus, VI ≤ 1,10, Leitzahl mit Dünn-Regel als **0.39.0 gebaut** — Verifikation am System steht aus |
 | **Durability-Kachel (Paket G)** | ✅ auditiert 13.09. **an den eigenen Livedaten, vor dem Bau**: die Zweiteilung beantwortet die Überschrift nicht, und die in G2 geforderte Leitzahl trägt auf diesem Bestand nicht (Steigung +2,95 ± 2,22 %/1.000 kJ, |t| 1,33; Kipppunkt 2.398 kJ jenseits der längsten Fahrt von 2.153 kJ; keine Krümmung nachweisbar). Punktwolke über der Arbeit, VI als Gewicht statt als Türsteher, gebinnte Mediane, Blockverlauf über 12 Wochen — als **0.40.0 gebaut**; die Kachel verweigert die Leitzahl und sagt, woran es liegt. Verifikation am System steht aus |
+| **Durability-Kachel (Paket H)** | ✅ gebaut als **0.41.0**. Kopfbereich aus drei Zeilen: belegte Fähigkeit (längste gleichmäßige Fahrt nach ZEIT, mit der Leistung dieser Fahrt), Bezug der letzten 30 Tage mit sichtbarer Ausweitung, nächster Schritt ×1,10 auf fünf Minuten gerundet. Die Spezifikation wurde vor dem Bau an drei Stellen korrigiert: H war **nicht** frontend-only (Dauer und Leistung fehlten in der Payload), der Rückfall ist die **Regel** statt einer Ausnahme (am Livebestand 230 gegen 260 min bei gefülltem Fenster), und vier Fallen fehlten. Verifikation am System steht aus |
 | **Konstanten-Dubletten (DFA/ACWR) + toter ring()/rd-Code** | ⬜ eigenes Paket, vom Wächter bei 2+2 eingefroren (docs/ausbau.md) |
 | Heute, Kalender (voller Audit), Fitness, Aktivitäten | offen |
 
