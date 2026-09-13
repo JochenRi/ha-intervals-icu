@@ -128,3 +128,16 @@ MIN_PEERS_TO_RANK_METRIC = 6       # may one metric be placed as a percentile?
 # athlete's own standard deviation, widened in steps until the metric has
 # enough peers. Stops at 1.0 SD - wider is no longer a comparison group.
 PEER_CALIPER_STAGES = (0.2, 0.4, 0.6, 0.8, 1.0)
+
+# --- Paket I: "Erholung war da" ------------------------------------------------
+# Die Reiz-Stufe (funktionelles Ueberreichen) braucht die Aussage, dass die
+# letzten Tage Erholung geboten haben. Ohne festgezurrte Regel entstuende sie
+# als ZWEITE Zustandsregel durch die Hintertuer - deshalb steht sie einmal hier
+# und einmal in coach.recovery_offered(), sonst nirgends.
+#
+# GRENZE, die ueberall mitgedruckt werden muss: diese Zahlen sind GEWAEHLT,
+# nicht gemessen - dieselbe Ehrlichkeit wie bei der Zielwahl je Ampelfarbe im
+# Lastbudget. Die Bestandteile (Zustand, harte Tage, Tageslast) sind belegt,
+# ihre Kombination zu genau dieser Schwelle ist eine Setzung.
+RECOVERY_QUIET_DAYS = 2        # wie viele Tage "ruhig" gewesen sein muessen
+RECOVERY_MAX_HARD_DAYS_7 = 0   # harte Tage in den letzten sieben, die erlaubt sind

@@ -436,6 +436,159 @@ FIT_REASON = {
 }
 
 
+# --- the four grades (docs/ausbau.md I3, I5) -----------------------------------
+# ONE place decides the grade, for BOTH views. Until 0.41.0 the trainer tab
+# combined state and budget in the FRONTEND (`fit === "ok" && fits_budget ===
+# false` -> amber) while the backend handed over the two halves separately.
+# Putting the four grades in the backend and leaving that in place would have
+# been two rules in the house - error class 3, the one thing this package rules
+# out. So: decided here, carried in the payload, read by the panel.
+#
+# The grades are a JUDGEMENT register, four words, four shapes, four tones.
+# They never mix with the category register (sport, purpose, label).
+STAGES: dict[str, dict[str, str]] = {
+    "green": {
+        "label": "grün",
+        "word": "passt",
+        "detail": "Zustand unauffällig, die Last passt ins Budget.",
+    },
+    "yellow": {
+        "label": "gelb",
+        "word": "geht, kostet aber",
+        "detail": "Der Zustand trägt nur bedingt. Die Einheit ist möglich, sie kostet heute "
+                  "mehr als sonst.",
+    },
+    "stimulus": {
+        "label": "Reiz",
+        "word": "kostet Erholung, setzt aber den Reiz",
+        "detail": "Über dem Lastbudget, aber der Zustand trägt und die letzten Tage boten "
+                  "Erholung. Das ist funktionelles Überreichen: ein kurzer gewollter "
+                  "Einbruch, der nach Erholung in Superkompensation mündet.",
+    },
+    "red": {
+        "label": "rot",
+        "word": "heute nicht",
+        "detail": "Zustand oder Budget sprechen dagegen.",
+    },
+}
+
+# The one place the objection to the stimulus grade is written down. It travels
+# with every stimulus verdict - "dosiert dazu" is the statement, not "je öfter,
+# desto besser".
+STIMULUS_EVIDENCE = (
+    "Funktionelles Überreichen, Konsenspapier Meeusen 2013 (ECSS/ACSM): ein kurzer "
+    "gewollter Einbruch mündet nach Erholung in Superkompensation. Die Grenze gehört "
+    "dazu — neuere Arbeiten finden bei überreichten Athleten teils SCHWÄCHERE "
+    "Anpassungen. Dosiert dazu, nicht je öfter desto besser."
+)
+
+BLOCKED_BY = {
+    "state": "der Zustand",
+    "budget": "das Lastbudget",
+    "both": "Zustand und Lastbudget",
+}
+
+
+def fit_for(family_key: str, state: str, intensity: float,
+            hard_days_last_7: int = 0, layoff_days: int | None = None,
+            infection: bool = False) -> tuple[str, str]:
+    """What the STATE says about a family today - one rule, both views.
+
+    Pulled out of `suggest()` in 0.42.0 so the week view can ask the same
+    question about a planned session without restating the modifiers. Two
+    copies of this ladder would have been the second state rule the package
+    forbids; the grade in `stage()` sits on top of the answer given here.
+    """
+    fits = FIT_BY_STATE.get(state, FIT_BY_STATE["unknown"])
+    verdict = fits.get(family_key, "maybe")
+    # a second hard day inside the week downgrades, it does not hide
+    if verdict == "ok" and intensity >= 80 and hard_days_last_7 >= 2:
+        verdict = "maybe"
+        reason = ("Zwei harte Tage liegen schon in dieser Woche. Zwei sind der Standard "
+                  "für Wochen dieser Größe; ein dritter ist die Ausnahme, nicht die Regel.")
+    else:
+        reason = "" if verdict == "ok" else FIT_REASON.get(state, "")
+    # after a real break the base ride stays on the table, judged - the
+    # graded return is the better first step, not the only visible one
+    if family_key == "endurance" and layoff_days and layoff_days >= 7 and verdict == "ok":
+        verdict = "maybe"
+        reason = (f"{layoff_days} Tage ohne Einheit — der abgestufte Wiedereinstieg ist "
+                  "der bessere erste Schritt. Grundlage bleibt möglich, nur nicht als Sprung.")
+    # infection pattern: the way back is a ladder of easy sessions, and the
+    # next rung only without returning symptoms (return-to-sport practice,
+    # a convention - marked as such, not a study rule)
+    if infection and state in ("recovering", "rebound") and family_key not in ("recovery", "return"):
+        if family_key == "endurance":
+            if verdict == "ok":
+                verdict = "maybe"
+                reason = ("Infektmuster in den Signalen: erst mehrere lockere Einheiten "
+                          "ohne Symptomrückkehr, dann die nächste Stufe "
+                          "(Return-to-Sport-Praxis, eine Konvention).")
+        else:
+            # also for families the state already blocks: under the infection
+            # pattern the ladder IS the reason, not the state
+            verdict = "no"
+            reason = ("Infektmuster in den Signalen: der Weg zurück ist eine Leiter über "
+                      "mehrere lockere Einheiten — Intensität erst, wenn Stufen ohne "
+                      "Symptomrückkehr gehalten wurden (Return-to-Sport-Praxis, eine "
+                      "Konvention).")
+    return verdict, reason
+
+
+def session_load(entry: dict[str, Any], hours: float | None = None) -> int:
+    """The load of a session AS PLANNED, not as catalogued.
+
+    The plan calls the big day "5.0 h" and hands over `z2_210_late` - 210
+    minutes, load 175. Judging the five-hour ride by the catalogue entry
+    measures a three-and-a-half-hour ride instead, and does so at exactly the
+    session the long-ride goal is about: systematically too green.
+
+    At constant intensity load scales linearly with duration (load is an
+    intensity-squared times hours quantity, and the intensity of the template
+    does not change when the ride gets longer), so the catalogue load is
+    stretched by the ratio of the hours. Without hours the catalogue entry IS
+    the session and stands unchanged.
+    """
+    base = float(entry.get("load") or 0)
+    minutes = float(entry.get("minutes") or 0)
+    if not hours or minutes <= 0:
+        return round(base)
+    return round(base * (float(hours) * 60.0) / minutes)
+
+
+def stage(fit: str, fits_budget: bool | None, recovery: bool = False) -> dict[str, Any]:
+    """The one rule that turns state + budget into one of four grades.
+
+    Total over its inputs, and deliberately small: every caller - the session
+    list for today, the current week of the plan - asks THIS function and
+    prints what it gets back. A threshold in the frontend would be the second
+    rule the package forbids.
+
+    `fits_budget` may be None: below 28 days of history there is no budget at
+    all. An unknown budget blocks nothing - and it cannot be exceeded either,
+    so the stimulus grade needs a budget that actually exists.
+    """
+    over_budget = fits_budget is False
+    if fit == "no":
+        key, blocked = "red", "both" if over_budget else "state"
+    elif over_budget:
+        if fit == "ok" and recovery:
+            key, blocked = "stimulus", None
+        else:
+            key, blocked = "red", "budget" if fit == "ok" else "both"
+    elif fit == "maybe":
+        key, blocked = "yellow", None
+    else:
+        key, blocked = "green", None
+
+    out = {"key": key, "blocked_by": blocked, **STAGES[key]}
+    if blocked:
+        out["detail"] = f"{BLOCKED_BY[blocked].capitalize()} verbiete{'n' if blocked == 'both' else 't'} es heute."
+    if key == "stimulus":
+        out["evidence"] = STIMULUS_EVIDENCE
+    return out
+
+
 def _variant(keys: list[str], state: str, ftp: float | None, budget: float | None,
              hard_days_last_7: int) -> str:
     """Pick the variant of a family that fits this athlete today.
@@ -459,7 +612,8 @@ def suggest(state: str, ftp: float | None = None, aerobic_hr: int | None = None,
             max_hr: float | None = None, infection: bool = False,
             budget: float | None = None, hard_days_last_7: int = 0,
             layoff_days: int | None = None, limit: int = 8,
-            goal: str | None = None) -> list[dict[str, Any]]:
+            goal: str | None = None,
+            recovery_offered: bool = False) -> list[dict[str, Any]]:
     """One session per family, each judged for today - never filtered away.
 
     The earlier version filtered: in a rebound state everything hard vanished
@@ -467,7 +621,6 @@ def suggest(state: str, ftp: float | None = None, aerobic_hr: int | None = None,
     kind of session visible and attaches the verdict to it, because the
     decision is the athlete's; the data's job is to say what it costs.
     """
-    fits = FIT_BY_STATE.get(state, FIT_BY_STATE["unknown"])
     order = {
         "long_ride": ["long", "endurance", "sweetspot", "tempo", "threshold", "vo2max", "recovery", "return"],
         "ftp": ["threshold", "sweetspot", "endurance", "vo2max", "tempo", "long", "recovery", "return"],
@@ -489,48 +642,84 @@ def suggest(state: str, ftp: float | None = None, aerobic_hr: int | None = None,
 
         key = _variant(keys, state, ftp, budget, hard_days_last_7)
         entry = dict(scaled(BY_KEY[key], ftp, aerobic_hr, max_hr))
-        verdict = fits.get(family_key, "maybe")
-        # a second hard day inside the week downgrades, it does not hide
-        if verdict == "ok" and entry["intensity"] >= 80 and hard_days_last_7 >= 2:
-            verdict = "maybe"
-            reason = ("Zwei harte Tage liegen schon in dieser Woche. Zwei sind der Standard "
-                      "für Wochen dieser Größe; ein dritter ist die Ausnahme, nicht die Regel.")
-        else:
-            reason = "" if verdict == "ok" else FIT_REASON.get(state, "")
-        # after a real break the base ride stays on the table, judged - the
-        # graded return is the better first step, not the only visible one
-        if family_key == "endurance" and layoff_days and layoff_days >= 7 and verdict == "ok":
-            verdict = "maybe"
-            reason = (f"{layoff_days} Tage ohne Einheit — der abgestufte Wiedereinstieg ist "
-                      "der bessere erste Schritt. Grundlage bleibt möglich, nur nicht als Sprung.")
-        # infection pattern: the way back is a ladder of easy sessions, and the
-        # next rung only without returning symptoms (return-to-sport practice,
-        # a convention - marked as such, not a study rule)
-        if infection and state in ("recovering", "rebound") and family_key not in ("recovery", "return"):
-            if family_key == "endurance":
-                if verdict == "ok":
-                    verdict = "maybe"
-                    reason = ("Infektmuster in den Signalen: erst mehrere lockere Einheiten "
-                              "ohne Symptomrückkehr, dann die nächste Stufe "
-                              "(Return-to-Sport-Praxis, eine Konvention).")
-            else:
-                # also for families the state already blocks: under the
-                # infection pattern the ladder IS the reason, not the state
-                verdict = "no"
-                reason = ("Infektmuster in den Signalen: der Weg zurück ist eine Leiter über "
-                          "mehrere lockere Einheiten — Intensität erst, wenn Stufen ohne "
-                          "Symptomrückkehr gehalten wurden (Return-to-Sport-Praxis, eine "
-                          "Konvention).")
+        verdict, reason = fit_for(
+            family_key, state, entry["intensity"],
+            hard_days_last_7=hard_days_last_7, layoff_days=layoff_days,
+            infection=infection,
+        )
+        fits_budget = None if budget is None else entry["load"] <= budget
         entry.update({
             "family": family_key, "family_label": family_label,
             "fit": verdict, "fit_reason": reason,
-            "fits_budget": None if budget is None else entry["load"] <= budget,
+            "fits_budget": fits_budget,
+            # the grade the panel prints - decided HERE, never in the frontend
+            "stage": stage(verdict, fits_budget, recovery_offered),
             "alternatives": [{"key": k, "title": BY_KEY[k]["title"], "load": BY_KEY[k]["load"]}
                              for k in keys if k != key],
         })
         out.append(entry)
         if len(out) >= limit:
             break
+    return out
+
+
+FAMILY_OF_KEY: dict[str, str] = {
+    key: family for family, _label, keys in FAMILIES for key in keys
+}
+
+NO_VERDICT_NOTE = (
+    "Bewertet wird erst in der Woche selbst. Das Lastbudget rechnet aus den letzten "
+    "sechs Tagen, der Zustand aus den Werten von heute — Budget und Zustand von "
+    "übernächstem Donnerstag kennt niemand, auch dieses Panel nicht."
+)
+
+
+def rate_sessions(sessions: list[dict[str, Any]], state: str,
+                  budget: float | None = None, recovery_offered: bool = False,
+                  hard_days_last_7: int = 0, layoff_days: int | None = None,
+                  infection: bool = False) -> list[dict[str, Any]]:
+    """Grade the planned sessions of the CURRENT week - a view, not a planner.
+
+    Every session the plan produced carries a `workout` key into the catalogue.
+    From there: the family for the state rule (`fit_for`), the catalogue entry
+    for the intensity, and `session_load` for the load AS PLANNED. Nothing here
+    decides what to ride - `plan.py` did that - and nothing here restates a
+    rule: state comes from `fit_for`, the grade from `stage`.
+
+    Only the current week is graded. A grade on a session five weeks out would
+    be a forecast the system cannot check, which is the same objection that
+    keeps the panel from asking about coming days (docs/ausbau.md I3, I4).
+    """
+    out: list[dict[str, Any]] = []
+    for session in sessions or []:
+        rated = dict(session)
+        entry = BY_KEY.get(str(session.get("workout") or ""))
+        family = FAMILY_OF_KEY.get(str(session.get("workout") or ""))
+        if not entry or not family:
+            # an unknown key gets no invented verdict - it gets none at all
+            out.append(rated)
+            continue
+        load = session_load(entry, session.get("hours"))
+        verdict, reason = fit_for(
+            family, state, entry.get("intensity") or 0,
+            hard_days_last_7=hard_days_last_7, layoff_days=layoff_days,
+            infection=infection,
+        )
+        fits_budget = None if budget is None else load <= budget
+        rated.update({
+            "family": family,
+            "load": load,
+            "catalogue_load": entry.get("load"),
+            "catalogue_minutes": entry.get("minutes"),
+            "fit": verdict,
+            "fit_reason": reason,
+            "fits_budget": fits_budget,
+            "budget": None if budget is None else round(budget),
+            "stage": stage(verdict, fits_budget, recovery_offered),
+            "purpose": entry.get("purpose"),
+            "effect": entry.get("effect"),
+        })
+        out.append(rated)
     return out
 
 

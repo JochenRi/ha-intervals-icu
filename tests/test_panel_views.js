@@ -273,6 +273,7 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   // forbids
   const flipped = F.workouts();
   flipped.workouts[0] = { ...flipped.workouts[0], fit: "no",
+                          stage: F.stageOf("no", true, false),
                           fit_reason: "Heute nicht, der Einbruch ist akut." };
   p._workouts = flipped;
   const moved = p.rTrainer(F.coach("ready"), F.readiness());
@@ -305,7 +306,7 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   clean(rebound, "einheiten rebound");
   for (const family of families) contains(rebound, family, `einheiten rebound: ${family} verschwunden`);
   contains(rebound, "heute nicht", "einheiten rebound: kein abratendes Urteil");
-  contains(rebound, "möglich, kostet aber", "einheiten rebound: keine Zwischenstufe");
+  contains(rebound, F.STAGE_WORDS.yellow.word, "einheiten rebound: keine Zwischenstufe");
   contains(rebound, "tragen noch keinen harten Reiz", "einheiten rebound: Urteil ohne Begründung");
   ok((rebound.match(/class="wocard/g) || []).length === 6,
      "einheiten rebound: Auswahl wurde gefiltert statt bewertet");

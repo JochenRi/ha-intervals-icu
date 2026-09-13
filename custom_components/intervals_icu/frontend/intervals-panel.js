@@ -32,8 +32,10 @@ const C = {
   bg: "#0f151c", card: "#171f29", card2: "#1d2733", line: "#2a3644",
   tx: "#e8eef5", tx2: "#a6b4c4", tx3: "#6e8093",
 
-  // state register
-  green: "#34d399", amber: "#fbbf24", red: "#f87171", grey: "#6e8093",
+  // state register - four grades since 0.42.0 (docs/ausbau.md I6). Orange sits
+  // in NEITHER list below: four grades need a fourth tone of their own, not a
+  // shade of amber, and borrowing a category tone would mix the registers.
+  green: "#34d399", amber: "#fbbf24", orange: "#fb923c", red: "#f87171", grey: "#6e8093",
 
   // data register
   blue: "#60a5fa", violet: "#a78bfa", cyan: "#22d3ee",
@@ -57,6 +59,12 @@ const IC = {
   warn: '<path d="M12 4l9 16H3z"/><path d="M12 10v4.5"/><circle cx="12" cy="17.4" r="0.4"/>',
   stop: '<circle cx="12" cy="12" r="9"/><path d="M9 9l6 6M15 9l-6 6"/>',
   na:   '<circle cx="12" cy="12" r="9"/><path d="M8 12h8"/>',
+  // the stimulus grade needs its OWN outline: circle (ok), triangle (warn),
+  // circle-cross (stop), circle-dash (na) - so a DIAMOND, distinguishable at
+  // badge size without colour. `bolt` below belongs to the load category and
+  // must not double as a grade.
+  surge:'<path d="M12 3l9 9-9 9-9-9z"/><path d="M12 16.5v-8M9 11.5l3-3 3 3"/>',
+  // the stimulus grade needs its OWN shape - four grades, four outlines
   bike: '<circle cx="5.8" cy="16.8" r="3.4"/><circle cx="18.2" cy="16.8" r="3.4"/><path d="M5.8 16.8L10 7.5h4.6M10 7.5l3.4 9.3 4.8-6.5h-6"/>',
   run:  '<circle cx="14.5" cy="4.8" r="1.9"/><path d="M8.5 21l2.6-5.2 3 1.8.9 3.4M7.5 12.5l3.4-3 3.6 1 2.8 2.6M12.4 9.9l-1.3 3.9"/>',
   walk: '<circle cx="13" cy="4.6" r="1.9"/><path d="M10 21l2.1-5.6M14.4 21l-1.4-5.6-.8-4M9 12.4l3.2-2.9 2.8 1 2.4 2.7"/>',
@@ -89,11 +97,18 @@ function ico(name, color, size) {
 }
 
 const ST = {
-  green:   { word: "grün",       ic: "ok",   c: C.green },
-  amber:   { word: "gelb",       ic: "warn", c: C.amber },
-  red:     { word: "rot",        ic: "stop", c: C.red },
-  unknown: { word: "keine Daten", ic: "na",  c: C.grey },
+  green:    { word: "grün",       ic: "ok",    c: C.green },
+  amber:    { word: "gelb",       ic: "warn",  c: C.amber },
+  // the fourth grade: over budget, but the state carries and the last days
+  // offered recovery. Own word, own shape, own tone - never a shade of amber.
+  stimulus: { word: "Reiz",       ic: "surge", c: C.orange },
+  red:      { word: "rot",        ic: "stop",  c: C.red },
+  unknown:  { word: "keine Daten", ic: "na",   c: C.grey },
 };
+// The backend names its grades green/yellow/stimulus/red; the panel's register
+// keys are green/amber/stimulus/red. ONE translation, here, so no view invents
+// a second one - and no view derives a grade of its own.
+const STAGE_TONE = { green: "green", yellow: "amber", stimulus: "stimulus", red: "red" };
 function badge(state, word) {
   const m = ST[state] || ST.unknown;
   return `<span class="bdg" style="color:${m.c};border-color:${m.c}44;background:${m.c}14">${ico(m.ic, m.c, 14)}<span>${word || m.word}</span></span>`;
@@ -1675,22 +1690,21 @@ class IntervalsIcuPanel extends HTMLElement {
     // its own answer that could quietly disagree with this one. And it must
     // fit the BUDGET too - a lead card wearing "über dem Budget" as its own
     // badge would contradict itself on screen.
-    let pick = list.findIndex((e) => e.fit === "ok" && e.fits_budget !== false);
-    if (pick < 0) pick = list.findIndex((e) => e.fit === "ok");
+    let pick = list.findIndex((e) => (e.stage || {}).key === "green");
+    if (pick < 0) pick = list.findIndex((e) => (e.stage || {}).key === "stimulus");
     const cards = list.map((entry, index) => {
       const open = this._woOpen === entry.key;
-      // trained today -> the verdicts speak for tomorrow, from today's state
-      const FIT = forTomorrow
-        ? { ok: ["green", "passt"], maybe: ["amber", "möglich, kostet aber"],
-            no: ["red", "eher nicht"] }
-        : { ok: ["green", "passt heute"], maybe: ["amber", "möglich, kostet aber"],
-            no: ["red", "heute nicht"] };
-      let [fitTone, fitWord] = FIT[entry.fit] || FIT.maybe;
-      // the budget is part of the same verdict, not a second one next to it
-      if (entry.fit === "ok" && entry.fits_budget === false) {
-        fitTone = "amber";
-        fitWord = `über dem Budget (${fmt(w.budget)})`;
-      }
+      // The grade comes from the PAYLOAD. Until 0.41.0 this block combined
+      // state and budget itself (fit === "ok" && fits_budget === false ->
+      // amber) while the backend handed over the two halves separately - a
+      // second rule in the house, the error class this file warns about
+      // everywhere else. It now reads what workouts.stage() decided, the same
+      // grade the week view prints (docs/ausbau.md I5).
+      const st = entry.stage || {};
+      const fitTone = STAGE_TONE[st.key] || "unknown";
+      const fitWord = st.key === "stimulus" && w.budget != null
+        ? `${st.word} (über dem Budget von ${fmt(w.budget)})`
+        : (forTomorrow ? st.word : `${st.word}${st.key === "green" ? " heute" : ""}`);
       const fit = badge(fitTone, fitWord);
       const hrw = entry.hr_window;
       const recommended = index === pick;
@@ -1711,8 +1725,9 @@ class IntervalsIcuPanel extends HTMLElement {
           `<span><b>${min}′</b> ${esc(label)} <em>${entry.blocks_w ? val + " W" : val + " % FTP"}</em></span>`).join("")}</div>
         <p class="effect"><b>Was das bringt:</b> ${esc(entry.effect)}</p>
         <p class="evi"><b>Beleg:</b> ${esc(entry.evidence)}</p>
-        ${entry.fit_reason ? `<p class="fitwhy">${ico(entry.fit === "no" ? "warn" : "info",
-          entry.fit === "no" ? C.red : C.amber, 14)} ${esc(entry.fit_reason)}</p>` : ""}
+        ${entry.fit_reason ? `<p class="fitwhy">${ico((entry.stage || {}).key === "red" ? "warn" : "info",
+          (entry.stage || {}).key === "red" ? C.red : C.amber, 14)} ${esc(entry.fit_reason)}</p>` : ""}
+        ${(entry.stage || {}).evidence ? `<p class="src">${esc(entry.stage.evidence)}</p>` : ""}
 
         <div class="worow">
           <button class="planbtn" data-act="plan" data-id="${esc(entry.key)}" data-when="${iso(0)}">
@@ -1822,27 +1837,45 @@ class IntervalsIcuPanel extends HTMLElement {
     if (!plan.ready || !(plan.weeks || []).length) return "";
 
     const note = plan.budget_note;
+    const choice = plan.choice || {};
     const weeks = plan.weeks.map((w) => {
       const open = this._planOpen === String(w.index);
-      return `<div class="pweek ${w.kind}${w.big_day ? " bigday" : ""}" data-act="planweeks" data-id="${w.index}">
+      const rated = w.rated === true;
+      return `<div class="pweek ${w.kind}${w.big_day ? " bigday" : ""}${rated ? " now" : ""}"
+          data-act="planweeks" data-id="${w.index}">
         <div class="pwhead">
           <span class="pwno">W${w.index}</span>
           <span class="pwphase">${esc(w.phase_label)}${w.kind === "recovery" ? " · Entlastung" : ""}${
-            w.big_day ? " · großer Tag" : ""}</span>
+            w.big_day ? " · großer Tag" : ""}${rated ? " · diese Woche" : ""}</span>
           <span class="pwh tn">${fmt(w.hours, 1)} h</span>
           ${w.long_day_hours ? `<span class="pwlong tn">${w.big_day ? "großer Tag" : "langer Tag"} ${
             fmt(w.long_day_hours, 1)} h${w.big_day ? " <em>(die Ausnahme, die wächst)</em>" : ""}</span>` : ""}
         </div>
+        ${rated ? this._weekDone(w) : ""}
         ${open ? `<div class="pwbody">
           <p class="hint">${esc(w.phase_note)}</p>
+          ${rated ? "" : `<p class="hint noverdict">${ico("clock", C.tx3, 14)} ${esc(plan.no_verdict_note || "")}</p>`}
           ${(w.sessions || []).map((s) => `<div class="psess ${s.role}">
-            <b>${esc(s.title)}</b>
+            <div class="pshead">
+              <b>${esc(s.title)}</b>
+              ${rated ? this._stageBadge(s) : ""}
+            </div>
+            ${rated && s.load != null ? `<p class="psload tn">Last ${fmt(s.load)}${
+              s.budget != null ? ` · Budget ${fmt(s.budget)}` : ""}${
+              s.catalogue_load != null && s.load !== s.catalogue_load
+                ? ` <em>(Katalogeinheit ${fmt(s.catalogue_load)} bei ${s.catalogue_minutes} min — auf ${
+                    fmt(s.hours, 1)} h hochgerechnet)</em>` : ""}</p>` : ""}
             <p>${esc(s.detail)}</p>
+            ${s.effect ? `<p class="effect"><b>Was das bringt:</b> ${esc(s.effect)}</p>` : ""}
             <p class="src">${esc(s.why)}</p>
             ${s.fuel ? `<p class="src"><b>Verpflegung:</b> ${esc(s.fuel)}</p>` : ""}
+            ${rated && s.fit_reason ? `<p class="fitwhy">${ico((s.stage || {}).key === "red" ? "warn" : "info",
+              (s.stage || {}).key === "red" ? C.red : C.amber, 14)} ${esc(s.fit_reason)}</p>` : ""}
+            ${rated && (s.stage || {}).evidence ? `<p class="src">${esc(s.stage.evidence)}</p>` : ""}
           </div>`).join("")}
         </div>` : `<div class="pwsess">${(w.sessions || []).map((s) =>
-          `<span class="ptag ${s.role}">${esc(s.title)}</span>`).join("")}</div>`}
+          `<span class="ptag ${s.role}">${esc(s.title)}${
+            rated && (s.stage || {}).key ? ` ${this._stageDot(s.stage)}` : ""}</span>`).join("")}</div>`}
       </div>`;
     }).join("");
 
@@ -1851,7 +1884,72 @@ class IntervalsIcuPanel extends HTMLElement {
         wächst, die Wochen dazwischen bleiben gewöhnlich</span></h3>
       ${note ? `<div class="warnrow">${ico("info", C.amber, 16)} <span>${esc(note.text)}</span></div>` : ""}
       <div class="pweeks">${weeks}</div>
-      <p class="src">${esc(plan.caveat || "")}</p>`;
+      ${this._stageLegend(plan)}
+      <p class="src">${esc(plan.caveat || "")}</p>
+      ${choice.rule ? `<div class="kv2 choicebox"><small>Wer hier entscheidet</small>
+        <p>${esc(choice.rule)}</p>
+        <p class="src">${esc(choice.evidence || "")}</p>
+        <p class="src"><b>Grenze:</b> ${esc(choice.limit || "")}</p></div>` : ""}`;
+  }
+
+  /* The grade, straight from the payload. No view derives one: the only thing
+     that happens here is looking up the register entry for the key the backend
+     sent (docs/ausbau.md I3, I5). */
+  _stageBadge(s) {
+    const st = s.stage || {};
+    if (!st.key) return "";
+    const word = st.key === "stimulus" && s.budget != null
+      ? `${st.word} (über dem Budget von ${fmt(s.budget)})`
+      : st.word;
+    return badge(STAGE_TONE[st.key] || "unknown", word);
+  }
+
+  _stageDot(st) {
+    const m = ST[STAGE_TONE[st.key] || "unknown"];
+    return `<span class="pstage" style="color:${m.c}">${ico(m.ic, m.c, 12)}${esc(m.word)}</span>`;
+  }
+
+  /* Four grades, four words, four shapes, four tones - stated once, from the
+     register the backend sent, so the legend cannot drift from the badges. */
+  _stageLegend(plan) {
+    const stages = plan.stages || {};
+    const order = ["green", "yellow", "stimulus", "red"];
+    const rows = order.filter((k) => stages[k]).map((k) => {
+      const m = ST[STAGE_TONE[k]];
+      return `<div class="stagerow">${ico(m.ic, m.c, 15)}
+        <b style="color:${m.c}">${esc(stages[k].label)}</b>
+        <span>${esc(stages[k].detail)}</span></div>`;
+    }).join("");
+    if (!rows) return "";
+    const rec = ((plan.assessment || {}).recovery) || {};
+    return `<div class="stagelegend">
+      <small>Die vier Stufen — nur für die laufende Woche</small>
+      ${rows}
+      ${rec.note ? `<p class="src">${esc(rec.note)}</p>` : ""}
+      ${(rec.missing || []).length && rec.offered === false
+        ? `<p class="src">Heute nicht erfüllt: ${esc(rec.missing.join("; "))}.</p>` : ""}
+    </div>`;
+  }
+
+  /* Ridden against planned - and nothing paired. The archive holds duration
+     and load, no label saying which planned session a ride was meant to be;
+     pairing them automatically would be a claim nobody here can back up
+     (docs/ausbau.md I2). */
+  _weekDone(w) {
+    const d = w.done;
+    if (!d) return "";
+    const sessions = (w.sessions || []).length;
+    const hours = (w.sessions || []).reduce((sum, s) => sum + (Number(s.hours) || 0), 0);
+    return `<div class="pwdone">
+      <div class="pwdrow"><span class="pwdlab">gefahren</span>
+        <b>${fmt(d.sessions)} ${d.sessions === 1 ? "Einheit" : "Einheiten"}</b>
+        <span class="tn">${fmt(d.hours, 1)} h · Last ${fmt(d.load)}</span></div>
+      <div class="pwdrow"><span class="pwdlab">vorgesehen</span>
+        <b>${fmt(sessions)} ${sessions === 1 ? "Einheit" : "Einheiten"}</b>
+        <span class="tn">${fmt(hours, 1)} h${d.days_left != null
+          ? ` · noch ${d.days_left} ${d.days_left === 1 ? "Tag" : "Tage"} in der Woche` : ""}</span></div>
+      <p class="src">${esc(d.note || "")}</p>
+    </div>`;
   }
 
   _goalForm(g) {
@@ -4079,6 +4177,19 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
 .gdays>span{color:${C.tx2}}
 .gday{display:flex;align-items:center;gap:4px;color:${C.tx2}}
 .pweeks{display:grid;gap:8px}
+.pweek.now{border-color:${C.tx3}}
+.pwdone{display:grid;gap:4px;padding:8px 10px;border-top:1px dashed ${C.line}}
+.pwdrow{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.pwdlab{color:${C.tx3};font-size:12px;min-width:74px;text-transform:uppercase;letter-spacing:.04em}
+.pshead{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.psload{color:${C.tx2};font-size:12.5px;margin:2px 0}
+.pstage{display:inline-flex;gap:3px;align-items:center;font-size:11px;margin-left:4px}
+.noverdict{display:flex;gap:6px;align-items:flex-start}
+.stagelegend{margin:10px 0;padding:10px 12px;background:${C.card};border:1px solid ${C.line};border-radius:10px}
+.stagelegend small{color:${C.tx3};text-transform:uppercase;letter-spacing:.04em;font-size:11.5px}
+.stagerow{display:flex;gap:8px;align-items:flex-start;margin-top:6px;font-size:13px;color:${C.tx2}}
+.stagerow b{white-space:nowrap}
+.choicebox{margin-top:10px}
 .pweek{background:${C.card};border:1px solid ${C.line};border-radius:10px;padding:10px 13px;cursor:pointer}
 .pweek:hover{border-color:${ROLE.series}55}
 .pweek.recovery{background:${C.card2};border-style:dashed}

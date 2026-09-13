@@ -100,6 +100,29 @@ GOALS: dict[str, dict[str, Any]] = {
     },
 }
 
+# Why the human picks and the panel only judges (docs/ausbau.md I4). Both
+# halves of the finding travel together: fewer non-responders is the result,
+# the edge in performance itself is small and uncertain. Printing only the
+# first half would sell a timing aid as a performance promise.
+CHOICE_EVIDENCE = {
+    "rule": (
+        "Am Tag, an dem trainiert werden soll, wählst du aus den Vorschlägen — bewertet "
+        "nach Zustand und Lastbudget, entschieden von dir. Das Panel fragt nicht nach "
+        "kommenden Tagen, Schichten oder Terminen: eine Vorab-Angabe wäre eine Prognose, "
+        "die hier niemand prüfen kann."
+    ),
+    "evidence": (
+        "Das ist nicht die schwächere Variante, sondern die belegte: bei Javaloyes hatte "
+        "zustandsgeführtes Training deutlich weniger Nicht-Responder — 1 von 7 gegenüber "
+        "3 von 8 mit Leistungsverlust unter festem Plan. Die beste Variante nutzte die "
+        "breiteste Eingabe: Zustand, Befinden, Ruhepuls."
+    ),
+    "limit": (
+        "Die Überlegenheit bei der Leistung selbst ist klein und unsicher. Der Nutzen "
+        "liegt in der Zeitwahl und darin, wen es nicht abhängt — nicht in mehr Watt."
+    ),
+}
+
 PHASES = (
     ("base", "Grundlage", "Umfang und aerobe Basis. Der große Tag wächst, hart wird wenig gefahren."),
     ("build", "Aufbau", "Der Rhythmus bleibt, dazu kommt Qualität — erst getrennt, später hinein."),

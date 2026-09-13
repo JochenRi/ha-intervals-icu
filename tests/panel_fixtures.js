@@ -713,6 +713,31 @@ function coach(kind) {
 
 /* the signal matrix as intervals_icu/signals returns it, including the real
  * September sequence: normal -> slump -> still down -> rebound */
+/* The four grades, shaped exactly as intervals_icu/workouts emits them
+ * (docs/ausbau.md I3). This is TEST DATA, not the rule: workouts.stage()
+ * decides, test_workouts.py proves it over the full truth table, and
+ * test_panel_fixes guards that the four words here still match the four words
+ * in workouts.py - a fixture that drifts from the backend tests nothing. */
+const STAGE_WORDS = {
+  green:    { label: "grün", word: "passt" },
+  yellow:   { label: "gelb", word: "geht, kostet aber" },
+  stimulus: { label: "Reiz", word: "kostet Erholung, setzt aber den Reiz" },
+  red:      { label: "rot",  word: "heute nicht" },
+};
+function stageOf(fit, fitsBudget, recovery) {
+  const over = fitsBudget === false;
+  let key, blocked = null;
+  if (fit === "no") { key = "red"; blocked = over ? "both" : "state"; }
+  else if (over) {
+    if (fit === "ok" && recovery) key = "stimulus";
+    else { key = "red"; blocked = fit === "ok" ? "budget" : "both"; }
+  } else if (fit === "maybe") key = "yellow";
+  else key = "green";
+  const out = { key, blocked_by: blocked, ...STAGE_WORDS[key], detail: "Begründung aus dem Backend." };
+  if (key === "stimulus") out.evidence = "Funktionelles Überreichen, Meeusen 2013 — dosiert dazu.";
+  return out;
+}
+
 function workouts(kind) {
   const mk = (key, family, familyLabel, title, minutes, load, intensity, blocks, text, hr, fit, reason) => ({
     key, family, family_label: familyLabel, title, purpose: familyLabel,
@@ -720,6 +745,7 @@ function workouts(kind) {
     blocks_w: blocks.map(([m, pct, l]) => [m, Math.round(215 * pct / 100), l]),
     text, text_w: text.replace(/(\d+)(-(\d+))?%/g, (m, a, b, c) => c ? Math.round(215*a/100)+"-"+Math.round(215*c/100)+"w" : Math.round(215*a/100)+"w"),
     hr_window: hr, fit, fit_reason: reason || "", fits_budget: load <= 95,
+    stage: stageOf(fit, load <= 95, false),
     dfa: "unter 0,5 in den Blöcken",
     effect: "Der Reiz, um den es bei dieser Art geht.",
     evidence: "Rønnestad: 3 Sätze à 13×30 s / 15 s, signifikant größere Zuwächse.",
@@ -895,4 +921,4 @@ function dayContext(extra) {
   };
 }
 
-module.exports = { TODAY, days, load, readiness, activities, streams, thresholds, calendar, pmc, laps, lapsWithBounds, steadyStream, night, context, goal, today, coach, signals, workouts, dayContext };
+module.exports = { STAGE_WORDS, stageOf, TODAY, days, load, readiness, activities, streams, thresholds, calendar, pmc, laps, lapsWithBounds, steadyStream, night, context, goal, today, coach, signals, workouts, dayContext };

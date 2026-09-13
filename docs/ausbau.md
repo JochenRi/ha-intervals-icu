@@ -1153,22 +1153,163 @@ führt die Einheiten samt Zweck (darunter „Durability, spezifisch"). Der
 Wochenplan unter der Kachel ist eine **Ansicht darauf**, kein eigener Motor.
 Zwei Planer im Haus wären Fehlerklasse 3 in groß.
 
+**Korrigiert am 13.09.2026, vor dem Bau: die Ansicht gibt es schon.**
+`rPlanWeeks()` rendert auf dem Trainer-Reiter (`rGoal` + `rTrainer` +
+`rPlanWeeks`) acht Wochen aus `plan.weeks` — Phase, Entlastungswoche, großer
+Tag, Wochenstunden, `budget_note` und `caveat`; eingeklappt Titel-Chips,
+aufgeklappt `detail`, `why` und `fuel`. I1 und der aufklappbare Teil von I2
+waren mit 0.33.0 gebaut. Paket I ist damit **kein Neubau, sondern eine
+Erweiterung** — und das ist auch die einzige zulässige Lesart, denn ein
+zweiter Wochenplan neben diesem wäre genau der zweite Planer.
+
+Neu sind: die laufende Woche mit erledigt/offen (I2), die vierstufige
+Bewertung (I3) und der Quellenblock (I4).
+
 ### I2 · Was die Ansicht zeigt
 
 - Acht Wochen, je Woche die vorgeschlagenen Einheiten, aufklappbar mit ihrem
   Zweck und dem, was sie bringt.
-- In der laufenden Woche: was erledigt ist (aus dem Kalender), was noch fehlt.
-- Je Einheit die Bewertung aus Paket J.
+- In der laufenden Woche: was erledigt ist, was noch fehlt.
+- Je Einheit der laufenden Woche eine von vier Stufen (I3).
 
-### I3 · Die Verbindung zum Kalender
+**Woher das Erledigte kommt — entschieden am 13.09.2026.** Aus dem **Archiv**,
+mitgeliefert in der `goal`-Payload. Nicht aus `_days` im Panel: der Browser
+hält `_days` die ganze Sitzung und leert es nur nach einem angewandten Abgleich
+(D6, Schicht 3). Eine Wochenansicht, die an diesem Cache hängt, zeigt nach der
+ersten Fahrt des Tages weiter den Stand von heute früh. Nicht aus den geplanten
+Einheiten in `events`: die berühren das Archiv nie (D6, Schicht 1).
+
+**Und „erledigt" bleibt ungepaart.** Der Plan sagt „SweetSpot 2×20" und
+„Grundlage — 1,3 h"; im Archiv liegen Fahrten mit Dauer und Last, ohne Etikett,
+welche Plan-Einheit sie hätten sein sollen. Jede automatische Paarung wäre eine
+Behauptung, die das System nicht belegen kann — dieselbe Klasse wie „es
+bräuchte rund 128 Einheiten" aus H, eine Zahl, die genauer klingt, als sie ist.
+Die Ansicht stellt deshalb **gefahren** (Einheiten, Stunden, Last) gegen
+**vorgesehen** (Anzahl, Stunden) und sagt hin, dass die Zuordnung Sache des
+Fahrers ist.
+
+### I3 · Vier Stufen, an einer Stelle
+
+Je Einheit **der laufenden Woche** eine von vier Stufen. Vier Stufen, vier
+Wörter, vier Formen, vier Töne:
+
+| Stufe | Wann | Was sie sagt |
+|---|---|---|
+| **grün** | Zustand unauffällig, passt ins Lastbudget | normal fahren |
+| **gelb** | Zustand trägt nur bedingt (`fit = maybe`), Budget reicht | geht, kostet aber |
+| **Reiz** | über dem Budget, ABER Zustand trägt und die letzten Tage boten Erholung | kostet Erholung, setzt aber den Reiz |
+| **rot** | Zustand ODER Budget verbieten es — mit Begründung, welches von beiden | heute nicht |
+
+**Die vierte Stufe ist die inhaltliche Neuerung.** Heute kennt das Panel
+grün/gelb/rot als Urteilsabstufung, nicht „Reiz" als eigene Kategorie. Belegt
+ist sie als **funktionelles Überreichen** (Meeusen 2013, Konsenspapier
+ECSS/ACSM): ein kurzer gewollter Einbruch, der nach Erholung in
+Superkompensation mündet. Mit der Grenze daneben: neuere Arbeiten zeigen bei
+überreichten Athleten teils **schwächere** Anpassungen. Die Aussage ist „gelb
+und Reiz gehören dosiert dazu", nicht „je öfter, desto besser".
+
+**Nur die laufende Woche wird bewertet — korrigiert am 13.09.2026, vor dem
+Bau.** Die erste Fassung verlangte die Stufe für alle acht Wochen. Das geht
+nicht: `load_budget()` rechnet `7 × chronic × Ziel − last_six` aus den letzten
+sechs Tagen, und die Zustandsregel liest HRV und Ruhepuls von heute. Für eine
+Einheit in fünf Wochen existiert keine der beiden Größen. Eine Stufe dort wäre
+**genau die Prognose, die I4 verbietet** — I4 begründet das Nicht-Fragen nach
+kommenden Tagen damit, dass das System die Angabe nicht prüfen kann; für das
+eigene Urteil gilt dasselbe Argument, sonst misst die Spezifikation mit zwei
+Maßen. Spätere Wochen tragen deshalb einen Satz statt einer Stufe: bewertet
+wird in der Woche selbst, Budget und Zustand von übernächstem Donnerstag kennt
+niemand.
+
+**Die Abwesenheit eines Urteils ist kein fünfter Zustand.** Sie bekommt keine
+Urteilsfarbe, keine Urteilsform und kein Urteilswort — sie ist ein Satz im
+Fließtext der Woche.
+
+**Die Last der Plan-Einheit ist nicht die Last des Katalogeintrags — Bugfix,
+gefunden am 13.09.2026.** Der große Tag heißt im Plan „5,0 h", trägt aber
+`z2_210_late`: 210 Minuten, Last 175. Wer `BY_KEY[...]["load"]` gegen das
+Budget hält, beurteilt eine dreieinhalbstündige Fahrt statt einer
+fünfstündigen — ausgerechnet bei der Einheit, um die es beim Ziel „lange
+Fahrten" geht, und systematisch zu grün. Die Last wird auf `session.hours`
+skaliert, bei konstanter Intensität linear in der Dauer, an **einer** Stelle in
+`workouts.py`, mit eigener Prüfung und eigener Gegenprobe.
+
+### I4 · Die Auswahl trifft der Mensch
 
 Am Tag, an dem trainiert werden soll, wählt der Athlet aus den Vorschlägen —
-bewertet nach Zustand und Budget, entschieden vom Menschen. Das ist nicht die
-schwächere Variante, sondern die belegte: zustandsgeführtes Training hatte bei
-Javaloyes deutlich weniger Nicht-Responder (1 von 7 gegen 3 von 8 mit
-Leistungsverlust), und die beste Variante nutzte die breiteste Eingabe —
-Zustand, Befinden, Ruhepuls. Die Überlegenheit bei der Leistung selbst ist klein
-und unsicher; das gehört in den Quellenblock.
+bewertet nach Zustand und Budget, entschieden vom Menschen. Das Panel fragt
+**nicht** nach kommenden Tagen, Schichten oder Terminen: eine Vorab-Angabe wäre
+eine Prognose, die das System nicht prüfen kann. Es schlägt vor und bewertet,
+mehr nicht.
+
+Das ist nicht die schwächere Variante, sondern die belegte: zustandsgeführtes
+Training hatte bei Javaloyes deutlich weniger Nicht-Responder — **1 von 7
+gegen 3 von 8** mit Leistungsverlust —, und die beste Variante nutzte die
+breiteste Eingabe: Zustand, Befinden, Ruhepuls. **Die Überlegenheit bei der
+Leistung selbst ist klein und unsicher**; beides steht im Quellenblock, nicht
+nur die erste Hälfte.
+
+### I5 · Der Trainer-Reiter wird mit umgebaut
+
+**Aufgenommen am 13.09.2026, vor dem Bau.** Die Zusammenführung von Zustand und
+Budget steht heute **im Frontend**: `rWorkouts` setzt bei `fit === "ok" &&
+fits_budget === false` selbst auf Bernstein. Das Backend liefert `fit` und
+`fits_budget` getrennt, die Regel „über Budget trotz grünem Zustand" existiert
+nur im Panel.
+
+Kommen die vier Stufen ins Backend und bleibt das stehen, stehen **zwei Regeln
+im Haus** — Fehlerklasse 3, wörtlich der Fall, den dieses Paket ausschließt.
+Also: die Stufe wird in `workouts.py` einmal entschieden, `suggest()` emittiert
+sie mit, und **beide** Ansichten lesen sie aus der Payload. Der Umfangszuwachs
+gegenüber „nur eine Ansicht" ist der Preis dafür.
+
+Der Schwellen-Wächter aus F deckte bisher nur `rDurability` ab und hat diese
+Stelle deshalb nie gesehen. Er wird auf beide Stellen ausgeweitet.
+
+### I6 · Das Urteilsregister bekommt eine vierte Farbe
+
+Es hat drei Töne plus Grau für „unbekannt"; Blau/Violett/Cyan/Magenta/Schiefer
+sind das Kategorienregister und bleiben tabu. Die vierte Stufe braucht einen
+Ton, der in **keiner** der beiden Listen steht, und eine eigene Icon-Form —
+`IC` führt mit `ok`/`warn`/`stop`/`na` vier unterscheidbare Formen, das reicht.
+Vier Stufen heißt vier Formen, nicht drei plus eine Schattierung. Der
+Register-Test zählt künftig vier Urteilsfarben statt drei.
+
+### I7 · „Erholung war da" ist eine Setzung
+
+Die Reiz-Stufe braucht die Aussage „die letzten Tage boten Erholung". Ohne eine
+festgezurrte Regel entsteht sie als zweite Zustandsregel durch die Hintertür.
+Sie steht deshalb an **einer** Stelle in `coach.py`, aus Größen, die es schon
+gibt:
+
+- Zustand `ready`, **und**
+- `hard_days_last_7 == 0`, **und**
+- die Last der letzten zwei Tage unter dem chronischen Tagesschnitt.
+
+Die Zahlen sind **gewählt, nicht gemessen** — das steht in der Payload und im
+Panel dran, wie bei der Zielwahl je Ampelfarbe im Lastbudget.
+
+### Tests I
+
+- Die vier Stufen: ein Bestand, in dem **dieselbe** Einheit je nach Zustand
+  grün, gelb, Reiz und rot wäre. Sonst prüft der Test die Einheit, nicht die
+  Stufe.
+- Rot nennt, welches von beiden verbietet — Zustand, Budget oder beides; je ein
+  Fall.
+- Lastskalierung: eine Plan-Einheit, deren Stunden von den Katalogminuten
+  abweichen, und eine, bei der sie übereinstimmen. Gegenprobe: Skalierung
+  ausbauen — die Prüfung muss **gezählt und benannt** fallen.
+- Spätere Wochen tragen keine Stufe: Quelltext- und Payload-Wächter, plus der
+  Nachweis, dass der Satz dasteht.
+- Wächter: weder `rPlanWeeks` noch `rWorkouts` führen eine eigene Schwelle;
+  jede Stufe kommt nachweislich aus der Payload. Gegenprobe mit
+  wiedereingebauter Regel.
+- Register: vier Urteilsfarben, vier Formen, vier Wörter, keine davon im
+  Kategorienregister; der Satz für spätere Wochen trägt **keine** davon.
+- Erledigt/offen: gefahren gegen vorgesehen, ohne Paarung. Die Fixture enthält
+  eine Fahrt, die zu **zwei** Plan-Einheiten passen würde — der Test prüft,
+  dass die Ansicht sich für keine entscheidet.
+- Der Quellenblock trägt beide Hälften des Javaloyes-Befunds: die Zahlen der
+  Nicht-Responder **und** die kleine, unsichere Überlegenheit bei der Leistung.
 
 ---
 

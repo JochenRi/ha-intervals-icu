@@ -238,6 +238,7 @@ const acts = F.activities(), thr = F.thresholds();
 {
   const w = F.workouts();
   w.workouts[0].fits_budget = false;           // z2_90 (ok) blows the budget
+  w.workouts[0].stage = F.stageOf("ok", false, false);   // ... and the grade says so
   const html = p.rWorkouts(w);
   const cards = html.split('class="wocard');
   const flagged = cards.filter((c) => c.includes("Empfehlung von oben"));

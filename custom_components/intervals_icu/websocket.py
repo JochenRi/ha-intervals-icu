@@ -701,12 +701,47 @@ def websocket_goal(hass, connection, msg) -> None:
     data = coordinator.archive.data
     profile = data.get("goal") or plan_lib.default_goal()
     state = _state_for_plan(data)
+    built = plan_lib.plan(profile, state)
+
+    # The grade for the CURRENT week only. Everything it needs already exists:
+    # the state rule in coach, the budget in analytics, the grade in workouts.
+    # This handler wires them together, it does not restate any of them - and
+    # weeks two to eight get no grade at all, because a budget solved from the
+    # last six days says nothing about a session five weeks out (I3/I4).
+    weeks = built.get("weeks") or []
+    if built.get("ready") and weeks:
+        st = coach_module.state(data)
+        lay = coach_module.layoff(data)
+        rec = coach_module.recovery_offered(data)
+        budget = ((analytics.readiness(data) or {}).get("budget") or {}).get("recommended")
+        weeks[0]["sessions"] = workout_lib.rate_sessions(
+            weeks[0].get("sessions") or [],
+            st.get("state", "unknown"),
+            budget=budget,
+            recovery_offered=bool(rec.get("offered")),
+            hard_days_last_7=coach_module._hard_days_recent(data, 7),
+            layoff_days=lay.get("days"),
+            infection=bool(st.get("infection_suspected")),
+        )
+        weeks[0]["rated"] = True
+        weeks[0]["done"] = analytics.week_done(data, weeks[0]["start"])
+        built["assessment"] = {
+            "state": st.get("state"),
+            "state_label": st.get("label"),
+            "budget": budget,
+            "recovery": rec,
+            "hard_days_last_7": coach_module._hard_days_recent(data, 7),
+        }
+    built["no_verdict_note"] = workout_lib.NO_VERDICT_NOTE
+    built["stages"] = workout_lib.STAGES
+    built["choice"] = plan_lib.CHOICE_EVIDENCE
+
     connection.send_result(msg["id"], {
         "profile": profile,
         "state": state,
         "goals": {key: {k: v for k, v in entry.items() if k != "mix"}
                   for key, entry in plan_lib.GOALS.items()},
-        "plan": plan_lib.plan(profile, state),
+        "plan": built,
     })
 
 

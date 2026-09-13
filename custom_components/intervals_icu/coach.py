@@ -46,7 +46,7 @@ from statistics import mean, median, pstdev
 from typing import Any, NamedTuple
 
 try:  # inside the package (Home Assistant)
-    from . import day_context, derive
+    from . import analytics, day_context, derive
     from .const import (
         DECOUPLING_GOOD,
         DURABILITY_EXCLUDED_TYPES,
@@ -70,8 +70,11 @@ try:  # inside the package (Home Assistant)
         PROGRESSION_FACTOR,
         PROGRESSION_ROUND_MINUTES,
         PROGRESSION_WINDOWS_DAYS,
+        RECOVERY_MAX_HARD_DAYS_7,
+        RECOVERY_QUIET_DAYS,
     )
 except ImportError:  # standalone (test suite loads this file directly)
+    import analytics
     import day_context
     import derive
     from const import (
@@ -97,6 +100,8 @@ except ImportError:  # standalone (test suite loads this file directly)
         PROGRESSION_FACTOR,
         PROGRESSION_ROUND_MINUTES,
         PROGRESSION_WINDOWS_DAYS,
+        RECOVERY_MAX_HARD_DAYS_7,
+        RECOVERY_QUIET_DAYS,
     )
 
 # --- thresholds, all of them sourced ------------------------------------------
@@ -920,6 +925,77 @@ def _hard_days_recent(data: dict[str, Any], days: int) -> int:
         if day >= cutoff and (_f(activity.get("icu_intensity")) or 0) >= 80:
             hard.add(day)
     return len(hard)
+
+
+def recovery_offered(data: dict[str, Any]) -> dict[str, Any]:
+    """Whether the last days actually offered recovery - ONE place, a SETTING.
+
+    The stimulus grade (functional overreaching) needs the statement "the last
+    days offered recovery". Without a rule nailed down in one place it would
+    grow into a SECOND state rule through the back door - the error class that
+    cost 0.11.0 and 0.27.0 a release each.
+
+    Three conditions, all from figures that already exist:
+
+      * the state is `ready` (coach.state - HRV and resting HR against the
+        athlete's own band),
+      * no hard day in the last seven (the same counter the session list
+        uses),
+      * the load of the last RECOVERY_QUIET_DAYS days below the chronic daily
+        mean (the same daily series the load budget is solved from).
+
+    The daily load comes from analytics.daily_load, not from a second walk
+    over the activities: two ways to the same number is exactly what this
+    package forbids.
+
+    The honest part travels with it: the THRESHOLDS are chosen, not measured.
+    The ingredients are sourced, their combination into this particular rule
+    is a setting - the same admission the load budget makes about its target
+    ratio per traffic light.
+    """
+    st = state(data)
+    hard = _hard_days_recent(data, 7)
+
+    series = analytics.daily_load(data)
+    loads = [point.get("load") or 0.0 for point in series]
+    chronic = mean(loads[-28:]) if len(loads) >= 28 else None
+    recent = loads[-RECOVERY_QUIET_DAYS:] if len(loads) >= RECOVERY_QUIET_DAYS else []
+    recent_mean = mean(recent) if recent else None
+
+    quiet = (chronic is not None and recent_mean is not None and recent_mean < chronic)
+    offered = bool(st.get("state") == "ready"
+                   and hard <= RECOVERY_MAX_HARD_DAYS_7
+                   and quiet)
+
+    missing: list[str] = []
+    if st.get("state") != "ready":
+        missing.append(f"Zustand {st.get('label') or st.get('state')}, nicht unauffällig")
+    if hard > RECOVERY_MAX_HARD_DAYS_7:
+        missing.append(f"{hard} harter Tag in den letzten sieben" if hard == 1
+                       else f"{hard} harte Tage in den letzten sieben")
+    if chronic is None or recent_mean is None:
+        missing.append("zu wenige Tage für einen chronischen Vergleich")
+    elif not quiet:
+        missing.append(f"die letzten {RECOVERY_QUIET_DAYS} Tage lagen mit "
+                       f"{round(recent_mean)} über dem chronischen Schnitt von {round(chronic)}")
+
+    return {
+        "offered": offered,
+        "state": st.get("state"),
+        "hard_days_last_7": hard,
+        "quiet_days": RECOVERY_QUIET_DAYS,
+        "max_hard_days_7": RECOVERY_MAX_HARD_DAYS_7,
+        "recent_daily_load": None if recent_mean is None else round(recent_mean, 1),
+        "chronic_daily_load": None if chronic is None else round(chronic, 1),
+        "missing": missing,
+        "note": (
+            f"Erholung gilt als geboten, wenn der Zustand unauffällig ist, in den letzten "
+            f"sieben Tagen höchstens {RECOVERY_MAX_HARD_DAYS_7} harte Tage liegen und die "
+            f"Last der letzten {RECOVERY_QUIET_DAYS} Tage unter deinem chronischen "
+            f"Tagesschnitt bleibt. Die Bestandteile sind belegt, diese Schwellen sind "
+            f"gewählt — eine Setzung, keine Messung."
+        ),
+    }
 
 
 def _trained_today(data: dict[str, Any]) -> bool:

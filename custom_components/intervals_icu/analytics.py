@@ -783,6 +783,59 @@ def _day_activities(data: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
     return by_day
 
 
+def week_done(data: dict[str, Any], start: str, today: str | None = None) -> dict[str, Any]:
+    """What has actually been ridden in the week starting on `start`.
+
+    From the ARCHIVE, not from the calendar grid the panel holds: the browser
+    keeps `_days` for the whole session and empties it only after an applied
+    reconcile (docs/ausbau.md D6), so a week view hanging off that cache still
+    shows this morning's state after the afternoon ride. And not from the
+    planned events either - those never touch the archive.
+
+    NOTHING IS PAIRED. The plan says "SweetSpot 2x20"; the archive holds rides
+    with a duration and a load and no label saying which planned session they
+    were meant to be. Any automatic pairing would be a claim the system cannot
+    back up - the same class as "it would take some 128 sessions" in H, a
+    number that sounds more precise than it is. So: ridden against planned,
+    and the pairing stays the athlete's job.
+    """
+    first = date.fromisoformat(start)
+    last = first + timedelta(days=6)
+    mark = date.fromisoformat(today) if today else date.today()
+    by_day = _day_activities(data)
+
+    sessions: list[dict[str, Any]] = []
+    for offset in range(7):
+        day = (first + timedelta(days=offset)).isoformat()
+        for item in by_day.get(day, []):
+            sessions.append({
+                "date": day,
+                "name": item.get("name"),
+                "sport": item.get("sport"),
+                "group": item.get("group"),
+                "hours": round((item.get("moving_time") or 0) / 3600, 1),
+                "load": item.get("load"),
+                "intensity": item.get("intensity"),
+            })
+
+    days_left = max(0, (last - mark).days) if first <= mark <= last else None
+    return {
+        "start": first.isoformat(),
+        "end": last.isoformat(),
+        "days_left": days_left,
+        "sessions": len(sessions),
+        "hours": round(sum(item["hours"] for item in sessions), 1),
+        "load": round(sum(float(item["load"] or 0) for item in sessions)),
+        "activities": sessions,
+        "paired": False,
+        "note": (
+            "Gefahren gegen vorgesehen — welche Fahrt welche geplante Einheit war, "
+            "entscheidest du. Das Archiv führt Dauer und Last, kein Etikett; eine "
+            "automatische Zuordnung wäre eine Behauptung, die hier niemand belegen kann."
+        ),
+    }
+
+
 def _day_planned(events: Any) -> dict[str, list[dict[str, Any]]]:
     """Return planned workouts grouped by day."""
     planned: dict[str, list[dict[str, Any]]] = {}
