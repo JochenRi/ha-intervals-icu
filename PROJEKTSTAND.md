@@ -7,7 +7,7 @@ Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lok
 archiviert, auswertet und in einem eigenen Seitenleisten-Panel darstellt.
 
 **Umfang:** ~14.760 Zeilen, davon ~4.960 Frontend · 27 WebSocket-Befehle · 16 Einheiten in
-9 Familien · 17 Testdateien mit **5.128** gezählten Einzelprüfungen · 50 Releases.
+9 Familien · 17 Testdateien mit **5.128** gezählten Einzelprüfungen · 51 Releases.
 
 ---
 
@@ -194,6 +194,75 @@ Recherche:
 
 ## 7. Fehler und was sie gelehrt haben
 
+**0.46.0 — vier Befunde aus dem Umbau von Paket L.**
+
+**1 · Zwei Kacheln für eine Frage, in zwei Reitern.** `rFatigue` saß im
+DFA-Reiter, `rDurability` mit der Entkopplungswolke im Trainer. Beide
+beantworteten „wie lange trägt die Grundlage" — mit zwei verschiedenen
+Rechnungen, zwei verschiedenen Bildern, und **man bekam sie nicht einmal
+nebeneinander zu sehen, um sie zu vergleichen.** Das ist Fehlerklasse 3
+(zwei Rechenwege auf dieselbe Frage), aber eine Ebene höher als bisher: nicht
+zwei Funktionen, sondern zwei ANSICHTEN. Die Klasse endet nicht am Quelltext.
+
+Seit 0.46.0 sitzt die Kurve in der Durability-Kachel und ersetzt dort die
+Wolke. Was mit ihr wegfiel, war ein Bild, das nichts trug: die Trendgerade
+durfte ohnehin nicht gezeichnet werden, weil die Steigung nicht von null zu
+unterscheiden ist. **Die Verweigerung der Leitzahl steht weiter im Text** —
+gegangen ist die Zeichnung, nicht die Aussage.
+
+**2 · Zwei Teile derselben Kachel dürfen verschiedene Achsen haben — wenn beide
+begründet sind und der Unterschied benannt ist.** Nach dem Umzug stehen unter
+einer Überschrift: die Schwellenleistung über der DAUER und die Entkopplung
+über der angesammelten ARBEIT. Das sieht aus wie ein Widerspruch, und die
+naheliegende Reaktion wäre, es zu vereinheitlichen. **Sie wäre falsch.** L1 hat
+sich gegen die kJ-Achse entschieden, weil die Arbeit an der Intensität hängt
+und den Bergeffekt aus Runde 1 zurückholt; Paket F/G hat sich für sie
+entschieden, weil der 90-Minuten-Schnitt nicht hielt. Beide Entscheidungen sind
+am selben Bestand belegt. **Eine Vereinheitlichung hätte eine davon kassiert,
+und zwar stillschweigend** — das wäre schlimmer gewesen als das Problem.
+
+Gebaut sind deshalb drei Abschnitte mit eigenen Überschriften und ein Satz im
+Bild, der beide Achsen gegeneinanderstellt. **Ohne den Satz ist es ein
+Widerspruch, mit ihm eine Entscheidung.** Er steht dort und nicht nur in der
+Spezifikation, damit die nächste Session nicht „vereinheitlicht".
+
+**3 · Der Schutz vor Hochrechnung wurde zur Quelle des Artefakts.** Die
+Stundenablesung gibt einen Wert nur aus, wenn alpha 0,75 im tatsächlich
+gefahrenen Bereich LIEGT — keine Extrapolation, und das bleibt richtig. Genau
+diese Regel erzeugt aber eine AUSWAHL: ausgeruht liegt alpha hoch, die Schwelle
+wird in Stunde 1 also nur berührt, wenn härter gefahren wurde. **Stunde 1 steht
+damit auf einer systematisch härteren Population als Stunde 2**, und ein Teil
+des gemessenen Abfalls ist diese Auswahl und keine Ermüdung.
+
+**Das Erkennungszeichen ist billig und allgemein: n steigt, wo es fallen
+müsste.** Am Livebestand trägt Stunde 1 elf Werte und Stunde 2 zwölf — jede
+Fahrt mit einer zweiten Stunde hat aber auch eine erste. **Regel, als eine
+Zeile im Test:** die Belegung zeitlich aufeinanderfolgender Bins muss monoton
+fallen; tut sie es nicht, liegt ein Auswahleffekt vor. Dazu rechnet die Kachel
+seit 0.46.0 gepaart — jede Fahrt ihre eigene Kontrolle — und sagt es im
+HAUPTBILD, wenn gepaart und ungepaart auseinanderlaufen. Die Verwandtschaft zu
+J1 ist eng: dort maß die Messung etwas anderes als behauptet, hier misst sie
+zum Teil den Unterschied zwischen Fahrten statt den Verlauf innerhalb einer.
+
+**Und die allgemeine Form, weil uns das wieder begegnet:** eine Regel, die
+Werte nur dort ausgibt, wo die gesuchte Größe im gemessenen Bereich liegt, ist
+richtig — und erzeugt eine Auswahl, die mit der gesuchten Größe korreliert.
+Beides zugleich.
+
+**4 · Eine Karte, die aus einer gekappten Liste zählt, verkleinert die Lücke,
+die sie erklären soll.** Die Ausschlussliste der Ermüdungskurve zeigt je Grund
+die letzten acht Fahrten. Die Gesamtzahl darüber wurde aus genau diesen
+Listen summiert statt aus den Zählfeldern der Payload: bei 45 Fahrten ohne
+DFA-Strom und zwei gezeigten hätte dort „von 31 Einheiten" gestanden statt „von
+74". Der Fehler fiel nur auf, weil eine Fixture mehr zählte, als sie auflistete.
+
+**Anderswo geprüft, und das Ergebnis ist beruhigend:** die DFA-Tabelle kappt bei
+50 Zeilen und nennt daneben `w.kept`, also die Fensterzahl — richtig gebaut, und
+sie sagt die Kappung sogar dazu. Der Abgleich-Dialog führt die vollständige
+Liste. **Es ist ein Einzelfall, keine Klasse** — aber die richtige Bauart steht
+jetzt als Regel in §9, weil der Unterschied zwischen beiden Fassungen von außen
+nicht zu sehen ist.
+
 **0.45.0 — fünf Befunde aus dem Bau von Paket L.**
 
 **1 · Eine fehlende Versionsmarke heißt URALT, nicht aktuell.** Der Ausfall vom
@@ -224,9 +293,18 @@ nur nicht an dieser Stelle.
 sie steht.** `derive.dfa_summary()` meldete
 `"threshold_samples": len(hr_window) or len(watt_window)`. Fällt der Gurt aus,
 ist das linke Fenster leer, und das `or` schiebt die WATT-Belegung an die Stelle
-der Herzfrequenz-Belegung. Die Fahrt vom 06.06. zeigte „24 Fenster" neben einer
-Schwelle, die kein einziges Fenster hatte. Kein falscher Wert — eine falsche
-Begründung für einen Wert, und die ist schwerer zu sehen. Seit 0.45.0 zwei
+der Herzfrequenz-Belegung. Kein falscher Wert — eine falsche Begründung für
+einen Wert, und die ist schwerer zu sehen.
+
+**Richtigstellung, nachgetragen am 13.09.2026 nach der Live-Verifikation.** Die
+erste Fassung dieses Eintrags behauptete, die Fahrt vom 06.06. habe „24 Fenster
+neben einer Schwelle gezeigt, die kein einziges hatte". **Das stimmt nicht.**
+Die 24 WAREN Herzfrequenz-Fenster — 24 Nullen, die der Filter vor 0.9.0
+mitzählte. Das `or` hat dort gar nicht gegriffen. Neu gerechnet steht die Fahrt
+heute auf `hr_windows: 0` und `power_windows: 5`, und **genau dort hätte die
+alte Zeile gegriffen**: `0 or 5` hätte die Watt-Zahl neben eine fehlende
+Herzfrequenz gestellt. Der Befund ist also richtig, sein Beleg war es nicht —
+und ein Beleg, der nicht trägt, macht einen richtigen Befund angreifbar. Seit 0.45.0 zwei
 Felder, `hr_windows` und `power_windows`, jedes neben seinem eigenen Wert.
 
 **Und die Prüfung sitzt jetzt am ERGEBNIS statt am Eingang.** `dfa_summary`
@@ -286,7 +364,15 @@ Schutz.**
 **Die Lehre über die Gegenprobe selbst, und sie gilt für jede künftige:** eine
 Mutation, die den Test nicht bewegt, beweist nicht die Robustheit des Codes,
 sondern die Stumpfheit des Tests. **Geprüft wird, AB WELCHER DOSIS sie beißt,
-nicht ob sie bei Dosis eins beißt.** Beide Enden stehen jetzt als Zusicherung in
+nicht ob sie bei Dosis eins beißt.**
+
+**Nachtrag 0.46.0 — dieselbe Stelle, zum zweiten Mal.** Die Gegenprobe zum
+Auswahleffekt (Befund 3 oben) brauchte wieder acht Störfahrten statt vier; mit
+vier blieb der Median unbewegt und der Test still. **Die Dosis, bei der eine
+Gegenprobe beißt, ist eine Eigenschaft des jeweiligen Verfahrens und muss je
+Fixture NEU BESTIMMT werden** — sie lässt sich nicht von der vorigen übernehmen,
+auch wenn die Zahl am Ende dieselbe ist. Wer sie überträgt, prüft die Dosis von
+gestern an der Regel von heute. Beide Enden stehen jetzt als Zusicherung in
 `test_fatigue.py` — auch die Nicht-Bewegung bei 1:8, sonst lernt die nächste
 Session die falsche Hälfte.
 
@@ -967,6 +1053,12 @@ für jede Zahl, die sich als Umrechnung ausgibt. **Die Zahl wird aufgelöst, nic
 aufgeweicht** — `DURABILITY_TEST_WORK_J` steht jetzt in `const.py`, direkt neben der Größe in kJ,
 mit dem Grund daneben.
 
+**Sechste Bauregel, aus 0.46.0: eine Anzeige, die eine gekürzte Liste zeigt, zählt aus dem
+ZÄHLFELD, nie aus der Liste.** Die Liste darf gekappt sein, die Zahl daneben nie — sonst
+verkleinert die Karte genau die Lücke, die sie erklären soll (§7). Die DFA-Tabelle macht es
+richtig vor: 50 Zeilen gezeigt, die Gesamtzahl aus der Fensterzählung, und die Kappung
+ausdrücklich benannt.
+
 **Fünfte Bauregel, aus 0.45.0: ein Erklärtext, der eine Schwelle nennt, nennt sie AUS DER
 PAYLOAD oder gar nicht.** Drei Mal hat inzwischen ein Wächter die eigene Begründung gerissen:
 beim F-Wächter, bei den 80 g/h und zuletzt an dem Satz, der erklärt, warum die Ermüdungskachel
@@ -1097,7 +1189,7 @@ bzw. ein Reiter je Chat.
 | **Trainer (Wochenplan + Einheitenliste, Paket I)** | ✅ gebaut als **0.42.0**. Vier Urteilsstufen (grün / gelb / **Reiz** / rot) an EINER Stelle im Backend, beide Ansichten lesen sie aus der Payload — die Zusammenführung von Zustand und Budget stand bis dahin im Frontend. Bewertet wird nur die laufende Woche; spätere tragen einen Satz statt einer Stufe, weil ein Budget aus den letzten sechs Tagen nichts über Woche sechs sagt. Gefahren gegen vorgesehen aus dem Archiv, **ungepaart**. Die Spezifikation wurde vor dem Bau an sechs Stellen korrigiert: die Ansicht existierte bereits seit 0.33.0, die Stufenliste hatte drei Punkte bei vier Stufen, die Last der geplanten Einheit war die einer kürzeren (siehe §7), das Urteil über acht Wochen widersprach I4, „Erholung war da" war undefiniert, und der Trainer-Reiter musste mit. Verifikation am System steht aus |
 | **Durability-Messung als Einheit (Paket K, Stufe 1)** | ✅ gebaut als **0.44.0**. K1 und K2; K3 (die Hantel) bleibt zurückgestellt, bis zwei Messungen vorliegen. Die Spezifikation wurde vor dem Bau an drei Stellen korrigiert: K1 war **nicht** „nur `workouts.py`" (der 20-Minuten-Bestwert steht in keinem Feld, also zieht K2 das ganze J7 mit rein — Archivblock, Migration, Messweg aus den ungedünnten Strömen); die Lastregel aus I3 gilt bei **konstanter** Intensität und ist für eine Einheit mit fester Arbeit und abgeleiteter Dauer nicht anwendbar (jetzt gerechnet statt skaliert); und die Ausschlusswarnung zielte auf `DURABILITY_EXCLUDED_TYPES`, während in Wahrheit der **Intensitätsfilter** beißt. Verifikation am System steht aus |
 | **Durability-Kachel (Paket H)** | ✅ gebaut als **0.41.0**. Kopfbereich aus drei Zeilen: belegte Fähigkeit (längste gleichmäßige Fahrt nach ZEIT, mit der Leistung dieser Fahrt), Bezug der letzten 30 Tage mit sichtbarer Ausweitung, nächster Schritt ×1,10 auf fünf Minuten gerundet. Die Spezifikation wurde vor dem Bau an drei Stellen korrigiert: H war **nicht** frontend-only (Dauer und Leistung fehlten in der Payload), der Rückfall ist die **Regel** statt einer Ausnahme (am Livebestand 230 gegen 260 min bei gefülltem Fenster), und vier Fallen fehlten. Verifikation am System steht aus |
-| **DFA-Reiter (Ermüdungskurve, Paket L)** | ✅ gebaut als **0.45.0**. L1/L1a/L1b: Anker gemessen (Repräsentantenmethode je Fahrtstunde, aus den ungedünnten Strömen beim Import), Form nach Gallo gesetzt und daran verankert, Unsicherheitsband aus der publizierten Streuung. Die Bereichsgrenzen rechnen sich aus der Belegung — zwei Bestände ergeben nachweislich zwei Grenzen. Vorgeschaltet zwei Bugfixes, die heute schon wirken: die Plausibilitätsregel an EINER Stelle statt in fünf Fassungen, und der Historienbeginn. Die Spezifikation wurde vor dem Bau an vier Stellen korrigiert: L1 war NICHT payload-fertig (das Archiv trug ein Fenstermittel je Fahrt, keinen Stundenverlauf — also Algorithmus-Bump, Neuberechnung, Fortschrittsanzeige), die Ausdünnung ist auf dem Importweg gar nicht da, der VI kann strukturierte Einheiten nicht trennen (§7), und L2–L6 existieren nicht und wurden nicht erfunden. Verifikation am System steht aus |
+| **Trainer (Ermüdungskurve, Paket L)** | ✅ gebaut als **0.45.0**, in **0.46.0** an ihren Platz gerückt: sie ist das Hauptbild der Durability-Kachel im Trainer und ersetzt dort die Punktwolke — vorher stand sie im DFA-Reiter neben einer zweiten Kachel zur selben Frage (§7). Dazu die fehlende Bedienung (Ablesestreifen, Zeiger, Wertetabelle, beide Leserichtungen) und die gepaarte Gegenrechnung zum Auswahleffekt. L1/L1a/L1b: Anker gemessen (Repräsentantenmethode je Fahrtstunde, aus den ungedünnten Strömen beim Import), Form nach Gallo gesetzt und daran verankert, Unsicherheitsband aus der publizierten Streuung. Die Bereichsgrenzen rechnen sich aus der Belegung — zwei Bestände ergeben nachweislich zwei Grenzen. Vorgeschaltet zwei Bugfixes, die heute schon wirken: die Plausibilitätsregel an EINER Stelle statt in fünf Fassungen, und der Historienbeginn. Die Spezifikation wurde vor dem Bau an vier Stellen korrigiert: L1 war NICHT payload-fertig (das Archiv trug ein Fenstermittel je Fahrt, keinen Stundenverlauf — also Algorithmus-Bump, Neuberechnung, Fortschrittsanzeige), die Ausdünnung ist auf dem Importweg gar nicht da, der VI kann strukturierte Einheiten nicht trennen (§7), und L2–L6 existieren nicht und wurden nicht erfunden. Verifikation am System steht aus |
 | **Konstanten-Dubletten (DFA/ACWR) + toter ring()/rd-Code** | ⬜ eigenes Paket, vom Wächter bei 2+2 eingefroren (docs/ausbau.md) |
 | Heute, Kalender (voller Audit), Fitness, Aktivitäten | offen |
 

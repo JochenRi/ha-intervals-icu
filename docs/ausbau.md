@@ -2316,11 +2316,46 @@ Tabelle steht im PROJEKTSTAND §7 — dort, wo die nächste Session sie sucht.
 
 **4 · L2–L6 existieren nicht** und wurden nicht erfunden (siehe oben).
 
+**5 · Wo die Kachel sitzt und was sie ersetzt, stand nirgends** — nachgetragen
+im Abschnitt darüber, nachdem der Bau zwei Kacheln für eine Frage erzeugt hatte.
+
+**6 · „Ablesen ohne Schätzen" war nicht gebaut.** Die Kachel hatte keine
+Bedienung: nichts anklickbar, nichts abgreifbar, zwei Sätze unter dem Bild als
+Ersatz. Seit 0.46.0 trägt sie einen festen Ablesestreifen im Kartenkopf, einen
+Zeiger über einem feinen Raster, eine Wertetabelle und **beide**
+Leserichtungen — die zweite („150 W — wie lange") fehlte ganz.
+
 **Und eine Falle, die in „Tests L" fehlte:** die Falle aus L0 Runde 3 selbst.
 Sie ist jetzt der wichtigste Test des Pakets — mit der Gegenprobe, dass die
 Störer den gemessenen Abfall von +4,0 auf +42,0 W treiben, wenn man sie drin
 lässt. Beim Bau dieser Gegenprobe kam der Befund heraus, dass der Median dämpft,
 aber nicht schützt (PROJEKTSTAND §7).
+
+### WO die Kachel sitzt, und was sie ERSETZT (korrigiert 13.09.2026, nach 0.45.0)
+
+**Diese Spezifikation hat nie ausgeschrieben, wohin die Kachel gehört und was
+mit dem bisherigen Bild geschieht — und das war der Fehler.** Gebaut wurde sie
+daraufhin als eigene Karte im DFA-Reiter, während die Durability-Kachel im
+Trainer mit ihrer Entkopplungswolke stehen blieb. Ergebnis: **zwei Kacheln für
+eine Frage, in zwei Reitern**, mit zwei Rechnungen und zwei Bildern, die man
+nicht nebeneinander sehen konnte (PROJEKTSTAND §7, 0.46.0).
+
+**Verbindlich, damit es nicht wieder passiert:**
+
+- Die Ermüdungskurve ist das **Hauptbild der Durability-Kachel im
+  Trainer-Reiter**. Es gibt keine zweite Kachel zu dieser Frage.
+- Sie **ERSETZT die Entkopplungs-Punktwolke**. Die Wolke verschwindet als Bild;
+  ihre Rechnung (Bins, Blöcke, Steigung, Verweigerung der Leitzahl) bleibt
+  unberührt und steht weiter im Text.
+- Was in der Kachel bleibt: der Kopfbereich aus H1/H2, die Mediane je
+  Arbeitsband, der Blockverlauf, „Was das ausbaut", Rechenweg und Quellenblöcke.
+- **Drei Abschnitte, drei Überschriften** — weil zwei der Teile über
+  verschiedene Achsen laufen (Dauer für die Schwelle, Arbeit für die
+  Entkopplung). Beide Achsenentscheidungen sind belegt, der Unterschied wird im
+  Bild benannt, und **vereinheitlicht wird nicht**: das kassierte eine der
+  beiden Begründungen stillschweigend.
+- Das Entkopplungs-Diagramm im BELASTUNGS-Reiter ist eine andere Stelle
+  (`analytics.decoupling_series`) und bleibt unangetastet.
 
 ### Hausmuster für die Kachel
 
