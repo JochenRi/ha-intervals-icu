@@ -551,6 +551,74 @@ behält Fälle und lässt schlechtere Treffer zu (mehr Verzerrung).
 
 ---
 
+## Paket F — Die Durability-Kachel auf den Hausstandard
+
+**Aufgenommen am 13.09.2026** nach einem Live-Befund: „Wie lange trägt die
+Grundlage?" zeigt drei gleichrangige Zahlen — 0,9 % · 0,7 % · 81 — die sich
+nicht zuordnen lassen. Gehört zusammen mit Paket C in ein Release: beides sind
+Karten, die Zahlen zeigen, ohne ihre Herkunft mitzuliefern.
+
+### F1 · Was die Kachel rechnet (aus `coach.durability`, nachgelesen)
+
+Ruhige Einheiten ab 45 Minuten, Intervalleinheiten ab `icu_intensity` 80
+ausgeschlossen, mindestens 8 Einheiten insgesamt. Geteilt bei 90 Minuten, je
+Gruppe der **Median der Entkopplung**. Das Urteil vergleicht gegen
+`DECOUPLING_GOOD = 5.0` (Friel).
+
+### F2 · Was fehlt
+
+- **Die Einheit fehlt.** Dass 0,9 % eine *Entkopplung* ist, steht nirgends auf
+  der Karte.
+- **Die Bezugsmarke fehlt.** Bis 5 % gilt als unauffällig — ohne diese Zahl
+  sagt „0,9 %" nichts. Sie steckt heute nur im Quelltext, nicht in der Payload.
+- **`n` je Gruppe fehlt.** 81 ist die Gesamtzahl, nicht die Aufteilung. Wie
+  viele Einheiten über 90 Minuten liegen, ist unsichtbar — und genau davon
+  hängt ab, ob die rechte Zahl belastbar ist.
+- **Keine Leitzahl.** Drei gleich große Zahlen, keine beantwortet die Frage der
+  Überschrift.
+- **Kein Rechenweg.** Der aufklappbare Block nennt Quelle und Grenze, aber
+  nicht, wie die Zahlen zustande kommen.
+
+### F3 · Was daraus wird
+
+- **Leitzahl oben:** die Antwort auf die Überschrift — hält die Entkopplung mit
+  der Dauer, und um wie viele Prozentpunkte sie sich zwischen den Gruppen
+  unterscheidet. Die beiden Gruppenwerte werden Beleg, nicht Hauptsache.
+- **Die 5-%-Marke sichtbar:** zwei kleine Balken gegen dieselbe Skala, die Marke
+  als Linie. Dann ist der Gruppenvergleich eine Längendifferenz statt
+  Kopfrechnen, und der Abstand zur Marke steht ohne Erklärung da.
+- **`n` je Gruppe** neben jedem Wert. Unter 5 Einheiten in einer Gruppe wird die
+  Zahl **nicht behauptet**, sondern als zu dünn ausgewiesen — dasselbe Muster
+  wie die hohlen Punkte im DFA-Reiter.
+- **„Mehr anzeigen" mit dem Rechenweg**, in der Bauart des Budget-Bullet-Graphen:
+  welche Einheiten zählen (ab 45 min, Intensität unter 80), warum bei 90 Minuten
+  geteilt wird, dass es **Mediane** sind und keine Mittelwerte, und was
+  Entkopplung überhaupt ist — die Herzfrequenz driftet nach oben, während die
+  Leistung gleich bleibt.
+- **Die Grenze nach vorn:** Entkopplung ist nur auf gleichmäßigen Einheiten
+  aussagekräftig. Steht heute im Quellenblock, gehört aber sichtbar dorthin, wo
+  sie erklärt, warum manche Fahrten gar nicht mitzählen.
+
+### F4 · Backend
+
+`durability()` liefert zusätzlich: `n_short`, `n_long`, die Schwelle
+(`DECOUPLING_GOOD`, nicht im Frontend hartkodieren — sonst stehen zwei Wahrheiten
+im Haus) und den Unterschied zwischen den Gruppen. Additiv, keine bestehende
+Zusicherung ändert sich.
+
+### Tests F
+
+- `n_short + n_long == n`, und beide werden in der Payload geführt.
+- Eine Gruppe mit weniger als 5 Einheiten wird als dünn ausgewiesen, ihr Wert
+  nicht als Aussage gezeichnet.
+- Die Schwelle im Panel stammt aus der Payload, nicht aus einer eigenen
+  Konstante — Quelltext-Wächter dagegen.
+- Gegenproben: Schwelle im Frontend hartkodieren, `n` je Gruppe weglassen,
+  dünne Gruppe trotzdem behaupten — jede Mutation muss gezählt und benannt
+  melden.
+
+---
+
 ## Reihenfolge und Modellwahl
 
 | Session | Paket | Warum |
