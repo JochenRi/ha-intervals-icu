@@ -12,6 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "custom_components" / "intervals_icu"))
 
 import coach  # noqa: E402
+import const  # noqa: E402
 import workouts  # noqa: E402
 
 FAILURES: list[str] = []
@@ -376,6 +377,160 @@ eq(sum(b["n"] for b in bands), dur_clear["n"], "9h Bänder: die Bänder summiere
 # Zu wenig Historie: gar keine Kachel, statt einer Kachel auf vier Einheiten.
 check(coach.durability(dur_data([ride(f"x{i}", 600, 1.0) for i in range(4)])) is None,
       "9 durability: Kachel aus zu wenigen Einheiten gebaut")
+
+
+# --- 9i  Paket H: der Kopf. Belegte Faehigkeit, nie aus einem Modell ---------
+# Die erste Zeile steht ab der ersten Fahrt da und kippt NICHT, wenn die
+# Statistik nicht traegt. Genau deshalb wird sie am GESPERRTEN Fall geprueft.
+check(dur_noisy["blocked"] == "flat", "9i Fixture-Beweis: der verrauschte Fall ist nicht gesperrt")
+prog_noisy = dur_noisy["progression"]
+check(prog_noisy is not None, "9i Kopf: fehlt, obwohl die Kachel gesperrt ist")
+check(prog_noisy["demonstrated"]["minutes"] > 0 and prog_noisy["demonstrated"]["watts"],
+      "9i Kopf: die belegte Fahrt hat keine Dauer oder keine Leistung")
+
+# Dauer und Leistung liegen AN den Punkten - Kopf und Wolke kommen aus einer
+# Liste. Das ist die Zusicherung "gleicher Pool", und sie folgt aus der
+# Datenstruktur statt aus einem Test, der daneben steht.
+for point in dur_noisy["points"]:
+    check(point.get("minutes") and point.get("watts"),
+          "9i Punkte: Dauer oder Leistung fehlt am Punkt")
+# .get statt [] mit Absicht: faellt das Feld weg, soll der Test es ZAEHLEN und
+# BENENNEN, nicht abstuerzen - ein Absturz ueberspringt alles Folgende und
+# meldet am Ende "0 Fehler" (PROJEKTSTAND Paragraph 9).
+longest = max(dur_noisy["points"], key=lambda q: q.get("minutes") or 0)
+eq(prog_noisy["demonstrated"]["minutes"], longest.get("minutes"),
+   "9i Kopf: die belegte Dauer stammt nicht aus dem Punkt-Pool")
+eq(prog_noisy["demonstrated"]["watts"], longest.get("watts"),
+   "9i Kopf: die genannte Leistung ist nicht die der belegten Fahrt")
+
+# --- 9j  Laengste (nach ZEIT) ist NICHT arbeitsreichste (nach kJ) ------------
+# Am Livebestand vom 13.09.2026 sind beide dieselbe Fahrt. Eine daran gebaute
+# Fixture wuerde die Unterscheidung ueberhaupt nicht pruefen, also wird sie hier
+# erzwungen: eine lange leichte gegen eine kurze arbeitsreiche Fahrt.
+apart = dur_data(
+    [ride(f"m{i}", 400 + i * 20, [1.0, -1.0, 2.0, -2.0][i % 4], minutes=90, watts=90)
+     for i in range(12)]
+    + [ride("lang_leicht", 670, 0.5, minutes=240, watts=47),
+       ride("kurz_schwer", 2000, 0.5, minutes=110, watts=303)]
+)
+dur_apart = coach.durability(apart)
+p_apart = dur_apart["progression"]
+heaviest = max(dur_apart["points"], key=lambda q: q.get("kj") or 0)
+longest_a = max(dur_apart["points"], key=lambda q: q.get("minutes") or 0)
+check(heaviest["id"] != longest_a["id"],
+      "9j Fixture-Beweis: laengste und arbeitsreichste Fahrt sind dieselbe - "
+      "der Widerspruch waere nicht pruefbar")
+eq(p_apart["demonstrated"]["id"], "lang_leicht",
+   "9j Kopf: der Kopf zeigt die arbeitsreichste statt der laengsten Fahrt")
+eq(dur_apart["max_kj"], heaviest["kj"],
+   "9j Rechenweg: max_kj ist nicht die arbeitsreichste Fahrt")
+check(p_apart["demonstrated"]["kj"] != dur_apart["max_kj"],
+      "9j: die beiden Superlative fallen zusammen - die Beschriftung ist nicht pruefbar")
+# Gegenprobe: wer im Kopf nach kJ sortiert, landet auf der kurzen Fahrt.
+eq(max(dur_apart["points"], key=lambda q: q.get("kj") or 0).get("minutes"), 110,
+   "9j Gegenprobe: Sortierung nach Arbeit liefert doch die laengste Fahrt")
+
+# --- 9k  Die Wattzahl im Kopf ist die der Fahrt, nicht der Pool-Median -------
+# Auch diese Verwechslung waere am Livebestand unsichtbar: dort hat die
+# laengste Fahrt zufaellig genau die 136 W des Pool-Medians.
+check(dur_apart["power"] and dur_apart["power"]["watts"] != p_apart["demonstrated"]["watts"],
+      "9k Fixture-Beweis: Fahrt-Leistung und Pool-Median sind identisch - "
+      "eine Leihgabe aus der Umrechnung waere unsichtbar")
+eq(p_apart["demonstrated"]["watts"], 47,
+   "9k Kopf: im Kopf steht eine andere Leistung als die der belegten Fahrt")
+
+# --- 9l  Zeile 2 kann Zeile 1 nie uebersteigen ------------------------------
+for label, payload in (("verrauscht", dur_noisy), ("getrennt", dur_apart),
+                       ("klar", dur_clear), ("duenn", dur_few)):
+    pr = payload["progression"]
+    check(pr is not None, f"9l {label}: kein Kopf")
+    check(pr["recent"]["minutes"] <= pr["demonstrated"]["minutes"],
+          f"9l {label}: der Bezug uebersteigt die belegte Dauer - "
+          "zwei verschiedene Grundgesamtheiten")
+    ids = {q["id"] for q in payload["points"]}
+    check(pr["demonstrated"]["id"] in ids and pr["recent"]["id"] in ids,
+          f"9l {label}: eine Kopfzeile stammt nicht aus dem Punkt-Pool")
+
+# --- 9m  Leeres 30-Tage-Fenster: ausgeweitet UND genannt ---------------------
+# Zwei Bestaende mit denselben Fahrten und derselben Luecke, die sich NUR darin
+# unterscheiden, ob im nahen Fenster etwas liegt. Ohne das zweite prueft das
+# erste nur, dass die Leiter ueberhaupt eine Sprosse hat.
+_far = [ride(f"far{i}", 500 + i * 40, [1.0, -1.0, 2.0][i % 3], minutes=80 + i, days_ago=150 + i)
+        for i in range(12)]
+away = dur_data(list(_far))
+away["wellness"] = {TODAY.isoformat(): {"id": TODAY.isoformat()}}
+near = dur_data(_far + [ride("nah", 700, 1.0, minutes=95, days_ago=6)])
+near["wellness"] = {TODAY.isoformat(): {"id": TODAY.isoformat()}}
+p_away = coach.durability(away)["progression"]
+p_near = coach.durability(near)["progression"]
+eq(p_away["recent"]["days"], 365, "9m leer: das Fenster wurde nicht ausgeweitet")
+check(p_away["recent"]["widened"] is True, "9m leer: die Ausweitung wird nicht ausgewiesen")
+eq(p_near["recent"]["days"], p_near["window_days"],
+   "9m gefuellt: das nahe Fenster wird ausgeweitet, obwohl es besetzt ist")
+check(p_near["recent"]["widened"] is False,
+      "9m gefuellt: eine Ausweitung wird behauptet, die nicht stattfand")
+eq(p_near["recent"]["id"], "nah", "9m gefuellt: der Bezug stammt nicht aus dem nahen Fenster")
+check(p_away["recent"]["days"] != p_near["recent"]["days"],
+      "9m Fixture-Beweis: leeres und gefuelltes Fenster sind nicht unterscheidbar")
+# Und der Uhrzeiger ist der des Archivs, nicht der der Maschine: ohne Wellness
+# faellt er auf die juengste Fahrt zurueck, mit Wellness laeuft er weiter.
+p_noclock = coach.durability(dur_data(list(_far)))["progression"]
+eq(p_noclock["recent"]["days"], p_noclock["window_days"],
+   "9m Uhr: ohne Wellness-Tag wird trotzdem ausgeweitet")
+
+# --- 9n  Der Progressionsfaktor: aus const.py, einmal, und in der Payload ----
+eq(p_apart["factor"], const.PROGRESSION_FACTOR, "9n: der Faktor steht nicht in der Payload")
+eq(p_apart["round_minutes"], const.PROGRESSION_ROUND_MINUTES,
+   "9n: der Rundungsschritt steht nicht in der Payload")
+eq(p_apart["window_days"], const.PROGRESSION_WINDOWS_DAYS[0],
+   "9n: das Bezugsfenster steht nicht in der Payload")
+step = const.PROGRESSION_ROUND_MINUTES
+eq(p_apart["next_minutes"],
+   int(round(p_apart["recent"]["minutes"] * const.PROGRESSION_FACTOR / step) * step),
+   "9n: der gedruckte Schritt ist nicht der nachgerechnete")
+eq(p_apart["next_minutes"] % step, 0, "9n: der Schritt ist nicht auf den Schritt gerundet")
+# Die Gegenprobe, die der Auftrag verlangt: Faktor auf 1,0 -> der Satz verliert
+# seine Aussage. Steht sie nicht drin, prueft die Zeile darueber nur Arithmetik.
+check(p_apart["next_minutes"] > p_apart["recent"]["minutes"],
+      "9n Gegenprobe: der naechste Schritt liegt nicht ueber dem Bezug - "
+      "mit Faktor 1,0 sagt die Zeile nichts mehr")
+
+# --- 9o  Der Rueckfall: Regel, nicht Sonderfall -----------------------------
+# Er greift, sobald eine einzelne Ausreisser-Langfahrt mehr als den Faktor ueber
+# dem nahen Bezug liegt - am Livebestand vom 13.09.2026 trifft das bei GUT
+# gefuelltem Fenster zu (260 gegen 230 Minuten).
+back = dur_data(
+    [ride(f"b{i}", 400 + i * 20, [1.0, -1.0, 2.0][i % 3], minutes=100, days_ago=20 + i)
+     for i in range(10)]
+    + [ride("ausreisser", 900, 1.0, minutes=240, days_ago=200)]
+)
+back["wellness"] = {TODAY.isoformat(): {"id": TODAY.isoformat()}}
+p_back = coach.durability(back)["progression"]
+eq(p_back["demonstrated"]["minutes"], 240, "9o: die belegte Dauer ist nicht die Ausreisser-Fahrt")
+eq(p_back["recent"]["minutes"], 100, "9o: der Bezug stammt nicht aus dem nahen Fenster")
+check(p_back["below_demonstrated"] is True,
+      "9o: der Rueckfall wird nicht erkannt, obwohl der Schritt unter der Bestleistung liegt")
+check(p_back["next_minutes"] < p_back["demonstrated"]["minutes"],
+      "9o: below_demonstrated widerspricht den eigenen Zahlen")
+# Gegenfall aus demselben Bestand, nur ohne den Ausreisser: kein Rueckfall.
+forward_only = dur_data([a for k, a in back["activities"].items() if k != "ausreisser"])
+forward_only["wellness"] = back["wellness"]
+p_fwd = coach.durability(forward_only)["progression"]
+check(p_fwd["below_demonstrated"] is False,
+      "9o Fixture-Beweis: auch ohne Ausreisser wird ein Rueckfall gemeldet - "
+      "der Zweig ist nicht unterscheidbar")
+
+# --- 9p  Bloecke sagen, worauf sie warten -----------------------------------
+for block in dur_gap["blocks"] + dur_noisy["blocks"]:
+    if block["reason"] == "thin":
+        check(block["need_w"] and block["need_w"] > 0,
+              "9p Block: 'zu duenn' ohne Angabe, wieviel Gewicht fehlt")
+    if block["reason"] == "flat" and block["slope_t"] and block["slope_t"] > 0:
+        check(block["need_n"] and block["need_n"] > block["n"],
+              "9p Block: 'kein Trend' ohne Angabe, wieviele Einheiten es braeuchte")
+    if block["tipping_kj"] is not None:
+        check(block["need_w"] is None and block["need_n"] is None,
+              "9p Block: ein tragender Block wartet angeblich noch auf etwas")
 
 
 # --- 10  thin and broken data must not produce confident advice --------------

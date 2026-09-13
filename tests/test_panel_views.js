@@ -1333,8 +1333,12 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
        "durability: zu duenn besetztes Arbeitsband nicht als solches ausgewiesen");
     contains(tileFlat, "kein gesicherter Trend", "durability: Block ohne Trend nennt seinen Grund nicht");
     contains(tileFlat, "zu dünn belegt", "durability: zu duenn belegter Block nennt seinen Grund nicht");
-    contains(tileFlat, M.fmt(flat.blocks[2].tipping_kj, 0) + " kJ",
+    // Ein tragender Block steht jetzt im KLAREN Fall - im flachen reisst jeder
+    // Block eine der drei Regeln, und genau das ist der Livebefund.
+    contains(tileClear, M.fmt(clear.blocks[1].tipping_kj, 0) + " kJ",
              "durability: der Kipppunkt eines tragenden Blocks fehlt");
+    ok(flat.blocks.every((b) => b.tipping_kj == null),
+       "durability Fixture-Beweis: der flache Fall enthaelt doch einen tragenden Block");
 
     // Die ehrliche Buchhaltung aus G3: "26 Einheiten" waere falsch, wenn ein
     // Teil davon fast nichts beitraegt.
@@ -1349,6 +1353,119 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
 
     ok(p._grp.dur && p._grp.dur.xy === true && p._grp.dur.pts.length === flat.points.length,
        "durability: die Wolke ist nicht als xy-Gruppe fuer den Zeiger angemeldet");
+  }
+
+  /* ── Paket H: der Kopfbereich ───────────────────────────────────────────
+     Drei Zeilen, gross, in der BAUART der Signalkarten - Aufbau und
+     Typografie, ausdruecklich nicht deren Farblogik. Die erste Zeile ist
+     demonstrierte Faehigkeit: sie darf nie aus einem Modell kommen und nie
+     verschwinden, weil die Statistik nicht traegt. */
+  {
+    const flat = F.coach("slump").durability;
+    const clear = F.coach("rebound").durabilityClear;
+    const tileFlat = p.rDurability(flat);
+    const tileClear = p.rDurability(clear);
+    const pr = flat.progression, prc = clear.progression;
+
+    // H1 Zeile 1: steht da, OBWOHL der Kachelkoerper gesperrt ist.
+    ok(flat.blocked === "flat", "H Fixture-Beweis: der flache Fall ist doch nicht gesperrt");
+    contains(tileFlat, "WAS DU KANNST", "H1: die belegte Faehigkeit fehlt im Kopf");
+    contains(tileFlat, M.hmn(pr.demonstrated.minutes),
+             "H1: die belegte Dauer wird nicht genannt");
+    contains(tileFlat, M.fmt(pr.demonstrated.watts, 0) + " W",
+             "H1: die Leistung DIESER Fahrt fehlt");
+    contains(tileFlat, M.dMed(pr.demonstrated.date), "H1: das Datum der belegten Fahrt fehlt");
+
+    // Die Falle, die am Livebestand unsichtbar waere: die Zeile-1-Wattzahl
+    // ist NICHT der Pool-Median aus der Umrechnung. Faende der Test beide
+    // gleich, pruefte er die Unterscheidung ueberhaupt nicht.
+    ok(pr.demonstrated.watts !== flat.power.watts,
+       "H1 Fixture-Beweis: Fahrt-Leistung und Pool-Median sind in der Fixture identisch - " +
+       "eine Verwechslung waere unsichtbar");
+    // Faellt der Kopf ganz weg, soll der Test das ZAEHLEN und BENENNEN statt
+    // am null-Treffer abzustuerzen - ein Absturz ueberspringt alles Folgende.
+    const headHit = /<div class="durhead">[\s\S]*?\n    <\/div>/.exec(tileFlat);
+    ok(headHit !== null, "H1: der Kopfbereich fehlt vollstaendig");
+    const headFlat = headHit ? headHit[0] : "";
+    ok(!headFlat.includes(M.fmt(flat.power.watts, 0) + " W"),
+       "H1: im Kopf steht der Pool-Median statt der Leistung der Fahrt selbst");
+
+    // Und die zweite: laengste Fahrt (nach ZEIT) ist nicht die
+    // arbeitsreichste (nach kJ). Beide Superlative sind beschriftet.
+    const heaviest = flat.points.reduce((a, b) => (b.kj > a.kj ? b : a));
+    const longest = flat.points.reduce((a, b) => (b.minutes > a.minutes ? b : a));
+    ok(heaviest.id !== longest.id,
+       "H Fixture-Beweis: laengste und arbeitsreichste Fahrt sind dieselbe - " +
+       "der Widerspruch waere nicht pruefbar");
+    ok(longest.minutes === pr.demonstrated.minutes && longest.kj === pr.demonstrated.kj,
+       "H1: der Kopf zeigt nicht die laengste Fahrt des Pools");
+    ok(/<b>längste<\/b>/.test(headFlat), "H1: 'laengste' ist nicht als Zeitmass ausgewiesen");
+    contains(tileFlat, "arbeitsreichste", "H1: die Arbeitsgroesse ist nicht als solche beschriftet");
+
+    // H1 Zeile 2 und die Zusicherung: der Bezug kann die belegte Dauer nie
+    // uebersteigen - beide stammen aus derselben Liste.
+    contains(tileFlat, "WIE WEIT DU GEKOMMEN BIST", "H1: die zweite Zeile fehlt");
+    for (const q of [pr, prc]) {
+      ok(q.recent.minutes <= q.demonstrated.minutes,
+         "H1: der Bezug uebersteigt die belegte Dauer - zwei verschiedene Grundgesamtheiten");
+    }
+
+    // H2: der naechste Schritt, der Faktor und die Grenzen der Regel.
+    contains(tileFlat, "WAS ALS NÄCHSTES", "H2: die dritte Zeile fehlt");
+    contains(tileFlat, M.hmn(pr.next_minutes), "H2: der naechste Schritt wird nicht genannt");
+    contains(tileFlat, M.fmt(pr.factor, 2), "H2: der Faktor steht nicht in der Kachel");
+    contains(tileFlat, "Läufern", "H2: die Grenze 'an Laeufern erhoben' fehlt");
+    contains(tileFlat, "keine Trainingsvorschrift", "H2: der Risikoknick wird als Vorschrift verkauft");
+    contains(tileFlat, M.fmt((pr.factor - 1) * 100, 0) + " %",
+             "H2: der Prozentsatz wird nicht aus dem Faktor gerechnet");
+
+    // Der Rueckfall-Fall - kein Sonderzweig, sondern die Regel, sobald Zeile 3
+    // unter Zeile 1 liegt. Am Livebestand trifft das heute zu.
+    ok(pr.below_demonstrated === true && prc.below_demonstrated === false,
+       "H Fixture-Beweis: beide Faelle sind im Rueckfall gleich - der Zweig ist nicht pruefbar");
+    contains(tileFlat, "nicht deine Bestleistung", "H2: der Rueckfall-Satz fehlt");
+    contains(tileFlat, "was gerade in den Beinen steckt",
+             "H2: der Rueckfall-Satz nennt den Grund nicht");
+    ok(!/nicht deine Bestleistung/.test(tileClear),
+       "H2: der Rueckfall-Satz steht auch da, wo der Schritt UEBER der Bestleistung liegt");
+
+    // Ausweitung des Bezugsfensters: nie still.
+    ok(prc.recent.widened === true && pr.recent.widened === false,
+       "H Fixture-Beweis: kein ausgeweiteter Fall in der Fixture");
+    contains(tileClear, "letzten " + M.fmt(prc.recent.days, 0) + " Tage",
+             "H2: der ausgeweitete Zeitraum wird nicht genannt");
+    contains(tileClear, "deshalb der weitere Zeitraum",
+             "H2: die Ausweitung geschieht still");
+    ok(!/deshalb der weitere Zeitraum/.test(tileFlat),
+       "H2: der Ausweitungshinweis steht auch im nicht ausgeweiteten Fall");
+
+    // Zwei Farbregister, die sich nie mischen. Der Kopf traegt KEINS davon:
+    // "was du kannst" ist eine Tatsache, "was als Naechstes" eine
+    // Risikoaussage - kein Ampelzustand, und das Datenregister ist in dieser
+    // Ansicht schon an Wolke und Gerade vergeben.
+    for (const judge of [M.C.green, M.C.amber, M.C.red]) {
+      ok(!headFlat.toLowerCase().includes(String(judge).toLowerCase()),
+         `H1: der Kopf traegt mit ${judge} eine Urteilsfarbe`);
+    }
+    for (const data of [M.C.blue, M.C.violet, M.C.cyan, M.C.magenta]) {
+      ok(!headFlat.toLowerCase().includes(String(data).toLowerCase()),
+         `H1: der Kopf greift mit ${data} in das Datenregister der Wolke`);
+    }
+
+    // H3: die Stueckzahl ist Beleg, nicht Botschaft - sie steht im Rechenweg.
+    const cut = tileFlat.indexOf('<details class="more">');
+    ok(cut > 0, "H3: der Rechenweg fehlt");
+    contains(tileFlat.slice(cut), String(flat.needed_sessions),
+             "H3: die Stueckzahl steht nicht im Rechenweg");
+    ok(!tileFlat.slice(0, cut > 0 ? cut : undefined).includes(String(flat.needed_sessions)),
+       "H3: die Stueckzahl steht weiterhin als Botschaft ueber dem Rechenweg");
+
+    // Ein Feld aus Strichen sagt, worauf es wartet.
+    contains(tileFlat, "laufende Block", "H3: das Blockfeld sagt nicht, worauf es wartet");
+    contains(tileFlat, M.fmt(flat.blocks[2].need_w, 1),
+             "H3: das Blockfeld nennt das fehlende Gewicht nicht");
+    ok(!/laufende Block/.test(tileClear),
+       "H3: die Wartezeile steht auch da, wo der juengste Block traegt");
   }
 
   report("test_panel_views");

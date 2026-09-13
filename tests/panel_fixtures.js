@@ -553,32 +553,32 @@ function coach(kind) {
      Dieser Fall ist der Livefall: Richtung vorhanden, Streuung zu gross - die
      Kachel verweigert die Leitzahl und sagt, woran es liegt. */
   const durabilityPoints = [
-      { kj: 250, dec: 5.9, w: 1.0, vi: 1.05, date: "2026-01-01", id: "a0" },
-      { kj: 320, dec: -5.5, w: 1.0, vi: 1.05, date: "2026-01-02", id: "a1" },
-      { kj: 390, dec: 1.2, w: 0.55, vi: 1.14, date: "2026-01-03", id: "a2" },
-      { kj: 460, dec: -2.3, w: 0.2, vi: 1.21, date: "2026-01-04", id: "a3" },
-      { kj: 530, dec: 3.8, w: 0.85, vi: 1.08, date: "2026-02-05", id: "a4" },
-      { kj: 600, dec: 6.9, w: 1.0, vi: 1.05, date: "2026-02-06", id: "a5" },
-      { kj: 670, dec: -4.5, w: 1.0, vi: 1.05, date: "2026-02-07", id: "a6" },
-      { kj: 740, dec: 2.2, w: 0.55, vi: 1.14, date: "2026-02-08", id: "a7" },
-      { kj: 810, dec: -1.3, w: 0.2, vi: 1.21, date: "2026-03-09", id: "a8" },
-      { kj: 880, dec: 4.9, w: 0.85, vi: 1.08, date: "2026-03-10", id: "a9" },
-      { kj: 950, dec: 8.0, w: 1.0, vi: 1.05, date: "2026-03-11", id: "a10" },
-      { kj: 1020, dec: -3.4, w: 1.0, vi: 1.05, date: "2026-03-12", id: "a11" },
-      { kj: 1090, dec: 3.3, w: 0.55, vi: 1.14, date: "2026-04-13", id: "a12" },
-      { kj: 1160, dec: -0.2, w: 0.2, vi: 1.21, date: "2026-04-14", id: "a13" },
-      { kj: 1230, dec: 5.9, w: 0.85, vi: 1.08, date: "2026-04-15", id: "a14" },
-      { kj: 1300, dec: 9.0, w: 1.0, vi: 1.05, date: "2026-04-16", id: "a15" },
-      { kj: 1370, dec: -2.4, w: 1.0, vi: 1.05, date: "2026-05-17", id: "a16" },
-      { kj: 1440, dec: 4.3, w: 0.55, vi: 1.14, date: "2026-05-18", id: "a17" },
-      { kj: 1510, dec: 0.8, w: 0.2, vi: 1.21, date: "2026-05-19", id: "a18" },
-      { kj: 1580, dec: 6.9, w: 0.85, vi: 1.08, date: "2026-05-20", id: "a19" },
-      { kj: 1650, dec: 10.0, w: 1.0, vi: 1.05, date: "2026-06-21", id: "a20" },
-      { kj: 1720, dec: -1.4, w: 1.0, vi: 1.05, date: "2026-06-22", id: "a21" },
-      { kj: 1790, dec: 5.3, w: 0.55, vi: 1.14, date: "2026-06-23", id: "a22" },
-      { kj: 1860, dec: 1.8, w: 0.2, vi: 1.21, date: "2026-06-24", id: "a23" },
-      { kj: 1930, dec: 7.9, w: 0.85, vi: 1.08, date: "2026-07-25", id: "a24" },
-      { kj: 2000, dec: 11.0, w: 1.0, vi: 1.05, date: "2026-07-26", id: "a25" },
+      { kj: 250, dec: 5.9, w: 1.0, vi: 1.05, date: "2026-01-01", id: "a0", minutes: 57, watts: 73 },
+      { kj: 320, dec: -5.5, w: 1.0, vi: 1.05, date: "2026-01-02", id: "a1", minutes: 61, watts: 87 },
+      { kj: 390, dec: 1.2, w: 0.55, vi: 1.14, date: "2026-01-03", id: "a2", minutes: 64, watts: 102 },
+      { kj: 460, dec: -2.3, w: 0.2, vi: 1.21, date: "2026-01-04", id: "a3", minutes: 68, watts: 113 },
+      { kj: 530, dec: 3.8, w: 0.85, vi: 1.08, date: "2026-02-05", id: "a4", minutes: 71, watts: 124 },
+      { kj: 600, dec: 6.9, w: 1.0, vi: 1.05, date: "2026-02-06", id: "a5", minutes: 75, watts: 133 },
+      { kj: 670, dec: -4.5, w: 1.0, vi: 1.05, date: "2026-02-07", id: "a6", minutes: 240, watts: 47 },
+      { kj: 740, dec: 2.2, w: 0.55, vi: 1.14, date: "2026-02-08", id: "a7", minutes: 82, watts: 150 },
+      { kj: 810, dec: -1.3, w: 0.2, vi: 1.21, date: "2026-03-09", id: "a8", minutes: 85, watts: 159 },
+      { kj: 880, dec: 4.9, w: 0.85, vi: 1.08, date: "2026-03-10", id: "a9", minutes: 89, watts: 165 },
+      { kj: 950, dec: 8.0, w: 1.0, vi: 1.05, date: "2026-03-11", id: "a10", minutes: 92, watts: 172 },
+      { kj: 1020, dec: -3.4, w: 1.0, vi: 1.05, date: "2026-03-12", id: "a11", minutes: 96, watts: 177 },
+      { kj: 1090, dec: 3.3, w: 0.55, vi: 1.14, date: "2026-04-13", id: "a12", minutes: 99, watts: 184 },
+      { kj: 1160, dec: -0.2, w: 0.2, vi: 1.21, date: "2026-04-14", id: "a13", minutes: 103, watts: 188 },
+      { kj: 1230, dec: 5.9, w: 0.85, vi: 1.08, date: "2026-04-15", id: "a14", minutes: 106, watts: 193 },
+      { kj: 1300, dec: 9.0, w: 1.0, vi: 1.05, date: "2026-04-16", id: "a15", minutes: 110, watts: 197 },
+      { kj: 1370, dec: -2.4, w: 1.0, vi: 1.05, date: "2026-05-17", id: "a16", minutes: 113, watts: 202 },
+      { kj: 1440, dec: 4.3, w: 0.55, vi: 1.14, date: "2026-05-18", id: "a17", minutes: 117, watts: 205 },
+      { kj: 1510, dec: 0.8, w: 0.2, vi: 1.21, date: "2026-05-19", id: "a18", minutes: 120, watts: 210 },
+      { kj: 1580, dec: 6.9, w: 0.85, vi: 1.08, date: "2026-05-20", id: "a19", minutes: 124, watts: 212 },
+      { kj: 1650, dec: 10.0, w: 1.0, vi: 1.05, date: "2026-06-21", id: "a20", minutes: 127, watts: 217 },
+      { kj: 1720, dec: -1.4, w: 1.0, vi: 1.05, date: "2026-06-22", id: "a21", minutes: 131, watts: 219 },
+      { kj: 1790, dec: 5.3, w: 0.55, vi: 1.14, date: "2026-06-23", id: "a22", minutes: 134, watts: 223 },
+      { kj: 1860, dec: 1.8, w: 0.2, vi: 1.21, date: "2026-06-24", id: "a23", minutes: 138, watts: 225 },
+      { kj: 1930, dec: 7.9, w: 0.85, vi: 1.08, date: "2026-07-25", id: "a24", minutes: 141, watts: 228 },
+      { kj: 2000, dec: 11.0, w: 1.0, vi: 1.05, date: "2026-07-26", id: "a25", minutes: 110, watts: 303 },
   ];
   const durability = {
     n: 26, w_sum: 18.2, n_full: 11, n_partial: 15, n_zero: 0,
@@ -597,10 +597,27 @@ function coach(kind) {
       { from_kj: 1100, to_kj: null, n: 4, w: 2.9, median: null, thin: true },
     ],
     blocks: [
-      { start: "2026-01-01", end: "2026-03-26", n: 12, w: 9.1, max_kj: 900, tipping_kj: null, reason: "flat" },
-      { start: "2026-03-28", end: "2026-06-20", n: 4, w: 2.9, max_kj: 650, tipping_kj: null, reason: "thin" },
-      { start: "2026-06-22", end: "2026-09-11", n: 10, w: 6.2, max_kj: 2000, tipping_kj: 1400, reason: null },
+      { start: "2026-01-01", end: "2026-03-26", n: 12, w: 9.1, max_kj: 900, tipping_kj: null,
+        reason: "flat", need_w: null, need_n: 44, slope_t: 1.05 },
+      { start: "2026-03-28", end: "2026-06-20", n: 4, w: 2.9, max_kj: 650, tipping_kj: null,
+        reason: "thin", need_w: 5.1, need_n: null, slope_t: 3.30 },
+      { start: "2026-06-22", end: "2026-09-11", n: 10, w: 6.2, max_kj: 2000, tipping_kj: null,
+        reason: "thin", need_w: 1.8, need_n: null, slope_t: 2.4 },
     ],
+    /* Der Kopf (H1/H2). Hier absichtlich der RUECKFALL-Fall: die belegte Dauer
+       stammt von a6 (240 min, 47 W), der Bezug der letzten 30 Tage nur von
+       a25 (110 min) - der naechste Schritt liegt also UNTER dem, was schon
+       gefahren wurde. Und a6 ist NICHT die arbeitsreichste Fahrt (das ist a25
+       mit 2000 kJ), seine 47 W sind NICHT der Pool-Median (136 W). Beide
+       Verwechslungen waeren am Livebestand unsichtbar gewesen. */
+    progression: {
+      demonstrated: { minutes: 240, watts: 47, kj: 670, date: "2026-02-07", id: "a6" },
+      recent: { minutes: 110, watts: 303, kj: 2000, date: "2026-07-26", id: "a25",
+                days: 30, n: 3, widened: false },
+      next_minutes: 120, below_demonstrated: true,
+      factor: 1.10, round_minutes: 5, window_days: 30, windows_days: [30, 90, 365],
+      today: "2026-08-20",
+    },
     decoupling_good: 5.0, min_minutes: 45, max_intensity: 80,
     vi_full: 1.05, vi_none: 1.25,
     min_weight_sum: 20.0, min_weight_sum_block: 8.0, min_slope_t: 2.0,
@@ -620,6 +637,24 @@ function coach(kind) {
     w_sum: 24.0, slope: 4.80, slope_se: 1.10, slope_t: 4.36, blocked: null,
     tipping_kj: 1400, tipping_hours: 2.86, needed_sessions: null,
     headline: "Bis etwa 1400 kJ bleibst du unter der 5-%-Marke — rund 2 h 52 bei deinen 136 W der letzten 3 Monate.",
+    blocks: [
+      { start: "2026-01-01", end: "2026-03-26", n: 12, w: 9.1, max_kj: 900, tipping_kj: 800,
+        reason: null, need_w: null, need_n: null, slope_t: 4.1 },
+      { start: "2026-06-22", end: "2026-09-11", n: 10, w: 9.4, max_kj: 2000, tipping_kj: 1400,
+        reason: null, need_w: null, need_n: null, slope_t: 4.36 },
+    ],
+    /* Der Gegenfall zum Kopf oben: der Bezug musste AUSGEWEITET werden (in den
+       letzten 30 Tagen stand nichts), und der naechste Schritt liegt UEBER der
+       belegten Dauer. Zwei unterscheidbare Faelle, sonst prueft der Test die
+       beiden Zweige nur dem Namen nach. */
+    progression: {
+      demonstrated: { minutes: 240, watts: 47, kj: 670, date: "2026-02-07", id: "a6" },
+      recent: { minutes: 240, watts: 47, kj: 670, date: "2026-02-07", id: "a6",
+                days: 365, n: 26, widened: true },
+      next_minutes: 265, below_demonstrated: false,
+      factor: 1.10, round_minutes: 5, window_days: 30, windows_days: [30, 90, 365],
+      today: "2026-08-20",
+    },
   });
   const evidence = { rule: "Javaloyes 2019/2020, Vesterinen 2016 — HRV-gesteuerte Steuerung.",
                      limit: "Düking 2021: kleiner, nicht signifikanter Effekt auf die Spitzenleistung; dafür weniger Non-Responder (Manresa-Rocamora 2021).",

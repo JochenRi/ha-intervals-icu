@@ -585,15 +585,33 @@ const acts = F.activities(), thr = F.thresholds();
                             ["Intensitätsgrenze", /\b80\b/],
                             ["Gewichtsgrenzen", /1\.05|1\.25/],
                             ["Steigungskriterium", /\b2\.0\b/],
-                            ["Mindestzahl je Gruppe", /[^\w.]5(?![\d.])\s*(Einheiten|\))/]]) {
+                            ["Mindestzahl je Gruppe", /[^\w.]5(?![\d.])\s*(Einheiten|\))/],
+                            // Paket H: Faktor, Rundungsschritt und Bezugsfenster
+                            // der Progressionsregel. Der Erklaertext der Kachel
+                            // haette den Waechter selbst gerissen ("die 10 %
+                            // sind der Risikoknick") - richtig ist nicht, ihn zu
+                            // umgehen, sondern die Zahl aus dem Faktor zu rechnen.
+                            ["Progressionsfaktor", /1[.,]10?\b/],
+                            ["Risikoknick in Prozent", /\b10\s*%/],
+                            ["Rundungsschritt", /\b5\s*Minuten/],
+                            ["Bezugsfenster", /\b30\s*Tag/]]) {
     ok(!re.test(tile), `Wächter: ${name} steht als Zahl in rDurability statt in der Payload`);
+  }
+  // Gegenprobe zu den vier neuen Mustern: eingebaute Literale werden gefunden.
+  // Ohne sie pruefen die vier Nullen oben nur, dass die Ausdruecke nie greifen.
+  for (const [planted, re] of [["const f = 1.10;", /1[.,]10?\b/],
+                               ["<b>die 10 % sind der Knick</b>", /\b10\s*%/],
+                               ["auf 5 Minuten gerundet", /\b5\s*Minuten/],
+                               ["der letzten 30 Tage", /\b30\s*Tag/]]) {
+    ok(re.test(planted), `Wächter Gegenprobe: "${planted}" wird NICHT gefunden — der Wächter ist blind`);
   }
   // Die Kehrseite: eine Zahl kann auch dadurch verschwinden, dass die Kachel
   // sie gar nicht mehr zeigt. Jede neue Schwelle aus 0.40.0 muss NACHWEISLICH
   // aus der Payload gelesen werden - sonst ist der Wächter oben nur still.
   for (const key of ["vi_full", "vi_none", "min_weight_sum", "min_weight_sum_block",
                      "min_slope_t", "block_weeks", "power_days", "power_days_fallback",
-                     "fuelling_g_per_h", "max_intensity", "min_minutes", "decoupling_good"]) {
+                     "fuelling_g_per_h", "max_intensity", "min_minutes", "decoupling_good",
+                     "progression"]) {
     ok(tile.includes("d." + key), `Wächter: rDurability liest ${key} nicht aus der Payload`);
   }
 }

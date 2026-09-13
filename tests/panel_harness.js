@@ -60,7 +60,7 @@ function load() {
     ;Object.assign(exported, {
       C, ROLE, SPORT, ST, CTX_COLOR, chart, spark, ring, bullet, monthTicks, dayAxis, domainOf,
       WINDOWS, WIN_DEFAULT, winDef, winRange, winApply, winChips, isoMinus,
-      tickVals, movAvg, rollMedian, median, meanOf, fmt, sign, dur, hhmm,
+      tickVals, movAvg, rollMedian, median, meanOf, fmt, sign, dur, hhmm, hmn,
       dShort, dMed, dLong, groupKey, sportOf, esc,
     });`);
   return { Panel: defined["intervals-icu-panel"], ...exported };

@@ -894,7 +894,7 @@ class IntervalsIcuPanel extends HTMLElement {
              ${fmt(p.window_days, 0)} Tagen steht nichts Qualifiziertes.`
           : `längste Fahrt der letzten ${fmt(p.recent.days, 0)} Tage — ${dMed(p.recent.date)},
              ${fmt(p.recent.n, 0)} ${p.recent.n === 1 ? "Fahrt" : "Fahrten"} im Fenster${
-             p.widened ? `. In den letzten ${fmt(p.window_days, 0)} Tagen stand nichts
+             p.recent.widened ? `. In den letzten ${fmt(p.window_days, 0)} Tagen stand nichts
              Qualifiziertes, deshalb der weitere Zeitraum.` : "."}`)}
       ${headCard("WAS ALS NÄCHSTES", "bis " + hmn(p.next_minutes), "",
         `${fmt(p.recent.minutes, 0)} min × ${fmt(p.factor, 2)},
