@@ -201,7 +201,10 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   ok(!/nicht aufzubauen/.test(knapp), "wochen: alte Unmöglichkeits-Botschaft ist zurück");
   // no plan, no section - and no crash on empty input
   ok(p.rPlanWeeks(F.goal("neu")) === "", "wochen: Sektion trotz fehlendem Plan");
-  ok(p.rPlanWeeks(null) === "", "wochen: Sektion ohne Daten");
+  // Diese Zusicherung hieß bis 0.42.0 "ohne Daten kein Abschnitt" - und hat
+  // damit genau den Fehler festgeschrieben, der den Zielblock von 0.20.0 bis
+  // 0.42.0 unsichtbar gemacht hat. Fehlende Daten sind jetzt eine Aussage.
+  ok(p.rPlanWeeks(null) !== "", "wochen: fehlende Daten verschwinden still");
   p._goal = null;
 }
 
@@ -1563,6 +1566,55 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   unrated.plan.weeks[0].rated = false;
   ok(!/class="pstage"/.test(q.rPlanWeeks(unrated)),
      "wochenplan: Stufen erscheinen ohne rated-Marke");
+}
+
+/* ── kein Block verschwindet still (0.42.1) ───────────────────────────────
+   Der Fehler, den diese Prüfungen gefunden hätten: `goal` wurde beim ERSTEN
+   Aufbau nie geholt, weil _boot direkt rendert und nur _setTab die Payload
+   anfordert. rPlanWeeks stieg mit "" aus, rGoal blieb in einem Ladehinweis,
+   der nie auflöst - beides ohne Fehlermeldung, von 0.20.0 bis 0.42.0. Die
+   alten Tests riefen die Renderer IMMER mit vorhandener Fixture auf, "" war
+   damit ein gültiges Ergebnis, und der Fall kam nie vor. */
+{
+  const q = new M.Panel();
+  q._nowIso = F.TODAY;
+
+  // 1 - nie angefordert: das ist ein Defekt und muss als solcher dastehen
+  for (const [fn, arg] of [["rGoal", null], ["rPlanWeeks", null], ["rWorkouts", null]]) {
+    const out = q[fn](arg);
+    ok(out && out.trim().length > 0, `leerfall: ${fn} liefert einen Leerstring`);
+    contains(out, "Nie angefordert", `leerfall: ${fn} sagt nicht, dass nichts geholt wurde`);
+    contains(out, "Fehler im Panel", `leerfall: ${fn} gibt den Defekt als leeren Bestand aus`);
+  }
+
+  // 2 - unterwegs: ein Ladehinweis, aber nur wenn wirklich geladen wird
+  q._asked.goal = true;
+  contains(q.rGoal(null), "Wird noch geladen", "leerfall: kein Ladehinweis trotz laufendem Abruf");
+  ok(!/Nie angefordert/.test(q.rGoal(null)),
+     "leerfall: laufender Abruf wird als Defekt gemeldet");
+
+  // 3 - fehlgeschlagen: der Grund steht dran, nicht nur "geht nicht"
+  q._failed.goal = "WebSocket timeout";
+  const failed = q.rPlanWeeks(null);
+  contains(failed, "Nicht geladen", "leerfall: gescheiterter Abruf sieht aus wie ein laufender");
+  contains(failed, "WebSocket timeout", "leerfall: der Grund des Fehlschlags fehlt");
+
+  // 4 - ein Ziel, das schlicht noch nicht gesetzt ist, ist KEIN Defekt:
+  //     rGoal zeigt dafür das Formular, ein zweiter Hinweis wäre Lärm
+  const unset = F.goal("neu");
+  ok(q.rPlanWeeks(unset) === "", "leerfall: ungesetztes Ziel wird als Defekt gemeldet");
+  contains(q.rGoal(unset), "Worauf trainierst du", "leerfall: ungesetztes Ziel zeigt kein Formular");
+
+  // 5 - und die Boot-Ansichten, die dieselbe Klasse tragen
+  for (const [fn, label] of [["rKalender", "Der Kalender"], ["rBelastung", "Die Belastungsdaten"],
+                             ["rHeute", "Der Tag"], ["rSignale", "Die Signale"],
+                             ["rFitness", "Die Fitness-Kurve"], ["rDfa", "Die DFA-Daten"]]) {
+    const out = q[fn](null);
+    ok(out && out.includes(label), `leerfall: ${fn} benennt nicht, was fehlt`);
+    contains(out, "Nie angefordert", `leerfall: ${fn} verschweigt den nie erfolgten Abruf`);
+  }
+  // rTrainer trägt denselben Hinweis, nur mit zwei Argumenten
+  contains(q.rTrainer(null, null), "Nie angefordert", "leerfall: rTrainer verschweigt den Ausfall");
 }
 
 report("test_panel_views");

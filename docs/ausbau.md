@@ -1288,6 +1288,31 @@ gibt:
 Die Zahlen sind **gewählt, nicht gemessen** — das steht in der Payload und im
 Panel dran, wie bei der Zielwahl je Ampelfarbe im Lastbudget.
 
+### I8 · Nachtrag aus dem Betrieb (0.42.1)
+
+**Live-Befund am 13.09.2026, direkt nach dem Einspielen von 0.42.0:** auf dem
+Trainer-Reiter fehlten `rGoal` und `rPlanWeeks` — die einzigen beiden Blöcke,
+die `this._goal` brauchen. Ursache ist nicht Paket I: `_boot()` rendert direkt,
+`_need("goal")` hängt allein an `_setTab()`, und `_boot` ist diesen Weg nie
+gegangen. Der Zielblock war damit seit 0.20.0 beim **ersten** Aufbau
+unsichtbar, der Wochenplan seit 0.33.0; ein Klick auf irgendeinen Reiter und
+zurück hat es jedes Mal geheilt, weshalb es nie auffiel.
+
+Zwei Fixes, weil es zwei Fehler sind:
+
+- **Der Ladepfad.** `_boot` zeichnet erst das Gerüst und baut den Reiter dann
+  über `_setTab` auf. Ein Reiter wird ab jetzt auf genau einem Weg aufgebaut.
+- **Der stille Ausstieg**, und das ist der eigentliche Fehler. `_dataGap()`
+  trennt drei Zustände: *nie angefordert* (ein Defekt im Panel, wird als
+  solcher benannt), *unterwegs* (Ladehinweis) und *fehlgeschlagen* (mit Grund).
+  Vorher gab es den ersten Zustand nicht, und er sah aus wie der zweite.
+
+**Und die Testlücke:** die Panel-Tests riefen die Renderer immer mit vorhandener
+Fixture auf; eine Zusicherung lautete wörtlich `rPlanWeeks(null) === ""` und hat
+den Fehler damit festgeschrieben. Umgedreht, plus ein Wächter über den
+Ladepfad: jeder Reiter, den `_render` bedient, muss seine Payload auf dem Weg
+über `_setTab` auch anfordern.
+
 ### Tests I
 
 - Die vier Stufen: ein Bestand, in dem **dieselbe** Einheit je nach Zustand

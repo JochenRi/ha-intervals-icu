@@ -701,4 +701,62 @@ const acts = F.activities(), thr = F.thresholds();
   }
 }
 
+/* ── Ladepfad: jeder Reiter wird auf EINEM Weg aufgebaut (0.42.1) ─────────
+   Der Fehler: _boot rief _render() direkt. _need("goal") hängt aber allein an
+   _setTab, also wurde die Ziel-Payload beim ersten Aufbau nie geholt - und
+   rGoal/rPlanWeeks, die einzigen beiden Blöcke, die sie brauchen, blieben
+   still leer. Von 0.20.0 bis 0.42.0, ohne eine einzige Fehlermeldung.
+
+   Zwei Wächter: der Bootpfad muss durch _setTab, und jeder Reiter, den
+   _render bedient, muss seine Payload auf diesem Weg auch anfordern. */
+{
+  const src = H.source();
+  const boot = src.slice(src.indexOf("async _boot()"), src.indexOf("async _need("));
+  ok(boot.length > 200, "ladepfad: _boot nicht gefunden");
+  ok(/await this\._setTab\(this\._tab\)/.test(boot),
+     "ladepfad: _boot baut den Reiter an _setTab vorbei — die Payload des Reiters fehlt beim ersten Aufbau");
+
+  // Welche Payload holt _setTab je Reiter, und welche braucht _render?
+  const setTab = src.slice(src.indexOf("async _setTab(t)"), src.indexOf("async _openAct("));
+  const render = src.slice(src.indexOf("  _render() {"), src.indexOf("this._view.innerHTML = html"));
+  const needsOf = {
+    trainer: ["coach", "workouts", "goal"], heute: ["today"], signale: ["signals"],
+    fitness: ["pmc"], akt: ["akt"], dfa: ["thr"],
+  };
+  for (const [tab, keys] of Object.entries(needsOf)) {
+    ok(render.includes(`"${tab}"`), `ladepfad: Reiter ${tab} wird nicht gerendert`);
+    for (const key of keys) {
+      ok(setTab.includes(`_need("${key}")`),
+         `ladepfad: Reiter ${tab} rendert, aber ${key} wird nie angefordert`);
+    }
+  }
+  // kalender und belastung leben von den Boot-Payloads - die müssen dort stehen
+  for (const key of ["days", "load"]) {
+    ok(src.includes(`const BOOT_KEYS`) && src.slice(src.indexOf("const BOOT_KEYS"),
+        src.indexOf("const TABS")).includes(`"${key}"`),
+       `ladepfad: ${key} steht nicht unter den Boot-Payloads`);
+  }
+
+  // Gegenprobe: ein _boot ohne _setTab muss auffallen
+  ok(!/await this\._setTab\(this\._tab\)/.test("this._render();\n    this._routeFromHash();"),
+     "ladepfad Gegenprobe: ein _boot ohne _setTab wird NICHT gefunden — der Wächter ist blind");
+
+  // und kein Block darf noch mit einem Leerstring aussteigen, wenn seine
+  // Payload fehlt - der stille Ausstieg war der eigentliche Fehler
+  for (const fn of ["rGoal", "rPlanWeeks", "rWorkouts", "rKalender", "rBelastung",
+                    "rHeute", "rSignale", "rFitness", "rDfa", "rTrainer"]) {
+    const at = src.indexOf(`  ${fn}(`);
+    ok(at > 0, `leerfall-wächter: ${fn} nicht gefunden`);
+    const head = src.slice(at, at + 320);
+    ok(/_dataGap\(/.test(head),
+       `leerfall-wächter: ${fn} meldet fehlende Daten nicht über _dataGap`);
+  }
+  // _dataGap selbst unterscheidet DREI Zustände - zwei wären wieder der Fall,
+  // in dem "nie geholt" wie "lädt gerade" aussieht
+  const gap = src.slice(src.indexOf("  _dataGap(key, label)"), src.indexOf("  _render() {"));
+  ok(/this\._failed\[key\]/.test(gap) && /this\._asked\[key\]/.test(gap),
+     "leerfall-wächter: _dataGap trennt 'nie geholt' nicht von 'lädt gerade'");
+  ok(/Nie angefordert/.test(gap), "leerfall-wächter: der Defektfall hat keinen eigenen Text");
+}
+
 report("test_panel_fixes");

@@ -658,6 +658,11 @@ function bullet(b) {
 /* ------------------------------------------------------------------ */
 /* the panel                                                           */
 /* ------------------------------------------------------------------ */
+// What _boot fetches up front. Named here so a failed boot can mark exactly
+// those payloads as failed instead of leaving their views in a loading hint
+// that never resolves.
+const BOOT_KEYS = ["status", "readiness", "days", "load", "coach", "day_context"];
+
 const TABS = [
   ["trainer", "Trainer"],
   ["signale", "Signale"],
@@ -696,6 +701,12 @@ class IntervalsIcuPanel extends HTMLElement {
     super();
     this.attachShadow({ mode: "open" });
     this._tab = "trainer";
+    // Which payloads were ever REQUESTED, and which ones came back broken.
+    // Without the first register a block whose data was never fetched looks
+    // exactly like one that is still loading - which is how the goal payload
+    // stayed missing from 0.20.0 to 0.42.0 without anyone noticing.
+    this._asked = {};
+    this._failed = {};
     this._grp = {};
     this._range = 182;
     this._weeks = 12;
@@ -1188,18 +1199,26 @@ class IntervalsIcuPanel extends HTMLElement {
         this._ws("day_context"),
       ]);
       this._dayctx = dayctx;
-      this._ws("workouts").then((w) => { this._workouts = w; if (this._tab === "trainer") this._render(); });
       this._status = status; this._rd = rd; this._days = days; this._load = load;
       this._coach = coachData;
+      for (const key of BOOT_KEYS) { this._asked[key] = true; delete this._failed[key]; }
       this._err = null;
     } catch (err) {
       this._err = String(err && err.message || err);
+      for (const key of BOOT_KEYS) { this._asked[key] = true; this._failed[key] = this._err; }
     }
+    // Paint the frame first so the panel is not blank while the tab's own
+    // payloads travel, THEN build the tab the one way tabs are built. Until
+    // 0.42.1 _boot rendered directly and never went through _setTab, so the
+    // first paint of the trainer tab silently skipped `goal` - the payload
+    // only _setTab asks for. Every tab now takes the same path.
     this._render();
+    await this._setTab(this._tab);
     this._routeFromHash();
   }
 
   async _need(what) {
+    this._asked[what] = true;
     try {
       if (what === "coach" && !this._coach) this._coach = await this._ws("coach");
       if (what === "workouts" && !this._workouts) this._workouts = await this._ws("workouts");
@@ -1212,8 +1231,10 @@ class IntervalsIcuPanel extends HTMLElement {
       if (what === "akt" && !this._acts) this._acts = await this._ws("activities", { limit: 300 });
       if (what === "thr" && !this._thr) this._thr = await this._ws("thresholds");
       if (what === "cal" && !this._cal) this._cal = await this._ws("calendar");
+      delete this._failed[what];
     } catch (err) {
       this._err = String(err && err.message || err);
+      this._failed[what] = this._err;
     }
   }
 
@@ -1273,6 +1294,30 @@ class IntervalsIcuPanel extends HTMLElement {
       <nav id="tabs"></nav>
       <div id="view"><div class="card pad">Lade Daten …</div></div>
     </div>`;
+  }
+
+  /* What a block says when its data is not there.
+
+     Until 0.42.1 two blocks answered that question with an empty string and
+     one with a loading hint that never resolved - so a payload that was NEVER
+     REQUESTED looked exactly like one still in flight, and `goal` went
+     unfetched on first paint from 0.20.0 to 0.42.0 without a single symptom.
+     That is the same error class as the silent window widening in H2: a thing
+     that does not happen has to SAY that it did not happen.
+
+     Three states, three different sentences - and "never requested" is a bug
+     in the panel, not an empty archive, so it says so. */
+  _dataGap(key, label) {
+    if (this._failed[key]) {
+      return `<div class="card pad err">Nicht geladen: ${label} —
+        ${esc(this._failed[key])}</div>`;
+    }
+    if (this._asked[key]) {
+      return `<div class="card pad">Wird noch geladen: ${label} …</div>`;
+    }
+    return `<div class="card pad err">Nie angefordert: ${label}. `
+      + `Das ist ein Fehler im Panel, kein leerer Bestand — bitte den Reiter neu `
+      + `wählen und, wenn es bleibt, melden.</div>`;
   }
 
   _render() {
@@ -1678,7 +1723,7 @@ class IntervalsIcuPanel extends HTMLElement {
   }
 
   rWorkouts(w, forTomorrow) {
-    if (!w) return "";
+    if (!w) return this._dataGap("workouts", "Die Einheiten");
     const list = w.workouts || [];
     if (!list.length) return "";
     const ftp = w.ftp;
@@ -1800,7 +1845,7 @@ class IntervalsIcuPanel extends HTMLElement {
      load-matched, twelve weeks, no difference - is stated where someone might
      otherwise assume blocks are the secret. */
   rGoal(g) {
-    if (!g) return `<div class="card pad">Ziel wird geladen …</div>`;
+    if (!g) return this._dataGap("goal", "Dein Ziel");
     const profile = g.profile || {};
     const state = g.state || {};
     if (this._goalEdit || !profile.goal) return this._goalForm(g);
@@ -1832,7 +1877,10 @@ class IntervalsIcuPanel extends HTMLElement {
      budget note explains the rhythm instead of demanding weekly hours the
      athlete does not have. */
   rPlanWeeks(g) {
-    if (!g) return "";
+    // no payload is a DEFECT and says so; a goal that is simply not set yet is
+    // not - rGoal already shows the form for that, and a second notice next to
+    // it would be noise
+    if (!g) return this._dataGap("goal", "Die nächsten Wochen");
     const plan = g.plan || {};
     if (!plan.ready || !(plan.weeks || []).length) return "";
 
@@ -2022,7 +2070,7 @@ class IntervalsIcuPanel extends HTMLElement {
   }
 
   rSignale(sig) {
-    if (!sig) return `<div class="card pad">Signale werden geladen …</div>`;
+    if (!sig) return this._dataGap("signals", "Die Signale");
     const days = sig.days || [];
     if (days.length < 10) return `<div class="card pad">Noch zu wenig Historie für den Signalvergleich.</div>`;
     const n = days.length;
@@ -2182,7 +2230,7 @@ class IntervalsIcuPanel extends HTMLElement {
      bug that silently dropped the infection warning in 0.31.0, and
      test_panel_fixes now proves these render. */
   rTrainer(c, rd) {
-    if (!c) return `<div class="card pad">Trainer wird geladen …</div>`;
+    if (!c) return this._dataGap("coach", "Der Trainer");
     const st = c.state || {};
     const STATE_LOOK = {
       // Judgment states use the judgment register ONLY - blue and violet
@@ -2397,7 +2445,7 @@ class IntervalsIcuPanel extends HTMLElement {
      verdict disagree, the page says why instead of hiding it. Nothing reaches
      past today, because the load outside training is in no data. */
   rHeute(t) {
-    if (!t) return `<div class="card pad">Wird geladen …</div>`;
+    if (!t) return this._dataGap("today", "Der Tag");
     const stale = !!(t.available && t.date && t.date !== new Date().toISOString().slice(0, 10));
     if (!t.available) return `<div class="card pad">Noch keine Wellness-Daten.</div>`;
 
@@ -2654,7 +2702,7 @@ class IntervalsIcuPanel extends HTMLElement {
 
   /* ---------------- Kalender ---------------- */
   rKalender(days) {
-    if (!days) return `<div class="card pad">Kalender wird geladen …</div>`;
+    if (!days) return this._dataGap("days", "Der Kalender");
     const byWeek = new Map();
     for (const d of days.days || []) {
       if (!byWeek.has(d.week)) byWeek.set(d.week, new Array(7).fill(null));
@@ -2754,7 +2802,7 @@ class IntervalsIcuPanel extends HTMLElement {
 
   /* ---------------- Fitness ---------------- */
   rFitness(pmc, rangeDays) {
-    if (!pmc) return `<div class="card pad">Fitness-Kurve wird geladen …</div>`;
+    if (!pmc) return this._dataGap("pmc", "Die Fitness-Kurve");
     const rows = pmc.slice(-rangeDays);
     if (rows.length < 3) return `<div class="card pad">Noch zu wenig Historie.</div>`;
     const n = rows.length;
@@ -2817,7 +2865,7 @@ class IntervalsIcuPanel extends HTMLElement {
 
   /* ---------------- Aktivitäten ---------------- */
   rAkt(list, sel) {
-    if (!list) return `<div class="card pad">Aktivitäten werden geladen …</div>`;
+    if (!list) return this._dataGap("akt", "Die Aktivitäten");
     if (!list.length) return `<div class="card pad">Noch keine Aktivitäten im Archiv.</div>`;
     const miss = !sel && this._aktMiss
       ? `<div class="card pad err">Die Einheit <b>${esc(this._aktMiss)}</b> liegt nicht in den
@@ -3413,7 +3461,7 @@ class IntervalsIcuPanel extends HTMLElement {
 
   /* ---------------- Belastung ---------------- */
   rBelastung(load) {
-    if (!load) return `<div class="card pad">Belastungsdaten werden geladen …</div>`;
+    if (!load) return this._dataGap("load", "Die Belastungsdaten");
     const sec = (icon, title, readAs, body, source) => `
       <section class="card">
         <div class="sechead">${ico(icon, C.tx2, 20)}<h3>${title}</h3></div>
@@ -3572,7 +3620,7 @@ class IntervalsIcuPanel extends HTMLElement {
      rather than per window, and the list follows the window or a point in
      the graph has no row. */
   rDfa(thr, sportFilter) {
-    if (!thr) return `<div class="card pad">DFA-Daten werden geladen …</div>`;
+    if (!thr) return this._dataGap("thr", "Die DFA-Daten");
     // Ride and VirtualRide are both "Rad" - filtering on the raw type listed
     // the same label twice and split the season in half.
     const groups = [];

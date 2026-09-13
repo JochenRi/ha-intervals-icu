@@ -1,13 +1,13 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 13.09.2026 · **Version:** 0.42.0 · **Status:** produktiv auf HEIMDALL,
+**Stand:** 13.09.2026 · **Version:** 0.42.1 · **Status:** produktiv auf HEIMDALL,
 Auslieferung über HACS aus `github.com/JochenRi/ha-intervals-icu`
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lokal
 archiviert, auswertet und in einem eigenen Seitenleisten-Panel darstellt.
 
 **Umfang:** ~12.420 Zeilen, davon ~4.460 Frontend · 24 WebSocket-Befehle · 15 Einheiten in
-8 Familien · 15 Testdateien mit **4.185** gezählten Einzelprüfungen · 43 Releases.
+8 Familien · 15 Testdateien mit **4.254** gezählten Einzelprüfungen · 44 Releases.
 
 ---
 
@@ -191,6 +191,44 @@ Recherche:
 ---
 
 ## 7. Fehler und was sie gelehrt haben
+
+**0.42.1 — der Zielblock war seit 0.20.0 beim ersten Aufbau unsichtbar.**
+
+`_boot()` rief `this._render()` direkt. `_need("goal")` hängt aber allein an
+`_setTab()`, und `_boot` ist diesen Weg nie gegangen — es holte `status`,
+`readiness`, `days`, `load`, `coach`, `day_context` und `workouts` selbst und
+rief dann das Rendern. Die Ziel-Payload war die **einzige**, die kein anderer
+Pfad besorgt. Ergebnis auf dem Trainer-Reiter beim ersten Aufbau:
+
+| Block | braucht | zeigte |
+|---|---|---|
+| `rTrainer` | `_coach` | ✅ alles, inklusive Durability-Kachel |
+| `rWorkouts` | `_workouts` | ✅ die Einheitenliste |
+| `rGoal` | `_goal` | ❌ „Ziel wird geladen …", **dauerhaft** |
+| `rPlanWeeks` | `_goal` | ❌ nichts, Leerstring |
+
+**Warum es niemandem auffiel.** Wer irgendeinen Reiter anklickt und zurückgeht,
+löst `_setTab("trainer")` aus — und dann ist alles da. Der Fehler traf also nur
+den ersten Blick nach jedem Neuladen, und genau dort sah er aus wie ein
+langsamer Ladevorgang. Datierung über die Historie: `rPlanWeeks` existiert seit
+**0.33.0**, `_need("goal")` hängt seit **0.20.0** an `_setTab`, und `_boot` hat
+in keiner Fassung dazwischen `_setTab` gerufen. Der Zielblock war damit seit
+0.20.0 auf dem Erstaufbau nicht zu sehen, der Wochenplan seit 0.33.0.
+
+**Der eigentliche Fehler war nicht der Ladepfad, sondern der stille Ausstieg.**
+`rPlanWeeks` gab bei fehlender Payload `""` zurück, `rGoal` einen Ladehinweis,
+der nie auflöste. Ein Block, der nichts zeichnet, weil seine Daten fehlen, muss
+das **sagen** — dieselbe Klasse wie die stille Fensterausweitung aus H2. Seit
+0.42.1 trennt `_dataGap()` drei Zustände, und der dritte ist der, den es
+vorher nicht gab: *nie angefordert* ist ein Defekt im Panel und wird als
+solcher benannt, nicht als leerer Bestand.
+
+**Und die Testlücke, die es durchließ:** die Panel-Tests riefen die Renderer
+immer mit vorhandener Fixture auf. Eine Zusicherung lautete sogar wörtlich
+`rPlanWeeks(null) === ""` — sie hat den Fehler festgeschrieben statt ihn zu
+finden. Sie ist jetzt umgedreht, und ein Wächter prüft, dass `_boot` den Reiter
+über `_setTab` aufbaut und jeder gerenderte Reiter seine Payload auf diesem Weg
+auch anfordert.
 
 **0.42.0 — was der Bau von Paket I zutage gefördert hat:**
 
@@ -547,6 +585,12 @@ den Non-Responder-Befund (Manresa-Rocamora 2021).
    Test muss beide Ziele prüfen — vergleichbar *und* lesbar.
 3. **Zwei Rechenwege auf dieselbe Frage.** Zustandsbänder gegen Trainerurteil (0.11.0),
    Empfehlungsblock gegen Einheitenliste (0.27.0). Beide Male: eine Quelle, ein Weg.
+4. **Der stille Ausstieg.** Ein Block, der nichts zeichnet, weil seine Daten fehlen, sieht aus
+   wie einer, dessen Daten leer sind — und ein Ladehinweis, der nie auflöst, sieht aus wie ein
+   langsames Netz. Die stille Fensterausweitung (0.41.0) und der nie geholte Zielblock (0.42.1)
+   sind derselbe Fehler in zwei Gewändern. **Lehre: was nicht passiert ist, muss dastehen.**
+   Und eine Zusicherung der Form „ohne Daten kein Abschnitt" schreibt diesen Fehler fest,
+   statt ihn zu finden.
 
 ---
 
@@ -566,7 +610,7 @@ den Non-Responder-Befund (Manresa-Rocamora 2021).
 
 ## 9. Prüfstand
 
-**Fünfzehn Dateien, 4.185 gezählte Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
+**Fünfzehn Dateien, 4.254 gezählte Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
 HA-Instanz oder einen Browser.
 
 | Datei | prüft | Umfang |
