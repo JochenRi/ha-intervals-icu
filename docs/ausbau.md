@@ -2029,6 +2029,301 @@ deshalb an **allen dreien** vorbei, mit Gegenprobe in beide Richtungen.
 
 ---
 
+## Paket L — Die Ermüdungskurve der aeroben Schwelle
+
+Gemessen am 13.09.2026, lesend am Livebestand. **Die Kurve wird nicht gemessen.
+Sie wird an einem eigenen Wert verankert und aus der Literatur gezeichnet.** Was
+davon Beleg ist und was Setzung, steht in L1 Zeile für Zeile.
+
+### L0 · Drei gescheiterte Runden — damit es niemand ein viertes Mal versucht
+
+**Vorbemerkung zur Nachprüfbarkeit.** Die Zahlen der Runden 1 und 2 stammen aus
+dem Bericht der damaligen Session; die Zwischentabellen sind verloren und nicht
+rekonstruierbar. Sie stehen hier, damit die Richtung erkennbar bleibt — **die
+Lehre zählt, nicht die letzte Nachkommastelle.** Runde 3 ist vollständig
+nachgerechnet und mit Belegung ausgewiesen.
+
+**Runde 1 — ein Kipppunkt je Fahrt.** Aus jeder Fahrt wurde ein einzelner
+Umschlagpunkt gelesen. Übrig blieben **vier brauchbare Punkte, alle zwischen 129
+und 153 W**, und in **12 von 19 Fällen** markierte der „Kipppunkt" den ersten
+Berg statt die Ermüdung. Eine Geländeform wurde als Physiologie gelesen.
+
+**Runde 2 — alpha aus Watt und Zeit modelliert.** Ein Modell für alpha aus
+Leistung und Dauer, aufgelöst nach 0,75. Ergebnis: **246 W bei kurzer Dauer
+gegen 146 W beim Trainer**, und das Modell verfehlte die **54 real gemessenen
+Schwellenfenster um 82 W**. Das Modell war nicht falsch gerechnet, es war an
+einem Bestand gerechnet, der die Antwort nicht enthält.
+
+**Die Lehre aus 1 und 2 ist dieselbe:** die Kurvenform aus einem Bestand
+pressen, der sie nicht enthält. **Die Form kommt aus der Literatur, der Anker
+aus den eigenen Daten** — das ist die Konsequenz, und sie ist in L1 gebaut.
+
+**Runde 3 — Repräsentantenmethode je Fahrtstunde, gepaart.** Diesmal mit der
+Methode aus Andriolo/Rummel/Gronwald (siehe L1), angewandt nicht auf
+Kalenderfenster, sondern auf Fahrtstunden-Bins, und **gepaart**: nur Fahrten, die
+zwei benachbarte Bins selbst befüllen, damit jede Fahrt ihre eigene Kontrolle
+ist. Live abgerufen: 79 Fahrten ab einer Stunde, davon 31 mit DFA-Strom.
+
+| Rechnung | n | Mittel | SD | Permutation |
+|---|---|---|---|---|
+| Bewegungszeit, Stunde 1 → 2 | 21 | **−6,6 W** | 21,6 | **p = 0,189** |
+| Kumulierte Arbeit, 0–500 → 500–1000 kJ | 25 | −4,5 W | 17,6 | p = 0,219 |
+| nur Fits mit R² ≥ 0,75 | **3** | −31,9 W | 11,2 | p = 0,256 |
+
+**Trägt nicht.** Bei der dritten Zeile ist der p-Wert zudem bedeutungslos: bei
+drei Paaren kann der Vorzeichen-Permutationstest **strukturell nicht unter 0,25
+fallen**. Der Test hat dort keine Trennschärfe, unabhängig vom Ergebnis.
+
+**Runde 3 ist aber ein anderer Fehler als 1 und 2, und das ist die neue Lehre.**
+
+Ungepaart ergibt derselbe Bestand **−9,3 W**, gepaart **−6,6 W**. In J1 klafften
+die beiden weit auseinander (93,4 % gegen 99,5 %) — das war der Beweis für das
+Längenartefakt. **Hier liegen sie nah beieinander: es gibt keinen
+Konstruktionsfehler.** Richtung und Größenordnung stimmen sogar — alle vier
+Rechnungen zeigen Abfall, und −4,5 bis −9,3 W je Stunde passt zu Gallo. Was
+fehlt, ist die Absicherung: der erwartete Effekt in diesem Stundenschritt liegt
+bei **3 bis 4 W**, die Streuung der Einzelmessungen bei **21,6 W**. Um das zu
+trennen, bräuchte es grob **150 gepaarte Fahrten statt 21**.
+
+**Die Messung widerspricht der Literatur also nicht — sie kann sie nur nicht
+bestätigen.** Das ist ein anderer Satz als „es trägt nicht", und beide gelten.
+
+**Die Falle in Runde 3, die beim nächsten Versuch sofort ausgeschlossen werden
+muss:** die drei Fahrten mit R² ≥ 0,75 waren **allesamt SweetSpot-Rollenfahrten**
+(24.08. „SweetSpot 2x20Min", 20.08. „volumen + SweetSpot 2x15Min", 14.08.
+„SweetSpot 2x20Min"). Die Blöcke liegen in Stunde 1, danach wird ausgefahren.
+Die −31,9 W sind **der Trainingsplan, nicht die Ermüdung** — Runde 1 in neuer
+Verkleidung, diesmal nicht der erste Berg, sondern der erste Block. Ein
+Gütekriterium auf den Fit hat die Auswahl genau auf die strukturierten Einheiten
+verengt und damit den Störer eingesammelt statt ihn auszuschließen. **Wer es
+erneut versucht, schließt strukturierte Einheiten vorher aus, nicht nachher.**
+
+### L1 · Die Kachel — Anker gemessen, Form aus der Literatur
+
+**Die Form.** Gallo, Faelli, Ruggeri, Filipas, Codella, Plews, Maunder: „Power
+output at the moderate-to-heavy intensity transition decreases in a non-linear
+fashion during prolonged exercise", Eur J Appl Physiol 124:2353–2364 (2024),
+open access. Zwölf trainierte Radfahrer, Alter 40 ± 8, VO2peak 52,3 ± 5,2,
+Wochenumfang 10,3 ± 3,4 h. Quadratischer Verlauf bei 11 von 12,
+Anpassungsgüte R² 0,92 ± 0,09. Zeit bis 5 % Abfall 139 ± 78 min (Spanne
+21–279), Time-to-task-failure 234 ± 66 min, Zusammenhang r_s = 0,676, p = 0,016.
+
+Die veröffentlichten Polynomkoeffizienten liegen nicht vor — modelliert wurde je
+Teilnehmer. **Die Gruppenmittelwerte liegen vor**, und daraus ist die Form
+rekonstruierbar: ausgeruht 184 ± 35 W, nach einer Stunde 181 ± 37 W (kein
+signifikanter Unterschied, p = 0,290), im Test unmittelbar vor dem Abbruch
+165 ± 34 W (p < 0,001). Drei Punkte, letzter bei t ≈ 3,4 h (rund eine halbe
+Stunde vor den 234 min):
+
+> **P(t) / P₀ = 1 − 0,0104·t − 0,0059·t²**   (t in Stunden)
+
+**Die Probe, die sie trägt:** diese Kurve erreicht −5 % nach **130 min**.
+Publiziert sind **139 ± 78 min**, aus einer unabhängigen Rechnung (individuelle
+Fits). Sensitivität gegen die Annahme zum letzten Testzeitpunkt: bei 3,0 h →
+119 min, bei 3,8 h → 140 min. Alles innerhalb der publizierten Streuung. **Die
+Form ist belastbar, die Punktgenauigkeit ist es nicht.**
+
+**Der Anker.** Andriolo, Rummel, Gronwald: „Relationship of Cycling Power and
+Non-Linear Heart Rate Variability from Everyday Workout Data", Sensors 2024, 24,
+4468, open access. 3.123 Alltagseinheiten von 21 Radfahrern, kein Labor. Der
+Hebel ist nicht das Poolen, sondern die **Repräsentantenmethode**: die
+DFA-Achse wird in Intervalle geschnitten, je Intervall der Mittelwert von
+Leistung und alpha gebildet, und nur diese Mittelpunkte werden korreliert. Das
+räumt den kardialen Nachlauf aus. Wirkung: mittlere Korrelation bei Gruppen von
+−0,32 auf −0,75, Anteil stärker als −0,7 von 4 % auf 66 %. Abgelesen wird über
+den linearen Fit P = m · DFA-a1 + q als P(0,75) = 0,75m + q.
+
+**Warum Andriolo den Anker liefert und nicht die Kurve — und warum die beiden
+Zahlen auseinanderlaufen dürfen.** Ihre Methode wertet **nur die Minuten 5 bis
+20 jeder Einheit** aus; sie schließt Ermüdung ausdrücklich aus. Ihr Ergebnis ist
+die Schwellenleistung im praktisch unermüdeten Zustand. **Das ist kein Mangel,
+das ist die Bauart**, und es ist der Grund, warum ein aus ganzen Fahrten
+gemittelter Wert tiefer liegen muss als der Ankerwert. **Wer die eine Zahl an
+der anderen „korrigiert", zerstört genau die Trennung, auf der diese Kachel
+steht.**
+
+**Beschriftung, verbindlich:** „Repräsentantenmethode nach Andriolo, auf
+Intervals' eigener DFA-Fensterung". **Nicht** „nach Andriolo gerechnet". Die
+Abweichungen gehören in den aufklappbaren Rechenweg der Karte, nicht nur hierhin:
+
+- **Keine RR-Daten.** Intervals liefert `dfa_a1` als fertigen Sekundenstrom
+  (`derive.py`, `DFA_STREAMS`). Andriolos Vorverarbeitung — 120-s-Fenster,
+  5-s-Gitter, Artefaktkorrektur, Detrending mit Lambda 500 — ist nicht
+  nachbaubar. Die Fensterung ist Intervals' eigene und nicht dokumentiert.
+- **Ausdünnung.** Der Panel-Endpunkt liefert `sample_secs` zwischen 5 und 18 s
+  je nach Fahrtlänge und **mittelt** über den Bucket, glättet die alpha-Kurve
+  also zusätzlich.
+- **Artefaktkriterium entfällt.** Andriolos Grenze von 5 % ist nicht abbildbar,
+  weil kein Artefaktfeld existiert. **Ersatzmaß** (ausdrücklich als solches
+  beschriftet, nicht als Andriolos Kriterium): Anteil verworfener Punkte je
+  Fahrt — HF null, Watt null, alpha außerhalb 0 bis 2. Gemessen: Median 1,7 %,
+  Mittel 2,3 %, Maximum 14,4 %; zwei Fahrten über 5 % (25.06. mit 14,4 %,
+  26.06. mit 8,5 %). Fahrten oberhalb der Grenze werden gekennzeichnet, nicht
+  stillschweigend verworfen.
+- **Dynamikkriterium gelockert.** Andriolo verlangt, dass mindestens die Hälfte
+  der Punkte unter alpha 1,0 liegt. Am eigenen Bestand erfüllen das **13 von 70
+  Bins (18,6 %)**, Median des Dynamikanteils **19,6 %**. Mit dem Kriterium
+  bliebe zu wenig übrig, um irgendetwas zu entscheiden. Es wird deshalb **als
+  Kennzahl je Bin ausgewiesen statt als Filter angewandt** — und diese Abweichung
+  steht im Rechenweg.
+
+**Die Zeitachse ist die Bewegungszeit**, entschieden an der Belegung: die
+kJ-Achse liefert praktisch dieselbe (26/27/5/1/1 gegen 26/23/5/1/1), weil 500 kJ
+bei rund 150 W etwa 55 Minuten entsprechen. Die Belegung gibt also keinen Grund
+für kJ; damit entscheidet der zweite Grund, und der spricht dagegen: **die
+kJ-Achse koppelt an die Intensität und holt den Bergeffekt aus Runde 1 zurück.**
+Die kJ-Rechnung läuft als Gegenprobe mit, nicht als Hauptachse.
+
+**Was die Kachel zeigt.** Drei Kurven, wie gebrieft — aber die mittlere ist nach
+Runde 3 keine Kurve mehr, sondern zwei Punkte:
+
+| | Inhalt | Beleg |
+|---|---|---|
+| GEMESSEN | Stunde 1: **151,5 W** (26 Fahrten) · Stunde 2: **142,2 W** (23 Fahrten) | eigene Messung |
+| HEUTE | letzter 10-Tage-Block nach Andriolo, sofern ≥ 4 Fahrten | eigene Messung |
+| SCHÄTZUNG | P₀ = **152,5 W**, Form nach Gallo, Streuung als sichtbares Band | Setzung |
+
+**Die Leitzahl oben** ist der Anker P₀ = 152,5 W bei Dauer null, darunter der
+Beleg: 26 Fahrten, Stunde 1, Repräsentantenmethode. Der aufklappbare Rechenweg
+trägt die vier Abweichungen von oben, die Achsenentscheidung und die
+Belegungstabelle.
+
+**Die Prüfpunkte, mit Abweichung — und mit ihrer Belegung:**
+
+| Stunde | Literaturkurve | Gemessen | n | Abweichung |
+|---|---|---|---|---|
+| 1 (t = 0,5 h) | 151,5 W | 151,5 W | 26 | ±0,0 (Anker) |
+| 2 (t = 1,5 h) | 148,1 W | 142,2 W | 23 | **−5,9 W** |
+| 3 (t = 2,5 h) | 142,9 W | 131,5 W | **5** | −11,4 W |
+| 4 (t = 3,5 h) | 136,0 W | 133,8 W | **1** | −2,2 W |
+| 5 (t = 4,5 h) | 127,2 W | 131,9 W | **1** | +4,7 W |
+
+Belastbar ist Zeile 1, mit Vorbehalt Zeile 2. **Zeile 3 steht auf fünf Fahrten,
+Zeile 4 und 5 auf je einer — das sind keine Prüfpunkte, das sind Einzelfälle**
+und werden als solche gezeichnet.
+
+**Beide Leserichtungen** bleiben: „3 h — wie viel Watt" und „150 W — wie lange".
+Jenseits des eigenen Datenbereichs wird nichts behauptet.
+
+### L1a · Die Grenzen kommen aus der Belegung, nicht aus dem Code
+
+Die Kurve endet **bei der längsten Fahrt des Nutzers**, nicht bei einer festen
+Stundenzahl. Drei Bereiche, deren Grenzen aus der Belegungszählung folgen:
+
+- **durchgezogen** — genug Fahrten für eine belastbare Aussage
+- **dünn, mit ausgewiesenem n** — Daten vorhanden, aber wenige
+- **gestrichelt mit Unsicherheitsband** — jenseits des Bestands, reine Literatur
+
+Für den aktuellen Bestand ergibt das: durchgezogen bis Stunde 2 (n ≥ 20), dünn
+für Stunde 3 (n = 5), gestrichelt ab Stunde 4 (n ≤ 1). **Die Grenze liegt damit
+bei rund drei Stunden, nicht bei 4 h 20** — die längste Fahrt ist nicht die
+Grenze, die Belegung ist es, und sie reißt vorher ab.
+
+**Der Übergang wird benannt, nicht nur gezeichnet**, in der Sprache der Karte:
+„ab 3 Stunden stützt sich die Kurve auf eine einzige Fahrt — ab hier zeichnet
+die Studienform."
+
+**Der Test dazu ist Pflicht:** zwei erfundene Bestände mit unterschiedlichen
+Fahrtlängen müssen **zwei verschiedene Grenzen** ergeben. Kommt zweimal dieselbe
+heraus, sind die Schwellen doch hartkodiert.
+
+**Das Unsicherheitsband** zeichnet die publizierte Streuung mit: Δ5 % bei
+139 ± 78 min, 1 bis 45 W Verlust nach 2,5 h (Stevenson), Anpassungsgüte
+0,92 ± 0,09. Das Band wird bei drei Stunden **breiter als 40 W**. Die Karte darf
+dort keine Punktgenauigkeit vortäuschen — die Leitzahl wird im gestrichelten
+Bereich nicht als Zahl, sondern als Spanne gesetzt.
+
+### L1b · Die HF-Korrektur — Literatur, nicht Messung
+
+Stevenson, Kilding, Plews, Maunder (Eur J Appl Physiol 2022): nach zwei Stunden
+fiel die Schwellenleistung von 217 auf 196 W, und die **Schwellen-Herzfrequenz
+stieg von 142 auf 151 bpm**. Praktisch ist das wichtiger als die Kurve selbst:
+das Panel nennt 160 bpm als aerobe Schwelle, und wer sich nach drei Stunden noch
+daran hält, fährt zu hart.
+
+**Am eigenen Bestand nicht wiederfindbar**, und der Grund ist sauber. Gepaart
+über Fahrtstunden, Band alpha 0,65–0,85, beide Bins mit mindestens zehn
+Fenstern, n = 17:
+
+- **Δ Schwellen-HF: −2,2 bpm** (Median −0,8, SD 7,1, Spanne −17,4 bis +11,7),
+  **p = 0,225** — Gegenrichtung zu Stevenson
+- **r(Δ Leistung im Band, Δ HF im Band) = +0,815**
+
+Die HF-Änderung folgt fast vollständig der Leistungsänderung. **Was hier gemessen
+wird, ist nicht die Ermüdungsverschiebung, sondern dass in Stunde 2 eine andere
+Leistung getreten wurde** (Δ Leistung im Mittel −9,5 W). Stevenson misst im
+standardisierten Stufentest, wo die Belastung kontrolliert ist; im Feld ist sie
+das nie.
+
+**Folge für die Kachel:** L1b bleibt ein eigener, gleichwertiger Teil, aber
+vollständig als **Setzung aus der Literatur** beschriftet. Die Aussage „was im
+Panel als aerobe HF steht, gilt für den ausgeruhten Zustand" bleibt gültig und
+richtig — sie ist nur an Alltagsfahrten nicht prüfbar, und das steht dabei.
+
+**Die fehlende Temperatur** (nicht in `ACTIVITY_FIELDS`, nicht in
+`DETAIL_STREAMS`) wird benannt, nicht nachgerüstet — ein Feld hinzuzufügen löst
+über `ACTIVITY_FIELDS_VERSION` einen Vollabruf aus. Nach diesem Befund ist sie
+ohnehin zweitrangig: **die Leistung ist der stärkere Störer, und sie liegt vor.**
+
+### L2–L6 · nicht rekonstruierbar
+
+Die Vorfassung dieser Abschnitte war nie im Repo; `docs/ausbau.md` endete vor
+dieser Session mit Paket K. L2 bis L6 sind hier **absichtlich nicht
+ausgeschrieben**, weil ihr Inhalt nur aus dem Briefing als Verweis bekannt ist
+und alles andere Erfindung wäre. Wer sie braucht, schreibt sie neu — die
+Grundlagen dafür stehen vollständig in L0, L1, L1a und L1b.
+
+### Hausmuster für die Kachel
+
+Leitzahl oben, Beleg darunter, aufklappbarer Rechenweg, **Beleg und Setzung
+getrennt**, und sichtbar, welche Fahrten zählen und welche warum nicht. Konkret
+gehören in den Rechenweg: der Historienbeginn (siehe eigener Punkt unten), die
+vier Abweichungen von Andriolo, die Achsenentscheidung, die Belegungstabelle je
+Stunde und die Liste der gekennzeichneten Fahrten nach Ersatzmaß.
+
+### Tests L
+
+1. Die Form-Funktion liefert bei t = 0 exakt 1,0 und erreicht −5 % zwischen 119
+   und 140 min (Sensitivitätsspanne aus L1).
+2. Der Anker skaliert die Form, ohne sie zu verformen: P₀ verdoppelt → jeder
+   Kurvenwert verdoppelt, der Δ5-%-Zeitpunkt unverändert.
+3. **Zwei erfundene Bestände mit verschiedenen Fahrtlängen ergeben verschiedene
+   Bereichsgrenzen** (durchgezogen / dünn / gestrichelt). Der Test, der die
+   Hartkodierung ausschließt.
+4. Ein Bestand ohne Fahrt über einer Stunde ergibt **keine** gemessene Zeile,
+   sondern nur Anker und Literaturkurve — und sagt das.
+5. Das Unsicherheitsband ist bei drei Stunden breiter als 40 W, und die Leitzahl
+   wird im gestrichelten Bereich als Spanne gesetzt, nicht als Zahl.
+6. Die Beschriftung enthält wörtlich „auf Intervals' eigener DFA-Fensterung".
+7. Plausibilitätsregel (siehe eigener Punkt): eine Fahrt mit Schwellen-HF
+   unterhalb der Mindestgrenze erscheint als Ausfall, nicht als Messwert, und
+   geht in keine Mittelung ein.
+
+---
+
+## Eigener Punkt — der Historienbeginn gehört sichtbar gemacht
+
+**Befund vom 13.09.2026.** Von 240 Aktivitäten tragen **58 eine DFA-Auswertung**,
+und **alle davon liegen ab dem 31.05.2026**. Stichproben bis zurück in den Mai
+2025 liefern durchgehend keinen `dfa_a1`-Strom. **Jede DFA-gestützte Aussage im
+Panel stützt sich damit auf 3,5 Monate, nicht auf 16.**
+
+Sichtbar ist das nirgends. Die Kopfzeile des Panels zeigt
+„240 Einheiten · 489 Tage · 58 DFA" — **und damit steht die Zahl 58 direkt neben
+489 Tagen, was den gegenteiligen Eindruck erzeugt**: dass die 58 Auswertungen
+über den ganzen Zeitraum verteilt wären. Das ist keine bloß fehlende Angabe,
+sondern eine irreführende Nachbarschaft.
+
+**Zu tun:** der DFA-Reiter, der Trainer und die Schwellenkachel weisen den
+Zeitraum aus, über den DFA-Daten tatsächlich vorliegen — in derselben Klasse wie
+„welche Fahrten zählen und welche nicht". In der Kopfzeile wird die DFA-Zahl um
+ihren eigenen Zeitraum ergänzt statt neben dem Wellness-Zeitraum zu stehen.
+
+**Test:** ein Bestand, dessen DFA-Daten später beginnen als die Aktivitäten,
+zeigt beide Zeiträume getrennt an.
+
+---
+
 ## Kleinkram für die nächste Session
 
 Vier Posten, die keine eigene Spec brauchen, aber liegen bleiben, wenn sie

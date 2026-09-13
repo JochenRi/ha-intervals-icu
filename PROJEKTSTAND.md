@@ -194,6 +194,43 @@ Recherche:
 
 ## 7. Fehler und was sie gelehrt haben
 
+**13.09.2026 — zwei Befunde aus der Vermessung für Paket L, die den Trainer
+schon heute betreffen.**
+
+**1 · Ein Schwellenwert, der keine Messung sein kann, zählt trotzdem mit.**
+`derive.dfa_summary()` verwirft einzelne Nullwerte — eine Herzfrequenz von 0 ist
+ein abgerissenes Gurtsignal und wird pro Sample übersprungen. Was es **nicht**
+prüft, ist das Ergebnis: die Fahrt vom 06.06.2026 mit dem sprechenden Namen
+„neuer pulsgurt" trägt eine **Schwellen-HF von 0,0 bpm über 24 Fenster** und
+geht als vollwertige Messung in die Schwellenreihe ein.
+
+Am ganzen Bestand geprüft (58 Fahrten mit DFA-Auswertung): **genau eine Fahrt**
+mit einer unmöglichen Herzfrequenz. Dazu **vier Fahrten mit weniger als zehn
+Fenstern**, davon zwei mit **einem einzigen** (03.07.2026 und, außerhalb des
+Rads, 09.09.2026) — ein Fenster ist keine Messung, wird aber gleich gewichtet
+wie eine Fahrt mit 1.484 Fenstern.
+
+Die Fehlerklasse ist die, die sich durchzieht: **die Prüfung sitzt am Eingang,
+nicht am Ergebnis.** Ein Filter, der jedes einzelne Sample kontrolliert und den
+Mittelwert am Ende ungeprüft durchlässt, sieht genau die Ausfälle nicht, die
+über die ganze Fahrt gehen — denn dann ist jedes Sample für sich schon
+verworfen worden und übrig bleibt ein Mittelwert über nichts.
+
+**Regel, verbindlich:** eine Schwellen-HF unterhalb einer physiologischen
+Mindestgrenze und eine Schwellenleistung unterhalb einer Mindestgrenze sind
+**Ausfälle, keine Messungen**. Sie erscheinen als Ausfall gekennzeichnet, gehen
+in keine Mittelung, keinen Median und keine Kurve ein. Dasselbe gilt für eine
+Fahrt unterhalb einer Mindestzahl von Fenstern — der Wert wird gezeigt, aber mit
+seiner Belegung, und er zieht keinen Median.
+
+**2 · Die DFA-Historie ist 3,5 Monate, das Panel legt 16 nahe.** Von 240
+Aktivitäten tragen 58 eine DFA-Auswertung, und alle liegen ab dem 31.05.2026.
+Die Kopfzeile zeigt „240 Einheiten · 489 Tage · 58 DFA" und stellt damit die
+DFA-Zahl direkt neben einen Zeitraum, für den sie nicht gilt. Das ist keine
+fehlende Angabe, sondern eine irreführende Nachbarschaft — Einzelheiten und der
+Auftrag stehen in `docs/ausbau.md` unter „Eigener Punkt — der Historienbeginn
+gehört sichtbar gemacht".
+
 **0.44.0 — drei Befunde beim Bau von Paket K.**
 
 **1 · Der Vorgabewert ist die Schwester von Fehlerklasse 3.** `websocket_workouts`
