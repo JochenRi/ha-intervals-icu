@@ -40,6 +40,7 @@ from typing import Any
 try:  # inside the package (Home Assistant)
     from .const import (
         DURABILITY_FUELLING_G_PER_H,
+        CURVE_TARGET_SHARE,
         DURABILITY_TEST_ALLOUT_5_FACTOR,
         DURABILITY_TEST_BLOCK_FRACTION,
         DURABILITY_TEST_COOLDOWN_MIN,
@@ -56,6 +57,7 @@ try:  # inside the package (Home Assistant)
 except ImportError:  # standalone (test suite loads this file directly)
     from const import (  # type: ignore[no-redef]
         DURABILITY_FUELLING_G_PER_H,
+        CURVE_TARGET_SHARE,
         DURABILITY_TEST_ALLOUT_5_FACTOR,
         DURABILITY_TEST_BLOCK_FRACTION,
         DURABILITY_TEST_COOLDOWN_MIN,
@@ -750,12 +752,19 @@ def scaled(entry: dict[str, Any], ftp: float | None, aerobic_hr: int | None,
                 staged.append((block[0], round(ftp * block[1] / 100) if ftp else None,
                                block[2], *block[3:]))
                 continue
-            staged.append((block[0], at["watts"], block[2], *block[3:]))
+            # DIE MESSUNG IST NICHT DIE VORGABE. `at["watts"]` ist die
+            # gemessene Schwelle; gefahren wird ein ANTEIL davon - sonst sitzt
+            # eine Grundlageneinheit auf der Schwelle statt darunter, und die
+            # Wattseite widerspricht der Pulsseite derselben Karte.
+            target = round(at["watts"] * CURVE_TARGET_SHARE)
+            staged.append((block[0], target, block[2], *block[3:]))
             changed = True
             out.setdefault("curve_blocks", []).append(
-                {"label": block[2], "watts": at["watts"], "source": at["source"],
+                {"label": block[2], "watts": target, "threshold": at["watts"],
+                 "share": CURVE_TARGET_SHARE, "source": at["source"],
                  "n": at["n"], "hour": at["hour"]})
         if changed:
+            out["curve_share"] = CURVE_TARGET_SHARE
             out["blocks_w"] = staged
             out["text_w"] = steps_text(staged, None)
             out["watt_source"] = "curve"

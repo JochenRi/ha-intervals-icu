@@ -2133,8 +2133,12 @@ class IntervalsIcuPanel extends HTMLElement {
       ${entry.watt_source === "curve"
         ? `<p class="fitwhy">${ico("info", C.blue, 14)} <b>Die Watt kommen aus deiner eigenen
             Messung</b>, nicht mehr aus der FTP — gestaffelt nach Fahrtdauer, deshalb trägt
-            dieselbe Einheit andere Zahlen als früher. Abschnitte ohne Kennzeichnung sind
-            Ein- und Ausrollen und bleiben Prozent der FTP.</p>`
+            dieselbe Einheit andere Zahlen als früher. Gefahren wird
+            <b>${fmt((entry.curve_share || 0) * 100, 0)} %</b> der gemessenen Schwelle
+            (${entry.curve_blocks && entry.curve_blocks[0]
+              ? fmt(entry.curve_blocks[0].threshold) + " W" : "–"} in diesem Abschnitt) —
+            eine Grundlageneinheit gehört unter die Schwelle, nicht auf sie. Abschnitte ohne
+            Kennzeichnung sind Ein- und Ausrollen und bleiben Prozent der FTP.</p>`
         : entry.watt_source === "ftp" && (entry.family === "endurance" || entry.family === "long")
           ? `<p class="fitwhy">${ico("warn", C.amber, 14)} <b>Rückfall auf die FTP:</b> für diese
               Einheit liegt keine tragfähige eigene Messung vor.</p>`

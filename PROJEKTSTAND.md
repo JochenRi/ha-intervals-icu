@@ -7,7 +7,7 @@ Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lok
 archiviert, auswertet und in einem eigenen Seitenleisten-Panel darstellt.
 
 **Umfang:** ~14.760 Zeilen, davon ~4.960 Frontend · 27 WebSocket-Befehle · 16 Einheiten in
-9 Familien · 17 Testdateien mit **5.177** gezählten Einzelprüfungen · 52 Releases.
+9 Familien · 17 Testdateien mit **5.189** gezählten Einzelprüfungen · 53 Releases.
 
 ---
 
@@ -193,6 +193,43 @@ Recherche:
 ---
 
 ## 7. Fehler und was sie gelehrt haben
+
+**0.47.1 — zwei Befunde aus der Live-Verifikation von 0.47.0.**
+
+**1 · Die Messung ist nicht die Vorgabe.** Die Kurve liefert P(alpha = 0,75) —
+**das IST die aerobe Schwelle.** In 0.47.0 wurde dieser Wert direkt als
+Wattvorgabe der Grundlageneinheit eingesetzt. Damit schickte die Karte den
+Athleten **auf** die Schwelle, während dieselbe Karte in ihrem eigenen Text
+sagt: „durchgehend über 0,75 — wenn er darunter rutscht, bist du zu schnell".
+
+**Der Beleg lag die ganze Zeit in derselben Einheit:** das HF-Fenster der
+Grundlage steht bei **88–97 %** der Schwellen-HF, die Wattvorgabe stand bei
+**100 %** der Schwellenleistung. Zwei Vorgaben derselben Einheit, die
+verschiedene Intensitäten meinen — und niemand hielt sie gegeneinander.
+
+Behoben: die Vorgabe ist ein ANTEIL der gemessenen Schwelle,
+`CURVE_TARGET_SHARE = 0,90`. Die Zahl ist keine Hausnummer, sondern die
+Vorgabe, mit der in den Durability-Studien gefahren wurde (Stevenson 2022,
+Gallo 2024: 90 % der Leistung an der ersten ventilatorischen Schwelle) —
+dieselben Arbeiten, aus denen Kurvenform und HF-Korrektur stammen.
+
+**Die Lehre, und sie ist allgemein: eine gemessene Schwelle ist ein BEZUGSPUNKT,
+keine Anweisung.** Wo zwei Vorgaben derselben Einheit auf dieselbe Schwelle
+zeigen, müssen sie denselben relativen Abstand zu ihr haben. Der Test hält
+Watt- und Pulsseite jetzt gegeneinander und prüft, dass der Wattanteil im
+HF-Fenster liegt — mit der Gegenprobe, dass 100 % durchfielen.
+
+**2 · Zweimal dieselbe Lehre in drei Runden: am Feld prüfen, nicht am Text.**
+Die Vorher-Nachher-Tabelle des Releases rechnete mit FTP **215 W** — dem Wert
+aus den Aktivitätsdaten. `_latest_ftp()` liefert **200 W**. Damit war die ganze
+Vorher-Spalte falsch, und aus angekündigten „+7 W" wurden tatsächlich +17 W;
+aus „−6 W" wurden +8 W. **Keine Vorgabe fiel, alle stiegen.**
+
+Das ist derselbe Fehler wie der FTP-Fund eine Runde zuvor (Befund 0.47.0 unten),
+nur eine Ebene später: dort wurde angenommen, WOHER die Zahl kommt, hier, WIE
+HOCH sie ist. **Eine Zahl, die eine Ansage an den Athleten trägt, wird an der
+Stelle gelesen, an der sie ankommt — nicht an der, an der sie plausibel
+aussieht.**
 
 **0.47.0 — ein Befund aus dem Bau von L4.**
 
@@ -423,6 +460,7 @@ Verfahren statt dreier Einzelfälle:
 | Versionsmarken in `store.async_load` | 0.45.0 | `fields_version` |
 | geprüfte Kacheln im Quelltext-Wächter | 0.45.0 | `rFatigue` |
 | `curve` unter den Urteilseingängen | 0.47.0 | die Wattvorgabe fiele sonst stillschweigend auf die FTP zurück |
+| Watt- gegen Pulsseite derselben Einheit | 0.47.1 | die Wattvorgabe saß auf der Schwelle, die Pulsvorgabe bei 88–97 % |
 
 **Vier Mal dieselbe Form, und die ZAHL DER FÄLLE ist selbst die Aussage:** das
 ist kein Muster mehr, das man erkennt, sondern eines, mit dem man rechnet. Jede
@@ -1045,7 +1083,7 @@ den Non-Responder-Befund (Manresa-Rocamora 2021).
 
 ## 9. Prüfstand
 
-**Siebzehn Dateien, 5.177 gezählte Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
+**Siebzehn Dateien, 5.189 gezählte Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
 HA-Instanz oder einen Browser.
 
 | Datei | prüft | Umfang |
@@ -1058,12 +1096,12 @@ HA-Instanz oder einen Browser.
 | `test_laps.py` | Runden-Normalisierung | 34 |
 | `test_coach.py` | Zustandsregeln, Trigger-Schärfung, Infektverlauf, Nachtreaktion, Einordnung, Bereiche, benannter 42-Tage-Verlauf, Basislinien-Primitive mit AST-Wächter, eingefrorene No-op-Referenz, gewichtete Basislinie mit Fixture-Beweis, **Durability: die drei Ehrlichkeitsregeln einzeln, Gewichtungs- und Umrechnungs-Gegenprobe, Blockverlauf; der Kopf: belegte Dauer am gesperrten Fall, längste ≠ arbeitsreichste und Fahrt-Watt ≠ Pool-Median je erzwungen, Fensterausweitung mit Gegenfall, Progressionsfaktor mit 1,0-Gegenprobe**; **die Erholungs-Setzung hinter der Reiz-Stufe** | 424 |
 | `test_plan.py` | Zielprofil, Wochenmuster, Zeitbudget, Progressions- und Kalender-Anker-Vertrag, Profil-Migration | 405 |
-| `test_workouts.py` | Einheitenauswahl, HF-Klemme, Infektleiter, Wattumrechnung, Intervals-Syntax, **die vier Stufen über die volle Wahrheitstabelle, rot mit Begründung welches von beiden, dieselbe Einheit über alle vier Stufen, die Lastskalierung an den Zahlen des Livebestands, eine Zustandsregel für beide Ansichten, kein Urteil ohne Stufe**; **die Staffelung aus der Kurve: gepaarte Reihe, Studienform darüber, Ein- und Ausrollen bleiben FTP, harte Familien unberührt** | 1412 |
+| `test_workouts.py` | Einheitenauswahl, HF-Klemme, Infektleiter, Wattumrechnung, Intervals-Syntax, **die vier Stufen über die volle Wahrheitstabelle, rot mit Begründung welches von beiden, dieselbe Einheit über alle vier Stufen, die Lastskalierung an den Zahlen des Livebestands, eine Zustandsregel für beide Ansichten, kein Urteil ohne Stufe**; **die Staffelung aus der Kurve: gepaarte Reihe, Studienform darüber, Ein- und Ausrollen bleiben FTP, harte Familien unberührt**; **die Vorgabe ist ein Anteil der Schwelle, nicht die Schwelle — Watt- und Pulsseite gegeneinander gehalten** | 1421 |
 | `test_websocket_registration.py` | Registrierung, Dekoratoren, FTP-Quelle, eine Ankerregel, day_context-Lese/Schreibweg, Ampel-Herkunftsnotiz, **der goal-Handler verdrahtet nur und bewertet ausschließlich die laufende Woche** | 361 |
 | `test_reconcile.py` | Abgleich mit Intervals: die drei Sperren einzeln, die datumslosen Aufräumstellen, No-op ohne Speichervorgang, der Handler am echten Aufruf (Import läuft, Historie nie geholt, Zwischenstand) | 129 |
 | `test_fatigue.py` | die Ermüdungskurve: strukturierte Einheiten VOR der Messung ausgeschlossen — mit der Gegenprobe, dass sie den Abfall von +4,0 auf +42,0 W verfälschen, wenn man sie drin lässt; Bereichsgrenzen aus der Belegung an zwei Beständen; Anker gemessen gegen Form gesetzt; **L1b: die HF-Setzung skaliert am eigenen Anker**; **die gepaarte Gegenrechnung und das Erkennungszeichen: die Belegung steigt, wo sie fallen müsste — mit Gegenprobe am sauberen Bestand**; **p050 wird erhoben und von nichts benutzt, mit Quelltext-Wächter über alle Verbraucher** | 54 |
 | `test_suite_hygiene.py` | der Prüfstand prüft sich selbst: **genau eine** Summary je Datei, die etwas zählt, nichts Gezähltes dahinter, Fehler werden gedruckt | 76 |
-| `test_panel_views.js` | alle Ansichten gegen volle, leere, löchrige, entartete Daten; Zeitfenster, Brushing, Achsenregel; Tagesbeschriftung und Abgleich-Dialog mit Schreibweg und Scroll-Erhalt; **die Durability-Wolke: Gewicht als Größe und Deckkraft, Gerade nur bei gesicherter Steigung, Register getrennt; der Kopf: drei Zeilen, weder Urteils- noch Datenregister, Rückfall-Satz und Ausweitungshinweis je mit Gegenfall**; **der Wochenplan: Stufen nur in der laufenden Woche, Satz statt Stufe ab Woche zwei, gefahren gegen vorgesehen ohne Paarung, Legende und Quellenblock**; **der Historienbeginn: eigener DFA-Zeitraum in Kopfzeile und Reiter, mit Gegenfall und leerer Payload**; **die Ermüdungskurve: Beleg und Setzung im Bild und im Text getrennt, beide Leserichtungen, die namentliche Ausschlussliste, der Zustand „rechnet noch" mit Fortschritt**; **L1b als Setzung beschriftet, mit der eigenen Messung daneben**; **der Umzug in die Durability-Kachel: die Ehrlichkeitsregel übertragen, die Ausschlusszahl aus dem Zählfeld statt aus der gekappten Liste**; **die tauben Abschnitte klappen zu, und die Datenlage öffnet sie wieder — mit beiden Öffnungsbedingungen einzeln**; **die Einheitenkarte nennt die Herkunft je Abschnitt — gemessen, Studienform oder Rückfall auf die FTP** | 1243 |
+| `test_panel_views.js` | alle Ansichten gegen volle, leere, löchrige, entartete Daten; Zeitfenster, Brushing, Achsenregel; Tagesbeschriftung und Abgleich-Dialog mit Schreibweg und Scroll-Erhalt; **die Durability-Wolke: Gewicht als Größe und Deckkraft, Gerade nur bei gesicherter Steigung, Register getrennt; der Kopf: drei Zeilen, weder Urteils- noch Datenregister, Rückfall-Satz und Ausweitungshinweis je mit Gegenfall**; **der Wochenplan: Stufen nur in der laufenden Woche, Satz statt Stufe ab Woche zwei, gefahren gegen vorgesehen ohne Paarung, Legende und Quellenblock**; **der Historienbeginn: eigener DFA-Zeitraum in Kopfzeile und Reiter, mit Gegenfall und leerer Payload**; **die Ermüdungskurve: Beleg und Setzung im Bild und im Text getrennt, beide Leserichtungen, die namentliche Ausschlussliste, der Zustand „rechnet noch" mit Fortschritt**; **L1b als Setzung beschriftet, mit der eigenen Messung daneben**; **der Umzug in die Durability-Kachel: die Ehrlichkeitsregel übertragen, die Ausschlusszahl aus dem Zählfeld statt aus der gekappten Liste**; **die tauben Abschnitte klappen zu, und die Datenlage öffnet sie wieder — mit beiden Öffnungsbedingungen einzeln**; **die Einheitenkarte nennt die Herkunft je Abschnitt — gemessen, Studienform oder Rückfall auf die FTP; der Anteil und die Schwelle, aus der er folgt** | 1246 |
 | `test_panel_fixes.js` | je ein Nachweis pro behobenem Fehler, plus die Zeiger-Simulation; Quelltext-Wächter über das ganze Frontend, beidseitig (keine Zahl im Quelltext, jede Schwelle nachweislich aus der Payload), seit 0.41.0 auch über Progressionsfaktor, Risikoknick, Rundungsschritt und Bezugsfenster, **seit 0.42.0 über `rWorkouts` UND `rPlanWeeks` (keine Urteilsregel im Frontend) plus den Wortabgleich Fixture gegen `workouts.py`**, **seit 0.45.0 über `rFatigue` samt Rechenweg-Helfer — je Kachel nachzutragen, deshalb mit Existenzprüfung der Liste**; **der Zeiger über der Ermüdungskurve am simulierten Ereignis, und der eine Ladeweg für ihre Payload** | 411 |
 | `test_panel_design.js` | Gestaltungsregeln als Zusicherung, Auswahl als Form, Achse im Aufklappen, Etiketten im Kategorienregister; **eingefrorene `chart()`-Referenz aus dem Stand vor dem Eingriff** und der Zeiger-Unverändert-Beweis über vier Ansichten; **vier Urteilsfarben, vier Formen, der Reiz-Ton in keinem Kategorienregister, die Reiz-Form kein Last-Blitz** | 235 |
 | `test_projektstand.py` | die Tabelle unter diesem Absatz gegen einen echten Suite-Lauf: jede Zeile einzeln, Dateien ohne gemeldete Zahl, Kopfzeile und Einleitungssatz; **die eigene Zeile gegen den eigenen Zähler** | 57 |
@@ -1227,7 +1265,7 @@ bzw. ein Reiter je Chat.
 | **Durability-Messung als Einheit (Paket K, Stufe 1)** | ✅ gebaut als **0.44.0**. K1 und K2; K3 (die Hantel) bleibt zurückgestellt, bis zwei Messungen vorliegen. Die Spezifikation wurde vor dem Bau an drei Stellen korrigiert: K1 war **nicht** „nur `workouts.py`" (der 20-Minuten-Bestwert steht in keinem Feld, also zieht K2 das ganze J7 mit rein — Archivblock, Migration, Messweg aus den ungedünnten Strömen); die Lastregel aus I3 gilt bei **konstanter** Intensität und ist für eine Einheit mit fester Arbeit und abgeleiteter Dauer nicht anwendbar (jetzt gerechnet statt skaliert); und die Ausschlusswarnung zielte auf `DURABILITY_EXCLUDED_TYPES`, während in Wahrheit der **Intensitätsfilter** beißt. Verifikation am System steht aus |
 | **Durability-Kachel (Paket H)** | ✅ gebaut als **0.41.0**. Kopfbereich aus drei Zeilen: belegte Fähigkeit (längste gleichmäßige Fahrt nach ZEIT, mit der Leistung dieser Fahrt), Bezug der letzten 30 Tage mit sichtbarer Ausweitung, nächster Schritt ×1,10 auf fünf Minuten gerundet. Die Spezifikation wurde vor dem Bau an drei Stellen korrigiert: H war **nicht** frontend-only (Dauer und Leistung fehlten in der Payload), der Rückfall ist die **Regel** statt einer Ausnahme (am Livebestand 230 gegen 260 min bei gefülltem Fenster), und vier Fallen fehlten. Verifikation am System steht aus |
 | **Trainer (Ermüdungskurve, Paket L)** | ✅ gebaut als **0.45.0**, in **0.46.0** an ihren Platz gerückt: sie ist das Hauptbild der Durability-Kachel im Trainer und ersetzt dort die Punktwolke — vorher stand sie im DFA-Reiter neben einer zweiten Kachel zur selben Frage (§7). Dazu die fehlende Bedienung (Ablesestreifen, Zeiger, Wertetabelle, beide Leserichtungen) und die gepaarte Gegenrechnung zum Auswahleffekt. L1/L1a/L1b: Anker gemessen (Repräsentantenmethode je Fahrtstunde, aus den ungedünnten Strömen beim Import), Form nach Gallo gesetzt und daran verankert, Unsicherheitsband aus der publizierten Streuung. Die Bereichsgrenzen rechnen sich aus der Belegung — zwei Bestände ergeben nachweislich zwei Grenzen. Vorgeschaltet zwei Bugfixes, die heute schon wirken: die Plausibilitätsregel an EINER Stelle statt in fünf Fassungen, und der Historienbeginn. Die Spezifikation wurde vor dem Bau an vier Stellen korrigiert: L1 war NICHT payload-fertig (das Archiv trug ein Fenstermittel je Fahrt, keinen Stundenverlauf — also Algorithmus-Bump, Neuberechnung, Fortschrittsanzeige), die Ausdünnung ist auf dem Importweg gar nicht da, der VI kann strukturierte Einheiten nicht trennen (§7), und L2–L6 existieren nicht und wurden nicht erfunden. Verifikation am System steht aus |
-| **Trainer (Wattvorgaben, Paket L4)** | ✅ gebaut als **0.47.0**. Grundlage und lange Fahrt beziehen ihre Watt aus der gemessenen Kurve, gestaffelt nach Fahrtdauer auf der gepaarten Reihe; die übrigen Familien bleiben bei der FTP, die dort als **Rückfall** beschriftet ist. Die Einheitenkarte nennt je Abschnitt, ob die Zahl gemessen oder Studienform ist. Die Spezifikation wurde vor dem Bau an einer Stelle korrigiert: nicht „SweetSpot liegt außerhalb des Messbereichs" (falsch — es liegt drin), sondern „aus arbiträren Fahrten ist dort kein tragfähiger Fit zu gewinnen". Dazu `p050` und die Signalqualität unter alpha 0,5 erhoben, von nichts benutzt. Verifikation am System steht aus |
+| **Trainer (Wattvorgaben, Paket L4)** | ✅ gebaut als **0.47.0**, korrigiert in **0.47.1** (die Vorgabe ist ein Anteil der Schwelle, nicht die Schwelle selbst — §7). Grundlage und lange Fahrt beziehen ihre Watt aus der gemessenen Kurve, gestaffelt nach Fahrtdauer auf der gepaarten Reihe; die übrigen Familien bleiben bei der FTP, die dort als **Rückfall** beschriftet ist. Die Einheitenkarte nennt je Abschnitt, ob die Zahl gemessen oder Studienform ist. Die Spezifikation wurde vor dem Bau an einer Stelle korrigiert: nicht „SweetSpot liegt außerhalb des Messbereichs" (falsch — es liegt drin), sondern „aus arbiträren Fahrten ist dort kein tragfähiger Fit zu gewinnen". Dazu `p050` und die Signalqualität unter alpha 0,5 erhoben, von nichts benutzt. Verifikation am System steht aus |
 | **Konstanten-Dubletten (DFA/ACWR) + toter ring()/rd-Code** | ⬜ eigenes Paket, vom Wächter bei 2+2 eingefroren (docs/ausbau.md) |
 | Heute, Kalender (voller Audit), Fitness, Aktivitäten | offen |
 

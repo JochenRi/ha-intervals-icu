@@ -39,7 +39,7 @@ PANEL_COMPONENT = "intervals-icu-panel"
 PANEL_FILE = "intervals-panel.js"
 PANEL_TITLE = "Intervals"
 PANEL_ICON = "mdi:chart-timeline-variant"
-PANEL_VERSION = "0.47.0"
+PANEL_VERSION = "0.47.1"
 
 # --- thresholds shared by backend and panel -----------------------------------
 # One definition per number, here, because the panel has to show several of them
@@ -111,6 +111,21 @@ FATIGUE_THIN_MIN_RIDES = 2
 # genug, dass die Rechnung auf diesem Bestand ueberhaupt laeuft, und hoch
 # genug, dass sie nicht auf einer Handvoll Fahrten eine Zahl behauptet.
 FATIGUE_MIN_PAIRS = 6
+
+# Welchen ANTEIL der gemessenen Schwelle eine Grundlageneinheit traegt. Die
+# Kurve liefert P(alpha = 0,75) - das IST die aerobe Schwelle, keine
+# Trainingsvorgabe. Wer dort faehrt, faehrt an der Schwelle und nicht darunter.
+#
+# 90 %, und das ist keine Hausnummer: Stevenson, Kilding, Plews, Maunder
+# (Eur J Appl Physiol 2022) und Gallo et al. (Eur J Appl Physiol 2024) liessen
+# ihre Probanden bei 90 % der Leistung an der ersten ventilatorischen Schwelle
+# fahren - dieselben Studien, aus denen die Form der Kurve und die HF-Korrektur
+# stammen. Die Vorgabe steht damit auf derselben Quelle wie alles andere hier.
+#
+# Und sie passt zur PULSSEITE derselben Einheit: das HF-Fenster der Grundlage
+# liegt bei 88-97 % der Schwellen-HF. Dass beide Seiten auseinanderliefen -
+# Puls bei 88-97 %, Watt bei 100 % - war der Fehler aus 0.47.0 (PROJEKTSTAND §7).
+CURVE_TARGET_SHARE = 0.90
 
 # Which sessions the durability tile may look at.
 DURABILITY_MIN_MINUTES = 45      # below this a decoupling reading is not usable

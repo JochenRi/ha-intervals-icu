@@ -932,11 +932,20 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   const base = F.workouts().workouts[0];
   const ausKurve = { ...base, watt_source: "curve", family: "long",
     blocks_w: [[12, 118, "Einrollen"], [130, 142, "gleichmäßig", true]],
-    curve_blocks: [{ label: "gleichmäßig", watts: 142, source: "measured", n: 12, hour: 2 }] };
+    curve_share: 0.9,
+    curve_blocks: [{ label: "gleichmäßig", watts: 128, threshold: 142, share: 0.9,
+                     source: "measured", n: 12, hour: 2 }] };
   const opts = { toggleAct: "wodetail", ftp: 215 };
   const karte = String(q._sessionCard(ausKurve, opts));
   clean(karte, "einheit aus der kurve");
   contains(karte, "aus deiner eigenen", "L4: die Karte sagt nicht, dass die Watt aus der Messung kommen");
+  // 0.47.1: die Karte nennt den ANTEIL und die Schwelle, aus der er folgt -
+  // aus der Payload, nicht als Zahl im Quelltext (§9).
+  ok(/90 %<\/b> der gemessenen Schwelle/.test(karte),
+     "L4: der Anteil an der Schwelle fehlt in der Karte");
+  ok(/142 W/.test(karte), "L4: die gemessene Schwelle steht nicht dabei");
+  contains(karte, "unter die Schwelle, nicht auf sie",
+           "L4: es steht nicht da, warum die Vorgabe unter der Schwelle liegt");
   ok(/class="wsrc"[^>]*>gemessen</.test(karte),
      "L4: der gemessene Abschnitt ist nicht als solcher gekennzeichnet");
   ok(/Stunde 2/.test(karte), "L4: die Belegung des Abschnitts fehlt");

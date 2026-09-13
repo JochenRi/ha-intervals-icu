@@ -836,6 +836,34 @@ eq(spaet["source"], "literature", "jenseits des Gemessenen: Studienform")
 eq(spaet["n"], None, "und ohne Belegung, weil es keine gibt")
 check(spaet["watts"] < zweite["watts"], "die Studienform faellt weiter")
 
+# --- 0.47.1: DIE MESSUNG IST NICHT DIE VORGABE -------------------------------
+# Die Kurve liefert die SCHWELLE. Wer dort faehrt, faehrt an der Schwelle und
+# nicht darunter - und die Wattseite widerspraeche der Pulsseite DERSELBEN
+# Karte. Gefahren wird ein Anteil, aus denselben Studien wie die Kurvenform.
+from const import CURVE_TARGET_SHARE  # noqa: E402
+
+grund = W.scaled(W.BY_KEY["z2_60"], 200, 160, 185, CURVE)
+haupt_w = [b for b in grund["blocks_w"] if len(b) > 3 and b[3]][0][1]
+eq(haupt_w, round(153 * CURVE_TARGET_SHARE), "die Vorgabe ist ein Anteil der Schwelle")
+eq(grund["curve_blocks"][0]["threshold"], 153.0,
+   "die gemessene Schwelle reist getrennt mit")
+eq(grund["curve_share"], CURVE_TARGET_SHARE, "der Anteil reist in der Payload")
+check(haupt_w < 153, "die Vorgabe sitzt auf der Schwelle statt darunter")
+
+# DIE GEGENPROBE, DIE IN 0.47.0 GEFEHLT HAT: Watt- und Pulsseite derselben
+# Einheit muessen denselben relativen Abstand zu IHRER Schwelle haben. Genau
+# ihr Auseinanderlaufen war der Fehler - Puls bei 88-97 %, Watt bei 100 %.
+for key in ("z2_60", "z2_90", "z2_150", "z2_210_late"):
+    entry = W.BY_KEY[key]
+    lo, hi = entry["hr_hint"]
+    check(lo <= CURVE_TARGET_SHARE <= hi,
+          f"{key}: der Wattanteil {CURVE_TARGET_SHARE} liegt ausserhalb des "
+          f"HF-Fensters {lo}-{hi} - beide Seiten meinen verschiedene Intensitaeten")
+# und die Gegenprobe zur Gegenprobe: die Schwelle SELBST faellt durch
+_lo, _hi = W.BY_KEY["z2_60"]["hr_hint"]
+check(not (_lo <= 1.0 <= _hi),
+      "Gegenprobe: ein Anteil von 100 % waere im HF-Fenster - die Pruefung ist blind")
+
 # Gegenprobe, GEZAEHLT UND BENANNT: traegt der gepaarte Schritt nicht, wird er
 # NICHT verwendet - sonst staffelte die Vorgabe auf einer Zahl, die die Kachel
 # selbst nicht zeigen darf.
@@ -852,7 +880,8 @@ eq(W.curve_watts(None, 1.5), None, "ohne Kurve gibt es keine Vorgabe daraus")
 lang = W.scaled(W.BY_KEY["z2_150"], 215, 160, 185, CURVE)
 eq(lang["watt_source"], "curve", "lange Fahrt: Vorgabe aus der Kurve")
 haupt = [b for b in lang["blocks_w"] if len(b) > 3 and b[3]]
-eq(haupt[0][1], 142, "der gleichmaessige Hauptteil traegt den Kurvenwert")
+eq(haupt[0][1], round(142 * CURVE_TARGET_SHARE),
+   "der gleichmaessige Hauptteil traegt den Anteil des Kurvenwerts")
 eq(lang["blocks_w"][0][1], round(215 * 55 / 100), "Ein- und Ausrollen bleiben Prozent der FTP")
 sweet = W.scaled(W.BY_KEY["sweetspot_2x20"], 215, 160, 185, CURVE)
 eq(sweet["watt_source"], "ftp", "SweetSpot bleibt bei der FTP - dort traegt der Fit nicht")
