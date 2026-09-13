@@ -613,9 +613,17 @@ def test_measures(streams: Any, short_min: float, long_min: float) -> dict[str, 
 _LAP_FIELDS: dict[str, tuple[str, ...]] = {
     "label": ("label", "name", "type"),
     "type": ("type", "group_id"),
-    # Both are kept: the index counts in the ORIGINAL 1 Hz stream while the
-    # panel receives a thinned one, so mapping by time is the safe route and
-    # the index is only a fallback.
+    # BEIDE werden gehalten, und WELCHER richtig ist, haengt am Aufrufer -
+    # der Hinweis hier nannte bis 0.48.1 nur die eine Haelfte und fuehrte
+    # damit zur falschen Wahl (PROJEKTSTAND §7):
+    #   * PANEL: bekommt einen GEDUENNTEN Strom (sample_secs 5-18). Der Index
+    #     zaehlt im Original und passt dort nicht -> ueber die ZEIT zuordnen.
+    #   * IMPORT: rechnet auf dem UNGEDUENNTEN 1-Hz-Strom. Dort ist der Index
+    #     exakt, die SEKUNDEN aber nicht: `start_s` laeuft in verstrichener
+    #     Zeit, der Strom in Bewegungszeit. Bei der Einheit vom 01.09.2026
+    #     endet der letzte Index bei 2859 (= Zahl der Stromwerte), die
+    #     Sekundenachse bei 2973 -> 114 Stellen Versatz, genau die Standzeit.
+    #     -> ueber den INDEX zuordnen.
     "start_s": ("start_time",),
     "end_s": ("end_time",),
     "start_index": ("start_index",),
@@ -790,8 +798,9 @@ def dfa_blocks(
     for lap in laps:
         if not isinstance(lap, dict):
             continue
-        start = _number(lap.get("start_s"))
-        end = _number(lap.get("end_s"))
+        # ueber den INDEX, nicht ueber die Sekunden: siehe normalize_laps.
+        start = _number(lap.get("start_index"))
+        end = _number(lap.get("end_index"))
         dur = _number(lap.get("moving_time")) or 0.0
         label = str(lap.get("label") or "")
         if start is None or end is None or dur < BLOCK_MIN_SECONDS:
@@ -799,10 +808,16 @@ def dfa_blocks(
         alphas: list[float] = []
         power: list[float] = []
         pulse: list[float] = []
-        kept = start + BLOCK_WARMUP_DISCARD_S
+        # Verworfen wird nach SEKUNDEN, gezaehlt wird in Stromstellen - auf dem
+        # ungeduennten 1-Hz-Strom ist das dasselbe, und sample_secs traegt den
+        # Unterschied, falls je ein geduennter Strom hier ankommt.
+        kept = start + BLOCK_WARMUP_DISCARD_S / max(sample_secs, 1)
         for index in range(len(dfa)):
-            moment = index * max(sample_secs, 1)
-            if moment < kept or moment > end:
+            # `end_index` zeigt auf die Stelle NACH dem Block: bei der Einheit
+            # vom 01.09.2026 endet der letzte Lap auf 2859 bei 2856 Werten.
+            # Mit `<=` liefe der erste Wert des Folgeabschnitts mit - bei einem
+            # Intervall waere das der erste Wert der Pause.
+            if index < kept or index >= end:
                 continue
             value = _number(dfa[index])
             if value is None or not 0.0 < value <= 2.0:
@@ -819,7 +834,13 @@ def dfa_blocks(
         mean_a = sum(alphas) / len(alphas)
         out.append({
             "label": label,
-            "start_s": round(start),
+            "start_index": round(start),
+            # Intervals' EIGENER Abschnittswert - eine FREMDE Quelle, und die
+            # einzige in diesem Paket. Er ist ein Mittel ueber den GANZEN Block
+            # samt Anlauf und liegt deshalb systematisch hoeher als unser
+            # Median; als Ersatz taugt er nicht. Aber die REIHENFOLGE muss
+            # stimmen: laeuft sie auseinander, stimmt etwas am Ausschnitt.
+            "lap_alpha": _number(lap.get("dfa_a1")),
             "minutes": round(dur / 60.0, 1),
             "points": len(alphas),
             "discarded_s": BLOCK_WARMUP_DISCARD_S,

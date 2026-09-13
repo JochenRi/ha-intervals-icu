@@ -2563,6 +2563,29 @@ Ein Vergleich bei ungleicher Leistung misst also nicht Ermüdungsresistenz — d
 Abfall ist der Sinn der Einheit, nicht ihr Mangel, und er gehört
 mitgerechnet statt vorausgesetzt.
 
+### M3b · Die Zuordnung läuft über den INDEX, nicht über die Sekunden
+
+**Korrigiert in 0.48.1, nachdem der erste Bau daran gescheitert war.** Die Laps
+tragen beides: `start_s`/`end_s` in verstrichener Zeit und
+`start_index`/`end_index` als Position im Strom. **Für den Import gilt der
+Index.** Der Strom läuft in Bewegungszeit und ist ungedünnt; bei der Einheit
+vom 01.09.2026 endet der letzte Index bei 2859 (= Zahl der Stromwerte), die
+Sekundenachse bei 2973 — **114 Stellen Versatz, genau die Standzeit.** Für das
+PANEL gilt das Gegenteil: dort kommt der Strom gedünnt an, und die Zeit ist die
+richtige Achse.
+
+`end_index` zeigt auf die Stelle **nach** dem Block, die Grenze ist also
+exklusiv. Eine Umrechnung über `moving/elapsed` scheidet aus: die Standzeit
+fällt dort an, wo gestanden wurde, nicht gleichmäßig verteilt — das wäre eine
+Schätzung im Gewand einer Messung.
+
+**Zwei Gegenproben halten das fest**, beide in `test_blocks.py`: die Physik
+(ein Arbeitsabschnitt trägt mehr Leistung als die Pause daneben, mit dem
+Sekunden-Fehler als Gegenfall) und eine FREMDE Quelle — Intervals' eigener
+`dfa_a1`-Wert je Lap. Er liegt systematisch höher, weil er den Anlauf
+mitmittelt, und taugt nicht als Ersatz; aber seine **Reihenfolge** muss zu
+unserer passen. Läuft sie auseinander, sagt die Karte es.
+
 ### M4 · Was gebaut wird, wenn freigegeben
 
 1. **Blockwerte beim Import mitrechnen und archivieren**, in der Bauart von

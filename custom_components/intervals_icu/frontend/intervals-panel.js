@@ -914,6 +914,7 @@ class IntervalsIcuPanel extends HTMLElement {
         ${head}
         <p class="effect">${esc(d.headline)}</p>
         ${this.rFatigue(this._fatigue)}
+        ${this.rBlocks(this._blocks)}
         ${(() => {
           /* Zwei Abschnitte, die auf diesem Bestand durchgehend NICHTS sagen:
              alle Bänder unter der Marke, kein Block mit Trend - eine halbe
@@ -1319,7 +1320,18 @@ class IntervalsIcuPanel extends HTMLElement {
           <small>Leistung im ersten eingeschwungenen Block</small>
           <b class="tn lead1" style="color:${ROLE.series}">${fmt(l.first_watts)} <span class="unit">W</span></b>
           <span class="mut">bei alpha ${fmt(l.first_alpha, 2)} · ${dMed(l.date)} ·
-            ${fmt(f.sessions)} ${f.sessions === 1 ? "Einheit" : "Einheiten"}</span></div></div>
+            ${fmt(f.sessions)} ${f.sessions === 1 ? "Einheit" : "Einheiten"} von
+            ${dMed(f.from)} bis ${dMed(f.to)}</span></div></div>
+        ${f.first_is_weak ? `<p class="hint">${ico("warn", C.amber, 13)} <b>Der erste
+          Arbeitsabschnitt dieser Einheit trägt weniger Leistung als die folgenden</b> — das
+          Gerät hat dort vermutlich einen lockeren Abschnitt als Arbeit etikettiert. Die
+          Leitzahl nimmt trotzdem den ersten; getauscht wird erst, wenn die Auswahl nach
+          Leistung entschieden ist.</p>` : ""}
+        ${(f.order_conflicts || []).length ? `<p class="hint">${ico("warn", C.amber, 13)}
+          <b>${fmt(f.order_conflicts.length)} Einheit(en) widersprechen der Gegenprobe:</b>
+          dort läuft unsere Reihenfolge der Blockwerte anders als die von Intervals selbst
+          berechnete. Dann stimmt etwas am Ausschnitt — die Zahlen dieser Einheiten sind mit
+          Vorsicht zu lesen.</p>` : ""}
         ${graph}
         ${wenig ? `<p class="hint">${ico("info", C.blue, 13)} <b>${fmt(f.sessions)}
           ${f.sessions === 1 ? "Einheit" : "Einheiten"}</b> — unter ${fmt(f.min_for_trend)} wird
@@ -1640,7 +1652,7 @@ class IntervalsIcuPanel extends HTMLElement {
       if (what === "akt" && !this._acts) this._acts = await this._ws("activities", { limit: 300 });
       if (what === "thr" && !this._thr) this._thr = await this._ws("thresholds");
       if (what === "fatigue" && !this._fatigue) this._fatigue = await this._ws("fatigue");
-      if (what === "thr" && !this._blocks) this._blocks = await this._ws("blocks");
+      if (what === "blocks" && !this._blocks) this._blocks = await this._ws("blocks");
       if (what === "cal" && !this._cal) this._cal = await this._ws("calendar");
       delete this._failed[what];
     } catch (err) {
@@ -1655,7 +1667,7 @@ class IntervalsIcuPanel extends HTMLElement {
     // difference between "instant" and "why is this still loading"
     if (t === "trainer") {
       await Promise.all([this._need("coach"), this._need("workouts"), this._need("goal"),
-                         this._need("fatigue")]);
+                         this._need("fatigue"), this._need("blocks")]);
     }
     if (t === "heute") await this._need("today");
     if (t === "signale") await this._need("signals");
@@ -1759,7 +1771,7 @@ class IntervalsIcuPanel extends HTMLElement {
     else if (this._tab === "fitness") html = this.rFitness(this._pmc, this._range);
     else if (this._tab === "akt") html = this.rAkt(this._acts, this._sel);
     else if (this._tab === "belastung") html = this.rBelastung(this._load);
-    else if (this._tab === "dfa") html = this.rDfa(this._thr, this._dfaSport) + this.rBlocks(this._blocks);
+    else if (this._tab === "dfa") html = this.rDfa(this._thr, this._dfaSport);
     if (this._ctxDlg) html += this._ctxPopover();
     if (this._syncDlg) html += this._syncPopover();
     this._view.innerHTML = html;

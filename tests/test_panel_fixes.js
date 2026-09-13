@@ -840,7 +840,7 @@ const acts = F.activities(), thr = F.thresholds();
     // im TRAINER. Auf dem EINEN Weg angefordert, nicht ueber einen zweiten
     // Ladepfad daneben - sonst ist es die stille Luecke aus 0.42.1 mit einer
     // neuen Payload.
-    trainer: ["coach", "workouts", "goal", "fatigue"], heute: ["today"], signale: ["signals"],
+    trainer: ["coach", "workouts", "goal", "fatigue", "blocks"], heute: ["today"], signale: ["signals"],
     fitness: ["pmc"], akt: ["akt"], dfa: ["thr"],
   };
   for (const [tab, keys] of Object.entries(needsOf)) {
@@ -863,6 +863,33 @@ const acts = F.activities(), thr = F.thresholds();
      "ladepfad: die Ermuedungskurve haengt noch am DFA-Reiter");
   ok(/rFatigue/.test(src.slice(src.indexOf("rDurability(d) {"), src.indexOf("_fatigueHistory(f) {"))),
      "ladepfad: die Ermuedungskurve sitzt nicht in der Durability-Kachel");
+
+  // 0.48.1: WO eine Kachel gerendert wird, ist eine ZUSICHERUNG, keine
+  // Einzelentscheidung. In 0.46.0 wurde der Ort von Hand korrigiert und keine
+  // Prüfung hinterlassen - deshalb landete die nächste Kachel wieder im
+  // falschen Reiter. Eine Korrektur ohne Zusicherung ist keine.
+  const HOME = {
+    rTrainer: "trainer", rGoal: "trainer", rPlanWeeks: "trainer", rWorkouts: "trainer",
+    rDurability: "trainer", rFatigue: "trainer", rBlocks: "trainer",
+    rHeute: "heute", rSignale: "signale", rFitness: "fitness",
+    rAkt: "akt", rDfa: "dfa", rKalender: "kalender", rBelastung: "belastung",
+  };
+  const alle = (src.match(/\n  r[A-Z]\w*\(/g) || []).map((m) => m.trim().slice(0, -1));
+  for (const name of alle) {
+    ok(HOME[name] !== undefined,
+       `ort: Kachel ${name} steht in keiner Zuordnung — der Reiter ist eine Einzelentscheidung`);
+  }
+  // Trainer-Kacheln duerfen NICHT in einem anderen Reiter gerendert werden.
+  const dfaZweig = (/this\._tab === "dfa"\) html = [^;]*/.exec(render) || [""])[0];
+  for (const [name, tab] of Object.entries(HOME)) {
+    if (tab === "trainer" && alle.includes(name)) {
+      ok(!dfaZweig.includes(name), `ort: ${name} gehört in den Trainer, wird aber im DFA-Reiter gerendert`);
+    }
+  }
+  // Gegenprobe, gezaehlt und benannt: eine im falschen Zweig gerenderte Kachel
+  // wird gefunden - sonst prueft die Schleife nur, dass der Zweig kurz ist.
+  ok(/rBlocks/.test('this._tab === "dfa") html = this.rDfa(x) + this.rBlocks(y)'),
+     "ort Gegenprobe: eine falsch platzierte Kachel wird NICHT gefunden — die Prüfung ist blind");
 
   // Gegenprobe: ein _boot ohne _setTab muss auffallen
   ok(!/await this\._setTab\(this\._tab\)/.test("this._render();\n    this._routeFromHash();"),

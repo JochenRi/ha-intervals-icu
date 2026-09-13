@@ -56,7 +56,7 @@ def strom(anlauf, danach, sekunden=600, anlauf_s=120):
     return dfa, w, hr
 
 
-LAP = [{"label": "WORK", "start_s": 0, "end_s": 600, "moving_time": 600}]
+LAP = [{"label": "WORK", "start_index": 0, "end_index": 600, "moving_time": 600}]
 dfa, w, hr = strom(1.60, 0.45)
 b = derive.dfa_blocks(dfa, w, hr, LAP, 1)[0]
 check("der Blockwert ist der eingeschwungene", b["alpha"], 0.45)
@@ -70,7 +70,7 @@ ok("die Streuung ist die des eingeschwungenen Teils", b["alpha_sd"] == 0.0)
 # ist er robust - deshalb faellt der Fehler ausgerechnet bei VO2max auf und
 # bei SweetSpot nicht.
 kurz_dfa, kurz_w, kurz_hr = strom(1.60, 0.45, sekunden=240)
-VIER = [{"label": "WORK", "start_s": 0, "end_s": 240, "moving_time": 240}]
+VIER = [{"label": "WORK", "start_index": 0, "end_index": 240, "moving_time": 240}]
 mit = derive.dfa_blocks(kurz_dfa, kurz_w, kurz_hr, VIER, 1)[0]["alpha"]
 ohne = derive._median(kurz_dfa)
 check("4-min-Block, verworfen: der eingeschwungene Wert", mit, 0.45)
@@ -81,16 +81,81 @@ ok("beim langen Block faellt es nicht auf - genau deshalb ist es gefaehrlich",
    abs(derive._median(dfa) - b["alpha"]) < 0.01)
 
 # Nur Arbeitsabschnitte, und nur lange genug.
-kurz = [{"label": "WORK", "start_s": 0, "end_s": 140, "moving_time": 140}]
+kurz = [{"label": "WORK", "start_index": 0, "end_index": 140, "moving_time": 140}]
 check("ein zu kurzer Block traegt nichts", derive.dfa_blocks(dfa, w, hr, kurz, 1), [])
-knapp = [{"label": "WORK", "start_s": 0, "end_s": 300, "moving_time": 300}]
+knapp = [{"label": "WORK", "start_index": 0, "end_index": 300, "moving_time": 300}]
 check("ein Block mit zu wenigen Punkten nach dem Verwerfen faellt raus",
       len(derive.dfa_blocks(dfa[:300], w[:300], hr[:300],
-                            [{"label": "WORK", "start_s": 0, "end_s": 135,
+                            [{"label": "WORK", "start_index": 0, "end_index": 135,
                               "moving_time": 155}], 1)), 0)
 ok("ein ausreichend langer Block bleibt", len(derive.dfa_blocks(dfa, w, hr, knapp, 1)) == 1)
 check("ohne Laps gibt es keine Bloecke", derive.dfa_blocks(dfa, w, hr, [], 1), [])
 
+
+# --- DIE PHYSIK-GEGENPROBE, die den Fehler aus 0.48.0 gefunden hat ----------
+print("\n=== ein Arbeitsabschnitt traegt mehr Leistung als die Pause daneben ===")
+
+# Die Einheit vom 01.09.2026, mit den ECHTEN Lap-Grenzen: die Indizes zaehlen
+# im Strom, die Sekunden auf der Uhr - bei dieser Fahrt liegen 114 Stellen
+# dazwischen (2859 Indizes gegen 2973 Sekunden, genau die Standzeit).
+ECHT = [
+    {"label": "RECOVERY", "start_index": 0, "end_index": 875, "start_s": 0, "end_s": 989,
+     "moving_time": 874, "dfa_a1": 1.44},
+    {"label": "WORK", "start_index": 875, "end_index": 1112, "start_s": 989, "end_s": 1226,
+     "moving_time": 237, "dfa_a1": 0.853},
+    {"label": "RECOVERY", "start_index": 1112, "end_index": 1297, "start_s": 1226, "end_s": 1411,
+     "moving_time": 185, "dfa_a1": 0.970},
+    {"label": "WORK", "start_index": 1297, "end_index": 1532, "start_s": 1411, "end_s": 1646,
+     "moving_time": 235, "dfa_a1": 0.774},
+]
+# Ein Strom, der die Abschnitte NACH INDEX traegt: Arbeit 250 W, Pause 90 W.
+strom_dfa, strom_w = [], []
+for i in range(1600):
+    arbeit = (875 <= i < 1112) or (1297 <= i < 1532)
+    strom_dfa.append(0.45 if arbeit else 1.30)
+    strom_w.append(250 if arbeit else 90)
+got = derive.dfa_blocks(strom_dfa, strom_w, [170] * 1600, ECHT, 1)
+arbeit = [b for b in got if b["label"] == "WORK"]
+pause = [b for b in got if b["label"] == "RECOVERY"]
+ok("Arbeitsabschnitte gefunden", len(arbeit) == 2)
+for b in arbeit:
+    check(f"WORK bei Index {b['start_index']} traegt Arbeitsleistung", b["watts"], 250)
+for b in pause:
+    ok(f"RECOVERY bei Index {b['start_index']} traegt Pausenleistung", b["watts"] == 90)
+# DIE REGEL, allgemein: kein Arbeitsabschnitt darf weniger tragen als die
+# Pause daneben. Genau das stand in 0.48.0 im Archiv - 88 W Arbeit gegen
+# 253 W Pause - und war in den Daten sofort sichtbar.
+for i in range(len(got) - 1):
+    if got[i]["label"] == "WORK" and got[i + 1]["label"] == "RECOVERY":
+        ok(f"Arbeit vor Pause: {got[i]['watts']} > {got[i + 1]['watts']}",
+           got[i]["watts"] > got[i + 1]["watts"])
+
+# GEGENPROBE, GEZAEHLT UND BENANNT: mit den SEKUNDEN statt den Indizes kippt
+# es - das ist der Fehler aus 0.48.0, nachgebaut.
+falsch = [{**lap, "start_index": lap["start_s"], "end_index": lap["end_s"]} for lap in ECHT]
+kaputt = derive.dfa_blocks(strom_dfa, strom_w, [170] * 1600, falsch, 1)
+kaputt_work = [b for b in kaputt if b["label"] == "WORK"]
+ok("Gegenprobe: ueber die Sekunden zugeordnet traegt die Arbeit die Pausenleistung",
+   any(b["watts"] == 90 for b in kaputt_work))
+
+# Die FREMDE Gegenprobe: Intervals' eigener Abschnittswert liegt hoeher (Mittel
+# ueber den ganzen Block), muss aber DIESELBE Richtung zeigen.
+d = {"activities": {"x": {"name": "VO2max-Intervalle", "start_date_local": "2026-09-01T10:00"}},
+     "dfa": {"x": {"blocks": [
+         {"label": "WORK", "alpha": 0.49, "watts": 260, "lap_alpha": 0.853},
+         {"label": "WORK", "alpha": 0.40, "watts": 250, "lap_alpha": 0.774},
+         {"label": "WORK", "alpha": 0.37, "watts": 250, "lap_alpha": 0.640}]}}}
+f = blocks.series(d)["families"]["vo2max"]
+check("fremde Quelle: die Reihenfolge stimmt", f["points"][0]["order_ok"], True)
+check("und es gibt nichts zu melden", f["order_conflicts"], [])
+# Gegenprobe: laeuft sie auseinander, wird es GEZAEHLT UND BENANNT.
+d2 = {"activities": {"x": {"name": "VO2max-Intervalle", "start_date_local": "2026-09-01T10:00"}},
+      "dfa": {"x": {"blocks": [
+          {"label": "WORK", "alpha": 0.49, "watts": 260, "lap_alpha": 0.60},
+          {"label": "WORK", "alpha": 0.40, "watts": 250, "lap_alpha": 0.90}]}}}
+f2 = blocks.series(d2)["families"]["vo2max"]
+check("Gegenprobe: gegenlaeufige Reihenfolge wird erkannt", f2["points"][0]["order_ok"], False)
+check("und in der Payload gemeldet", f2["order_conflicts"], ["2026-09-01"])
 
 # --- der Regelkreis -----------------------------------------------------------
 print("\n=== der Regelkreis: Vorschlag nach oben wie nach unten ===")

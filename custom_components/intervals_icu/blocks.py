@@ -77,8 +77,30 @@ def _sessions(data: dict[str, Any]) -> list[dict[str, Any]]:
         powers = [float(b["watts"]) for b in work if b.get("watts")]
         if not alphas or not powers:
             continue
+        # DIE GEGENPROBE AUS FREMDER QUELLE: Intervals' eigener Abschnittswert
+        # je Lap. Er liegt systematisch hoeher (Mittel ueber den ganzen Block
+        # samt Anlauf) und taugt nicht als Ersatz - aber die REIHENFOLGE muss
+        # dieselbe sein. Faellt unser Median von Block 1 auf Block 2 und der
+        # fremde Wert steigt, stimmt etwas an unserem Ausschnitt.
+        foreign = [b.get("lap_alpha") for b in work]
+        order_ok = None
+        if len(work) >= 2 and all(x is not None for x in foreign):
+            pairs = 0
+            agree = 0
+            for i in range(len(work) - 1):
+                d_own = alphas[i + 1] - alphas[i]
+                d_ext = float(foreign[i + 1]) - float(foreign[i])
+                if abs(d_own) < 0.02 or abs(d_ext) < 0.02:
+                    continue
+                pairs += 1
+                if (d_own > 0) == (d_ext > 0):
+                    agree += 1
+            order_ok = None if not pairs else (agree == pairs)
+
         out.append({
             "activity_id": key,
+            "foreign_alphas": foreign,
+            "order_ok": order_ok,
             "date": str(activity.get("start_date_local") or "")[:10],
             "name": activity.get("name"),
             "family": family,
@@ -86,6 +108,7 @@ def _sessions(data: dict[str, Any]) -> list[dict[str, Any]]:
             # Die EINZELWERTE reisen mit: die Karte soll zeigen, worauf die
             # Steuerung ruht, statt eine geglättete Zahl zu drucken.
             "block_alphas": [b.get("alpha") for b in work],
+            "block_watts_each": [b.get("watts") for b in work],
             "block_watts": [b.get("watts") for b in work],
             "first_alpha": work[0].get("alpha"),
             "first_watts": work[0].get("watts"),
@@ -140,8 +163,10 @@ def series(data: dict[str, Any]) -> dict[str, Any]:
             step = suggest_step(row["median_alpha"], corridor, spread)
             points.append({
                 "date": row["date"], "name": row["name"],
+                "order_ok": row["order_ok"], "foreign_alphas": row["foreign_alphas"],
                 "n_blocks": row["n_blocks"],
                 "block_alphas": row["block_alphas"], "block_watts": row["block_watts"],
+                "block_watts_each": row["block_watts_each"],
                 "alpha_span": row["alpha_span"],
                 # Verlaufsgröße
                 "first_alpha": row["first_alpha"], "first_watts": row["first_watts"],
@@ -150,6 +175,9 @@ def series(data: dict[str, Any]) -> dict[str, Any]:
                 "step_pct": step["pct"], "step_gap": step["gap"], "step_where": step["where"],
                 "suggested_watts": round(row["median_watts"] * (1 + step["pct"] / 100.0)),
             })
+        # Wo die fremde Quelle widerspricht, sagt es die Karte - eine
+        # Gegenprobe, die niemand sieht, ist keine.
+        disagree = [p["date"] for p in points if p["order_ok"] is False]
         newest = points[-1]
         families[family] = {
             "corridor": list(corridor),
@@ -165,6 +193,21 @@ def series(data: dict[str, Any]) -> dict[str, Any]:
             # zeigt: dieselbe Leistung bei gleichem alpha bedeutet nichts,
             # MEHR Leistung bei gleichem alpha ist die Verbesserung.
             "first_block_watts": [p["first_watts"] for p in points],
+            "order_conflicts": disagree,
+            # Der Zeitraum, ueber den geschaut wird - sonst weiss niemand,
+            # worauf der Verlauf ruht.
+            "from": points[0]["date"], "to": points[-1]["date"],
+            # Der erste Arbeitsblock ist nicht immer der haerteste: manche
+            # Geraete etikettieren einen lockeren Abschnitt als WORK. Wo das
+            # so ist, sagt die Karte es, statt die Zahl zu tauschen - die
+            # saubere Loesung ist ein eigener Schritt.
+            "first_is_weak": bool(
+                newest.get("block_watts_each")
+                and newest["block_watts_each"][0] is not None
+                and len([w for w in newest["block_watts_each"][1:] if w]) > 0
+                and newest["block_watts_each"][0]
+                < 0.9 * max(w for w in newest["block_watts_each"][1:] if w)
+            ),
         }
     return {
         "families": families,

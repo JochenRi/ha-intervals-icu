@@ -72,7 +72,7 @@ UNAVAILABLE_NOTE = "_note"
 # Bumped whenever the DFA maths changes. Stored summaries carrying an older
 # version are dropped and recomputed - the streams themselves are not kept, so
 # a fix would otherwise never reach the values already in the archive.
-DFA_ALGO_VERSION = 5
+DFA_ALGO_VERSION = 6
 
 # Bumped when ACTIVITY_FIELDS grows: stored summaries were fetched with the
 # old field list and would otherwise never gain the new columns.
