@@ -1538,6 +1538,20 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   contains(deep, "linear mit der Dauer", "wochenplan: die Hochrechnung wird nicht begründet");
   contains(deep, "Meeusen", "wochenplan: der Beleg der Reiz-Stufe reist nicht mit");
   contains(deep, "Verpflegung", "wochenplan: die Verpflegung fehlt im aufgeklappten Teil");
+
+  // Beleg und Setzung stehen GETRENNT im aufklappbaren Teil: was die Literatur
+  // hergibt (Aufwärmen absolut, Intervalle absolut) und was gesetzt ist (die
+  // Differenz geht auf den gleichmäßigen Block). Zusammengezogen fängt die
+  // Setzung an, als Befund durchzugehen.
+  contains(deep, "Wie der Aufbau auf die Dauer kam", "streckung: der Hinweis fehlt in der Karte");
+  contains(deep, "Less is more", "streckung: der Beleg zum Aufwärmen fehlt in der Karte");
+  contains(deep, "absoluten Minuten", "streckung: die absolute Aufwärmdauer fehlt");
+  contains(deep, "Setzung", "streckung: die Setzung wird in der Karte nicht benannt");
+  const stretchBox = deep.slice(deep.indexOf("Wie der Aufbau auf die Dauer kam"));
+  const evi = stretchBox.indexOf("<b>Beleg:</b>"), lim = stretchBox.indexOf("<b>Grenze:</b>");
+  ok(evi > 0 && lim > evi, "streckung: Beleg und Grenze stehen nicht getrennt in der Karte");
+  ok(!stretchBox.slice(evi, lim).includes("Setzung"),
+     "streckung: die Setzung steht im Belegabschnitt der Karte");
   q._psOpen = null;
   ok(!/noverdict/.test(open1.slice(open1.indexOf('class="pweek '), open1.indexOf('data-id="2"'))),
      "wochenplan: die laufende Woche trägt den Satz für spätere Wochen");

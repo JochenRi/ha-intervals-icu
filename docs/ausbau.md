@@ -1375,10 +1375,31 @@ Abschnitt** im Katalog:
 - Einrollen, Ausrollen, Intervalle und Pausen sind **fest**.
 - Gleichmäßige Blöcke sind **elastisch** und nehmen die Differenz auf.
 
-Die Marke steht am Block selbst (`(80, 68, "gleichmäßig", True)`), und sie wird
-als das beschriftet, was sie ist: eine Angabe des Autors der Einheit, keine
-gemessene Größe. Damit gibt es keine neue Zahl im Haus — nur eine Aussage, die
-derjenige trifft, der die Einheit ohnehin geschrieben hat.
+Die Marke steht am Block selbst (`(80, 68, "gleichmäßig", True)`). Damit gibt
+es keine neue Zahl im Haus — nur eine Aussage, die derjenige trifft, der die
+Einheit ohnehin geschrieben hat.
+
+**Belegt und Setzung stehen getrennt — nachgeschärft am 13.09.2026.** Die erste
+Fassung hat die ganze Regel als „Angabe des Autors" beschriftet. Das war zu
+bescheiden: der wichtigste Teil ist belegt.
+
+- **Belegt, und damit nicht verhandelbar: das Einrollen wächst nicht mit.** Die
+  Literatur verschreibt Aufwärmen in **absoluten Minuten** — 10 bis 15, optimal
+  15 bis 20, bei Ausdauerbelastungen über drei Stunden eher 10 bis 15. Zu
+  langes Aufwärmen ermüdet nachweislich: traditionelles Aufwärmen über 50
+  Minuten erzeugte Ermüdung und minderte die Leistung (J Appl Physiol 2011,
+  „Less is more"). **Je länger die Einheit, desto weniger Aufwärmen — nicht
+  mehr.** Intervalle stehen ebenso absolut in der Literatur (4×4, 2×20, 5×8),
+  nie als Anteil einer Gesamtdauer.
+- **Setzung, und als solche beschriftet: dass die Differenz auf den
+  gleichmäßigen Block geht.** Das *folgt* aus dem Belegten — wenn Aufwärmen,
+  Intervalle und Ausrollen fest sind, bleibt nichts anderes übrig —, ist aber
+  selbst nicht gemessen.
+
+Beides steht im **aufklappbaren Teil der Karte**, in zwei getrennten Zeilen
+(„Beleg" und „Grenze"). Zusammengezogen fängt die Setzung an, als Befund
+durchzugehen; ein Test prüft deshalb nicht nur, dass beide Aussagen dastehen,
+sondern auch, dass sie **nicht im selben Feld** stehen.
 
 **Wo es keinen elastischen Abschnitt gibt, wird nicht gestreckt.** Die
 40-Minuten-Regenerationsfahrt, der abgestufte Wiedereinstieg und jedes

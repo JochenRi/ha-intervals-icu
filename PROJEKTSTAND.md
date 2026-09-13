@@ -1,13 +1,13 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 13.09.2026 · **Version:** 0.43.0 · **Status:** produktiv auf HEIMDALL,
+**Stand:** 13.09.2026 · **Version:** 0.43.1 · **Status:** produktiv auf HEIMDALL,
 Auslieferung über HACS aus `github.com/JochenRi/ha-intervals-icu`
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lokal
 archiviert, auswertet und in einem eigenen Seitenleisten-Panel darstellt.
 
 **Umfang:** ~12.420 Zeilen, davon ~4.460 Frontend · 24 WebSocket-Befehle · 15 Einheiten in
-8 Familien · 15 Testdateien mit **4.499** gezählten Einzelprüfungen · 46 Releases.
+8 Familien · 15 Testdateien mit **4.518** gezählten Einzelprüfungen · 47 Releases.
 
 ---
 
@@ -191,6 +191,25 @@ Recherche:
 ---
 
 ## 7. Fehler und was sie gelehrt haben
+
+**0.43.1 — eine Begründung war zu bescheiden, und das ist auch ein Fehler.**
+
+Die Streckungsregel war in 0.43.0 vollständig als „Angabe des Autors, keine
+gemessene Größe" beschriftet. Der wichtigste Teil ist aber **belegt**: Aufwärmen
+wird in absoluten Minuten verschrieben (10–15, optimal 15–20, bei Belastungen
+über drei Stunden eher 10–15), und zu langes Aufwärmen mindert die Leistung
+messbar (J Appl Physiol 2011, „Less is more" — 50 Minuten erzeugten Ermüdung).
+Intervalle stehen ebenso absolut. Dass das Einrollen nicht mitwächst, ist damit
+kein Geschmacksurteil. **Setzung** ist nur, dass die Differenz vollständig auf
+den gleichmäßigen Block geht — was aus dem Belegten folgt, aber selbst nicht
+gemessen ist.
+
+Beides steht jetzt getrennt auf der Karte, „Beleg" und „Grenze" in eigenen
+Zeilen. **Lehre: eine Setzung als Befund auszugeben ist der bekannte Fehler —
+einen Befund als Setzung auszugeben ist derselbe Fehler rückwärts.** Beide Male
+kann der Leser nicht mehr unterscheiden, worauf er sich stützen darf. Ein Test
+prüft deshalb, dass die beiden Aussagen dastehen UND dass sie nicht im selben
+Feld landen.
 
 **0.43.0 — zwei Befunde, beide über Grenzen, die niemand gesetzt hatte.**
 
@@ -664,7 +683,7 @@ den Non-Responder-Befund (Manresa-Rocamora 2021).
 
 ## 9. Prüfstand
 
-**Fünfzehn Dateien, 4.499 gezählte Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
+**Fünfzehn Dateien, 4.518 gezählte Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
 HA-Instanz oder einen Browser.
 
 | Datei | prüft | Umfang |

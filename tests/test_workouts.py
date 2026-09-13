@@ -578,10 +578,28 @@ check(long_day["stretched"] is True, "streckung: der lange Tag gilt als ungestre
 eq(long_day["minutes"], 240, "streckung: die Payload nennt nicht die gestreckte Dauer")
 eq(long_day["template_minutes"], 95, "streckung: die Dauer der Vorlage fehlt in der Payload")
 eq(long_day["elastic_sections"], ["gleichmäßig"], "streckung: der gedehnte Abschnitt wird nicht benannt")
-check("Autors" in long_day["stretch_note"],
-      "streckung: die Angabe wird nicht als Autorenangabe beschriftet")
-check("gemessene" in long_day["stretch_note"],
-      "streckung: der Hinweis grenzt nicht gegen eine Messung ab")
+note = long_day.get("stretch_note") or {}
+for part in ("rule", "evidence", "limit"):
+    check(bool(note.get(part)), f"streckung: der Hinweis hat kein Feld {part}")
+check("absoluten Minuten" in note.get("evidence", ""),
+      "streckung: der Beleg nennt nicht, dass Aufwärmen absolut verschrieben wird")
+check("NICHT mitwächst" in note.get("evidence", ""),
+      "streckung: der Beleg sagt nicht, dass das Einrollen nicht mitwächst")
+check("Less is more" in note.get("evidence", "") or "50 Minuten" in note.get("evidence", ""),
+      "streckung: der Befund zum zu langen Aufwärmen fehlt")
+check("absolut" in note.get("evidence", ""),
+      "streckung: dass Intervalle absolut stehen, fehlt im Beleg")
+check("Setzung" in note.get("limit", ""),
+      "streckung: die Verteilung auf den gleichmäßigen Block gilt nicht als Setzung")
+check("nicht\ngemessen" in note.get("limit", "").replace(" ", "\n"),
+      "streckung: die Setzung wird nicht gegen eine Messung abgegrenzt")
+# und die beiden Aussagen stehen NICHT im selben Feld - sonst geht die eine
+# für die andere durch
+check("Setzung" not in note.get("evidence", ""),
+      "streckung: die Setzung steht im Belegfeld")
+check("Less is more" not in note.get("limit", ""),
+      "streckung: der Beleg steht im Grenzfeld")
+
 # the step list follows the stretched sections, not the template's own text
 check("225m" in (long_day["text_w"] or ""), "streckung: die Schrittliste zeigt weiter die Vorlage")
 check("80m" not in (long_day["text_w"] or ""), "streckung: die alte Dauer steht noch in der Schrittliste")
@@ -591,7 +609,12 @@ quality = W.rate_sessions([{"title": "SweetSpot", "workout": "sweetspot_2x20", "
 check(quality["stretched"] is False, "streckung: eine Intervalleinheit wurde gestreckt")
 eq(quality["minutes"], 70, "streckung: die Vorlage wurde verändert")
 eq(quality["template_minutes"], 70, "streckung: die ungestreckte Einheit meldet zwei Dauern")
-check("kein" in quality["stretch_note"], "streckung: der Festfall wird nicht begründet")
+fixed_note = quality.get("stretch_note") or {}
+check("kein" in fixed_note.get("rule", ""), "streckung: der Festfall wird nicht begründet")
+check("absolut" in fixed_note.get("evidence", ""),
+      "streckung: der Festfall nennt nicht, dass Intervalle absolut stehen")
+check("erfinden" in fixed_note.get("limit", ""),
+      "streckung: der Festfall begründet nicht, warum nicht gedehnt wird")
 eq(quality["elastic_sections"], [], "streckung: eine Intervalleinheit meldet dehnbare Abschnitte")
 
 # the load does NOT come from the stretched block list - it stays the linear

@@ -1826,11 +1826,13 @@ class IntervalsIcuPanel extends HTMLElement {
             Intensität wächst die Last linear mit der Dauer, also ${fmt(entry.load)}.
             Nach der Vorlage allein wären es ${fmt(entry.catalogue_load)}, und genau diese
             Verwechslung hat die lange Fahrt bis 0.42.0 zu freundlich bewertet.</p></div>` : ""}
-        ${entry.stretch_note ? `<div class="kv2"><small>${entry.stretched
+        ${(entry.stretch_note || {}).rule ? `<div class="kv2"><small>${entry.stretched
           ? "Wie der Aufbau auf die Dauer kam" : "Warum der Aufbau so bleibt"}</small>
-          <p class="src">${esc(entry.stretch_note)}${entry.stretched && (entry.elastic_sections || []).length
-            ? ` Gedehnt wurde hier: ${esc(entry.elastic_sections.join(", "))} — aus ${
-                entry.template_minutes} min Vorlage wurden ${entry.minutes} min.` : ""}</p></div>` : ""}
+          <p>${esc(entry.stretch_note.rule)}${entry.stretched && (entry.elastic_sections || []).length
+            ? ` Gedehnt wurde: ${esc(entry.elastic_sections.join(", "))} — aus ${
+                entry.template_minutes} min Vorlage wurden ${entry.minutes} min.` : ""}</p>
+          <p class="src"><b>Beleg:</b> ${esc(entry.stretch_note.evidence || "")}</p>
+          <p class="src"><b>Grenze:</b> ${esc(entry.stretch_note.limit || "")}</p></div>` : ""}
         ${entry.evidence ? `<div class="kv2"><small>Beleg</small><p class="src">${esc(entry.evidence)}</p></div>` : ""}
         ${entry.limit ? `<div class="kv2"><small>Grenze</small><p class="src">${esc(entry.limit)}</p></div>` : ""}
         ${st.evidence ? `<div class="kv2"><small>Zur Stufe „${esc(st.label)}"</small>

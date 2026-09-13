@@ -567,19 +567,56 @@ def session_load(entry: dict[str, Any], hours: float | None = None) -> int:
 #
 # The honest label travels with it: this is an AUTHOR'S STATEMENT per session,
 # not a measurement.
-ELASTIC_NOTE = (
-    "Der Aufbau stammt aus der Vorlage und wurde auf die geplante Dauer gestreckt: "
-    "Einrollen, Ausrollen, Intervalle und Pausen bleiben, wie sie sind — die "
-    "gleichmäßigen Abschnitte nehmen die Differenz auf. Welcher Abschnitt dehnbar "
-    "ist, steht je Einheit im Katalog. Das ist eine Angabe des Autors, keine "
-    "gemessene Größe."
-)
+# Two different kinds of statement, and they are kept apart on the card,
+# because collapsing them is how a setting starts passing for a finding.
+#
+# WHAT IS SOURCED - and therefore not up for discussion: the warm-up does NOT
+# grow with the ride, and the intervals do not either.
+# WHAT IS A SETTING: that the whole difference lands on the steady block. It
+# FOLLOWS from the sourced part - if warm-up, intervals and cool-down are
+# fixed, nothing else is left - but it was never measured as such.
+ELASTIC_EVIDENCE = {
+    "rule": (
+        "Der Aufbau stammt aus der Vorlage und wurde auf die geplante Dauer gebracht: "
+        "Einrollen, Ausrollen, Intervalle und Pausen bleiben, wie sie sind — die "
+        "gleichmäßigen Abschnitte nehmen die Differenz auf. Welcher Abschnitt dehnbar "
+        "ist, steht je Einheit im Katalog."
+    ),
+    "evidence": (
+        "Belegt ist, dass das Einrollen NICHT mitwächst: die Literatur verschreibt "
+        "Aufwärmen in absoluten Minuten — 10 bis 15, optimal 15 bis 20, und bei "
+        "Ausdauerbelastungen über drei Stunden eher 10 bis 15. Zu langes Aufwärmen "
+        "ermüdet nachweislich: ein traditionelles Aufwärmen über 50 Minuten erzeugte "
+        "Ermüdung und minderte die Leistung (J Appl Physiol 2011, „Less is more“). Je "
+        "länger die Einheit, desto weniger Aufwärmen — nicht mehr. Intervalle stehen "
+        "ebenfalls absolut in der Literatur (4×4, 2×20, 5×8), nie als Anteil."
+    ),
+    "limit": (
+        "Eine Setzung ist dagegen, dass die gesamte Differenz auf den gleichmäßigen "
+        "Block geht. Das folgt aus dem Belegten — wenn Aufwärmen, Intervalle und "
+        "Ausrollen fest sind, bleibt nichts anderes übrig —, ist aber selbst nicht "
+        "gemessen. Welcher Abschnitt als dehnbar gilt, ist eine Angabe des Autors der "
+        "Einheit."
+    ),
+}
 
-FIXED_NOTE = (
-    "Diese Vorlage hat keinen dehnbaren Abschnitt — Intervalle, Pausen und feste "
-    "Dosierungen sind das, was die Einheit ausmacht. Der Aufbau steht deshalb so da, "
-    "wie er geschrieben wurde, und die geplante Dauer daneben."
-)
+FIXED_EVIDENCE = {
+    "rule": (
+        "Diese Vorlage hat keinen dehnbaren Abschnitt. Der Aufbau steht deshalb so da, "
+        "wie er geschrieben wurde, und die geplante Dauer daneben."
+    ),
+    "evidence": (
+        "Intervalle und ihre Pausen stehen in der Literatur absolut (4×4, 2×20, 5×8), "
+        "nie als Anteil einer Gesamtdauer; dasselbe gilt für das Aufwärmen davor. Eine "
+        "feste Dosierung — die Regenerationsfahrt, der abgestufte Wiedereinstieg — ist "
+        "ihre Dauer."
+    ),
+    "limit": (
+        "Deshalb wird hier nichts gedehnt, und beide Zahlen bleiben sichtbar. Eine "
+        "längere Fassung zu erfinden hieße, dem Autor der Einheit Worte in den Mund zu "
+        "legen."
+    ),
+}
 
 
 def is_elastic(block: Any) -> bool:
@@ -813,7 +850,7 @@ def rate_sessions(sessions: list[dict[str, Any]], state: str,
             "minutes": template.get("minutes"),
             "template_minutes": entry.get("minutes"),
             "stretched": bool(stretched),
-            "stretch_note": ELASTIC_NOTE if stretched else FIXED_NOTE,
+            "stretch_note": ELASTIC_EVIDENCE if stretched else FIXED_EVIDENCE,
             "elastic_sections": [block[2] for block in (entry.get("blocks") or [])
                                  if is_elastic(block)],
             "intensity": entry.get("intensity"),

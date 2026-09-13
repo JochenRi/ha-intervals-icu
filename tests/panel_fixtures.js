@@ -416,9 +416,14 @@ function goal(kind) {
     template_minutes: stretch ? stretch.from : minutes,
     stretched: !!stretch,
     elastic_sections: stretch ? stretch.sections : [],
+    // Beleg und Setzung getrennt, so wie workouts.py sie liefert
     stretch_note: stretch
-      ? "Der Aufbau stammt aus der Vorlage und wurde auf die geplante Dauer gestreckt: Einrollen, Ausrollen, Intervalle und Pausen bleiben, wie sie sind — die gleichmäßigen Abschnitte nehmen die Differenz auf. Das ist eine Angabe des Autors, keine gemessene Größe."
-      : "Diese Vorlage hat keinen dehnbaren Abschnitt — Intervalle, Pausen und feste Dosierungen sind das, was die Einheit ausmacht.",
+      ? { rule: "Der Aufbau stammt aus der Vorlage und wurde auf die geplante Dauer gebracht.",
+          evidence: "Belegt ist, dass das Einrollen NICHT mitwächst: Aufwärmen wird in absoluten Minuten verschrieben, und zu langes Aufwärmen ermüdet (J Appl Physiol 2011, „Less is more“).",
+          limit: "Eine Setzung ist dagegen, dass die gesamte Differenz auf den gleichmäßigen Block geht — nicht gemessen." }
+      : { rule: "Diese Vorlage hat keinen dehnbaren Abschnitt.",
+          evidence: "Intervalle und ihre Pausen stehen in der Literatur absolut, nie als Anteil.",
+          limit: "Deshalb wird hier nichts gedehnt, und beide Zahlen bleiben sichtbar." },
     blocks_w: blocks.map(([m, pct, l]) => [m, Math.round(215 * pct / 100), l]),
     text: "- 10m 55%", text_w: "- 10m 118w", hr_window: hr,
     dfa: "durchgehend über 0,75", evidence: "Dreizonenmodell (Seiler).",
