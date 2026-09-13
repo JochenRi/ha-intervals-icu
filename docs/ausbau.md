@@ -2031,10 +2031,11 @@ deshalb an **allen dreien** vorbei, mit Gegenprobe in beide Richtungen.
 
 ## Kleinkram für die nächste Session
 
-Drei Posten, die keine eigene Spec brauchen, aber liegen bleiben, wenn sie
-nirgends stehen.
+Vier Posten, die keine eigene Spec brauchen, aber liegen bleiben, wenn sie
+nirgends stehen. **Stand nach 0.44.0: 1 und 3 sind erledigt, 2 und 4 offen.**
 
-**1 · Die §9-Tabelle im PROJEKTSTAND ist zum ZWEITEN Mal veraltet.** Am
+**1 · ERLEDIGT in 0.44.0 — die §9-Tabelle im PROJEKTSTAND ist zum ZWEITEN Mal
+veraltet.** Am
 13.09.2026 summierte sie auf **4.185**, der Kopf derselben Datei auf **4.518**;
 vier Zeilen hingen hinterher (`test_workouts` 1.030 statt 1.230,
 `test_panel_views` 1.114/1.170, `test_panel_fixes` 312/373, `test_panel_design`
@@ -2042,7 +2043,15 @@ vier Zeilen hingen hinterher (`test_workouts` 1.030 statt 1.230,
 zweiten Mal ist es ein Muster, und das Muster heißt: eine von Hand gepflegte
 Zahl neben einer gerechneten Zahl geht auseinander, immer.
 
-**Ein Wächter gehört gebaut.** Er kann nicht in eine einzelne Testdatei, weil
+**Gebaut als `tests/test_projektstand.py`**, allerdings anders als hier
+vorgeschlagen: nicht als Läufer neben der Suite, sondern als 16. Testdatei, die
+die übrigen fünfzehn als Subprozesse fährt. Der Grund gegen „Läufer": ein
+Prüfstandsteil, der selbst nicht mitgezählt wird, ist genau die Lücke aus
+0.36.0. Die eigene Zeile wird gegen den eigenen Zähler gehalten — ein Fixpunkt,
+kein Zirkelschluss, und der Grund steht als Absatz in der Datei, damit ihn
+niemand „richtig" umbaut. Der ursprüngliche Vorschlag im Wortlaut:
+
+> **Ein Wächter gehört gebaut.** Er kann nicht in eine einzelne Testdatei, weil
 die Zahl erst nach dem Lauf existiert: also ein Läufer (`tests/run_all.py` o. ä.),
 der jede Datei fährt, die gemeldeten Zahlen einsammelt und **beides** gegen den
 PROJEKTSTAND hält — die Tabelle **und** die Kopfzahl. Nur die Kopfzahl zu
@@ -2050,7 +2059,9 @@ prüfen hätte den jetzigen Fall nicht gefunden; nur die Tabelle zu prüfen hät
 den Fall aus 0.36.0 nicht gefunden. Ausgabe als Differenzliste je Datei, Urteil
 im Exit-Code.
 
-**2 · Fehlerkapitel PROJEKTSTAND §7, Eintrag zu J1 — eine eigene Fehlerklasse.**
+**2 · OFFEN — Fehlerkapitel PROJEKTSTAND §7, Eintrag zu J1 — eine eigene
+Fehlerklasse.** Bei 0.44.0 ausgefallen, vorgemerkt als erster Punkt des
+Aufräum-Pakets (siehe dort, „Zuerst in diesem Paket").
 Bisher sammelt §7 vor allem „zu wenig Daten" und „Prüfstand meldet nicht, was er
 prüft". J1 ist etwas Drittes: **die Messung misst etwas anderes als behauptet.**
 
@@ -2069,11 +2080,31 @@ wenn er müde ist". Ein Signifikanzkriterium schützt gegen Rauschen, nicht gege
 eine falsch konstruierte Messung; dagegen hilft nur ein Kontrollfall, dessen
 Ergebnis man vorher kennt.
 
-**3 · `NAECHSTER_CHAT.md` steht noch auf Paket 4 / 0.34.0** und beschreibt eine
-Umbenennung, die längst entschieden ist, sowie einen Prüfstand mit 2.090
-Prüfungen. Für eine neue Session ist die Datei inzwischen irreführender als
-hilfreich — entweder auf den Stand nach J/K ziehen oder löschen. Die
-Projektdokumentation liegt ohnehin im PROJEKTSTAND und hier.
+**3 · ERLEDIGT in 0.44.0 — `NAECHSTER_CHAT.md` stand noch auf Paket 4 /
+0.34.0.** Neu geschrieben auf den Stand nach K.
+
+**4 · OFFEN — der README beschreibt ein Projekt von vor 35 Releases.**
+Aufgefallen am 13.09.2026 beim Lesen der HACS-Antwort nach der Auslieferung von
+0.44.0. Er steht auf **„Stand: 0.9.1 — das Panel, neu gebaut"**, nennt sieben
+Ansichten (es sind acht) und führt „Schreibseite (Workouts planen)" unter „als
+Nächstes" — die gibt es seit 0.31.0. Weder der Trainer-Reiter noch der
+Wochenplan, die Durability-Kachel oder das Protokoll kommen darin vor.
+
+**Das Repository ist öffentlich, und der README ist die Fassung, die jeder
+Fremde sieht.**
+
+**Das gehört NICHT in das Aufräum-Paket.** Der richtige Ort ist das schon
+einmal geplante und liegengebliebene **Namenspaket: Umbenennung plus Git-Ausbau
+nach Standard** — README mit Screenshots, Einrichtung, Buy-me-a-coffee, dazu
+Repository-Topics und der Brand-Icon-PR aus §10. Der README ist dort kein
+Nebenposten, sondern das Hauptstück.
+
+**Und bis dahin nicht anfassen:** ein halb aktualisierter README ist schlechter
+als ein erkennbar alter. Beim erkennbar alten weiß der Leser, woran er ist; beim
+halb aktualisierten stimmt die eine Hälfte und die andere lügt, und man sieht es
+ihm nicht an. Dieselbe Unterscheidung wie bei einer Setzung, die als Befund
+ausgegeben wird (§7, 0.43.1).
+
 ---
 
 ## Reihenfolge und Modellwahl
