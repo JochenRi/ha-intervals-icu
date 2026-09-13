@@ -1027,6 +1027,126 @@ Durability-Training (Empfehlung über 80 g Kohlenhydrate je Stunde).
 
 ---
 
+## Paket H — Der Kopfbereich der Durability-Kachel
+
+**Aufgenommen am 13.09.2026** nach dem Live-Befund zu 0.40.0. Die Kachel ist
+seither ehrlich, aber sie beantwortet die Frage des Fahrers nicht: „wie lange
+kann ich fahren, und was soll ich tun, damit es besser wird". Die Kernaussage
+steht klein und grau, und „es bräuchte 128 statt 56 Einheiten" ist für einen
+Menschen ohne Statistikneigung keine Handlungsanweisung.
+
+**H ist bewusst klein und kommt zuerst**: der größte Verständlichkeitssprung für
+den geringsten Aufwand, ohne neue Daten, ohne Archivschema.
+
+### H1 · Drei Zeilen, groß, in der Bauart der Signalkarten
+
+| Zeile | Inhalt | Quelle |
+|---|---|---|
+| **Was du kannst** | „3 h 10 bei 128 W" — die längste gleichmäßige Fahrt des Bestands, mit Datum | belegt (eigene Messung, kein Modell) |
+| **Wie weit du gekommen bist** | längste Fahrt der letzten 30 Tage, als Bezug für den nächsten Schritt | belegt |
+| **Was als Nächstes** | „nächste lange Fahrt bis 2 h 15" | Progressionsregel, siehe H2 |
+
+Die erste Zeile ist **demonstrierte Fähigkeit, kein geschätzter Grenzwert**. Sie
+steht ab der ersten Fahrt da, sie kippt nicht, wenn die Statistik nicht trägt,
+und sie wird mit jeder längeren Fahrt besser. Das ist die Antwort für Nutzer mit
+dünner Datenlage — und der Grund, warum H nicht auf J warten muss.
+
+### H2 · Die Progressionsregel
+
+Eine Kohortenstudie über 18 Monate mit mehr als 5.200 Läufern (BJSM) fand ein
+deutlich erhöhtes Überlastungsrisiko, wenn eine **einzelne Einheit** die längste
+der **letzten 30 Tage** um mehr als 10 % übersteigt. Der Risikofaktor ist der
+einzelne Sprung, nicht die Wochensumme.
+
+Die verbreitete 10-%-**Wochen**regel ist dagegen nicht belegt: sie stammt aus
+einem Laienratgeber von 1980, und in zwei Untersuchungen senkte sie die
+Verletzungsrate nicht.
+
+Also: `nächster Schritt = längste Einheit der letzten 30 Tage × 1,10`, gerundet
+auf fünf Minuten. Ist in den letzten 30 Tagen nichts Qualifiziertes gefahren
+worden, wird der Bezug ausgeweitet und der Zeitraum genannt — nie still.
+
+**Grenzen, die dranstehen müssen:** die Studie ist an Läufern erhoben, nicht an
+Radfahrern; die 10 % sind der gemessene Risikoknick, keine Trainingsvorschrift.
+Der Satz sagt, was ohne erhöhtes Risiko geht, nicht was nötig ist.
+
+### H3 · Der Rest wandert nach unten
+
+Punktwolke, Bänder, Blockverlauf und die Steigung mit ihrem Standardfehler
+bleiben — aber als **Beleg unter der Aussage**, nicht als Botschaft. Die Zeile
+„es bräuchte rund 128 Einheiten" wird ersetzt durch den Progressionssatz aus H2;
+die Stückzahl wandert in den Rechenweg.
+
+### Tests H
+
+- Die belegte Dauer stammt aus demselben Pool wie die Wolke — Gegenprobe mit
+  verändertem Pool, beide Zahlen müssen sich gemeinsam bewegen.
+- Kein Bestand in 30 Tagen: der Bezugszeitraum wird ausgeweitet UND genannt.
+- Der Progressionsfaktor liegt in const.py, einmal, und in der Payload.
+- Gegenprobe: Faktor auf 1,0 setzen — der Satz muss seine Aussage verlieren und
+  der Test fallen.
+
+---
+
+## Paket I — Der Wochenplan als Ansicht
+
+### I1 · Kein zweiter Planer
+
+`plan.py` erzeugt bereits Wochen mit 3:1-Rhythmus und Phasen, `workouts.py`
+führt die Einheiten samt Zweck (darunter „Durability, spezifisch"). Der
+Wochenplan unter der Kachel ist eine **Ansicht darauf**, kein eigener Motor.
+Zwei Planer im Haus wären Fehlerklasse 3 in groß.
+
+### I2 · Was die Ansicht zeigt
+
+- Acht Wochen, je Woche die vorgeschlagenen Einheiten, aufklappbar mit ihrem
+  Zweck und dem, was sie bringt.
+- In der laufenden Woche: was erledigt ist (aus dem Kalender), was noch fehlt.
+- Je Einheit die Bewertung aus Paket J.
+
+### I3 · Die Verbindung zum Kalender
+
+Am Tag, an dem trainiert werden soll, wählt der Athlet aus den Vorschlägen —
+bewertet nach Zustand und Budget, entschieden vom Menschen. Das ist nicht die
+schwächere Variante, sondern die belegte: zustandsgeführtes Training hatte bei
+Javaloyes deutlich weniger Nicht-Responder (1 von 7 gegen 3 von 8 mit
+Leistungsverlust), und die beste Variante nutzte die breiteste Eingabe —
+Zustand, Befinden, Ruhepuls. Die Überlegenheit bei der Leistung selbst ist klein
+und unsicher; das gehört in den Quellenblock.
+
+---
+
+## Paket J — Ermüdungswiderstand aus Sekundendaten
+
+### J1 · Erst messen, dann bauen
+
+Die Zwei-Kurven-Darstellung (Leistung über Dauer, frisch gegen nach X kJ) ist
+die etablierte Praxis (WKO5, TrainingPeaks). Sie braucht aber Kennzahlen, die
+heute nicht im Archiv liegen: beste 5- und 20-Minuten-Leistung je Einheit,
+getrennt nach frischem und ermüdetem Abschnitt. Sekundendaten werden heute nur
+live geholt und nie gespeichert.
+
+**Vor jedem Bau steht die Messfrage:** trägt die Rechnung auf dem Bestand?
+Reichen die langen Fahrten, um einen ermüdeten Abschnitt überhaupt zu füllen?
+Wenn nicht, endet J hier — und H trägt die Kachel weiter.
+
+### J2 · Wenn es trägt
+
+- Einmaliger Durchlauf über die Aktivitäten, wenige Kennzahlen je Einheit
+  archiviert (Archivschema + Migration in der Bauart von `plan.migrate_goal`).
+- Zwei Kurven, der Abstand ist die Aussage.
+- Ein Ermüdungswiderstand als Einzelzahl.
+
+### J3 · Die Skala wird nicht geliehen
+
+WKO führt eine vergleichbare Größe („Stamina", 0–100 %, typisch 70–90) — aber
+aus einem proprietären Modell. **Deren Bereich darf nicht als Maßstab für eine
+anders gerechnete Zahl dienen.** Bezug ist der eigene Verlauf über die Zeit,
+nicht eine fremde Population. Gleiche Regel wie beim Amateur-Vergleichsmaßstab
+in G6.
+
+---
+
 ## Reihenfolge und Modellwahl
 
 | Session | Paket | Warum |
