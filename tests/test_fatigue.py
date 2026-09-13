@@ -265,6 +265,42 @@ check("kein Anker", q["anchor_watts"], None)
 check("keine Literaturkurve ohne Anker", q["literature"], [])
 check("und der Grund steht da", list(q["dropped"]), ["short"])
 
+print("\n=== p050 wird ERHOBEN und von NICHTS benutzt ===")
+
+dfa_lo, w_lo = [], []
+for k in range(3600):
+    a = 0.35 + (k % 400) / 400 * 0.70
+    dfa_lo.append(round(a, 3))
+    w_lo.append(200 - (a - 0.5) * 100)
+zeile = derive.dfa_hours(dfa_lo, w_lo)[0]
+ok("p050 wird gemessen", zeile["p050"] is not None)
+ok("und p075 daneben weiter", zeile["p075"] is not None)
+ok("die Signalqualitaet im unteren Band wird getrennt ausgewiesen",
+   zeile["low_points"] > 0 and zeile["low_dropped_share"] is not None)
+# Eine Stunde ganz OBERHALB von 0,5 traegt kein p050 - nicht extrapoliert.
+dfa_hi = [round(0.80 + (k % 400) / 400 * 0.60, 3) for k in range(3600)]
+hoch = derive.dfa_hours(dfa_hi, [150.0] * 3600)[0]
+check("ohne Punkte unter 0,5 gibt es kein p050", hoch["p050"], None)
+check("und auch keine Belegung dort", hoch["low_points"], 0)
+
+# DER WAECHTER: p050 steuert NICHTS. Kein Renderer liest es, kein Trainer-Pfad
+# haengt daran - sonst rutscht es in eine Anzeige, bevor bekannt ist, ob es
+# traegt. Geprueft am Quelltext aller Verbraucher, nicht an der Absicht.
+import re as _re  # noqa: E402
+ROOT = Path(__file__).resolve().parents[1] / "custom_components" / "intervals_icu"
+for name in ("fatigue.py", "coach.py", "workouts.py", "analytics.py", "websocket.py",
+             "frontend/intervals-panel.js"):
+    text = (ROOT / name).read_text()
+    hits = [line for line in text.splitlines()
+            if "p050" in line and not line.strip().startswith(("#", "//", "*"))]
+    check(f"Waechter: {name} liest p050 nicht", hits, [])
+# Gegenprobe, GEZAEHLT UND BENANNT: eine eingebaute Leseszeile wird gefunden.
+_planted = ['  const w = f.p050;', '# ok', 'x = row["p050"]']
+check("Gegenprobe: eine Leseszeile wird gefunden",
+      [line for line in _planted
+       if "p050" in line and not line.strip().startswith(("#", "//", "*"))],
+      ['  const w = f.p050;', 'x = row["p050"]'])
+
 print(f"\ntest_fatigue: {CHECKS} Prüfungen, {len(failures)} Fehler")
 print("FEHLER:", failures if failures else "keine")
 sys.exit(1 if failures else 0)

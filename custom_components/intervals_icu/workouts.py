@@ -656,15 +656,109 @@ def _text_in_watts(entry: dict[str, Any], ftp: float) -> str:
     return _re.sub(r"(\d+)(-(\d+))?%", swap, entry["text"])
 
 
+# Welche Familien ihre Wattvorgabe aus der eigenen MESSUNG beziehen. Nicht:
+# "die anderen sind zu hart". Sondern: aus arbiträren Fahrten ist oberhalb
+# dieser Familien kein tragfähiger Fit zu gewinnen - eine Einheit mit Blöcken
+# und Pausen liefert eine Gerade über ZWEI getrennte Punktwolken (gemessen:
+# alpha 0,25 bis 1,77 in derselben Stunde, P(0,75) 181 W im Block-Abschnitt
+# gegen 154 W beim Ausfahren derselben Fahrt). Der Weg zu Vorgaben für die
+# übrigen Familien führt über eine EIGENE Messeinheit, nicht über die FTP -
+# die bleibt dort Rückfall und wird als solcher beschriftet (docs/ausbau.md).
+CURVE_FAMILIES = ("endurance", "long")
+
+
+def _family_of(key: str | None) -> str | None:
+    """Zu welcher Familie gehoert ein Katalogschluessel? EINE Quelle - FAMILIES."""
+    for family_key, _label, keys in FAMILIES:
+        if key in keys:
+            return family_key
+    return None
+
+
+def curve_watts(curve: dict[str, Any] | None, hours: float) -> dict[str, Any] | None:
+    """Return the measured threshold power at `hours` into a ride.
+
+    Gestaffelt wird auf der GEPAARTEN Reihe: die ungepaarte enthält einen
+    nachgewiesenen Auswahlanteil (PROJEKTSTAND §7). Bis zur letzten gemessenen
+    Stunde ist das Messung, darüber Studienform - und welches von beidem, sagt
+    jeder Abschnitt selbst.
+    """
+    if not curve:
+        return None
+    measured = curve.get("measured") or []
+    if not measured:
+        return None
+
+    # Erst die gestaffelte Reihe bauen, SOLANGE die Paare tragen - dann den
+    # Punkt waehlen. Andersherum fiel eine Dauer zwischen zwei Messstunden in
+    # die Literatur, obwohl sie mitten im gemessenen Bereich liegt.
+    steps = [{"t": measured[0]["t"], "hour": measured[0]["hour"],
+              "watts": float(measured[0]["watts"]), "n": measured[0]["n"]}]
+    for step in curve.get("paired") or []:
+        if not step.get("enough"):
+            break
+        row = next((m for m in measured if m["hour"] == step["to_hour"]), None)
+        if row is None:
+            break
+        steps.append({"t": row["t"], "hour": row["hour"],
+                      "watts": steps[-1]["watts"] + float(step["delta"]), "n": row["n"]})
+
+    last = steps[-1]
+    # Innerhalb des gemessenen Bereichs: der naechstgelegene Stundenpunkt.
+    # Eine halbe Stunde Reichweite je Punkt - das ist die Breite der Bins,
+    # aus denen er stammt, nicht eine zusaetzliche Annahme.
+    if hours <= last["t"] + 0.5:
+        near = min(steps, key=lambda r: abs(r["t"] - hours))
+        return {"watts": round(near["watts"]), "source": "measured",
+                "n": near["n"], "hour": near["hour"]}
+
+    # Darueber: die Studienform, am zuletzt GEMESSENEN Punkt verankert.
+    lit = curve.get("literature") or []
+    here = min(lit, key=lambda r: abs(r["t"] - hours), default=None)
+    anchor = next((r for r in lit if r.get("hour") == last["hour"]), None)
+    if here is None or anchor is None or not anchor.get("watts"):
+        return {"watts": round(last["watts"]), "source": "measured",
+                "n": last["n"], "hour": last["hour"]}
+    return {"watts": round(last["watts"] * here["watts"] / anchor["watts"]),
+            "source": "literature", "n": None, "hour": None}
+
+
 def scaled(entry: dict[str, Any], ftp: float | None, aerobic_hr: int | None,
-           max_hr: float | None = None) -> dict[str, Any]:
-    """Fill in the athlete's own numbers: watts from FTP, heart rate from the
-    measured aerobic threshold. Without those the shape still stands."""
+           max_hr: float | None = None, curve: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Fill in the athlete's own numbers: watts from the MEASURED curve where
+    it carries, from the FTP where it does not - and the origin travels with
+    the session, so a changed number is explainable instead of surprising."""
     out = dict(entry)
     if ftp:
         out["blocks_w"] = [(block[0], round(ftp * block[1] / 100), block[2], *block[3:])
                            for block in entry["blocks"]]
         out["text_w"] = _text_in_watts(entry, ftp)
+        out["watt_source"] = "ftp"
+    if curve and (entry.get("family") or _family_of(entry.get("key"))) in CURVE_FAMILIES:
+        staged, elapsed, changed = [], 0.0, False
+        for block in entry["blocks"]:
+            minutes = float(block[0])
+            # Der Zeitpunkt in der MITTE des Abschnitts: ein Block von 80
+            # Minuten hat keine Leistung, er hat einen Verlauf - die Mitte ist
+            # der ehrlichste einzelne Wert dafür.
+            at = curve_watts(curve, (elapsed + minutes / 2) / 60.0)
+            elapsed += minutes
+            # Nur der GLEICHMÄSSIGE Hauptteil kommt aus der Kurve. Ein- und
+            # Ausrollen sind Prozentangaben auf eine Schwelle, die dort nicht
+            # gemessen wurde.
+            if at is None or not (len(block) > 3 and block[3]):
+                staged.append((block[0], round(ftp * block[1] / 100) if ftp else None,
+                               block[2], *block[3:]))
+                continue
+            staged.append((block[0], at["watts"], block[2], *block[3:]))
+            changed = True
+            out.setdefault("curve_blocks", []).append(
+                {"label": block[2], "watts": at["watts"], "source": at["source"],
+                 "n": at["n"], "hour": at["hour"]})
+        if changed:
+            out["blocks_w"] = staged
+            out["text_w"] = steps_text(staged, None)
+            out["watt_source"] = "curve"
     if aerobic_hr and entry.get("hr_hint"):
         low, high = entry["hr_hint"]
         lo, hi = round(aerobic_hr * low), round(aerobic_hr * high)
@@ -1044,7 +1138,8 @@ def suggest(state: str, ftp: float | None = None, aerobic_hr: int | None = None,
             budget: float | None = None, hard_days_last_7: int = 0,
             layoff_days: int | None = None, limit: int = 9,
             goal: str | None = None,
-            recovery_offered: bool = False) -> list[dict[str, Any]]:
+            recovery_offered: bool = False,
+            curve: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """One session per family, each judged for today - never filtered away.
 
     The earlier version filtered: in a rebound state everything hard vanished
@@ -1072,7 +1167,7 @@ def suggest(state: str, ftp: float | None = None, aerobic_hr: int | None = None,
             continue
 
         key = _variant(keys, state, ftp, budget, hard_days_last_7)
-        entry = dict(scaled(BY_KEY[key], ftp, aerobic_hr, max_hr))
+        entry = dict(scaled(BY_KEY[key], ftp, aerobic_hr, max_hr, curve))
         verdict, reason = fit_for(
             family_key, state, entry["intensity"],
             hard_days_last_7=hard_days_last_7, layoff_days=layoff_days,
@@ -1148,7 +1243,8 @@ def rate_sessions(sessions: list[dict[str, Any]], state: str,
                   hard_days_last_7: int = 0, layoff_days: int | None = None,
                   infection: bool = False, ftp: float | None = None,
                   aerobic_hr: int | None = None,
-                  max_hr: float | None = None) -> list[dict[str, Any]]:
+                  max_hr: float | None = None,
+                  curve: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """Grade the planned sessions of the CURRENT week - a view, not a planner.
 
     Every session the plan produced carries a `workout` key into the catalogue.
@@ -1183,7 +1279,7 @@ def rate_sessions(sessions: list[dict[str, Any]], state: str,
             template["blocks"] = stretched
             template["minutes"] = sum(block[0] for block in stretched)
             template["text"] = steps_text(stretched, None)
-        full = scaled(template, ftp, aerobic_hr, max_hr)
+        full = scaled(template, ftp, aerobic_hr, max_hr, curve)
         if stretched and ftp:
             full["text_w"] = steps_text(stretched, ftp)
         load = session_load(entry, session.get("hours"))

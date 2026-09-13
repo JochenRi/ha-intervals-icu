@@ -724,6 +724,11 @@ def websocket_workouts(hass, connection, msg) -> None:
         layoff_days=lay.get("days"),
         goal=(data.get("goal") or {}).get("goal"),
         recovery_offered=recovery,
+        # Die Wattvorgabe der Grundlagen- und Langfahrt-Familien kommt aus der
+        # eigenen Messung, nicht aus einem Profilfeld. EINE Quelle: dieselbe
+        # Kurve, die die Kachel zeigt.
+        curve=fatigue.curve(data, aerobic_hr=anchors.get("aerobic_hr"),
+                            aerobic_power=anchors.get("aerobic_power")),
     )
     connection.send_result(msg["id"], {
         "ftp": ftp,
@@ -947,6 +952,8 @@ def websocket_goal(hass, connection, msg) -> None:
             ftp=_latest_ftp(data) or anchors.get("ftp"),
             aerobic_hr=anchors.get("aerobic_hr"),
             max_hr=_max_hr(data),
+            curve=fatigue.curve(data, aerobic_hr=anchors.get("aerobic_hr"),
+                                aerobic_power=anchors.get("aerobic_power")),
         )
         weeks[0]["rated"] = True
         weeks[0]["done"] = analytics.week_done(data, weeks[0]["start"])

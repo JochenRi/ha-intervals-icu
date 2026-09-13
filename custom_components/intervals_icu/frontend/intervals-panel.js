@@ -2118,8 +2118,27 @@ class IntervalsIcuPanel extends HTMLElement {
         ${st.key ? badge(tone, word) : ""}
       </div>
       ${this._woBar(entry, opts.ftp)}
-      <div class="wosteps">${(blocks || []).map(([min, val, label]) =>
-        `<span><b>${min}′</b> ${esc(label)} <em>${entry.blocks_w ? val + " W" : val + " % FTP"}</em></span>`).join("")}</div>
+      <div class="wosteps">${(blocks || []).map(([min, val, label]) => {
+        // Woher DIESE Zahl kommt, steht an DIESEM Abschnitt. Eine Vorgabe für
+        // die vierte Stunde ist Studienform mit dem Namen des Athleten darauf -
+        // das muss in der Einheit stehen, nicht nur in der Kachel.
+        const cb = (entry.curve_blocks || []).find((c) => c.label === label);
+        const mark = cb
+          ? (cb.source === "measured"
+              ? `<i class="wsrc" title="gemessen: ${fmt(cb.n)} ${cb.n === 1 ? "Fahrt" : "Fahrten"} in Stunde ${fmt(cb.hour)}">gemessen</i>`
+              : `<i class="wsrc lit" title="jenseits des gemessenen Bereichs - Studienform">Studienform</i>`)
+          : "";
+        return `<span><b>${min}′</b> ${esc(label)} <em>${entry.blocks_w ? val + " W" : val + " % FTP"}</em>${mark}</span>`;
+      }).join("")}</div>
+      ${entry.watt_source === "curve"
+        ? `<p class="fitwhy">${ico("info", C.blue, 14)} <b>Die Watt kommen aus deiner eigenen
+            Messung</b>, nicht mehr aus der FTP — gestaffelt nach Fahrtdauer, deshalb trägt
+            dieselbe Einheit andere Zahlen als früher. Abschnitte ohne Kennzeichnung sind
+            Ein- und Ausrollen und bleiben Prozent der FTP.</p>`
+        : entry.watt_source === "ftp" && (entry.family === "endurance" || entry.family === "long")
+          ? `<p class="fitwhy">${ico("warn", C.amber, 14)} <b>Rückfall auf die FTP:</b> für diese
+              Einheit liegt keine tragfähige eigene Messung vor.</p>`
+          : ""}
       ${entry.effect ? `<p class="effect"><b>Was das bringt:</b> ${esc(entry.effect)}</p>` : ""}
       ${entry.fit_reason && !(opts.saidAbove || new Set()).has(entry.fit_reason)
         ? `<p class="fitwhy">${ico(st.key === "red" ? "warn" : "info",
@@ -5007,6 +5026,8 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
 .dhbig small{font-size:13px;font-weight:400;color:${C.tx2}}
 .dhfoot{color:${C.tx3};font-size:11.5px;line-height:1.45}
 .dhfoot b{color:${C.tx2};font-weight:600}
+.wsrc{font-size:10px;padding:1px 5px;border-radius:6px;background:var(--c-line);color:var(--c-tx2);margin-left:5px}
+.wsrc.lit{font-style:italic;opacity:.75}
 .durbands{display:flex;flex-wrap:wrap;gap:6px 18px;margin:4px 0 10px}
 .durband{display:flex;flex-direction:column;font-size:13px;color:${C.tx1};min-width:150px}
 .durband em{font-style:normal;font-size:11px;color:${C.tx3}}

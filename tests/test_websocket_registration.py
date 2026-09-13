@@ -284,6 +284,11 @@ JUDGEMENT_INPUTS = {
     "state", "fit", "fits_budget", "budget", "recovery", "recovery_offered",
     "hard_days_last_7", "layoff_days", "infection", "intensity", "goal",
     "ftp", "aerobic_hr", "max_hr", "aerobic_power", "p20_fresh",
+    # seit 0.47.0: fehlt `curve`, faellt die Wattvorgabe STILLSCHWEIGEND auf
+    # die FTP zurueck - der Athlet saehe dieselbe Einheit mit anderen Zahlen
+    # und keinen Hinweis darauf. Genau die Klasse, fuer die dieser Waechter
+    # gebaut wurde (PROJEKTSTAND §7, 0.44.0).
+    "curve",
 }
 
 

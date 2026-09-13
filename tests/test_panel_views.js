@@ -925,6 +925,44 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   clean(q.rDfa(bare, "all"), "dfa ohne die neuen Felder");
 }
 
+/* ── L4: die Wattvorgabe kommt aus der Messung, und die Karte sagt es ───── */
+{
+  const q = new M.Panel();
+  q._nowIso = F.TODAY;
+  const base = F.workouts().workouts[0];
+  const ausKurve = { ...base, watt_source: "curve", family: "long",
+    blocks_w: [[12, 118, "Einrollen"], [130, 142, "gleichmäßig", true]],
+    curve_blocks: [{ label: "gleichmäßig", watts: 142, source: "measured", n: 12, hour: 2 }] };
+  const opts = { toggleAct: "wodetail", ftp: 215 };
+  const karte = String(q._sessionCard(ausKurve, opts));
+  clean(karte, "einheit aus der kurve");
+  contains(karte, "aus deiner eigenen", "L4: die Karte sagt nicht, dass die Watt aus der Messung kommen");
+  ok(/class="wsrc"[^>]*>gemessen</.test(karte),
+     "L4: der gemessene Abschnitt ist nicht als solcher gekennzeichnet");
+  ok(/Stunde 2/.test(karte), "L4: die Belegung des Abschnitts fehlt");
+  // Ein Abschnitt jenseits des Gemessenen ist LITERATUR - und sagt es am
+  // Abschnitt, nicht in der Fußzeile: eine Vorgabe für die vierte Stunde ist
+  // Studienform mit dem Namen des Athleten darauf.
+  const ausLiteratur = { ...base, watt_source: "curve", family: "long",
+    blocks_w: [[150, 136, "gleichmäßig", true]],
+    curve_blocks: [{ label: "gleichmäßig", watts: 136, source: "literature", n: null, hour: null }] };
+  ok(/wsrc lit[^>]*>Studienform</.test(String(q._sessionCard(ausLiteratur, opts))),
+     "L4: der Studienform-Abschnitt ist nicht gekennzeichnet");
+  // GEGENPROBE, gezaehlt und benannt: Ein- und Ausrollen tragen KEINE Marke -
+  // sonst pruefte der Test nur, dass ueberhaupt eine erscheint.
+  ok(!/Einrollen[^<]*<em>[^<]*<\/em><i class="wsrc"/.test(karte),
+     "L4: auch Ein- und Ausrollen tragen eine Herkunftsmarke");
+  // Und der Rückfall wird benannt, statt stillschweigend zu greifen.
+  const rueckfall = { ...base, watt_source: "ftp", family: "long",
+    blocks_w: [[12, 118, "Einrollen"]] };
+  contains(String(q._sessionCard(rueckfall, opts)), "Rückfall auf die FTP",
+           "L4: der Rückfall auf die FTP wird verschwiegen");
+  const hart = { ...base, watt_source: "ftp", family: "sweetspot",
+    blocks_w: [[20, 189, "Block 1"]] };
+  ok(!/Rückfall auf die FTP/.test(String(q._sessionCard(hart, opts))),
+     "L4: die harten Familien melden einen Rückfall, den es dort nicht gibt");
+}
+
 /* ── die Ermuedungskurve: Beleg und Setzung getrennt, im Bild UND im Text ─ */
 {
   const q = new M.Panel();

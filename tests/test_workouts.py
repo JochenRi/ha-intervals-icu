@@ -812,6 +812,57 @@ eq(_fresh_rec[0][0] if _fresh_rec else None, _fat_rec[0][0] if _fat_rec else Non
 eq(_fresh_rec[0][0] if _fresh_rec else None, W.DURABILITY_TEST_RECOVERY_MIN,
    "K const: die Erholungsdauer kommt nicht aus const.py")
 
+# --- L4: die Wattvorgabe kommt aus der eigenen Messung ------------------------
+# Gestaffelt wird auf der GEPAARTEN Reihe; bis zur letzten gemessenen Stunde
+# ist es Messung, darueber Studienform - und jeder Abschnitt sagt, welches.
+CURVE = {
+    "measured": [{"hour": 1, "t": 0.5, "watts": 153.0, "n": 11, "band": "solid"},
+                 {"hour": 2, "t": 1.5, "watts": 138.0, "n": 12, "band": "solid"}],
+    "paired": [{"from_hour": 1, "to_hour": 2, "delta": -11.0, "n": 10, "enough": True}],
+    "literature": [{"hour": 1, "t": 0.5, "watts": 153.0},
+                   {"hour": 2, "t": 1.5, "watts": 149.0},
+                   {"hour": None, "t": 2.5, "watts": 143.0},
+                   {"hour": None, "t": 3.5, "watts": 136.0}],
+}
+
+erste = W.curve_watts(CURVE, 0.5)
+eq((erste["watts"], erste["source"]), (153, "measured"), "Stunde 1 kommt aus der Messung")
+eq(erste["n"], 11, "und traegt ihre Belegung")
+zweite = W.curve_watts(CURVE, 1.5)
+eq(zweite["watts"], 142, "Stunde 2 folgt der GEPAARTEN Reihe (-11), nicht der ungepaarten (-15)")
+eq(zweite["source"], "measured", "auch sie ist Messung")
+spaet = W.curve_watts(CURVE, 3.5)
+eq(spaet["source"], "literature", "jenseits des Gemessenen: Studienform")
+eq(spaet["n"], None, "und ohne Belegung, weil es keine gibt")
+check(spaet["watts"] < zweite["watts"], "die Studienform faellt weiter")
+
+# Gegenprobe, GEZAEHLT UND BENANNT: traegt der gepaarte Schritt nicht, wird er
+# NICHT verwendet - sonst staffelte die Vorgabe auf einer Zahl, die die Kachel
+# selbst nicht zeigen darf.
+duenn = {**CURVE, "paired": [{**CURVE["paired"][0], "n": 3, "enough": False}]}
+# Traegt der gepaarte Schritt nicht, wird NICHT auf ihm gestaffelt - die
+# Vorgabe faellt dann auf die Studienform mit Kennzeichnung, nicht auf eine
+# Zahl, die die Kachel selbst nicht zeigen darf.
+eq(W.curve_watts(duenn, 1.5)["source"], "literature",
+   "zu wenige Paare: es wird trotzdem gestaffelt")
+eq(W.curve_watts(duenn, 0.5)["watts"], 153, "die erste Stunde bleibt Messung")
+eq(W.curve_watts(None, 1.5), None, "ohne Kurve gibt es keine Vorgabe daraus")
+
+# Und am Katalog: die Grundlage bekommt Kurvenwatt, die harten Familien nicht.
+lang = W.scaled(W.BY_KEY["z2_150"], 215, 160, 185, CURVE)
+eq(lang["watt_source"], "curve", "lange Fahrt: Vorgabe aus der Kurve")
+haupt = [b for b in lang["blocks_w"] if len(b) > 3 and b[3]]
+eq(haupt[0][1], 142, "der gleichmaessige Hauptteil traegt den Kurvenwert")
+eq(lang["blocks_w"][0][1], round(215 * 55 / 100), "Ein- und Ausrollen bleiben Prozent der FTP")
+sweet = W.scaled(W.BY_KEY["sweetspot_2x20"], 215, 160, 185, CURVE)
+eq(sweet["watt_source"], "ftp", "SweetSpot bleibt bei der FTP - dort traegt der Fit nicht")
+eq(sweet["blocks_w"][1][1], round(215 * 90 / 100), "und behaelt seine Blockleistung")
+# Ohne Kurve faellt die Grundlage sichtbar auf die FTP zurueck.
+eq(W.scaled(W.BY_KEY["z2_150"], 215, 160, 185, None)["watt_source"], "ftp", "ohne Kurve: Rueckfall auf die FTP")
+# Die Herkunft reist je Abschnitt mit - sonst stuende in der Karte eine Zahl
+# ohne Auskunft, woher sie kommt.
+eq(sorted({b["source"] for b in lang["curve_blocks"]}), ["measured"], "jeder Kurven-Abschnitt nennt seine Herkunft")
+
 print(f"test_workouts: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

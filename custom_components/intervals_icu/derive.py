@@ -275,8 +275,8 @@ DFA_BIN_WIDTH = 0.05
 FATIGUE_MIN_BINS = 3
 
 
-def _read_at_075(points: list[tuple[float, float]]) -> float | None:
-    """Bin, fit, read at alpha = 0.75 - ONE routine for power and heart rate.
+def _read_at(points: list[tuple[float, float]], at: float = 0.75) -> float | None:
+    """Bin, fit, read at a given alpha - ONE routine for every read-off.
 
     Two copies of this would be two answers to one question; the same class
     that has cost this project four releases.
@@ -292,7 +292,7 @@ def _read_at_075(points: list[tuple[float, float]]) -> float | None:
     ]
     if len(mids) < FATIGUE_MIN_BINS:
         return None
-    if not min(a for a, _ in mids) <= 0.75 <= max(a for a, _ in mids):
+    if not min(a for a, _ in mids) <= at <= max(a for a, _ in mids):
         return None
     n = len(mids)
     mean_a = sum(a for a, _ in mids) / n
@@ -301,7 +301,7 @@ def _read_at_075(points: list[tuple[float, float]]) -> float | None:
     if var <= 0:
         return None
     slope = sum((a - mean_a) * (v - mean_v) for a, v in mids) / var
-    return round(slope * 0.75 + (mean_v - slope * mean_a), 1)
+    return round(slope * at + (mean_v - slope * mean_a), 1)
 
 
 def dfa_hours(
@@ -335,6 +335,7 @@ def dfa_hours(
         hr_points: list[tuple[float, float]] = []
         dropped = 0
         low = 0
+        low_ok = low_bad = 0
         for index in range(start, stop):
             alpha = _number(dfa[index])
             watt = _number(watts[index]) if watts and index < len(watts) else None
@@ -342,6 +343,11 @@ def dfa_hours(
             if alpha is None or not 0.0 < alpha <= 2.0:
                 dropped += 1
                 continue
+            if alpha < 0.5:
+                if watt is None or watt <= 0:
+                    low_bad += 1
+                else:
+                    low_ok += 1
             if pulse is not None and pulse > 0:
                 hr_points.append((alpha, pulse))
             if watt is None or watt <= 0:
@@ -367,12 +373,30 @@ def dfa_hours(
             "p075": None,
             "alpha_min": None,
             "alpha_max": None,
+            # Die ZWEITE Schwelle, alpha 0,5 (ROGERS: VT2). ERHOBEN, NICHT
+            # BENUTZT: kein Renderer liest sie, kein Trainer-Pfad haengt daran.
+            # Die Literatur nennt die obere Schwelle die methodisch stabilere
+            # (HRVT2 ICC 0,97 gegen HRVT1 0,87), das SIGNAL dort aber deutlich
+            # schlechter - deshalb wird erst gemessen und dann entschieden.
+            "p050": None,
+            # Signalqualitaet im unteren Band, getrennt ausgewiesen: verworfene
+            # Punkte gesamt sagen nichts darueber, ob es GERADE DORT schlechter
+            # wird, wo die zweite Schwelle liegt.
+            "low_points": 0,
+            "low_dropped": 0,
+            "low_dropped_share": None,
             # Dieselbe Ablesung fuer die HERZFREQUENZ. Sie ist die praktisch
             # wichtigere Haelfte: wer sich nach Stunden noch an die ausgeruhte
             # Schwellen-HF haelt, faehrt zu hart (docs/ausbau.md L1b).
             "hr075": None,
         }
-        row["hr075"] = _read_at_075(hr_points)
+        row["hr075"] = _read_at(hr_points)
+        row["p050"] = _read_at(points, 0.5)
+        row["low_points"] = low_ok
+        row["low_dropped"] = low_bad
+        row["low_dropped_share"] = (
+            round(low_bad / (low_ok + low_bad) * 100, 1) if (low_ok + low_bad) else None
+        )
         if len(points) >= 2:
             buckets: dict[int, list[tuple[float, float]]] = {}
             for alpha, watt in points:
