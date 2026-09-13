@@ -13,7 +13,7 @@ from typing import Any
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
-from . import day_context, importer, plan
+from . import day_context, durability_tests, importer, plan
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
@@ -55,6 +55,15 @@ class IntervalsArchive:
             # entries a broken writer left behind.
             if (ctx := day_context.migrate(self.data.get("day_context"))) is not None:
                 self.data["day_context"] = ctx
+                self.schedule_save()
+            # Third block, same two obligations: an entry in empty_data() and a
+            # migration here. The migration earns its keep with the version
+            # mark - a record measured by an older algorithm keeps the
+            # MARKING and loses only its NUMBERS, because the athlete's
+            # statement that this ride was a test does not expire when the
+            # maths changes. A no-op returns None and must not save.
+            if (tests := durability_tests.migrate(self.data.get(durability_tests.BLOCK))) is not None:
+                self.data[durability_tests.BLOCK] = tests
                 self.schedule_save()
         _LOGGER.debug("archive loaded: %s", importer.archive_stats(self.data))
 

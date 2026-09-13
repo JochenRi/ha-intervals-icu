@@ -39,7 +39,7 @@ PANEL_COMPONENT = "intervals-icu-panel"
 PANEL_FILE = "intervals-panel.js"
 PANEL_TITLE = "Intervals"
 PANEL_ICON = "mdi:chart-timeline-variant"
-PANEL_VERSION = "0.43.1"
+PANEL_VERSION = "0.44.0"
 
 # --- thresholds shared by backend and panel -----------------------------------
 # One definition per number, here, because the panel has to show several of them
@@ -94,6 +94,36 @@ DURABILITY_MIN_POWER_SESSIONS = 5
 # schlecht gefuetterte Fahrt ist kein Durability-Training. Empfehlung aus der
 # Literatur, und weil die Kachel sie DRUCKT, steht sie hier und nicht dort.
 DURABILITY_FUELLING_G_PER_H = 80
+
+# --- Durability-Testprotokoll (docs/ausbau.md K0/K1) --------------------------
+# Barsumyan, Soost, Burchard: "Durability as an independent parameter of
+# endurance performance in cycling", BMC Sports Sci Med Rehabil 17:192 (2025).
+# Heimtest an zwei Terminen, ausdruecklich fuer Amateure entwickelt. Jede Zahl
+# steht GENAU HIER, weil die Kachel und die Einheitenkarte sie drucken - eine
+# zweite Kopie im Frontend waere eine zweite Wahrheit (Waechter aus Paket F).
+DURABILITY_TEST_WARMUP_MIN = 20      # Einrollen, beide Termine gleich
+DURABILITY_TEST_SHORT_MIN = 5        # kurzes All-out
+DURABILITY_TEST_LONG_MIN = 20        # langes All-out, der Bezugswert
+DURABILITY_TEST_COOLDOWN_MIN = 10    # Ausrollen
+# SETZUNG: das Protokoll nennt keine Erholungsdauer zwischen den beiden
+# All-outs. Gewaehlt, nicht gemessen - und sie muss an BEIDEN Terminen gleich
+# sein, sonst vergleicht Termin 2 etwas anderes.
+DURABILITY_TEST_RECOVERY_MIN = 10
+# Arbeit im Ermuedungsblock. Aus dem Protokoll, nicht verhandelbar.
+DURABILITY_TEST_WORK_KJ = 1000.0
+# Zielleistung des Ermuedungsblocks als Anteil der FRISCHEN 20-min-Leistung.
+DURABILITY_TEST_BLOCK_FRACTION = 0.80
+# Einroll-/Ausroll-Intensitaet, als Anteil desselben Ankers.
+DURABILITY_TEST_EASY_FRACTION = 0.55
+DURABILITY_TEST_SPIN_FRACTION = 0.50
+# SETZUNG fuer die VORAB-Lastrechnung: wie sich die erwartete 5-min-Leistung
+# zur 20-min-Leistung verhaelt. Am eigenen Bestand gemessen (251 W ueber 5 min
+# gegen 192 W ueber 20 min = 1,31), aber als Faktor fuer kuenftige Termine
+# gesetzt. Er geht NUR in die geschaetzte Last ein, nie in eine Vorgabe: die
+# All-out-Abschnitte haben keine Zielleistung, das ist ihr Zweck.
+DURABILITY_TEST_ALLOUT_5_FACTOR = 1.30
+# Validierung der Quelle, als Groessenordnung neben dem eigenen Ergebnis.
+DURABILITY_TEST_REFERENCE = "-10,1 ± 6,5 % über 20 min, -10,8 ± 7,8 % über 5 min"
 
 # --- Progressionsregel (docs/ausbau.md H2) ------------------------------------
 # BJSM-Kohortenstudie ueber 18 Monate mit mehr als 5.200 Laeufern: deutlich

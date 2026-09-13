@@ -970,7 +970,6 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
 
 /* ── Bausteine an den Rändern ──────────────────────────────────────────── */
 {
-  clean(M.ring([], "unknown"), "ring leer");
   clean(M.bullet({ chronic: 1, last_six_days: 0, target_ratio: 1, recommended: 0,
                    steady: 5, corridor_top: 7, risk_top: 9, state: "green" }), "bullet mini");
   clean(M.spark([null, null, null]), "spark nur nullen");

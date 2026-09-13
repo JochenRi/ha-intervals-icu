@@ -264,6 +264,116 @@ def streams_to_dict(streams: Any) -> dict[str, list[Any]]:
     return result
 
 
+# --- best mean power over a moving-time axis (docs/ausbau.md J1/K1) --------
+# Gaps longer than this count as neither work nor riding time. Without a
+# moving-time axis the window breaks at every stop: the first run of the J1
+# measurement produced 20-minute values with no matching 5-minute values,
+# which is impossible and is what gave the error away.
+MOVING_GAP_S = 60
+
+
+def _time_axis(streams: dict[str, Any]) -> list[float] | None:
+    """The time channel, as seconds. Missing or degenerate returns None."""
+    raw = streams.get("time") if isinstance(streams, dict) else None
+    if not isinstance(raw, list) or len(raw) < 2:
+        return None
+    out: list[float] = []
+    for value in raw:
+        number = _number(value)
+        if number is None:
+            return None
+        out.append(number)
+    return out
+
+
+def best_mean_watts(streams: Any, seconds: float) -> float | None:
+    """The best mean power over `seconds` of MOVING time.
+
+    Why moving time and not sample count: the streams handed out by this
+    integration are thinned to at most 900 points, so the step between samples
+    is 7-18 s depending on ride length, and a pause leaves a hole in the time
+    channel rather than in the index. Counting samples would silently measure
+    a different window on every ride.
+
+    The mean is weighted by the duration each sample represents, not by the
+    number of samples - on a thinned stream those are different quantities.
+    Returns None when the ride never carries `seconds` of continuous riding:
+    an absent value, never a value from a shorter window, because a maximum
+    over less material is a different number (J1 Befund 2).
+    """
+    if not isinstance(streams, dict) or seconds <= 0:
+        return None
+    axis = _time_axis(streams)
+    watts_raw = streams.get("watts")
+    if axis is None or not isinstance(watts_raw, list) or len(watts_raw) != len(axis):
+        return None
+
+    # (duration, energy) per sample, restarting at every pause.
+    runs: list[list[tuple[float, float]]] = [[]]
+    for index in range(1, len(axis)):
+        step = axis[index] - axis[index - 1]
+        power = _number(watts_raw[index])
+        if step <= 0 or step > MOVING_GAP_S or power is None:
+            if runs[-1]:
+                runs.append([])
+            continue
+        runs[-1].append((step, max(0.0, power) * step))
+
+    best: float | None = None
+    for run in runs:
+        if not run:
+            continue
+        # widening/narrowing window over one uninterrupted run
+        start = 0
+        span = 0.0
+        energy = 0.0
+        for end in range(len(run)):
+            span += run[end][0]
+            energy += run[end][1]
+            while span - run[start][0] >= seconds:
+                span -= run[start][0]
+                energy -= run[start][1]
+                start += 1
+            if span >= seconds and span > 0:
+                mean = energy / span
+                if best is None or mean > best:
+                    best = mean
+    return best
+
+
+def test_measures(streams: Any, short_min: float, long_min: float) -> dict[str, Any]:
+    """The two protocol numbers of one marked test ride.
+
+    Deliberately the best effort of the WHOLE ride rather than a search for
+    the protocol's shape. At the fresh appointment the two all-outs are the
+    only maximal efforts on the ride; at the fatigued one they sit behind the
+    fatigue block, which is ridden at 80 % and cannot beat them. Looking for
+    the protocol in the data instead would be recognition - exactly what K2
+    hands to the athlete, and what J1 showed goes wrong when a ride is asked
+    to confirm a shape it was never ridden to.
+
+    `reason` is filled whenever a value is missing, because a block that draws
+    nothing must say why (Fehlerklasse 4, der stille Ausstieg).
+    """
+    out: dict[str, Any] = {"p5": None, "p20": None, "reason": None}
+    if not isinstance(streams, dict) or not streams.get("watts"):
+        out["reason"] = "Die Fahrt trägt keinen Leistungsstrom."
+        return out
+    if _time_axis(streams) is None:
+        out["reason"] = "Die Fahrt trägt keine brauchbare Zeitachse."
+        return out
+    out["p5"] = best_mean_watts(streams, short_min * 60.0)
+    out["p20"] = best_mean_watts(streams, long_min * 60.0)
+    if out["p20"] is None:
+        out["reason"] = (
+            f"Kein zusammenhängender {long_min:.0f}-Minuten-Abschnitt in der "
+            "Bewegungszeit — als Termin brauchbar ist die Fahrt damit nicht."
+        )
+    elif out["p5"] is None:
+        out["reason"] = f"Kein zusammenhängender {short_min:.0f}-Minuten-Abschnitt."
+    return out
+
+
 # --- laps ----------------------------------------------------------------
 # The API returns the laps on the activity itself (intervals=true), and the
 # field names are not documented. Every value therefore has a list of

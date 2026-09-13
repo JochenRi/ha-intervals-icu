@@ -14,9 +14,14 @@ from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.util import dt as dt_util
 
-from . import analytics, coach as coach_module, day_context as day_context_lib, derive, importer, plan as plan_lib, reconcile as reconcile_lib, workouts as workout_lib
+from . import analytics, coach as coach_module, day_context as day_context_lib, derive, durability_tests as durability_lib, importer, plan as plan_lib, reconcile as reconcile_lib, workouts as workout_lib
 from .api import IntervalsError
-from .const import DECOUPLING_GOOD, DOMAIN
+from .const import (
+    DECOUPLING_GOOD,
+    DOMAIN,
+    DURABILITY_TEST_LONG_MIN,
+    DURABILITY_TEST_SHORT_MIN,
+)
 
 # Streams offered to the panel's activity detail view. Fetched live on
 # demand and thinned before they cross the socket - they are never stored.
@@ -80,6 +85,8 @@ def async_register(hass: HomeAssistant) -> None:
         websocket_days,
         websocket_day_context,
         websocket_set_day_context,
+        websocket_set_durability_test,
+        websocket_durability_tests,
         websocket_reconcile,
     ):
         websocket_api.async_register_command(hass, handler)
@@ -385,6 +392,117 @@ async def websocket_set_day_context(hass, connection, msg) -> None:
 
 @websocket_api.websocket_command(
     {
+        vol.Required("type"): "intervals_icu/durability_tests",
+        vol.Optional("athlete_id"): str,
+    }
+)
+@callback
+def websocket_durability_tests(hass, connection, msg) -> None:
+    """Marked protocol tests, the current anchor, and the confirmed pairs.
+
+    `pair_candidates` is what the panel offers when a fatigued test is being
+    marked. It is a LIST OF CANDIDATES, never a chosen partner: with exactly
+    one fresh test the panel suggests it and the athlete confirms. Picking the
+    nearest earlier one here would be the automatic pairing K2 forbids.
+    """
+    if (coordinator := _require(hass, connection, msg)) is None:
+        return
+    data = coordinator.archive.data
+    connection.send_result(msg["id"], {
+        "kinds": durability_lib.KINDS,
+        "tests": durability_lib.entries(data),
+        "anchor": durability_lib.anchor(data),
+        "pairs": durability_lib.pairs(data),
+        "pair_candidates": durability_lib.entries(data, "fresh"),
+        "sources": durability_lib.SOURCES,
+    })
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "intervals_icu/set_durability_test",
+        vol.Required("activity_id"): str,
+        vol.Required("kind"): vol.Any(str, None),
+        vol.Optional("paired_with"): vol.Any(str, None),
+        vol.Optional("note"): str,
+        vol.Optional("athlete_id"): str,
+    }
+)
+@websocket_api.async_response
+async def websocket_set_durability_test(hass, connection, msg) -> None:
+    """Mark one ride as a protocol test, or withdraw the marking.
+
+    A local write only - nothing is sent to intervals.icu. `kind` null REMOVES
+    the marking, and afterwards the ride computes exactly like one that was
+    never marked (K2: the marking is retractable).
+
+    Marking MEASURES: the streams are fetched live, UNTHINNED, and the best
+    5- and 20-minute means are computed over a moving-time axis. Unthinned
+    because the panel endpoint caps at 900 points, which puts 7-18 s between
+    samples - fine for a chart, not for a number that anchors a protocol (J1).
+
+    This path deliberately runs past none of the durability POOL filters.
+    `DURABILITY_MIN_MINUTES`, `DURABILITY_EXCLUDED_TYPES` and
+    `DURABILITY_MAX_INTENSITY` decide who belongs in the DECOUPLING cloud,
+    where conditions have to be comparable. A test on the roller with two
+    all-outs fails all three - by the intensity gate first - and belongs here
+    anyway. K1 warns about the type filter; the one that actually bites is the
+    intensity filter.
+    """
+    coordinator = _pick(hass, msg.get("athlete_id"))
+    if coordinator is None:
+        connection.send_error(msg["id"], "not_found", "no Intervals.icu athlete loaded")
+        return
+    data = coordinator.archive.data
+    activity_id = str(msg["activity_id"])
+
+    if msg["kind"] is None:
+        removed = durability_lib.remove_entry(data, activity_id)
+        if removed:
+            await coordinator.archive.async_save_now()
+        connection.send_result(msg["id"], {"activity_id": activity_id, "entry": None,
+                                           "removed": removed})
+        return
+
+    activity = (data.get("activities") or {}).get(activity_id)
+    if not isinstance(activity, dict):
+        connection.send_error(msg["id"], "not_found", f"unknown activity {activity_id}")
+        return
+    day = str(activity.get("start_date_local") or "")[:10]
+
+    measures: dict[str, Any] = {"p5": None, "p20": None,
+                                "reason": "Ströme nicht abrufbar."}
+    try:
+        streams = await coordinator.client.async_get_streams(activity_id, ("time", "watts"))
+    except IntervalsError as err:
+        measures["reason"] = f"Ströme nicht abrufbar: {err}"
+    else:
+        measures = derive.test_measures(
+            derive.streams_to_dict(streams),
+            DURABILITY_TEST_SHORT_MIN, DURABILITY_TEST_LONG_MIN)
+
+    try:
+        entry = durability_lib.set_entry(
+            data, activity_id, msg["kind"], day,
+            p5=measures.get("p5"), p20=measures.get("p20"),
+            paired_with=msg.get("paired_with"), note=msg.get("note", ""),
+            set_at=dt_util.now().date().isoformat())
+    except ValueError as err:
+        connection.send_error(msg["id"], "invalid_format", str(err))
+        return
+    await coordinator.archive.async_save_now()
+    # The marking stands even when the measurement failed - but then it says
+    # so. A marking with silently empty numbers is the quiet exit again.
+    connection.send_result(msg["id"], {
+        "activity_id": activity_id,
+        "entry": entry,
+        "reason": measures.get("reason"),
+        "anchor": durability_lib.anchor(data),
+    })
+
+
+@websocket_api.websocket_command(
+    {
         vol.Required("type"): "intervals_icu/readiness",
         vol.Optional("athlete_id"): str,
     }
@@ -527,6 +645,12 @@ def websocket_workouts(hass, connection, msg) -> None:
     max_hr = _max_hr(data)
 
     budget = (ready.get("budget") or {}).get("recommended")
+    # FOUND WHILE BUILDING K: this handler never passed `recovery_offered`, so
+    # `stage()` defaulted it to False and the session list for TODAY could not
+    # reach the stimulus grade at all - while the week view (which does pass
+    # it) could. One rule, two different inputs, and the grade that Paket I
+    # added was invisible on the tab it was added for. See PROJEKTSTAND 7.
+    recovery = bool(coach_module.recovery_offered(data).get("offered"))
     picks = workout_lib.suggest(
         st.get("state", "unknown"),
         ftp=ftp,
@@ -537,6 +661,7 @@ def websocket_workouts(hass, connection, msg) -> None:
         hard_days_last_7=coach_module._hard_days_recent(data, 7),
         layoff_days=lay.get("days"),
         goal=(data.get("goal") or {}).get("goal"),
+        recovery_offered=recovery,
     )
     connection.send_result(msg["id"], {
         "ftp": ftp,
@@ -548,6 +673,20 @@ def websocket_workouts(hass, connection, msg) -> None:
         # watts would sit ON their measured threshold (see workouts.anchor_conflict).
         "conflict": workout_lib.anchor_conflict(ftp, anchors.get("aerobic_power")),
         "workouts": picks,
+        # Termin 2 never sits in `workouts`: without a measured Termin 1 it has
+        # no target power and therefore no shape (K1). What travels instead is
+        # the reason plus the button - the G5 pattern, not an empty card.
+        "protocol": workout_lib.protocol_block(
+            st.get("state", "unknown"),
+            p20_fresh=(durability_lib.anchor(data) or {}).get("p20"),
+            aerobic_power=anchors.get("aerobic_power"),
+            ftp=ftp,
+            budget=budget,
+            hard_days_last_7=coach_module._hard_days_recent(data, 7),
+            recovery_offered=recovery,
+            infection=bool(st.get("infection_suspected")),
+        ),
+        "anchor_test": durability_lib.anchor(data),
     })
 
 
@@ -573,6 +712,22 @@ async def websocket_plan_workout(hass, connection, msg) -> None:
         connection.send_error(msg["id"], "not_found", "no Intervals.icu athlete loaded")
         return
     entry = workout_lib.BY_KEY.get(str(msg["workout"]))
+    if entry is None and str(msg["workout"]) == workout_lib.DURABILITY_TEST_FATIGUED_META["key"]:
+        # Termin 2 is not IN the catalogue because it has no fixed shape - it
+        # is rebuilt from the current anchor. Rebuilding it here rather than
+        # trusting a client-sent copy keeps one source for the numbers: a
+        # payload that travelled to the panel and back could carry a target
+        # power from before the last measurement.
+        data = coordinator.archive.data
+        built = workout_lib.fatigued_session(
+            (durability_lib.anchor(data) or {}).get("p20"),
+            coach_module.anchors(data).get("aerobic_power"),
+            _latest_ftp(data),
+        )
+        if not built.get("available"):
+            connection.send_error(msg["id"], "not_found", str(built.get("reason")))
+            return
+        entry = built["entry"]
     if entry is None:
         connection.send_error(msg["id"], "not_found", f"unknown workout {msg['workout']}")
         return

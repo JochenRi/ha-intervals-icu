@@ -606,32 +606,6 @@ function rollMedian(vals, win) {
   return out;
 }
 
-/* readiness ring: one arc segment per signal, coloured by its state */
-function ring(components, overall) {
-  const size = 200, cx = 100, cy = 100, r = 80, sw = 15;
-  const m = ST[overall] || ST.unknown;
-  const nSeg = components.length || 1;
-  const gap = 7, span = (360 - nSeg * gap) / nSeg;
-  const P = (ang) => {
-    const a = (ang - 90) * Math.PI / 180;
-    return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
-  };
-  let segs = "";
-  components.forEach((cItem, i) => {
-    const a0 = i * (span + gap) + gap / 2, a1 = a0 + span;
-    const [x0, y0] = P(a0), [x1, y1] = P(a1);
-    const col = (ST[cItem.state] || ST.unknown).c;
-    segs += `<path d="M${x0.toFixed(1)} ${y0.toFixed(1)} A${r} ${r} 0 ${span > 180 ? 1 : 0} 1 ${x1.toFixed(1)} ${y1.toFixed(1)}" fill="none" stroke="${col}" stroke-width="${sw}" stroke-linecap="round" opacity="${cItem.state === "unknown" ? 0.35 : 0.95}"><title>${esc(cItem.label)}: ${(ST[cItem.state] || ST.unknown).word}</title></path>`;
-  });
-  return `<svg class="ring" viewBox="0 0 ${size} ${size}" role="img" aria-label="Bereitschaft: ${m.word}">
-    <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${C.line}" stroke-width="${sw}" opacity="0.35"/>
-    ${segs}
-    <g transform="translate(${cx - 16},${cy - 30})"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="${m.c}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${IC[m.ic]}</svg></g>
-    <text x="${cx}" y="${cy + 22}" text-anchor="middle" class="ringword" fill="${m.c}">${m.word}</text>
-    <text x="${cx}" y="${cy + 42}" text-anchor="middle" class="ringsub" fill="${C.tx3}">${components.filter((s) => s.state !== "unknown").length} von ${nSeg} Signalen</text>
-  </svg>`;
-}
-
 /* bullet graph for the load budget (Few's gauge replacement) */
 function bullet(b) {
   const w = 880, h = 92, padL = 8, padR = 16, y = 30, bh = 18;
@@ -4010,10 +3984,6 @@ svg.evtrack{margin-top:-2px}
 /* Heute */
 .hero{border-width:1.5px;padding:20px}
 .herowrap{display:flex;gap:28px;align-items:center;flex-wrap:wrap;justify-content:center}
-.ringbox{flex:0 0 210px}
-.ring{width:210px;height:210px}
-.ringword{font:700 21px ui-sans-serif,system-ui,sans-serif;text-transform:uppercase;letter-spacing:.05em}
-.ringsub{font:12px ui-sans-serif,system-ui,sans-serif}
 .heromain{flex:1 1 520px;min-width:320px}
 .kicker{color:${C.tx3};font-size:13px;text-transform:uppercase;letter-spacing:.12em;margin-bottom:4px}
 .verdict{display:flex;align-items:center;gap:10px;font-size:19px;font-weight:650;margin-bottom:14px;flex-wrap:wrap}
