@@ -214,6 +214,52 @@ MIT_PAUSE = TEMPO + [{"label": "RECOVERY", "alpha": 1.2, "watts": 106}]
 check("Pausen behalten ihr Etikett",
       [b["label"] for b in derive.drop_warmup_blocks(MIT_PAUSE)][-1], "RECOVERY")
 
+# --- 0.49.2: die Toleranz der fremden Gegenprobe ----------------------------
+print("\n=== ein Schritt unter der Versatzschwankung sagt nichts aus ===")
+
+
+def zwei(a1, a2, f1, f2):
+    return blocks.series({"activities": {"x": {"name": "VO2max",
+                                               "start_date_local": "2026-09-01T10:00"}},
+                          "dfa": {"x": {"blocks": [
+                              {"label": "WORK", "alpha": a1, "watts": 250, "lap_alpha": f1},
+                              {"label": "WORK", "alpha": a2, "watts": 250, "lap_alpha": f2},
+                          ]}}})["families"]["vo2max"]
+
+
+# Die ECHTEN Paare vom 01.09. und 13.09.: unser Schritt 0,024 bzw. 0,020, der
+# fremde laeuft dagegen. Unter der Toleranz - keine Meldung mehr.
+check("01.09.: Schritt 0,024 liegt unter der Toleranz",
+      zwei(0.381, 0.405, 0.640, 0.592)["order_conflicts"], [])
+check("13.09.: Schritt 0,020 ebenso", zwei(0.852, 0.872, 0.964, 0.900)["order_conflicts"], [])
+# GEGENPROBE, GEZAEHLT UND BENANNT: der 03.06. hatte einen ECHTEN Schritt von
+# 0,206 gegen eine fremde Reihe, die nicht folgte. Der MUSS weiter melden -
+# sonst ist die Toleranz zu weit.
+check("03.06.: ein echter Schritt von 0,206 meldet weiterhin",
+      zwei(0.500, 0.706, 0.800, 0.788)["order_conflicts"], ["2026-09-01"])
+# Und der Grenzfall vom 25.07. (-0,079) bleibt stehen: lieber eine Meldung zu
+# viel als eine zu wenig, solange die Karte sagt, dass es ein Hinweis ist.
+check("25.07.: der Grenzfall mit 0,079 bleibt eine Meldung",
+      zwei(0.800, 0.721, 0.900, 0.901)["order_conflicts"], ["2026-09-01"])
+
+# NACHGEBAUT, KEINE MESSUNG: der Stand VOR 0.49.1, als ein als Arbeit
+# etikettierter Einrollblock die Reihe anfuehrte. Diese Konstellation gibt es
+# im lebenden Bestand nicht mehr - die Neuberechnung hat sie geloescht
+# (PROJEKTSTAND §7). Die Fixture belegt, dass die Regel bei ihr anschlaegt,
+# und NICHT, dass sie heute noch vorkommt.
+VOR_0491 = {"activities": {"y": {"name": "VO2max", "start_date_local": "2026-07-10T10:00"}},
+            "dfa": {"y": {"blocks": [
+                {"label": "WORK", "alpha": 1.136, "watts": 257, "lap_alpha": 1.267},
+                {"label": "WORK", "alpha": 0.742, "watts": 268, "lap_alpha": 1.190},
+                {"label": "WORK", "alpha": 0.468, "watts": 262, "lap_alpha": 0.935},
+                {"label": "WORK", "alpha": 0.580, "watts": 258, "lap_alpha": 0.763}]}}}
+alt = blocks.series(VOR_0491)["families"]["vo2max"]
+check("Fixture vom Stand vor 0.49.1: die Regel schlaegt an",
+      alt["order_conflicts"], ["2026-07-10"])
+ok("und der Einrollblock waere heute aussortiert",
+   derive.drop_warmup_blocks(VOR_0491["dfa"]["y"]["blocks"])[0]["label"]
+   == "WARMUP_LABELLED_WORK")
+
 # --- der Regelkreis -----------------------------------------------------------
 print("\n=== der Regelkreis: Vorschlag nach oben wie nach unten ===")
 KORR = BLOCK_CORRIDORS["vo2max"]

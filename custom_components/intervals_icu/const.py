@@ -39,7 +39,7 @@ PANEL_COMPONENT = "intervals-icu-panel"
 PANEL_FILE = "intervals-panel.js"
 PANEL_TITLE = "Intervals"
 PANEL_ICON = "mdi:chart-timeline-variant"
-PANEL_VERSION = "0.49.1"
+PANEL_VERSION = "0.49.2"
 
 # --- thresholds shared by backend and panel -----------------------------------
 # One definition per number, here, because the panel has to show several of them
@@ -172,6 +172,14 @@ BLOCK_HR_WINDOW_SD_FACTOR = 2.0
 # Unter so vielen Einheiten bleibt das alte Fenster stehen - dieselbe
 # Belegungsstaffelung wie bei den Watt. Kein halb umgestelltes Fenster.
 BLOCK_MIN_FOR_SOURCE = 3
+# Ab welchem eigenen Schritt eine Richtungsumkehr gegen Intervals' Werte etwas
+# aussagt. GEMESSEN, nicht gesetzt: Intervals mittelt jeden Block samt Anlauf,
+# wir verwerfen ihn - ueber 80 Bloecke liegt sein Wert im Median 0,224 ueber
+# unserem, mit einer Spanne von 0,004 bis 0,539. Ein Schritt, der KLEINER ist
+# als die Schwankung dieses Versatzes, kann seine Richtung allein daraus
+# beziehen. 0,05 liegt darunter; sechs der acht beanstandeten Paare hatten
+# einen eigenen Schritt unter 0,05 (Median 0,038).
+BLOCK_ORDER_TOLERANCE = 0.05
 
 # Which sessions the durability tile may look at.
 DURABILITY_MIN_MINUTES = 45      # below this a decoupling reading is not usable

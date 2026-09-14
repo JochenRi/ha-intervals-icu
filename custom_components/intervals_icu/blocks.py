@@ -35,6 +35,7 @@ try:  # inside the package (Home Assistant)
         BLOCK_WARMUP_DISCARD_S,
         BLOCK_HR_WINDOW_SD_FACTOR,
         BLOCK_MIN_FOR_SOURCE,
+        BLOCK_ORDER_TOLERANCE,
     )
 except ImportError:  # standalone (test suite loads this file directly)
     import derive  # type: ignore[no-redef]
@@ -46,6 +47,7 @@ except ImportError:  # standalone (test suite loads this file directly)
         BLOCK_WARMUP_DISCARD_S,
         BLOCK_HR_WINDOW_SD_FACTOR,
         BLOCK_MIN_FOR_SOURCE,
+        BLOCK_ORDER_TOLERANCE,
     )
 
 
@@ -95,7 +97,19 @@ def _sessions(data: dict[str, Any]) -> list[dict[str, Any]]:
             for i in range(len(work) - 1):
                 d_own = alphas[i + 1] - alphas[i]
                 d_ext = float(foreign[i + 1]) - float(foreign[i])
-                if abs(d_own) < 0.02 or abs(d_ext) < 0.02:
+                # Die Toleranz stammt aus dem UNTERSCHIED der Rechenwege, nicht
+                # aus einer Wunschgenauigkeit (PROJEKTSTAND §7). Geprueft wird
+                # nur unser eigener Schritt: der fremde traegt den schwankenden
+                # Anlauf-Versatz und taugt nicht als Massstab fuer sich selbst.
+                #
+                # KEINE MEHRHEITSREGEL. Gemessen: von 25 Einheiten haben 8 eine
+                # Abweichung, und JEDE hat genau EIN abweichendes Paar - die
+                # Anteile liegen bei 0,25 / 0,33 / 0,50, nie darueber. Eine
+                # Regel "mehr als die Haelfte weicht ab" ergaebe im ganzen
+                # Bestand NULL Meldungen, auch die berechtigten nicht. Eine
+                # Regel, die nie greift, ist keine Regel, sondern eine
+                # Abschaltung.
+                if abs(d_own) < BLOCK_ORDER_TOLERANCE:
                     continue
                 pairs += 1
                 if (d_own > 0) == (d_ext > 0):
