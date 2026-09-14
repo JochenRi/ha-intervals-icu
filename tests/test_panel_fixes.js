@@ -954,4 +954,194 @@ const acts = F.activities(), thr = F.thresholds();
   ok(/saidAbove/.test(card), "warnung: die Karte fragt nicht, was schon oben stand");
 }
 
+/* ── 0.50.0: EINE Zeigerlogik, ZWEI zugesicherte Verhaltensweisen ─────────
+   Die grosse Zahl folgt dem Zeiger in der Ermuedungskachel und bleibt in den
+   Block-Karten stehen. Beides gehoert zugesichert, sonst zieht der naechste
+   Umbau sie stillschweigend gleich. Geprueft wird am simulierten Ereignis,
+   nicht per grep (Lehre 3 aus Paket A). */
+{
+  const q = new M.Panel();
+  q._nowIso = F.TODAY;
+  const fat = F.fatigue(), blk = F.blocks();
+  q._fatigue = fat; q._blocks = blk;
+  const tile = q.rDurability(F.coach("rebound").durabilityClear);
+
+  // --- die Gruppen, wie das Rendern sie anmeldet --------------------------
+  const fams = Object.keys(blk.families);
+  for (const key of fams) {
+    ok(q._grp["blk_" + key] != null,
+       `zeiger block: Familie ${key} meldet keine eigene Zeigergruppe an`);
+    ok(tile.includes(`data-grp="blk_${key}"`),
+       `zeiger block: die Karte ${key} traegt keinen eigenen Gruppen-Wrapper`);
+    ok(tile.includes(`data-rdo="blk_${key}"`),
+       `zeiger block: die Karte ${key} hat keine eigene Ableseleiste`);
+  }
+  // Die geschachtelte Gruppe ist der Punkt: sie liegt IN der Gruppe der Kurve.
+  ok(tile.indexOf('data-grp="fat"') >= 0
+     && tile.indexOf('data-grp="fat"') < tile.indexOf('data-grp="blk_'),
+     "zeiger block: die Block-Gruppe liegt nicht innerhalb der Kurvengruppe");
+
+  // --- die ZUSICHERUNG: genau eine Gruppe laesst die Leitzahl mitlaufen ---
+  ok(q._grp.fat && q._grp.fat.lead != null,
+     "zeiger: die Ermuedungskurve laesst ihre Leitzahl NICHT mitlaufen");
+  const mitLead = Object.keys(q._grp).filter((k) => q._grp[k].lead != null);
+  ok(mitLead.join(",") === "fat",
+     `zeiger: mitlaufende Leitzahl in ${mitLead.join(",") || "keiner"} Gruppe - erwartet nur in der Kurve`);
+  for (const key of fams) {
+    ok(!tile.includes(`data-lead="blk_${key}"`),
+       `zeiger block: die Karte ${key} haengt ihre Leitzahl an den Zeiger`);
+  }
+  ok(tile.includes('data-lead="fat"'), "zeiger: die Leitzahl der Kurve ist nicht angeschlossen");
+
+  // --- Streifen und Leitzahl als beobachtbare Elemente --------------------
+  const mkBox = () => {
+    const v = {};
+    const el = (k) => ({ style: {}, set textContent(t) { v[k] = t; }, get textContent() { return v[k]; } });
+    const parts = { ".ldl": el("l"), ".ldv": el("v"), ".ldn": el("n") };
+    return { _v: v, _style: parts, querySelector: (s) => parts[s] || null };
+  };
+  const mkStrip = () => {
+    const st = { x: "", h: "" };
+    return { _s: st,
+      querySelector: (s) => (/rdox/.test(s)
+        ? { set textContent(t) { st.x = t; }, get textContent() { return st.x; } }
+        : { set innerHTML(t) { st.h = t; }, get innerHTML() { return st.h; } }) };
+  };
+  const leadBox = mkBox(), stripFat = mkStrip(), stripVo = mkStrip();
+  const asked = [];
+  q.shadowRoot.querySelector = (sel) => {
+    asked.push(sel);
+    if (/data-lead="fat"/.test(sel)) return leadBox;
+    if (/data-rdo="fat"/.test(sel)) return stripFat;
+    if (/data-rdo="blk_vo2max"/.test(sel)) return stripVo;
+    return null;
+  };
+  q.shadowRoot.querySelectorAll = () => q.shadowRoot._lines;
+
+  // --- Punkt 3: die grosse Zahl FOLGT, in der Kurve -----------------------
+  const grid = fat.literature;
+  const iMess = grid.findIndex((r) => r.hour === 2);
+  const iForm = grid.findIndex((r) => r.hour == null);
+  const mess = fat.measured.find((r) => r.hour === 2);
+  q._fillReadout("fat", iMess);
+  ok(leadBox._v.v === M.fmt(mess.watts),
+     `zeiger leitzahl: ${leadBox._v.v} statt ${M.fmt(mess.watts)} ueber der gemessenen Stunde`);
+  ok(/1[.,]50 h/.test(leadBox._v.l), `zeiger leitzahl: die Stelle fehlt in der Beschriftung (${leadBox._v.l})`);
+  ok(/gemessen/.test(leadBox._v.n) && leadBox._v.n.includes(M.fmt(mess.n)),
+     `zeiger leitzahl: Herkunft oder Belegung fehlen (${leadBox._v.n})`);
+  ok(leadBox._style[".ldv"].style.color === M.ROLE.series,
+     "zeiger leitzahl: eine Messung traegt nicht das Serienregister");
+
+  q._fillReadout("fat", iForm);
+  ok(leadBox._v.v === M.fmt(grid[iForm].watts),
+     "zeiger leitzahl: jenseits des Bestands steht nicht der Wert der Studienform");
+  ok(/Studienform, keine Messung/.test(leadBox._v.n),
+     `zeiger leitzahl: die Setzung wird nicht als solche beschriftet (${leadBox._v.n})`);
+  ok(leadBox._style[".ldv"].style.color === M.C.slate,
+     "zeiger leitzahl: eine Setzung traegt das Messregister");
+
+  // Ruhezustand: eigene Rechnung, eigene Beschriftung.
+  ok(M.fmt(fat.anchor_base) !== M.fmt(grid[0].watts),
+     "zeiger Fixture-Beweis: Anker und erster Rasterpunkt sind gleich - der Rueckfall waere nicht pruefbar");
+  q._fillReadout("fat", null);
+  ok(leadBox._v.v === M.fmt(fat.anchor_base),
+     `zeiger leitzahl: faellt nicht auf den Ausgangswert zurueck (${leadBox._v.v})`);
+  ok(/Dauer null/.test(leadBox._v.l),
+     `zeiger leitzahl: der Ruhezustand ist nicht als eigene Rechnung beschriftet (${leadBox._v.l})`);
+
+  // --- Punkt 5: der Zeiger UEBER EINER BLOCK-KURVE ------------------------
+  const vo = blk.families.vo2max.points;
+  const svgBlk = { dataset: { w: "880", padl: "48", padr: "14" },
+                   getBoundingClientRect: () => ({ left: 0, top: 600, width: 880, height: 170 }) };
+  const gBlk = { dataset: { grp: "blk_vo2max" },
+                 querySelector: (s) => (s === "svg.ch" ? svgBlk : null),
+                 querySelectorAll: () => q.shadowRoot._lines };
+  q._attach();
+  const onMove = q.shadowRoot._listeners.pointermove;
+  ok(typeof onMove === "function", "zeiger block: kein pointermove-Handler registriert");
+
+  const vorher = stripFat._s.x;
+  asked.length = 0;
+  const iWant = 2;
+  const xAt = (i) => 48 + ((880 - 48 - 14) * i) / (vo.length - 1);
+  onMove({ clientX: xAt(iWant), clientY: 640,
+           target: { closest: (sel) => (sel === "[data-grp]" ? gBlk : null) } });
+  const s = stripVo._s;
+  ok(s.x.includes(M.dMed(vo[iWant].date)), `zeiger block: das Datum fehlt (${s.x})`);
+  ok(s.x.includes(vo[iWant].name), `zeiger block: die Einheit wird nicht genannt (${s.x})`);
+  ok(s.h.includes(M.fmt(vo[iWant].first_watts)), "zeiger block: die Leistung fehlt in der Leiste");
+  ok(s.h.includes(M.fmt(vo[iWant].first_alpha, 2)),
+     `zeiger block: der alpha des aufgetragenen Blocks fehlt (${s.h})`);
+  ok(s.h.includes(String(vo[iWant].n_blocks)), "zeiger block: die Zahl der Bloecke fehlt");
+
+  // Die Verwechslung, gegen die es gebaut ist: aufgetragen ist der ERSTE
+  // Block, also steht dort SEIN alpha - nicht der Median, der die Steuergroesse
+  // ist und als eigene Zeile daneben steht.
+  ok(M.fmt(vo[iWant].first_alpha, 2) !== M.fmt(vo[iWant].median_alpha, 2),
+     "zeiger block Fixture-Beweis: erster alpha und Median sind gleich - die Verwechslung waere unsichtbar");
+  const zeile = /alpha dort[\s\S]{0,120}?<\/span>/.exec(s.h);
+  ok(zeile !== null, "zeiger block: die Zeile 'alpha dort' fehlt");
+  ok(zeile && !zeile[0].includes(M.fmt(vo[iWant].median_alpha, 2)),
+     "zeiger block: neben dem aufgetragenen Punkt steht der Median statt seines eigenen alpha");
+  ok(s.h.includes("Median alpha") && s.h.includes(M.fmt(vo[iWant].median_alpha, 3)),
+     "zeiger block: die Steuergroesse fehlt als eigene Zeile");
+
+  // Die Leitzahl der Block-Karte bleibt stehen: sie wird nicht einmal gesucht.
+  ok(!asked.some((sel) => /data-lead/.test(sel)),
+     `zeiger block: die Leitzahl der Karte wird angefasst (${asked.filter((x) => /data-lead/.test(x)).join(",")})`);
+  // Und die Leiste der KURVE bleibt unberuehrt - das war der Fehler bis 0.49.2.
+  ok(stripFat._s.x === vorher,
+     `zeiger block: die Leiste der Ermuedungskurve wird mitgeschrieben (${stripFat._s.x})`);
+  // GEGENPROBE, gezaehlt und benannt: derselbe Zeiger auf den AEUSSEREN
+  // Wrapper - der alte Weg - schreibt sehr wohl in die Kurvenleiste. Ohne das
+  // prueft die Zeile darueber nur, dass ueberhaupt nie etwas geschrieben wird.
+  const svgFat = { dataset: { w: "880", padl: "48", padr: "14", padt: "8", padb: "22", h: "300",
+                              x0: String(grid[0].t), x1: String(grid[grid.length - 1].t),
+                              y0: "100", y1: "160" },
+                   getBoundingClientRect: () => ({ left: 0, top: 0, width: 880, height: 300 }) };
+  const gFat = { dataset: { grp: "fat" },
+                 querySelector: (sel) => (sel === "svg.ch" ? svgFat : null),
+                 querySelectorAll: () => q.shadowRoot._lines };
+  onMove({ clientX: 400, clientY: 150,
+           target: { closest: (sel) => (sel === "[data-grp]" ? gFat : null) } });
+  ok(stripFat._s.x !== vorher,
+     "zeiger Gegenprobe: der Zeiger im Graphen schreibt die Kurvenleiste NICHT - die Pruefung ist blind");
+
+  // --- Nebenbefund: ausserhalb des Diagramms wird nichts geschrieben ------
+  const merk = stripFat._s.x;
+  const idxDrin = q._xhMove(gFat, { clientX: 400, clientY: 150 });
+  ok(idxDrin != null, "zeiger ausserhalb Gegenprobe: schon im Diagramm kommt kein Index - blind");
+  const idxDrunter = q._xhMove(gFat, { clientX: 400, clientY: 900 });
+  ok(idxDrunter == null,
+     `zeiger ausserhalb: unter dem Diagramm kommt immer noch ein Index (${idxDrunter})`);
+  onMove({ clientX: 400, clientY: 900,
+           target: { closest: (sel) => (sel === "[data-grp]" ? gFat : null) } });
+  ok(/zuletzt/.test(stripFat._s.x),
+     `zeiger ausserhalb: die Leiste bleibt auf einem abgelesenen Wert stehen (${stripFat._s.x})`);
+  ok(merk !== stripFat._s.x || /zuletzt/.test(merk),
+     "zeiger ausserhalb: der Ruhezustand ist nicht erkennbar");
+
+  // --- Punkt 3, zweite Stelle: die Zeile der Wertetabelle -----------------
+  const zeilen = [...tile.matchAll(/<tr data-rg="fat" data-ri="(\d+)"><td>Stunde (\d+)</g)];
+  ok(zeilen.length === fat.measured.length,
+     `zeiger tabelle: ${zeilen.length} ablesbare Zeilen gegen ${fat.measured.length} Messungen`);
+  for (const [, ri, hour] of zeilen) {
+    ok(grid[+ri] && grid[+ri].hour === +hour,
+       `zeiger tabelle: Zeile zu Stunde ${hour} zeigt auf Rasterpunkt ${ri} - das ist eine andere Stelle`);
+  }
+  // Ohne Null-Pruefung stuerzt dieser Block bei der Mutation ab, statt sie zu
+  // zaehlen - und ein abgestuerzter Test meldet am Ende "0 Fehler" (§9).
+  const treffer = zeilen.find((z) => +z[2] === 2);
+  ok(treffer != null, "zeiger tabelle: keine ablesbare Zeile zur gemessenen Stunde");
+  if (treffer) {
+    onMove({ clientX: 0, clientY: 0,
+             target: { closest: (sel) => (sel === "[data-ri]"
+               ? { dataset: { rg: "fat", ri: treffer[1] } } : null) } });
+    ok(leadBox._v.v === M.fmt(mess.watts),
+       `zeiger tabelle: die Zeile schreibt ${leadBox._v.v} statt ${M.fmt(mess.watts)} in die Leitzahl`);
+    ok(stripFat._s.x.includes("1,50 h") || stripFat._s.x.includes("1.50 h"),
+       `zeiger tabelle: die Leiste folgt der Zeile nicht (${stripFat._s.x})`);
+  }
+}
+
 report("test_panel_fixes");

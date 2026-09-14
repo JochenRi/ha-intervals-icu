@@ -1108,11 +1108,32 @@ class IntervalsIcuPanel extends HTMLElement {
       const m = f.measured.find((r) => r.hour != null && r.hour === q.hour);
       return m ? m.watts : null;
     });
+    // Der Ruhezustand der Leitzahl ist eine EIGENE Rechnung, nicht der erste
+    // Rasterpunkt: der Anker ist der Fit bei Dauer null, das Raster beginnt bei
+    // der ersten Fahrtstunde. Beide bleiben deshalb beschriftet - sonst sieht
+    // der Sprung zwischen ihnen wie ein Rundungsfehler aus.
+    const baseNote = `gemessen: ${fmt(f.anchor_n)} Fahrten in Stunde 1, Repräsentantenmethode `
+      + `nach Andriolo, auf Intervals' eigener DFA-Fensterung`;
+    const occupied = (i) => {
+      const m = f.measured.find((r) => r.hour != null && r.hour === grid[i].hour);
+      return m ? m.n : null;
+    };
     this._grp.fat = {
       xy: true, n: grid.length,
       pts: grid.map((q) => ({ x: q.t, y: q.watts })),
       xl: (i) => fmt(grid[i].t, 2) + " h Fahrtzeit"
         + (grid[i].hour == null || measuredAt[i] == null ? " — Studienform, keine Messung" : ""),
+      lead: {
+        base: fmt(f.anchor_base), baseColor: ROLE.series,
+        baseLabel: "Ausgeruht, bei Dauer null", baseNote,
+        label: (i) => "Schwellenleistung bei " + fmt(grid[i].t, 2) + " h Fahrtzeit",
+        val: (i) => fmt(measuredAt[i] == null ? grid[i].watts : measuredAt[i]),
+        color: (i) => (measuredAt[i] == null ? C.slate : ROLE.series),
+        note: (i) => (measuredAt[i] == null
+          ? `Studienform, keine Messung · Spanne ${fmt(grid[i].lo)}–${fmt(grid[i].hi)} W`
+          : `gemessen · ${fmt(occupied(i))} ${occupied(i) === 1 ? "Fahrt" : "Fahrten"}`
+            + ` · Studienform ${fmt(grid[i].watts)} W · Spanne ${fmt(grid[i].lo)}–${fmt(grid[i].hi)} W`),
+      },
       rows: [
         { l: "gemessen", c: ROLE.series, u: "W", dec: 0, vals: measuredAt },
         { l: "Studienform", c: C.slate, u: "W", dec: 0, vals: grid.map((q) => q.watts) },
@@ -1128,7 +1149,9 @@ class IntervalsIcuPanel extends HTMLElement {
     const rows = f.measured.map((r) => {
       const l = lit.find((q) => q.hour === r.hour);
       const dev = l ? r.watts - l.watts : null;
-      return `<tr><td>Stunde ${r.hour}</td><td class="tn">${fmt(r.watts)} W</td>
+      // Die Zeile zeigt auf denselben Rasterpunkt wie der Zeiger im Graphen.
+      const gi = grid.findIndex((q) => q.hour != null && q.hour === r.hour);
+      return `<tr${gi < 0 ? "" : ` data-rg="fat" data-ri="${gi}"`}><td>Stunde ${r.hour}</td><td class="tn">${fmt(r.watts)} W</td>
         <td class="tn">${l ? fmt(l.watts) + " W" : "–"}</td>
         <td class="tn">${dev == null ? "–" : sign(Math.round(dev)) + " W"}</td>
         <td>${badge(r.band === "solid" ? "green" : r.band === "thin" ? "amber" : "slate",
@@ -1142,10 +1165,11 @@ class IntervalsIcuPanel extends HTMLElement {
     const wannGemessen = wann && wann.hour != null
       ? f.measured.find((r) => r.hour === wann.hour) : null;
     return `<div class="card pad"><h3 class="secname">Ermüdungskurve der aeroben Schwelle</h3>
-      <div class="statgrid lead"><div class="stat wide"><small>Ausgeruht, bei Dauer null</small>
-        <b class="tn lead1" style="color:${ROLE.series}">${fmt(f.anchor_base)} <span class="unit">W</span></b>
-        <span class="mut">gemessen: ${fmt(f.anchor_n)} Fahrten in Stunde 1, Repräsentantenmethode
-        nach Andriolo, auf Intervals' eigener DFA-Fensterung</span></div></div>
+      <div class="statgrid lead"><div class="stat wide" data-lead="fat">
+        <small class="ldl">Ausgeruht, bei Dauer null</small>
+        <b class="tn lead1"><span class="ldv" style="color:${ROLE.series}">${fmt(f.anchor_base)}</span>
+          <span class="unit">W</span></b>
+        <span class="mut ldn">${baseNote}</span></div></div>
       ${readout("fat")}
       ${graph}
       <p class="hint">${ico("info", C.blue, 13)} <b>Dick und farbig ist gemessen</b>, dünn und grau
@@ -1295,8 +1319,33 @@ class IntervalsIcuPanel extends HTMLElement {
       const lo = f.corridor[0], hi = f.corridor[1];
       // Die Belegung entscheidet, was gezeigt wird - nichts wird geglättet.
       const wenig = !f.trend;
+      // Eigene Zeigergruppe je Familie. Sie liegt INNERHALB der Gruppe der
+      // Ermuedungskurve - `closest` nimmt die naechste, also diese. Ohne sie
+      // fing der aeussere Wrapper den Zeiger ab und schrieb einen Wert der
+      // Kurve in ihre Leiste (PROJEKTSTAND §7, zehnter Fall).
+      const grp = "blk_" + key;
+      if (punkte.length > 1) {
+        this._grp[grp] = {
+          n: punkte.length,
+          xl: (i) => (punkte[i].name || "ohne Namen") + " · " + dMed(punkte[i].date),
+          rows: [
+            // Aufgetragen ist der ERSTE eingeschwungene Block - also steht hier
+            // sein eigener alpha, nicht der Median. Verlaufsgroesse gegen
+            // Steuergroesse: derselbe Unterschied, den test_blocks.py erzwingt.
+            { l: "erster Block", c: ROLE.series, u: "W", dec: 0, vals: punkte.map((q) => q.first_watts) },
+            { l: "alpha dort", c: ROLE.series, u: "", dec: 2, vals: punkte.map((q) => q.first_alpha) },
+            { l: "Median alpha", c: C.tx2, u: "", dec: 3, vals: punkte.map((q) => q.median_alpha) },
+            { l: "Blöcke", c: C.tx2, u: "", dec: 0, vals: punkte.map((q) => q.n_blocks) },
+          ],
+          // KEIN `lead`: die Leitzahl dieser Karte ist die Leistung im ersten
+          // eingeschwungenen Block und bleibt stehen, waehrend der Zeiger
+          // ueber die Punkte faehrt. Sie ist eine Steuergroesse, keine
+          // Ablesung - anders als in der Ermuedungskachel, und das ist
+          // zugesichert statt zufaellig.
+        };
+      }
       const graph = punkte.length > 1 ? chart({
-        h: 170, n: punkte.length,
+        h: 170, n: punkte.length, grp,
         y0: Math.floor(Math.min(...punkte.map((p) => p.first_watts)) / 10) * 10 - 10,
         y1: Math.ceil(Math.max(...punkte.map((p) => p.first_watts)) / 10) * 10 + 10,
         xt: punkte.map((p, i) => ({ i, t: dShort(p.date) })),
@@ -1314,7 +1363,7 @@ class IntervalsIcuPanel extends HTMLElement {
         <td>${p.step_pct === 0
           ? badge("green", "im Korridor")
           : badge("amber", (p.step_pct > 0 ? "+" : "") + fmt(p.step_pct) + " %")}</td></tr>`).join("");
-      return `<div class="card pad">
+      return `<div class="card pad" data-grp="${grp}">
         <h4 class="subsec">${NAME[key] || key}</h4>
         <div class="statgrid lead"><div class="stat wide">
           <small>Leistung im ersten eingeschwungenen Block</small>
@@ -1336,6 +1385,7 @@ class IntervalsIcuPanel extends HTMLElement {
           <b>Die Prüfung schlägt derzeit auch bei sauberen Ausschnitten an</b>; ihre Toleranz
           wird noch an den Daten bestimmt. Bis dahin: ein Hinweis zum Nachsehen, keine
           Fehlermeldung.</p>` : ""}
+        ${graph ? readout(grp) : ""}
         ${graph}
         ${wenig ? `<p class="hint">${ico("info", C.blue, 13)} <b>${fmt(f.sessions)}
           ${f.sessions === 1 ? "Einheit" : "Einheiten"}</b> — unter ${fmt(f.min_for_trend)} wird
@@ -1922,9 +1972,15 @@ class IntervalsIcuPanel extends HTMLElement {
       // a row under the pointer brushes its point in the graph
       const row = e.target.closest && e.target.closest("[data-aid]");
       if (row) { this._brush(row.dataset.aid); return; }
+      // Die ZWEITE Ablesestelle: eine Zeile der Wertetabelle zeigt auf dieselbe
+      // Stelle wie der Zeiger im Graphen und schreibt dieselbe Leiste. Eine
+      // eigene Rechnung daneben waere eine zweite Fassung derselben Mechanik.
+      const cell = e.target.closest && e.target.closest("[data-ri]");
+      if (cell) { this._fillReadout(cell.dataset.rg, +cell.dataset.ri); return; }
       const g = e.target.closest && e.target.closest("[data-grp]");
       if (!g) { this._xhHide(); this._brush(null); return; }
       const idx = this._xhMove(g, e);
+      if (idx == null) { if (!this._drag) { this._xhHide(); this._brush(null); } return; }
       if (g.dataset.grp === "dfa") {
         if (this._drag) this._dragTo(g, idx);
         else this._brush(this._dfaIdToIdx(idx));
@@ -2065,23 +2121,54 @@ class IntervalsIcuPanel extends HTMLElement {
   /* Write one group's values into its strip. idx null means "latest". */
   _fillReadout(name, idx) {
     const meta = this._grp[name];
-    const strip = this.shadowRoot.querySelector(`[data-rdo="${name}"]`);
-    if (!meta || !strip) return;
+    if (!meta) return;
     let i = idx;
     if (i == null) {
       i = meta.n - 1;
       const first = meta.rows[0];
       if (first) while (i > 0 && first.vals[i] == null) i--;
     }
-    const xs = strip.querySelector(".rdox"), vs = strip.querySelector(".rdov");
-    if (xs) xs.textContent = meta.xl(i) + (idx == null ? " (zuletzt)" : "");
-    if (vs) {
-      vs.innerHTML = meta.rows.map((r) => {
-        const v = r.vals[i];
-        return `<span class="rv"><i style="background:${r.c}"></i>${esc(r.l)}
-          <b class="tn">${v == null ? "–" : fmt(r.mul ? v * r.mul : v, r.dec || 0)}${r.u ? " " + r.u : ""}</b></span>`;
-      }).join("");
+    const strip = this.shadowRoot.querySelector(`[data-rdo="${name}"]`);
+    if (strip) {
+      const xs = strip.querySelector(".rdox"), vs = strip.querySelector(".rdov");
+      if (xs) xs.textContent = meta.xl(i) + (idx == null ? " (zuletzt)" : "");
+      if (vs) {
+        vs.innerHTML = meta.rows.map((r) => {
+          const v = r.vals[i];
+          // Eine Zeile darf eine SPANNE tragen statt einer Zahl. Die Bandbreite
+          // stand bis 0.49.2 als Breite in der Leiste und als Spanne in der
+          // Tabelle - zwei verschiedene Zahlen unter einem Namen.
+          const shown = v == null ? "–"
+            : (typeof v === "string" ? esc(v) : fmt(r.mul ? v * r.mul : v, r.dec || 0));
+          return `<span class="rv"><i style="background:${r.c}"></i>${esc(r.l)}
+            <b class="tn">${shown}${v != null && r.u ? " " + r.u : ""}</b></span>`;
+        }).join("");
+      }
     }
+    this._fillLead(name, idx == null ? null : i);
+  }
+
+  /* Die grosse Zahl folgt dem Zeiger - aber NUR, wo die Kachel es ansagt.
+     Die Ermuedungskurve sagt es an: dort ist die Leitzahl eine Ablesung und der
+     Ausgangswert nur ihr Ruhezustand. Die Block-Karten sagen es NICHT an: dort
+     ist die Leitzahl die Leistung im ersten eingeschwungenen Block, und die
+     soll stehenbleiben, waehrend der Zeiger ueber die Punkte faehrt. Zwei
+     Verhaltensweisen, EINE Mechanik - wer sie trennt, bekommt zwei Fassungen.
+     Eine Gruppe ohne `lead` ruehrt hier nachweislich nichts an. */
+  _fillLead(name, i) {
+    const ld = (this._grp[name] || {}).lead;
+    if (!ld) return;
+    const box = this.shadowRoot.querySelector(`[data-lead="${name}"]`);
+    if (!box) return;
+    const put = (sel, txt, col) => {
+      const el = box.querySelector(sel);
+      if (!el) return;
+      el.textContent = txt;
+      if (col && el.style) el.style.color = col;
+    };
+    put(".ldl", i == null ? ld.baseLabel : ld.label(i));
+    put(".ldv", i == null ? ld.base : ld.val(i), i == null ? ld.baseColor : ld.color(i));
+    put(".ldn", i == null ? ld.baseNote : ld.note(i));
   }
 
   /* Returns the index under the pointer, so brushing and range dragging read
@@ -2092,6 +2179,20 @@ class IntervalsIcuPanel extends HTMLElement {
     const svg = g.querySelector("svg.ch");
     if (!svg) return null;
     const rect = svg.getBoundingClientRect();
+    // Die Leiste gehoert zum DIAGRAMM, nicht zur ganzen Karte. Bis 0.49.2 fing
+    // der Gruppen-Wrapper JEDE Zeigerbewegung ab - auch ueber Text, Tabellen
+    // und den Rechenweg - und schrieb dafuer einen Index in die Leiste. In der
+    // Durability-Kachel liegen die Block-Karten im selben Wrapper: ueber einer
+    // Block-Kurve stand deshalb ein Wert der ERMUEDUNGSKURVE in der Leiste
+    // (PROJEKTSTAND §7, zehnter Fall). Ausserhalb des Diagramms gibt es nichts
+    // abzulesen, und dann wird auch nichts geschrieben.
+    // Geprueft wird die SENKRECHTE Achse, und nur sie: dort sitzt der Fehler,
+    // weil der Wrapper ueber die ganze Kartenhoehe reicht, das Diagramm aber
+    // nicht. Waagerecht bleibt es beim Klemmen - ein Zeiger links neben der
+    // Achsenbeschriftung meint den ersten Punkt und nicht "nichts", und das
+    // ist seit 0.9.3 zugesichert.
+    const bottom = rect.bottom != null ? rect.bottom : rect.top + rect.height;
+    if (e.clientY < rect.top || e.clientY > bottom) return null;
     const W = +svg.dataset.w, padL = +svg.dataset.padl, padR = +svg.dataset.padr;
     const localX = (e.clientX - rect.left) * (W / rect.width);
     const pw = W - padL - padR;

@@ -7,7 +7,7 @@ Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lok
 archiviert, auswertet und in einem eigenen Seitenleisten-Panel darstellt.
 
 **Umfang:** ~14.760 Zeilen, davon ~4.960 Frontend · 27 WebSocket-Befehle · 16 Einheiten in
-9 Familien · 18 Testdateien mit **5.341** gezählten Einzelprüfungen · 57 Releases.
+9 Familien · 18 Testdateien mit **5.388** gezählten Einzelprüfungen · 57 Releases.
 
 ---
 
@@ -1246,7 +1246,7 @@ den Non-Responder-Befund (Manresa-Rocamora 2021).
 
 ## 9. Prüfstand
 
-**18 Dateien, 5.341 gezählte Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
+**18 Dateien, 5.388 gezählte Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
 HA-Instanz oder einen Browser.
 
 | Datei | prüft | Umfang |
@@ -1266,7 +1266,7 @@ HA-Instanz oder einen Browser.
 | `test_blocks.py` | ein Wert je Block: der Anlauf wird verworfen (mit der Gegenprobe am 4-Minuten-Block, wo auch der Median kippt), der echte Median gegen die Index-Bildung, der Regelkreis nach oben wie nach unten mit familieneigener Schrittgrenze, Steuergröße Median gegen Verlaufsgröße erster Block, Belegungsgrenze für die Linie; **die Physik-Gegenprobe an den echten Lap-Grenzen (Arbeit trägt mehr als die Pause daneben) mit dem Sekunden-Fehler als Gegenfall, und die fremde Gegenprobe gegen Intervals' eigenen Abschnittswert** | 66 |
 | `test_suite_hygiene.py` | der Prüfstand prüft sich selbst: **genau eine** Summary je Datei, die etwas zählt, nichts Gezähltes dahinter, Fehler werden gedruckt | 81 |
 | `test_panel_views.js` | alle Ansichten gegen volle, leere, löchrige, entartete Daten; Zeitfenster, Brushing, Achsenregel; Tagesbeschriftung und Abgleich-Dialog mit Schreibweg und Scroll-Erhalt; **die Durability-Wolke: Gewicht als Größe und Deckkraft, Gerade nur bei gesicherter Steigung, Register getrennt; der Kopf: drei Zeilen, weder Urteils- noch Datenregister, Rückfall-Satz und Ausweitungshinweis je mit Gegenfall**; **der Wochenplan: Stufen nur in der laufenden Woche, Satz statt Stufe ab Woche zwei, gefahren gegen vorgesehen ohne Paarung, Legende und Quellenblock**; **der Historienbeginn: eigener DFA-Zeitraum in Kopfzeile und Reiter, mit Gegenfall und leerer Payload**; **die Ermüdungskurve: Beleg und Setzung im Bild und im Text getrennt, beide Leserichtungen, die namentliche Ausschlussliste, der Zustand „rechnet noch" mit Fortschritt**; **L1b als Setzung beschriftet, mit der eigenen Messung daneben**; **der Umzug in die Durability-Kachel: die Ehrlichkeitsregel übertragen, die Ausschlusszahl aus dem Zählfeld statt aus der gekappten Liste**; **die tauben Abschnitte klappen zu, und die Datenlage öffnet sie wieder — mit beiden Öffnungsbedingungen einzeln**; **die Einheitenkarte nennt die Herkunft je Abschnitt — gemessen, Studienform oder Rückfall auf die FTP; **die Herkunft an der Einheit samt Rolle-Grenze, und der Rückfall-Hinweis nur dort, wo gemessen werden soll**; **die Blockmessung: der Widerspruch der fremden Gegenprobe wird als Hinweis und nicht als Fehler beschriftet, Leitzahl erster Block, Steuerung auf ihren Einzelwerten sichtbar, Belegung mit Gegenfall, die Rolle-Grenze** | 1270 |
-| `test_panel_fixes.js` | je ein Nachweis pro behobenem Fehler, plus die Zeiger-Simulation; Quelltext-Wächter über das ganze Frontend, beidseitig (keine Zahl im Quelltext, jede Schwelle nachweislich aus der Payload), seit 0.41.0 auch über Progressionsfaktor, Risikoknick, Rundungsschritt und Bezugsfenster, **seit 0.42.0 über `rWorkouts` UND `rPlanWeeks` (keine Urteilsregel im Frontend) plus den Wortabgleich Fixture gegen `workouts.py`**, **seit 0.45.0 über `rFatigue` samt Rechenweg-Helfer — je Kachel nachzutragen, deshalb mit Existenzprüfung der Liste**; **der Zeiger über der Ermüdungskurve am simulierten Ereignis, und der eine Ladeweg für ihre Payload**; **`rBlocks` unter demselben Wächter**; **die Zuordnung Kachel → Reiter, vollständig und mit Gegenprobe** | 449 |
+| `test_panel_fixes.js` | je ein Nachweis pro behobenem Fehler, plus die Zeiger-Simulation; Quelltext-Wächter über das ganze Frontend, beidseitig (keine Zahl im Quelltext, jede Schwelle nachweislich aus der Payload), seit 0.41.0 auch über Progressionsfaktor, Risikoknick, Rundungsschritt und Bezugsfenster, **seit 0.42.0 über `rWorkouts` UND `rPlanWeeks` (keine Urteilsregel im Frontend) plus den Wortabgleich Fixture gegen `workouts.py`**, **seit 0.45.0 über `rFatigue` samt Rechenweg-Helfer — je Kachel nachzutragen, deshalb mit Existenzprüfung der Liste**; **der Zeiger über der Ermüdungskurve am simulierten Ereignis, und der eine Ladeweg für ihre Payload**; **`rBlocks` unter demselben Wächter**; **die Zuordnung Kachel → Reiter, vollständig und mit Gegenprobe** | 496 |
 | `test_panel_design.js` | Gestaltungsregeln als Zusicherung, Auswahl als Form, Achse im Aufklappen, Etiketten im Kategorienregister; **eingefrorene `chart()`-Referenz aus dem Stand vor dem Eingriff** und der Zeiger-Unverändert-Beweis über vier Ansichten; **vier Urteilsfarben, vier Formen, der Reiz-Ton in keinem Kategorienregister, die Reiz-Form kein Last-Blitz** | 235 |
 | `test_projektstand.py` | die Tabelle unter diesem Absatz gegen einen echten Suite-Lauf: jede Zeile einzeln, Dateien ohne gemeldete Zahl, Kopfzeile und Einleitungssatz; **die eigene Zeile gegen den eigenen Zähler** | 60 |
 
