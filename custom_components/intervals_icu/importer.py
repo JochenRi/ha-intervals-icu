@@ -72,7 +72,7 @@ UNAVAILABLE_NOTE = "_note"
 # Bumped whenever the DFA maths changes. Stored summaries carrying an older
 # version are dropped and recomputed - the streams themselves are not kept, so
 # a fix would otherwise never reach the values already in the archive.
-DFA_ALGO_VERSION = 6
+DFA_ALGO_VERSION = 7
 
 # Bumped when ACTIVITY_FIELDS grows: stored summaries were fetched with the
 # old field list and would otherwise never gain the new columns.
@@ -270,10 +270,10 @@ async def async_import_dfa(
                 ).get("laps") or []
             except Exception as err:  # noqa: BLE001 - eine Fahrt ohne Laps ist kein Abbruch
                 _LOGGER.debug("laps for %s failed: %s", key, err)
-            summary["blocks"] = derive.dfa_blocks(
+            summary["blocks"] = derive.drop_warmup_blocks(derive.dfa_blocks(
                 by_name.get("dfa_a1"), by_name.get("watts"),
                 by_name.get("heartrate"), laps,
-            )
+            ))
         data["dfa"][key] = summary or {}
         done += 1
         if progress is not None:

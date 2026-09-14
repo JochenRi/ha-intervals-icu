@@ -157,6 +157,63 @@ f2 = blocks.series(d2)["families"]["vo2max"]
 check("Gegenprobe: gegenlaeufige Reihenfolge wird erkannt", f2["points"][0]["order_ok"], False)
 check("und in der Payload gemeldet", f2["order_conflicts"], ["2026-09-01"])
 
+# --- 0.49.1: als Arbeit etikettierte Einroll-Abschnitte ----------------------
+print("\n=== ein lockerer Abschnitt mit WORK-Etikett faellt raus ===")
+TEMPO = [{"label": "WORK", "alpha": 1.529, "watts": 164},
+         {"label": "WORK", "alpha": 0.974, "watts": 183},
+         {"label": "WORK", "alpha": 0.852, "watts": 176},
+         {"label": "WORK", "alpha": 0.872, "watts": 165}]
+t = derive.drop_warmup_blocks(TEMPO)
+check("Tempo 13.09.: der lockere Abschnitt verliert sein Arbeits-Etikett",
+      t[0]["label"], "WARMUP_LABELLED_WORK")
+check("und die Leitzahl ist danach ein echter Block",
+      [b["watts"] for b in t if b["label"] == "WORK"][0], 183)
+# DIE WATT-GEGENPROBE, GEZAEHLT UND BENANNT: der verworfene Abschnitt traegt
+# 164 W, der ECHTE vierte Block 165 W. Eine Wattschwelle kann das nicht
+# trennen - deshalb entscheidet alpha.
+ok("Gegenprobe: der echte Block mit 165 W bleibt, obwohl er nur 1 W staerker ist",
+   t[3]["label"] == "WORK")
+ok("Gegenprobe: 164 gegen 165 W waere ueber die Leistung nicht trennbar",
+   abs(TEMPO[0]["watts"] - TEMPO[3]["watts"]) <= 1)
+# Denselben Fall gibt es auch bei VO2max - es war nie ein Tempo-Problem.
+VO_WARM = [{"label": "WORK", "alpha": 1.336, "watts": 206},
+           {"label": "WORK", "alpha": 0.828, "watts": 250},
+           {"label": "WORK", "alpha": 0.522, "watts": 251},
+           {"label": "WORK", "alpha": 0.360, "watts": 251}]
+check("VO2max 02.08.: derselbe Fall, dieselbe Regel",
+      derive.drop_warmup_blocks(VO_WARM)[0]["label"], "WARMUP_LABELLED_WORK")
+
+print("\n=== DIE 11.08.-ZUSICHERUNG: ein echter Block ueber dem staerksten ===")
+# Am 11.08.2026 traegt der VIERTE Block alpha 0,431 und liegt damit UEBER dem
+# staerksten Block (0,426) - er ist trotzdem echt. Das ist der schaerfste Test
+# des Umbaus: eine Regel ohne Abstandsmass wirft ihn raus.
+ELF = [{"label": "WORK", "alpha": 0.426, "watts": 260},
+       {"label": "WORK", "alpha": 0.399, "watts": 251},
+       {"label": "WORK", "alpha": 0.338, "watts": 236},
+       {"label": "WORK", "alpha": 0.431, "watts": 230}]
+elf = derive.drop_warmup_blocks(ELF)
+check("11.08.: alle vier Bloecke bleiben Arbeit",
+      [b["label"] for b in elf], ["WORK"] * 4)
+check("und die Leitzahl bleibt unveraendert", elf[0]["watts"], 260)
+# GEGENPROBE, GEZAEHLT UND BENANNT: OHNE Abstandsmass - also mit der blossen
+# Bedingung "alpha hoeher als der staerkste Block, Leistung niedriger" - fiele
+# genau dieser Block raus. Die drei Streuungen sind nicht schmueckend.
+ohne_abstand = [b for b in ELF if not (b["alpha"] > ELF[0]["alpha"] and b["watts"] < 260)]
+ok("Gegenprobe: ohne Abstandsmass verloere die Einheit einen echten Block",
+   len(ohne_abstand) < len(ELF))
+check("und zwar genau den vierten", len(ELF) - len(ohne_abstand), 1)
+
+# SweetSpot ist strukturell unberuehrt: zwei Bloecke ergeben keine Streuung
+# der "uebrigen", die Regel greift dort nie.
+SS = [{"label": "WORK", "alpha": 0.869, "watts": 198},
+      {"label": "WORK", "alpha": 0.658, "watts": 194}]
+check("SweetSpot mit zwei Bloecken bleibt unberuehrt",
+      [b["label"] for b in derive.drop_warmup_blocks(SS)], ["WORK", "WORK"])
+# Und die Physik-Pruefung aus 0.48.1 greift weiter: Pausen bleiben Pausen.
+MIT_PAUSE = TEMPO + [{"label": "RECOVERY", "alpha": 1.2, "watts": 106}]
+check("Pausen behalten ihr Etikett",
+      [b["label"] for b in derive.drop_warmup_blocks(MIT_PAUSE)][-1], "RECOVERY")
+
 # --- der Regelkreis -----------------------------------------------------------
 print("\n=== der Regelkreis: Vorschlag nach oben wie nach unten ===")
 KORR = BLOCK_CORRIDORS["vo2max"]

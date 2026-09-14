@@ -2586,6 +2586,23 @@ Sekunden-Fehler als Gegenfall) und eine FREMDE Quelle — Intervals' eigener
 mitmittelt, und taugt nicht als Ersatz; aber seine **Reihenfolge** muss zu
 unserer passen. Läuft sie auseinander, sagt die Karte es.
 
+### M3c · Die Blockauswahl: Ausreisser gegen die eigene Einheit (0.49.1)
+
+Geraete etikettieren Einroll- oder Ausrollteile gelegentlich als `WORK`. Die
+Leitzahl traf dann den falschen Abschnitt — **am 02.07. 182 W statt 238, am
+19.07. 197 statt 278, am 02.08. 206 statt 250, bei Tempo 164 statt 183.** Es
+war nie ein Tempo-Problem: fuenf der sechs betroffenen Einheiten sind VO2max.
+
+**Nicht ueber die Leistung**: bei Tempo traegt der lockere Abschnitt 164 W und
+der echte vierte Block 165 W. **Nicht gegen den Korridor** — das waere
+zirkulaer und loeschte genau den Befund, den die Regelung melden soll. Es liegt
+nahe und ist falsch; wer hier baut, lese das zuerst.
+
+**Sondern als Ausreisser gegen die Einheit selbst:** alpha mehr als drei
+Streuungen der uebrigen Bloecke ueber deren Median UND weniger Leistung als der
+staerkste. Das Abstandsmass ist nicht schmueckend: am 11.08. liegt ein ECHTER
+Block mit alpha 0,431 ueber dem staerksten (0,426) und muss bleiben.
+
 ### M4 · Was gebaut wird, wenn freigegeben
 
 1. **Blockwerte beim Import mitrechnen und archivieren**, in der Bauart von

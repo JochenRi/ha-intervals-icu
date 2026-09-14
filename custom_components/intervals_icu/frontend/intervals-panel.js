@@ -1330,8 +1330,12 @@ class IntervalsIcuPanel extends HTMLElement {
         ${(f.order_conflicts || []).length ? `<p class="hint">${ico("warn", C.amber, 13)}
           <b>${fmt(f.order_conflicts.length)} Einheit(en) widersprechen der Gegenprobe:</b>
           dort läuft unsere Reihenfolge der Blockwerte anders als die von Intervals selbst
-          berechnete. Dann stimmt etwas am Ausschnitt — die Zahlen dieser Einheiten sind mit
-          Vorsicht zu lesen.</p>` : ""}
+          berechnete. <b>Das ist noch kein Fehler.</b> Intervals mittelt jeden Block samt
+          Anlauf, wir verwerfen ihn — der Unterschied ist systematisch, und bei eng
+          beieinanderliegenden Blöcken entscheiden schon zwei Hundertstel über die Richtung.
+          <b>Die Prüfung schlägt derzeit auch bei sauberen Ausschnitten an</b>; ihre Toleranz
+          wird noch an den Daten bestimmt. Bis dahin: ein Hinweis zum Nachsehen, keine
+          Fehlermeldung.</p>` : ""}
         ${graph}
         ${wenig ? `<p class="hint">${ico("info", C.blue, 13)} <b>${fmt(f.sessions)}
           ${f.sessions === 1 ? "Einheit" : "Einheiten"}</b> — unter ${fmt(f.min_for_trend)} wird

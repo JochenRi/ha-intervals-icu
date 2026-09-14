@@ -852,6 +852,61 @@ def dfa_blocks(
     return out
 
 
+def drop_warmup_blocks(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Abschnitte aussortieren, die als Arbeit etikettiert sind, aber keine ist.
+
+    Geraete etikettieren einen Einroll- oder Ausrollteil gelegentlich als WORK.
+    Die Leitzahl "erster Arbeitsblock" trifft dann den falschen - am 02.07.2026
+    stand sie bei 182 W statt 238 W, am 19.07. bei 197 statt 278.
+
+    NICHT UEBER DIE LEISTUNG: bei der Tempo-Einheit vom 13.09.2026 traegt der
+    lockere Abschnitt 164 W und der echte vierte Block 165 W - zwischen ihnen
+    liegen 0,6 Prozentpunkte, jede Wattschwelle wirft beide zusammen weg.
+
+    NICHT GEGEN DEN KORRIDOR: das waere zirkulaer. Die Regelung soll gerade
+    melden, wenn alpha ueber dem Korridor liegt (so kam der +5-%-Schritt vom
+    23.07. zustande). Wer Bloecke oberhalb des Korridors entfernt, loescht
+    genau den Befund, den er messen will. Es liegt nahe und ist falsch.
+
+    SONDERN als AUSREISSER gegen die Einheit selbst: ein Block faellt raus,
+    wenn sein alpha mehr als drei Streuungen der UEBRIGEN Bloecke ueber deren
+    Median liegt UND er weniger Leistung traegt als der staerkste. Beide
+    Bedingungen aus den Zahlen der Einheit, keine gesetzte Grenze.
+
+    Das Abstandsmass ist nicht schmueckend: am 11.08.2026 liegt ein ECHTER
+    Block mit alpha 0,431 ueber dem staerksten (0,426). Ohne die drei
+    Streuungen fiele er raus.
+    """
+    work = [b for b in blocks if b.get("label") == "WORK"]
+    if len(work) < 3:
+        return blocks
+    powers = [b["watts"] for b in work if b.get("watts")]
+    if not powers:
+        return blocks
+    top = max(powers)
+    drop: list[int] = []
+    for i, b in enumerate(work):
+        rest = [x["alpha"] for j, x in enumerate(work)
+                if j != i and x.get("alpha") is not None]
+        if len(rest) < 2 or b.get("alpha") is None or not b.get("watts"):
+            continue
+        mid = _median(rest)
+        mean = sum(rest) / len(rest)
+        sd = (sum((x - mean) ** 2 for x in rest) / len(rest)) ** 0.5
+        if b["alpha"] > mid + 3 * sd and b["watts"] < top:
+            drop.append(id(b))
+    if not drop:
+        return blocks
+    out = []
+    for b in blocks:
+        if id(b) in drop:
+            out.append({**b, "label": "WARMUP_LABELLED_WORK",
+                        "dropped_reason": "alpha-Ausreisser gegen die eigene Einheit"})
+        else:
+            out.append(b)
+    return out
+
+
 def above_endurance_share(activity: dict[str, Any]) -> float | None:
     """Return the share of time spent ABOVE zone 2, in percent.
 
