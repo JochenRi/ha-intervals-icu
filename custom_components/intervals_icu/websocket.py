@@ -503,7 +503,11 @@ def websocket_ramp_tests(hass, connection, msg) -> None:
         "tests": ramp_lib.entries(data),
         "latest": ramp_lib.latest(data),
         "sources": ramp_lib.SOURCES,
-        "protocol": workout_lib.RAMP_TEST_STANDARD,
+        # `protocol` ist hier FORT (0.51.1). Die Beschreibung haengt an der
+        # Einheit und kommt ueber die workouts-Payload als `standard` - das ist
+        # die Stelle, die das Panel liest. Sie in ZWEI Payloads zu legen hiesse
+        # zwei Wahrheiten fuer einen Text; dass eine davon niemand liest, ist
+        # genau der Fall aus §7, neunzehnter Fall.
     })
 
 

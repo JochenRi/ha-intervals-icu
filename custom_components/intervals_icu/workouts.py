@@ -454,6 +454,13 @@ RAMP_TEST_STANDARD = [
     "sind. Belastbar ist, wie sie sich bei DIR über die Monate verändern.",
 ]
 
+# Die Beschreibung haengt AN DER EINHEIT, genau wie beim abgeloesten
+# Durability-Protokoll (0.44.0). Das Panel liest sie dort als `entry.standard` -
+# in 0.51.0 lag sie stattdessen in der ramp_tests-Payload unter `protocol`, und
+# ein `|| []` hat die Luecke lautlos in eine leere Liste verwandelt (§7,
+# neunzehnter Fall). EINE Quelle: RAMP_TEST_STANDARD, hier angehaengt.
+RAMP_TEST["standard"] = list(RAMP_TEST_STANDARD)
+
 LIBRARY.append(RAMP_TEST)
 BY_KEY[RAMP_TEST["key"]] = RAMP_TEST
 
@@ -746,6 +753,27 @@ def scaled(entry: dict[str, Any], ftp: float | None, aerobic_hr: int | None,
         # aus `hr_hint`. Es ist nachweislich falsch (0,70-1,00 der AEROBEN
         # Schwelle, waehrend die Rampe bis ueber die anaerobe geht) - aber ein
         # Schritt, der Punkt 1 und 2 baut, entscheidet Punkt 3 nicht nebenbei.
+            # Der Rechenweg gehoert an die Karte, nicht in den Commit: wer
+            # 307 W liest, muss sehen, dass 257 W gemessen sind und 50 W eine
+            # Setzung. `derivation` ist das Feld, das die Karte dafuer schon
+            # hat - es stand seit 0.51.0 leer, weil niemand es mehr fuellte.
+            out["derivation"] = [
+                f"Start {proto['start_w']} W — {proto['start_source']['label']}"
+                + (f" (Anteil {proto['start_source']['share']:.2f} der Schwelle)"
+                   if proto["start_source"]["share"] else ""),
+                f"Ende {proto['end_w']} W — {proto['end_source']['label']}"
+                + (f": Leitzahl {proto['end_source']['lead']['watts']} W"
+                   + (f" bei alpha {proto['end_source']['lead']['alpha']:.2f}"
+                      if proto["end_source"]["lead"].get("alpha") else "")
+                   if proto["end_source"]["lead"] else ""),
+                f"Reserve {proto['end_source']['reserve_w']} W = "
+                f"{proto['end_source']['reserve_min']} min × {RAMP_STEP_W_PER_MIN} W/min. "
+                "SETZUNG — die Literatur nennt dafür nichts. Ohne sie endet die Rampe "
+                "auf der eigenen Leitzahl, und die flache Strecke unter 0,5 wird nie "
+                "aufgezeichnet.",
+                f"Dauer {proto['minutes']} min = ({proto['end_w']} − {proto['start_w']}) W "
+                f"÷ {RAMP_STEP_W_PER_MIN} W/min. Gerechnet, nicht gesetzt.",
+            ]
         _apply_hr_hint(out, entry, aerobic_hr, max_hr)
         return out
 

@@ -785,6 +785,54 @@ eq(_p_test["end_source"]["kind"], "ramp_hrvt2",
    "N2: ohne Blockmessung greift die zweite Stufe des Endes nicht")
 eq(_p_test["end_w"], 315, "N2: HRVT2 plus Reserve ergibt eine andere Zahl")
 
+# --- 2f · KOMMT AN, WAS DIE KARTE ANZEIGEN SOLL? (0.51.1) -------------------
+# Die neun Punkte der Beschreibung waren in 0.51.0 UNSICHTBAR: das Backend
+# legte sie als `protocol` in die ramp_tests-Payload, das Panel liest sie als
+# `entry.standard` an der EINHEIT - zwei Payloads, zwei Namen, und ein `|| []`
+# hat die Luecke in eine leere Liste verwandelt. Kein Test schlug an, weil der
+# eine Test die Liste im Bauteil prueft und der andere die Darstellung im
+# Panel; dazwischen sah niemand hin (§7, neunzehnter Fall).
+#
+# DIESER WAECHTER SIEHT DAZWISCHEN. Er liest, welche Felder die Einheitenkarte
+# aus `entry` holt, und haelt sie gegen die WIRKLICH gebaute Payload.
+_PANEL_SRC = (Path(__file__).resolve().parents[1] / "custom_components" / "intervals_icu"
+              / "frontend" / "intervals-panel.js").read_text(encoding="utf-8")
+_panel_fields = set(re.findall(r"\bentry\.(\w+)", _PANEL_SRC))
+check(len(_panel_fields) > 20, "4: die Feldliste der Karte ist leer - der Ausdruck trifft nicht")
+
+# Felder, die diese EINE Einheit nicht hat, jedes mit Grund. Handgepflegt, also
+# mit Vollstaendigkeitspruefung darunter (vierte Bauregel).
+_NOT_FOR_RAMP = {
+    "baseline", "block_source", "catalogue_load", "catalogue_minutes", "curve_blocks",
+    "curve_share", "detail", "elastic_sections", "fit_reason", "fuel", "hr_source",
+    "label", "note", "ramp_source", "stage", "stretch_note", "stretched", "tag",
+    "unit", "value", "weight", "why", "z", "family", "family_label",
+}
+_card = W.scaled(W.BY_KEY["ramp_test"], 200.0, 160, None, _CURVE, _BLOCKS)
+for _field in sorted(_panel_fields - _NOT_FOR_RAMP):
+    check(_field in _card,
+          f"4: die Karte liest entry.{_field}, aber die Payload des Stufentests "
+          f"traegt das Feld nicht - es kaeme als leerer Rueckfall an")
+# DIE SCHAERFERE BAUART: den falschen Fall NAMENTLICH ausschliessen. Eine
+# Ausnahmeliste, die ein vorhandenes Feld nennt, ist veraltet - und eine
+# veraltete Ausnahmeliste deckt genau das naechste fehlende Feld zu.
+for _field in sorted(_NOT_FOR_RAMP):
+    check(_field not in _card,
+          f"4: {_field} steht in der Ausnahmeliste, ist aber vorhanden - "
+          f"die Liste ist veraltet und deckt das naechste fehlende Feld zu")
+# Und die drei, um die es geht, einzeln und benannt.
+eq(len(_card.get("standard") or []), len(W.RAMP_TEST_STANDARD),
+   "4: die Beschreibung kommt nicht vollstaendig an der Einheit an")
+check(len(_card.get("derivation") or []) >= 4,
+   "4: der Rechenweg der Rampe fehlt an der Karte")
+check("standard" in _PANEL_SRC and "derivation" in _PANEL_SRC,
+      "4: die Karte liest die beiden Felder gar nicht mehr")
+# EINE Quelle: der Text darf nicht zusaetzlich in einer zweiten Payload liegen.
+_WS_SRC = (Path(__file__).resolve().parents[1] / "custom_components" / "intervals_icu"
+           / "websocket.py").read_text(encoding="utf-8")
+check('"protocol": workout_lib.RAMP_TEST_STANDARD' not in _WS_SRC,
+      "4: die Beschreibung liegt wieder in ZWEI Payloads - eine davon liest niemand")
+
 # --- 3 · DIE ZUSTANDSREGEL AUS PAKET I, MIT EIGENER BEGRUENDUNG (K4) ----------
 # Uebernommen aus dem abgeloesten Protokoll, weil der Grund derselbe ist: bei
 # gelbem oder rotem Zustand ist die Zahl FALSCH, nicht die Einheit zu teuer.

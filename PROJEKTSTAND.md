@@ -7,7 +7,7 @@ Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lok
 archiviert, auswertet und in einem eigenen Seitenleisten-Panel darstellt.
 
 **Umfang:** ~14.760 Zeilen, davon ~4.960 Frontend · 27 WebSocket-Befehle · 16 Einheiten in
-9 Familien · 19 Testdateien mit **5.798** gezählten Einzelprüfungen · 60 Releases.
+9 Familien · 19 Testdateien mit **5.846** gezählten Einzelprüfungen · 60 Releases.
 
 ---
 
@@ -1452,7 +1452,7 @@ den Non-Responder-Befund (Manresa-Rocamora 2021).
 
 ## 9. Prüfstand
 
-**19 Dateien, 5.798 gezählte Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
+**19 Dateien, 5.846 gezählte Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
 HA-Instanz oder einen Browser.
 
 | Datei | prüft | Umfang |
@@ -1465,7 +1465,7 @@ HA-Instanz oder einen Browser.
 | `test_laps.py` | Runden-Normalisierung | 34 |
 | `test_coach.py` | Zustandsregeln, Trigger-Schärfung, Infektverlauf, Nachtreaktion, Einordnung, Bereiche, benannter 42-Tage-Verlauf, Basislinien-Primitive mit AST-Wächter, eingefrorene No-op-Referenz, gewichtete Basislinie mit Fixture-Beweis, **Durability: die drei Ehrlichkeitsregeln einzeln, Gewichtungs- und Umrechnungs-Gegenprobe, Blockverlauf; der Kopf: belegte Dauer am gesperrten Fall, längste ≠ arbeitsreichste und Fahrt-Watt ≠ Pool-Median je erzwungen, Fensterausweitung mit Gegenfall, Progressionsfaktor mit 1,0-Gegenprobe**; **die Erholungs-Setzung hinter der Reiz-Stufe** | 424 |
 | `test_plan.py` | Zielprofil, Wochenmuster, Zeitbudget, Progressions- und Kalender-Anker-Vertrag, Profil-Migration | 405 |
-| `test_workouts.py` | Einheitenauswahl, HF-Klemme, Infektleiter, Wattumrechnung, Intervals-Syntax, **die vier Stufen über die volle Wahrheitstabelle, rot mit Begründung welches von beiden, dieselbe Einheit über alle vier Stufen, die Lastskalierung an den Zahlen des Livebestands, eine Zustandsregel für beide Ansichten, kein Urteil ohne Stufe**; **die Staffelung aus der Kurve: gepaarte Reihe, Studienform darüber, Ein- und Ausrollen bleiben FTP, harte Familien unberührt**; **die Vorgabe ist ein Anteil der Schwelle, nicht die Schwelle — Watt- und Pulsseite gegeneinander gehalten** ; **Watt und Puls der harten Familien aus DERSELBEN Quelle, mit dem umgeschriebenen Gleichstandstest: fällt eine Seite auf die FTP zurück, muss die andere mitfallen**; **seit 0.51.0 die Quellenkette je Familie als EINE Tabelle: Rangfolge am Ergebnis von `scaled()` erzwungen, jede Stufe beschriftet einschließlich des Rückfalls, der Gleichstand über den Stufentest hinweg, und der LEERZUSTAND Zahl für Zahl — ohne markierten Test entscheidet die Kette wie zuvor** | 1600 |
+| `test_workouts.py` | Einheitenauswahl, HF-Klemme, Infektleiter, Wattumrechnung, Intervals-Syntax, **die vier Stufen über die volle Wahrheitstabelle, rot mit Begründung welches von beiden, dieselbe Einheit über alle vier Stufen, die Lastskalierung an den Zahlen des Livebestands, eine Zustandsregel für beide Ansichten, kein Urteil ohne Stufe**; **die Staffelung aus der Kurve: gepaarte Reihe, Studienform darüber, Ein- und Ausrollen bleiben FTP, harte Familien unberührt**; **die Vorgabe ist ein Anteil der Schwelle, nicht die Schwelle — Watt- und Pulsseite gegeneinander gehalten** ; **Watt und Puls der harten Familien aus DERSELBEN Quelle, mit dem umgeschriebenen Gleichstandstest: fällt eine Seite auf die FTP zurück, muss die andere mitfallen**; **seit 0.51.0 die Quellenkette je Familie als EINE Tabelle: Rangfolge am Ergebnis von `scaled()` erzwungen, jede Stufe beschriftet einschließlich des Rückfalls, der Gleichstand über den Stufentest hinweg, und der LEERZUSTAND Zahl für Zahl — ohne markierten Test entscheidet die Kette wie zuvor** | 1648 |
 | `test_websocket_registration.py` | Registrierung, Dekoratoren, FTP-Quelle, eine Ankerregel, day_context-Lese/Schreibweg, Ampel-Herkunftsnotiz, **der goal-Handler verdrahtet nur und bewertet ausschließlich die laufende Woche**; **`blocks` gehört zu den Payloads, ohne die eine Vorgabe still zurückfällt** | 365 |
 | `test_reconcile.py` | Abgleich mit Intervals: die drei Sperren einzeln, die datumslosen Aufräumstellen, No-op ohne Speichervorgang, der Handler am echten Aufruf (Import läuft, Historie nie geholt, Zwischenstand) | 130 |
 | `test_fatigue.py` | die Ermüdungskurve: strukturierte Einheiten VOR der Messung ausgeschlossen — mit der Gegenprobe, dass sie den Abfall von +4,0 auf +42,0 W verfälschen, wenn man sie drin lässt; Bereichsgrenzen aus der Belegung an zwei Beständen; Anker gemessen gegen Form gesetzt; **L1b: die HF-Setzung skaliert am eigenen Anker**; **die gepaarte Gegenrechnung und das Erkennungszeichen: die Belegung steigt, wo sie fallen müsste — mit Gegenprobe am sauberen Bestand**; **p050 wird erhoben und von nichts benutzt, mit Quelltext-Wächter über alle Verbraucher** | 54 |
