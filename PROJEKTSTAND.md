@@ -7,7 +7,7 @@ Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lok
 archiviert, auswertet und in einem eigenen Seitenleisten-Panel darstellt.
 
 **Umfang:** ~14.760 Zeilen, davon ~4.960 Frontend · 27 WebSocket-Befehle · 16 Einheiten in
-9 Familien · 19 Testdateien mit **5.496** gezählten Einzelprüfungen · 58 Releases.
+9 Familien · 19 Testdateien mit **5.520** gezählten Einzelprüfungen · 58 Releases.
 
 ---
 
@@ -452,6 +452,33 @@ Testfall löst keine einzige dieser Regeln aus. **Dieselbe Lehre wie die
 Dosis-Frage aus 0.45.0**, nur auf der Fixture-Seite: eine Gegenprobe muss den
 Fall treffen, für den die Regel gebaut wurde, nicht den Normalfall. Jede der
 sechs hat jetzt eine eigene Fixture, die genau ihre Regel trifft.
+
+**Fünfzehnter Fall (0.51.0): ein Schnitt ohne Zusicherung über die
+Dateigröße.** Beim Ausbau des Durability-Protokolls sollten drei Funktionen
+aus `workouts.py` verschwinden. Die Schnittregel lautete „von der Leerzeile vor
+der Funktion bis zur nächsten nicht eingerückten Zeile" — und sie ist falsch,
+weil **mehrzeilige Zeichenketten Zeilen am Spaltenanfang enthalten**. Der
+Schnitt endete mitten im Docstring, der Rest der Datei wurde mehrfach
+angehängt: **1.445 Zeilen wurden 3.603.**
+
+**Aufgefallen ist es nur, weil die Zeilenzahl hinterher gegengeprüft wurde.**
+Der Syntaxbaum war intakt, der Import lief, die Datei sah aus wie eine Datei.
+Ohne den Blick auf `wc -l` wäre eine dreifach vorhandene Funktionsliste in den
+nächsten Testlauf gegangen — und dort grün geworden, weil die letzte Definition
+gewinnt.
+
+**Das ist dieselbe Klasse wie eine Mutation ohne Trefferzusicherung (§7,
+elfter und zwölfter Fall), nur auf der anderen Seite der Werkzeugkiste:** dort
+wurde eine Änderung gemacht, die nicht ankam; hier wurde eine gemacht, die zu
+viel traf. Beide Male sah der Lauf danach richtig aus. **Regel: am Syntaxbaum
+schneiden, nicht am Zeilenbild — und die erwartete Größenänderung mitnennen.**
+
+**Das Gegenstück gehört in denselben Eintrag, weil es zeigt, wo schon ein
+Wächter steht:** in derselben Sitzung sind mehrere Ersetzungsskripte an einer
+Zeichenkette gescheitert, die es nicht mehr gab. Jedes Mal hat die
+Trefferzusicherung aus 0.51.0 zugeschlagen, laut gemeldet und **nichts
+geschrieben**. Genau so soll ein Fehler aussehen. Der Größenfall zeigt die
+Stelle, an der noch keiner laut scheitert.
 
 **Regel: wer zwei verschieden gerechnete Größen vergleicht, bildet die Toleranz
 aus dem Unterschied der Rechenwege, nicht aus einer Wunschgenauigkeit.** Die
@@ -1369,7 +1396,7 @@ den Non-Responder-Befund (Manresa-Rocamora 2021).
 
 ## 9. Prüfstand
 
-**19 Dateien, 5.496 gezählte Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
+**19 Dateien, 5.520 gezählte Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
 HA-Instanz oder einen Browser.
 
 | Datei | prüft | Umfang |
@@ -1387,7 +1414,7 @@ HA-Instanz oder einen Browser.
 | `test_reconcile.py` | Abgleich mit Intervals: die drei Sperren einzeln, die datumslosen Aufräumstellen, No-op ohne Speichervorgang, der Handler am echten Aufruf (Import läuft, Historie nie geholt, Zwischenstand) | 130 |
 | `test_fatigue.py` | die Ermüdungskurve: strukturierte Einheiten VOR der Messung ausgeschlossen — mit der Gegenprobe, dass sie den Abfall von +4,0 auf +42,0 W verfälschen, wenn man sie drin lässt; Bereichsgrenzen aus der Belegung an zwei Beständen; Anker gemessen gegen Form gesetzt; **L1b: die HF-Setzung skaliert am eigenen Anker**; **die gepaarte Gegenrechnung und das Erkennungszeichen: die Belegung steigt, wo sie fallen müsste — mit Gegenprobe am sauberen Bestand**; **p050 wird erhoben und von nichts benutzt, mit Quelltext-Wächter über alle Verbraucher** | 54 |
 | `test_blocks.py` | ein Wert je Block: der Anlauf wird verworfen (mit der Gegenprobe am 4-Minuten-Block, wo auch der Median kippt), der echte Median gegen die Index-Bildung, der Regelkreis nach oben wie nach unten mit familieneigener Schrittgrenze, Steuergröße Median gegen Verlaufsgröße erster Block, Belegungsgrenze für die Linie; **die Physik-Gegenprobe an den echten Lap-Grenzen (Arbeit trägt mehr als die Pause daneben) mit dem Sekunden-Fehler als Gegenfall, und die fremde Gegenprobe gegen Intervals' eigenen Abschnittswert** | 66 |
-| `test_suite_hygiene.py` | der Prüfstand prüft sich selbst: **genau eine** Summary je Datei, die etwas zählt, nichts Gezähltes dahinter, Fehler werden gedruckt; **seit 0.51.0 der kalte Bytecode-Cache — Import vorhanden, VOR dem ersten Bauteil-Import, und das Verzeichnis nicht fest, jedes mit Gegenprobe** | 120 |
+| `test_suite_hygiene.py` | der Prüfstand prüft sich selbst: **genau eine** Summary je Datei, die etwas zählt, nichts Gezähltes dahinter, Fehler werden gedruckt; **seit 0.51.0 der kalte Bytecode-Cache — Import vorhanden, VOR dem ersten Bauteil-Import, und das Verzeichnis nicht fest, jedes mit Gegenprobe**; **der Doppelwächter über jedes Bauteil — zwei Definitionen desselben Namens sind ein zu weit gegangener Schnitt, und die letzte gewinnt** | 144 |
 | `test_panel_views.js` | alle Ansichten gegen volle, leere, löchrige, entartete Daten; Zeitfenster, Brushing, Achsenregel; Tagesbeschriftung und Abgleich-Dialog mit Schreibweg und Scroll-Erhalt; **die Durability-Wolke: Gewicht als Größe und Deckkraft, Gerade nur bei gesicherter Steigung, Register getrennt; der Kopf: drei Zeilen, weder Urteils- noch Datenregister, Rückfall-Satz und Ausweitungshinweis je mit Gegenfall**; **der Wochenplan: Stufen nur in der laufenden Woche, Satz statt Stufe ab Woche zwei, gefahren gegen vorgesehen ohne Paarung, Legende und Quellenblock**; **der Historienbeginn: eigener DFA-Zeitraum in Kopfzeile und Reiter, mit Gegenfall und leerer Payload**; **die Ermüdungskurve: Beleg und Setzung im Bild und im Text getrennt, beide Leserichtungen, die namentliche Ausschlussliste, der Zustand „rechnet noch" mit Fortschritt**; **L1b als Setzung beschriftet, mit der eigenen Messung daneben**; **der Umzug in die Durability-Kachel: die Ehrlichkeitsregel übertragen, die Ausschlusszahl aus dem Zählfeld statt aus der gekappten Liste**; **die tauben Abschnitte klappen zu, und die Datenlage öffnet sie wieder — mit beiden Öffnungsbedingungen einzeln**; **die Einheitenkarte nennt die Herkunft je Abschnitt — gemessen, Studienform oder Rückfall auf die FTP; **die Herkunft an der Einheit samt Rolle-Grenze, und der Rückfall-Hinweis nur dort, wo gemessen werden soll**; **die Blockmessung: der Widerspruch der fremden Gegenprobe wird als Hinweis und nicht als Fehler beschriftet, Leitzahl erster Block, Steuerung auf ihren Einzelwerten sichtbar, Belegung mit Gegenfall, die Rolle-Grenze**; **0.50.0: der Kopf der Durability-Kachel ist fort und der Rechenweg sagt, wohin — die Progressionszeile in den Wochenplan, die längste Fahrt ersatzlos; die doppelte Wertetabelle aufgelöst, die Bandbreite als SPANNE in der Leiste** | 1281 |
 | `test_panel_fixes.js` | je ein Nachweis pro behobenem Fehler, plus die Zeiger-Simulation; Quelltext-Wächter über das ganze Frontend, beidseitig (keine Zahl im Quelltext, jede Schwelle nachweislich aus der Payload), seit 0.41.0 auch über Progressionsfaktor, Risikoknick, Rundungsschritt und Bezugsfenster, **seit 0.42.0 über `rWorkouts` UND `rPlanWeeks` (keine Urteilsregel im Frontend) plus den Wortabgleich Fixture gegen `workouts.py`**, **seit 0.45.0 über `rFatigue` samt Rechenweg-Helfer — je Kachel nachzutragen, deshalb mit Existenzprüfung der Liste**; **der Zeiger über der Ermüdungskurve am simulierten Ereignis, und der eine Ladeweg für ihre Payload**; **`rBlocks` unter demselben Wächter**; **die Zuordnung Kachel → Reiter, vollständig und mit Gegenprobe**; **seit 0.50.0 die Zeigerlogik als EINE Mechanik mit ZWEI zugesicherten Verhaltensweisen: die Leitzahl folgt in der Ermüdungskachel und bleibt in den Block-Karten stehen, beides am simulierten `pointermove`; der Wächter über `rPlanWeeks`, dem die Progressionszahlen gefolgt sind** | 509 |
 | `test_panel_design.js` | Gestaltungsregeln als Zusicherung, Auswahl als Form, Achse im Aufklappen, Etiketten im Kategorienregister; **eingefrorene `chart()`-Referenz aus dem Stand vor dem Eingriff** und der Zeiger-Unverändert-Beweis über vier Ansichten; **vier Urteilsfarben, vier Formen, der Reiz-Ton in keinem Kategorienregister, die Reiz-Form kein Last-Blitz** | 235 |
@@ -1415,6 +1442,18 @@ einer Schwelle nicht unterscheiden, und die Ausnahme, die man ihm dafür beibrin
 für jede Zahl, die sich als Umrechnung ausgibt. **Die Zahl wird aufgelöst, nicht die Prüfung
 aufgeweicht** — `DURABILITY_TEST_WORK_J` steht jetzt in `const.py`, direkt neben der Größe in kJ,
 mit dem Grund daneben.
+
+**Zehnte Bauregel, aus 0.51.0: am Syntaxbaum schneiden, nicht am Zeilenbild — und was
+dabei kaputtgeht, fällt laut auf.** „Bis zur nächsten nicht eingerückten Zeile" taugt als
+Schnittregel nicht, weil mehrzeilige Zeichenketten Zeilen am Spaltenanfang enthalten (§7,
+fünfzehnter Fall). **Der Schnitt selbst ist vom Prüfstand aus nicht erzwingbar** — er
+passiert im Werkzeug der Sitzung, nicht im Bestand; erzwingbar ist sein SCHADEN, und der hat
+eine eindeutige Form. Der Wächter in `test_suite_hygiene` hält jedes Bauteil gegen seinen
+eigenen Syntaxbaum und lässt keine zwei Definitionen desselben Namens auf oberster Ebene
+durch. Das ist wichtig, weil bei einer Doppeldefinition **die letzte gewinnt** und die Suite
+sonst grün bliebe. Am echten Schadensfall gegengeprüft: Datei aufgebläht, Wächter meldet
+Namen und beide Zeilennummern. **Wer schneidet, nennt trotzdem die erwartete
+Größenänderung** — der Wächter fängt den Schaden, nicht den Fehler.
 
 **Neunte Bauregel, aus 0.51.0: eine Gegenprobe läuft mit KALTEM Bytecode-Cache — erzwungen,
 nicht aufgeschrieben.** Python invalidiert eine `.pyc` über mtime und Größe der Quelle; eine

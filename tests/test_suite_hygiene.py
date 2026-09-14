@@ -116,6 +116,42 @@ for path in js_files:
             f"(Zeile {summary}) - sie wird nicht gemeldet",
         )
 
+# --- Zehnte Bauregel (0.51.0, §7, fünfzehnter Fall): keine Doppeldefinition --
+# Ein Schnitt, der zu weit ging, hat `workouts.py` von 1.445 auf 3.603 Zeilen
+# gebracht - der Rest der Datei hing danach mehrfach daran. Der Syntaxbaum war
+# intakt, der Import lief, und die Suite wäre GRÜN geworden, weil bei
+# doppelten Definitionen die letzte gewinnt.
+#
+# Der SCHNITT selbst ist von hier aus nicht erzwingbar: er passiert im Werkzeug
+# der Sitzung, nicht im Bestand. Der SCHADEN ist es - und er hat eine eindeutige
+# Form. Zwei Definitionen desselben Namens auf oberster Ebene sind in diesem
+# Bauteil nie Absicht.
+import ast as _ast
+
+COMPONENT = TESTS.parent / "custom_components" / "intervals_icu"
+_modules = sorted(COMPONENT.glob("*.py"))
+check(len(_modules) >= 10, f"Doppelwächter: nur {len(_modules)} Bauteile gefunden")
+for _mod in _modules:
+    _seen: dict[str, int] = {}
+    _dupes: list[str] = []
+    for _node in _ast.parse(_mod.read_text(encoding="utf-8")).body:
+        if isinstance(_node, (_ast.FunctionDef, _ast.AsyncFunctionDef, _ast.ClassDef)):
+            if _node.name in _seen:
+                _dupes.append(f"{_node.name} (Zeile {_seen[_node.name]} und {_node.lineno})")
+            _seen[_node.name] = _node.lineno
+    check(not _dupes,
+          f"{_mod.name}: Definition doppelt vorhanden — {', '.join(_dupes)}. "
+          f"Ein Schnitt hat zu viel oder zu wenig getroffen; die letzte "
+          f"Definition gewinnt, und die Suite würde das nicht bemerken")
+
+# Gegenprobe, gezählt und benannt: eine eingebaute Doppeldefinition wird
+# gefunden - sonst prüft die Schleife nur, dass die Dateien überhaupt parsen.
+_planted = _ast.parse("def f():\n    pass\n\n\ndef f():\n    pass\n")
+_names = [n.name for n in _planted.body if isinstance(n, _ast.FunctionDef)]
+check(len(_names) != len(set(_names)),
+      "Doppelwächter Gegenprobe: eine eingebaute Doppeldefinition wird NICHT "
+      "gefunden - der Wächter ist blind")
+
 # --- Neunte Bauregel (0.51.0, §7): der Bytecode-Cache wird ERZWUNGEN kalt ----
 # Python invalidiert eine .pyc ueber mtime UND Groesse der Quelle. Eine
 # Mutation, die gleich lang ist und in derselben Sekunde geschrieben wird - was
