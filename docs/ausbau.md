@@ -2971,15 +2971,37 @@ statt eine Zahl zu übernehmen, die wie ein Befund aussieht.
 
 ## Paket O — Anzeige-Release 0.50.0 (ÜBERGABESTAND, noch nichts gebaut)
 
+**Fünf Punkte: 1, 2, 3, 4, 5 — Punkt 6 ist gestrichen.**
+
 **Stand: 14.09.2026. Reine Darstellung: kein neuer Algorithmus, KEIN
 Algorithmus-Bump, KEINE Neuberechnung.**
 
-### O0 · Die Teilung — Teil B nur ganz, nie halb
+### O0 · Die Teilung — NEU ABGEWOGEN, nachdem Punkt 6 entfiel
 
-**Teil A: Punkte 1, 2, 4, 6.** Umbauten an bestehender Darstellung. Keine neue
-Interaktionslogik.
+**Punkt 6 (Datumsachse) ist gestrichen**, siehe O2. Damit wurde die Aufteilung
+noch einmal geprüft, und sie verschiebt sich:
 
-**Teil B: Punkte 3 und 5.** Sie sind DIESELBE Mechanik — die große Zahl folgt
+**EMPFEHLUNG: die vier verbleibenden Punkte in EIN Release.** Grund ist nicht
+der Umfang, sondern eine Abhängigkeit, die durch die Entscheidung zu Punkt 4
+entstanden ist: **die Bandbreite wandert aus der gestrichenen oberen Tabelle in
+die Ablesezeile aus Punkt 3.** Wer Punkt 4 ohne Punkt 3 ausliefert, entfernt
+die Tabelle, bevor ihr Ersatz steht — die Bandbreite wäre zwischenzeitlich
+NIRGENDS. Das ist genau der Zwischenzustand, den Paket N für den Stufentest
+ausdrücklich ausschließt, nur kleiner.
+
+**Punkt 4 hängt damit an Punkt 3, und Punkt 3 hängt an Punkt 5** (dieselbe
+Mechanik, siehe unten). Übrig bliebe für ein eigenes Vorab-Release nur 1 und 2
+— zu dünn, um ein Release zu rechtfertigen.
+
+**Falls der Kontext einer Sitzung doch nicht reicht**, ist die einzige saubere
+Schnittlinie: **1 und 2 vorziehen, dann 3 + 4 + 5 zusammen.** NICHT 1/2/4
+zusammen — das zerreißt die Bandbreite.
+
+**Das Hash-Risiko war ohnehin keins** (O1): die beiden Punkte, denen es
+zugeschrieben wurde, waren Punkt 6 und Punkt 5, und beide fassen `chart()`
+nicht an. Die Teilung stützte sich also nie darauf.
+
+**Punkt 3 und 5 bleiben in jedem Fall zusammen.** Sie sind DIESELBE Mechanik — die große Zahl folgt
 dem Zeiger, an Graph und Tabelle, in der Ermüdungskachel wie in den
 Block-Karten. **Wer die Zeigerlogik trennt, baut zweimal dasselbe und bekommt
 zwei Fassungen.** Das ist dieselbe Klasse wie die Reiter-Zuordnung aus 0.48.1,
@@ -3052,8 +3074,11 @@ trägt `date`, `first_watts`, `median_alpha`, `n_blocks`, `block_alphas`).
 **Dieselbe Bauart wie bei der Ermüdungskurve: feste Leiste im Kartenkopf, kein
 schwebender Kasten**, und die große Zahl folgt wie in Punkt 3.
 
-**6 · Datumsachse mit Monat.** Heute „Mi 03." / „Di 16." — bei einer Kurve über
-drei Monate nicht zuzuordnen.
+**6 · Datumsachse mit Monat — GESTRICHEN (14.09.2026).** Entscheidung des
+Athleten: wer beim Überfahren eines Punktes ohnehin das vollständige Datum
+bekommt (Punkt 3 und 5), für den ist die Achse darunter nur noch grobe
+Orientierung und muss nicht umgebaut werden. **Die Datumsachse bleibt, wie sie
+ist.** Der Punkt ist erledigt, nicht vertagt.
 
 ### O3 · Nicht verhandelbar
 
