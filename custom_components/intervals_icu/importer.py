@@ -94,12 +94,12 @@ def empty_data(athlete_id: str) -> dict[str, Any]:
         # top level only, so a block the skeleton does not know never comes
         # into being on an old archive - the exact gap 0.35.0 repaired.
         "day_context": {},
-        # marked protocol tests and their measured numbers (docs/ausbau.md
-        # J7/K2). Fourth block to need this entry after goal, day_context -
-        # and the fourth time the same gap would otherwise open. A new archive
-        # block WITHOUT an entry here and a migration in store.async_load
-        # counts as unfinished, not as an exception (PROJEKTSTAND 7).
-        "durability_tests": {},
+        # markierte Stufentests und ihre gemessenen Zahlen (docs/ausbau.md N).
+        # Vierter Block, der diesen Eintrag braucht, nach goal und day_context -
+        # und das vierte Mal, dass sich hier sonst dieselbe Luecke oeffnet. Ein
+        # neuer Archivblock OHNE Eintrag hier UND Migration in store.async_load
+        # gilt als unfertig, nicht als Ausnahme (PROJEKTSTAND 7).
+        "ramp_tests": {},
         "last_import": None,
         "full_import_done": False,
         "dfa_version": DFA_ALGO_VERSION,

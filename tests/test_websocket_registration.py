@@ -274,8 +274,7 @@ wtree = ast.parse(WORKOUTS.read_text(encoding="utf-8"))
 
 # DIESE LISTE IST VON HAND ZU PFLEGEN. Kommt eine Urteilsfunktion dazu, gehoert
 # sie hier hinein - Pruefung (b) unten faellt sonst, benannt.
-JUDGEMENT_FUNCTIONS = {"suggest", "rate_sessions", "fit_for", "stage",
-                       "protocol_block", "fatigued_session", "scaled"}
+JUDGEMENT_FUNCTIONS = {"suggest", "rate_sessions", "fit_for", "stage", "scaled"}
 
 # Eingaenge, die ein Urteil VERAENDERN. `limit` ist eine Anzeigegrenze und
 # steht bewusst nicht dabei: ein Waechter, der Harmloses mitzaehlt, wird
@@ -348,7 +347,12 @@ for node in ast.walk(tree):
         check(False,
               f"Vorgabewert-Wächter: websocket.py Zeile {node.lineno} ruft "
               f"{name}() ohne {missing} — der Vorgabewert springt still ein")
-check(calls >= 3, f"Vorgabewert-Wächter: nur {calls} Aufrufe gefunden — "
+# Die Untergrenze ist eine ZAHL AUS DEM BESTAND, keine Wunschzahl: sie faellt,
+# wenn ein Aufruf verschwindet, und das ist der Zweck. In 0.51.0 ist sie von
+# drei auf zwei gesunken, weil protocol_block mit dem Durability-Protokoll
+# entfallen ist - eine erklaerte Senkung, keine gelockerte Pruefung (§9,
+# dritte Bauregel).
+check(calls >= 2, f"Vorgabewert-Wächter: nur {calls} Aufrufe gefunden — "
                   "der Wächter sieht die Aufrufstellen nicht")
 
 # --- DIE REIZ-STUFE IN BEIDEN ANSICHTEN, UNTER DENSELBEN BEDINGUNGEN --------

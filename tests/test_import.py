@@ -402,108 +402,87 @@ async def main():
           "regelmäßigen Nachtschichten" in lese and "gewollt" in lese, True)
 
     print()
-    # --- durability_tests (J7 / K2): der VIERTE Block mit denselben zwei -----
+    # --- ramp_tests (docs/ausbau.md N): der VIERTE Block mit denselben zwei ---
     # Auflagen. Nach goal, day_context und diesem hier gilt: ein neuer
     # Archivblock OHNE Eintrag in empty_data() und OHNE Migration ist
-    # unfertig, keine Ausnahme (PROJEKTSTAND 7).
-    dts = _load("durability_tests")
-    check("durability_tests im Grundgerüst",
-          importer.empty_data("x").get(dts.BLOCK), {})
+    # unfertig, keine Ausnahme (PROJEKTSTAND 7). Der Block hat in 0.51.0 den
+    # Platz des Durability-Protokolls uebernommen - die Auflagen sind
+    # dieselben geblieben, der Inhalt nicht.
+    rts = _load("ramp_tests")
+    check("ramp_tests im Grundgerüst",
+          importer.empty_data("x").get(rts.BLOCK), {})
     legacy4 = importer.empty_data("x")
-    del legacy4[dts.BLOCK]  # ein Archiv aus 0.43.1
+    del legacy4[rts.BLOCK]  # ein Archiv aus 0.50.0
     base4 = importer.empty_data("x")
     base4.update(legacy4)
-    check("Altbestand ohne durability_tests lädt mit leerem Block",
-          base4.get(dts.BLOCK), {})
+    check("Altbestand ohne ramp_tests lädt mit leerem Block",
+          base4.get(rts.BLOCK), {})
     # Ein No-op MUSS None liefern: store.async_load macht aus allem anderen
     # einen Speichervorgang, und ein Laden, das speichert, schreibt das Archiv
     # bei jedem Start neu (die eingefrorene No-op-Regel aus test_coach).
     check("No-op der Migration löst keinen Speichervorgang aus",
-          dts.migrate(base4.get(dts.BLOCK)), None)
+          rts.migrate(base4.get(rts.BLOCK)), None)
 
-    saved = []
-    fresh_ok = {"kind": "fresh", "date": "2026-09-01", "p5": 251.0, "p20": 192.0,
-                "paired_with": None, "note": "", "set_at": "2026-09-01",
-                "v": dts.MEASURE_VERSION}
+    _res = {"hrvt1": {"alpha": 0.75, "seconds": 1300, "watts": 196.0, "hr": 152.0},
+            "hrvt2": {"alpha": 0.5, "seconds": 1580, "watts": 248.0, "hr": 171.0},
+            "hrvt1_pers": None, "max_alpha_start": 1.4, "reached_anaerobic": True}
+    ok_row = {"date": "2026-09-01", "result": _res, "reason": "", "note": "",
+              "set_at": "2026-09-01", "v": rts.MEASURE_VERSION}
     check("ein sauberer Satz ist ein No-op",
-          dts.migrate({"111": dict(fresh_ok)}), None)
+          rts.migrate({"111": dict(ok_row)}), None)
 
     # Versionsmarke: die MARKIERUNG überlebt, die ZAHLEN nicht. Der Athlet hat
     # gesagt, dass diese Fahrt ein Test war - diese Aussage verfällt nicht,
-    # wenn sich die Rechnung ändert. Die Werte schon.
-    stale = dts.migrate({"111": {**fresh_ok, "v": 0}})
+    # wenn sich die Rechnung ändert. Die Werte schon, denn die Ströme liegen
+    # nicht im Archiv und lassen sich nicht nachrechnen.
+    stale = rts.migrate({"111": {**ok_row, "v": 0}})
     check("veralteter Satz wird migriert", stale is not None, True)
     check("veralteter Satz behält die Markierung",
-          (stale or {}).get("111", {}).get("kind"), "fresh")
-    check("veralteter Satz verliert p20",
-          (stale or {}).get("111", {}).get("p20"), None)
-    check("veralteter Satz verliert p5",
-          (stale or {}).get("111", {}).get("p5"), None)
-
-    # Ein Zeiger auf einen Partner, den es nicht gibt, ist keine Paarung.
-    dangling = dts.migrate({"222": {"kind": "fatigued", "date": "2026-09-08",
-                                    "p5": 210.0, "p20": 170.0, "paired_with": "999",
-                                    "note": "", "set_at": "", "v": dts.MEASURE_VERSION}})
-    check("hängender Partnerzeiger wird gelöst",
-          (dangling or {}).get("222", {}).get("paired_with"), None)
-    check("ein frischer Test trägt keinen Partner",
-          (dts.migrate({"111": {**fresh_ok, "paired_with": "222"}}) or {})
-          .get("111", {}).get("paired_with"), None)
-    check("Schrott fliegt raus", dts.migrate({"111": "kaputt", "": {}}), {})
-    check("kein dict ergibt einen leeren Block", dts.migrate(None), {})
+          (stale or {}).get("111", {}).get("date"), "2026-09-01")
+    check("veralteter Satz verliert das Ergebnis",
+          (stale or {}).get("111", {}).get("result"), None)
+    check("und sagt, warum dort nichts steht",
+          "neu zu messen" in (stale or {}).get("111", {}).get("reason", ""), True)
+    check("Schrott fliegt raus", rts.migrate({"111": "kaputt", "222": {"date": "x"}}), {})
+    check("kein dict ergibt einen leeren Block", rts.migrate(None), {})
 
     # Schreiben ist STRIKT - die Toleranz der Migration ist fürs Lesen fremder
     # Daten, nicht fürs Erzeugen.
     store4 = {}
-    dts.set_entry(store4, "111", "fresh", "2026-09-01", p5=251, p20=192)
+    rts.set_entry(store4, "111", "2026-09-01", result=_res)
     check("gesetzter Satz steht im Block",
-          dts.entry_for(store4, "111").get("p20"), 192.0)
-    for bad_kind in ("unbekannt", "", "FRESH"):
+          ((rts.entry_for(store4, "111") or {}).get("result") or {}).get("hrvt2", {}).get("watts"),
+          248.0)
+    for bad in ("01.09.2026", "", "2026-9-1"):
         try:
-            dts.set_entry(store4, "333", bad_kind, "2026-09-01")
-            check(f"unbekannte Testart {bad_kind!r} wird angenommen", False, True)
+            rts.set_entry(store4, "333", bad)
+            check(f"kaputtes Datum {bad!r} wird angenommen", False, True)
         except ValueError:
-            check(f"unbekannte Testart {bad_kind!r} abgelehnt", True, True)
+            check(f"kaputtes Datum {bad!r} abgelehnt", True, True)
     try:
-        dts.set_entry(store4, "333", "fresh", "01.09.2026")
-        check("kaputtes Datum wird angenommen", False, True)
+        rts.set_entry(store4, "333", "2026-09-01", result="keine Zahlen")
+        check("ein Ergebnis ohne Form wird angenommen", False, True)
     except ValueError:
-        check("kaputtes Datum abgelehnt", True, True)
-    try:
-        dts.set_entry(store4, "333", "fresh", "2026-09-01", paired_with="111")
-        check("frischer Test nimmt einen Partner an", False, True)
-    except ValueError:
-        check("frischer Test lehnt einen Partner ab", True, True)
+        check("ein Ergebnis ohne Form abgelehnt", True, True)
 
     # Rücknahme ist eine Rücknahme, kein Vermerk: danach muss die Fahrt sich
     # verhalten wie eine, die nie markiert war.
-    dts.set_entry(store4, "222", "fatigued", "2026-09-08", p5=210, p20=170,
-                  paired_with="111")
-    check("Paar wird erkannt", len(dts.pairs(store4)), 1)
-    check("Rücknahme meldet Erfolg", dts.remove_entry(store4, "111"), True)
-    check("nach der Rücknahme ist nichts übrig", dts.entry_for(store4, "111"), None)
-    check("der Partner verliert den Zeiger, nicht seinen Satz",
-          dts.entry_for(store4, "222").get("paired_with"), None)
-    check("ohne Partner kein Paar", len(dts.pairs(store4)), 0)
-    check("zweite Rücknahme meldet nichts", dts.remove_entry(store4, "111"), False)
-
-    # KEINE automatische Paarung: zwei unmarkierte protokollförmige Fahrten
-    # ergeben nichts, und ein ermüdeter Test neben einem frischen paart sich
-    # nicht von allein, nur weil er zeitlich danach liegt.
-    auto = {}
-    dts.set_entry(auto, "111", "fresh", "2026-09-01", p5=251, p20=192)
-    dts.set_entry(auto, "222", "fatigued", "2026-09-08", p5=210, p20=170)
-    check("ohne Bestätigung wird nicht gepaart", len(dts.pairs(auto)), 0)
-    check("der Anker steht trotzdem", (dts.anchor(auto) or {}).get("p20"), 192.0)
+    check("Rücknahme meldet Erfolg", rts.remove_entry(store4, "111"), True)
+    check("nach der Rücknahme ist nichts übrig", rts.entry_for(store4, "111"), None)
+    check("zweite Rücknahme meldet nichts", rts.remove_entry(store4, "111"), False)
 
     # Eine Markierung OHNE Messwerte ist eine Markierung, kein Anker: sonst
-    # wanderte ein None in die Protokollrechnung.
+    # wanderte ein leeres Ergebnis in die Quellenkette.
     noval = {}
-    dts.set_entry(noval, "444", "fresh", "2026-09-10")
-    check("Markierung ohne Werte ist kein Anker", dts.anchor(noval), None)
-    dts.set_entry(noval, "445", "fresh", "2026-09-05", p20=180)
+    rts.set_entry(noval, "444", "2026-09-10", reason="Ströme nicht abrufbar")
+    check("Markierung ohne Werte ist kein Anker", rts.latest(noval), None)
+    check("sie bleibt trotzdem sichtbar", len(rts.entries(noval)), 1)
+    rts.set_entry(noval, "445", "2026-09-05", result=_res)
     check("der nächstältere gemessene Test springt ein",
-          (dts.anchor(noval) or {}).get("p20"), 180.0)
+          (rts.latest(noval) or {}).get("activity_id"), "445")
+    # Und die Reihenfolge ist die des DATUMS, nicht die der Aktivitäts-ID.
+    check("Einträge kommen nach Datum",
+          [r["activity_id"] for r in rts.entries(noval)], ["445", "444"])
 
     # --- Waechter: eine fehlende Versionsmarke heisst URALT ------------------
     # PROJEKTSTAND §7 (0.45.0). `store.async_load` fuellt das Grundgeruest auf,

@@ -624,194 +624,97 @@ eq(long_day["load"], W.session_load(W.BY_KEY["z2_90"], 4.0),
    "streckung: die Last wird jetzt aus den Blöcken gerechnet — zweiter Rechenweg")
 
 # ==============================================================================
-# Paket K - das Durability-Protokoll als Einheit (docs/ausbau.md K0-K4)
+# Paket N - der Stufentest als Einheit (docs/ausbau.md N)
 # ==============================================================================
+# Das Durability-Protokoll ist in 0.51.0 entfallen. Was hier steht, prueft den
+# Test, der an seine Stelle getreten ist - und die Regeln, die aus K
+# uebernommen wurden, weil sie fuer JEDE Messeinheit gelten.
 
-# --- 1 · DER ANKER KOMMT AUS TERMIN 1, NICHT AUS DEM FTP-FELD -----------------
-# Diese Gegenprobe steht hier vorn und breiter als die anderen, und zwar aus
-# einem Grund: die Plausibilitaetsregel aus K0 schuetzt nur nach UNTEN. Liegt
-# die Zielleistung unter der aeroben Schwelle, faengt sie das. Gegen einen zu
-# HOHEN Anker - die 215 W, die im Profil stehen und sich seit Monaten nicht
-# bewegt haben - faengt sie gar nichts: 80 % von 226 waeren 181 W, 35 W ueber
-# der gemessenen Schwelle, und die Regel schwiege dazu. Die EINZIGE
-# Verteidigung ist, dass die Zielleistung die FTP nie anfasst.
-#
-# Deshalb zwei FTP-Werte MAL zwei frische Tests: die Zielleistung muss sich
-# ueber die FTP-Spalte um kein Watt bewegen und ueber die Test-Zeile voll
-# mitwandern. Eine einzelne Gegenprobe koennte beides nicht auseinanderhalten.
-# Die aerobe Schwelle steht hier bewusst tief (120 W): dieses Gitter prueft die
-# HERKUNFT des Ankers, nicht die Plausibilitaetsregel. Stuende sie auf 146,
-# fiele die Zelle 164 W / Zielleistung 131 W in den Sperrfall und das Gitter
-# haette ein Loch - der Test wuerde dann etwas anderes messen als behauptet.
-# Die Regel selbst hat ihren eigenen Abschnitt weiter unten.
-ANCHOR_GRID = {}
-for _ftp in (215.0, 260.0):
-    for _p20 in (192.0, 164.0):
-        _built = W.fatigued_session(_p20, aerobic_power=120, ftp=_ftp)
-        check(_built.get("available"), f"K anker: {_p20} W / FTP {_ftp} nicht ausgegeben")
-        ANCHOR_GRID[(_ftp, _p20)] = _built.get("entry") or {}
+# --- 1 · EIN GEWOEHNLICHER KATALOGEINTRAG -------------------------------------
+# Anders als das abgeloeste Protokoll hat der Stufentest eine FESTE Form: er
+# braucht keinen Anker und keine abgeleitete Dauer. Deshalb steht er in
+# LIBRARY/BY_KEY wie alles andere - und genau das muss zugesichert sein, sonst
+# schleicht sich der Sonderweg wieder ein.
+check("ramp_test" in W.BY_KEY, "N: der Stufentest steht nicht im Katalog")
+check(W.BY_KEY["ramp_test"] in W.LIBRARY, "N: der Eintrag ist nicht in LIBRARY")
+_fam = [f for f in W.FAMILIES if f[0] == "ramp_test"]
+eq(len(_fam), 1, "N: der Stufentest hat keine eigene Familie")
+eq(_fam[0][2], ["ramp_test"], "N: die Familie traegt einen fremden Eintrag")
+# Eigene Familie und KEINE Spielart der langen Fahrt: eine Messung ist eine
+# andere Art von Einheit als ein Training.
+for _family, _label, _keys in W.FAMILIES:
+    if _family != "ramp_test":
+        check("ramp_test" not in _keys,
+              f"N: der Stufentest haengt zusaetzlich in der Familie {_family}")
 
-for _p20 in (192.0, 164.0):
-    a, b = ANCHOR_GRID[(215.0, _p20)], ANCHOR_GRID[(260.0, _p20)]
-    eq(a.get("target_w"), b.get("target_w"),
-       f"K anker: Zielleistung bewegt sich mit der FTP (frisch {_p20} W)")
-    eq(a.get("block_minutes"), b.get("block_minutes"),
-       f"K anker: Blockdauer bewegt sich mit der FTP (frisch {_p20} W)")
-    eq(a.get("minutes"), b.get("minutes"),
-       f"K anker: Gesamtdauer bewegt sich mit der FTP (frisch {_p20} W)")
-    eq([blk[1] for blk in a.get("blocks_w") or []], [blk[1] for blk in b.get("blocks_w") or []],
-       f"K anker: eine Blockleistung haengt an der FTP (frisch {_p20} W)")
+# --- 2 · DIE EINZIGEN FESTEN ZAHLEN SIND DIE DAUERN (N1) ----------------------
+# Die Leistungen leiten sich aus den eigenen Werten ab; die Prozentwerte in
+# `blocks` sind eine ERWARTUNG fuer die Lastschaetzung. Was fest steht, sind
+# Einrollen, Ausrollen und die Rampensteigung - und die stehen in const.py,
+# nicht im Katalogeintrag.
+_ramp_src = _RAMP_SRC = (Path(__file__).resolve().parents[1] / "custom_components"
+                         / "intervals_icu" / "workouts.py").read_text(encoding="utf-8")
+_entry_src = _ramp_src[_ramp_src.index("RAMP_TEST = {"):_ramp_src.index("LIBRARY.append(RAMP_TEST)")]
+for _literal, _name in ((" 15 ", "Einrolldauer"), (" 10 ", "Ausrolldauer"),
+                        (" 5 W", "Rampensteigung")):
+    check(_literal not in _entry_src,
+          f"N const: {_name} steht als Zahl im Katalogeintrag statt in const.py")
+# Gegenprobe, gezaehlt und benannt: die Ausdruecke finden eine eingebaute Zahl.
+check(" 5 W" in "- je Minute 5 W mehr", "N const Gegenprobe: eine eingebaute "
+      "Zahl wird NICHT gefunden - der Waechter ist blind")
+eq(W.BY_KEY["ramp_test"]["minutes"],
+   W.RAMP_WARMUP_MIN + W.RAMP_EXPECTED_MIN + W.RAMP_COOLDOWN_MIN,
+   "N: die Gesamtdauer ist nicht die Summe ihrer Abschnitte")
 
-for _ftp in (215.0, 260.0):
-    strong, weak = ANCHOR_GRID[(_ftp, 192.0)], ANCHOR_GRID[(_ftp, 164.0)]
-    check((strong.get("target_w") or 0) > (weak.get("target_w") or 0),
-          f"K anker: Zielleistung wandert NICHT mit dem frischen Test (FTP {_ftp})")
-    # Feste Arbeit, abgeleitete Dauer: schwaecherer Anker -> laengerer Block.
-    check((weak.get("block_minutes") or 0) > (strong.get("block_minutes") or 0),
-          f"K anker: Blockdauer folgt nicht aus der Zielleistung (FTP {_ftp})")
-
-# Die Zielleistung ist exakt der Anteil aus const.py, an genau einer Stelle.
-eq(ANCHOR_GRID[(215.0, 192.0)].get("target_w"),
-   round(192.0 * W.DURABILITY_TEST_BLOCK_FRACTION),
-   "K anker: Zielleistung ist nicht der Anteil aus const.py")
-# ... und sie ist NICHT, was aus der FTP folgen wuerde. Ohne diese Zeile
-# bestuende der Test auch dann, wenn beide Wege zufaellig dasselbe ergaeben.
-check(ANCHOR_GRID[(215.0, 192.0)].get("target_w")
-      != round(215.0 / 0.95 * W.DURABILITY_TEST_BLOCK_FRACTION),
-      "K anker: Zielleistung stimmt mit dem FTP-Weg ueberein — der Test trennt nicht")
-
-# --- 2 · DIE LAST HAENGT sehr wohl an der FTP - und nur sie -------------------
-# Die Watt entscheidet der Anker, was sie KOSTEN entscheidet die FTP: das
-# Budget, gegen das die Last gehalten wird, kommt aus Intervals' eigener
-# Lastrechnung. Zwei Zahlen, die verglichen werden, muessen auf derselben
-# Bezugsgroesse stehen.
-check((ANCHOR_GRID[(215.0, 192.0)].get("load") or 0) > (ANCHOR_GRID[(260.0, 192.0)].get("load") or 0),
-      "K last: gleiche Watt kosten bei hoeherer FTP nicht weniger")
-eq(W.protocol_load(ANCHOR_GRID[(215.0, 192.0)].get("blocks_w") or [], None), None,
-   "K last: ohne FTP wird eine Lastzahl erfunden")
-
-# Die Last wird GERECHNET, nicht auf die Dauer skaliert (Abweichung von K1).
-# Gegenprobe an den Zahlen: session_load() wuerde die Last mit der Dauer
-# steigen lassen, also beim SCHWAECHEREN Anker hoeher ausfallen. Die
-# gerechnete Last tut das Gegenteil, weil der laengere Block zugleich lockerer
-# ist. Wer hier auf session_load() zurueckbaut, sieht diese Zeile fallen.
-strong215, weak215 = ANCHOR_GRID[(215.0, 192.0)], ANCHOR_GRID[(215.0, 164.0)]
-check((weak215.get("load") or 0) < (strong215.get("load") or 0),
-      "K last: schwaecherer Anker ergibt hoehere Last — das ist der Stunden-Skalierer")
-_scaled = W.session_load({"load": strong215.get("load"), "minutes": strong215.get("minutes")},
-                         (weak215.get("minutes") or 0) / 60.0)
-check(_scaled > (strong215.get("load") or 0),
-      "K last: der Stunden-Skalierer wuerde hier nicht steigen — die Gegenprobe ist stumpf")
-check(abs(_scaled - (weak215.get("load") or 0)) > 5,
-      "K last: gerechnet und skaliert liegen gleichauf — der Unterschied ist nicht belegt")
-
-# --- 3 · DIE PLAUSIBILITAETSREGEL, BEIDE SEITEN ------------------------------
-# Sperrfall UND Durchlassfall. Eine Fixture, die nur den Sperrfall enthaelt,
-# bestuende auch dann, wenn die Einheit NIE ausgegeben wuerde.
-blocked = W.fatigued_session(175.0, aerobic_power=146, ftp=215)
-check(not blocked.get("available"), "K plausibel: Sperrfall wird trotzdem ausgegeben")
-eq(blocked.get("why"), "below_aerobic", "K plausibel: falscher Grund im Sperrfall")
-eq(blocked.get("target_w"), 140, "K plausibel: Zielleistung im Sperrfall falsch")
-eq(blocked.get("aerobic_w"), 146, "K plausibel: aerobe Schwelle fehlt im Sperrfall")
-# Beide Zahlen im TEXT, nicht nur in Feldern - "wird nicht ausgegeben" ohne
-# die Zahlen waere der stille Ausstieg (Fehlerklasse 4).
-check("140" in (blocked.get("reason") or "") and "146" in (blocked.get("reason") or ""),
-      "K plausibel: der Text nennt nicht beide Zahlen")
-
-passed = W.fatigued_session(192.0, aerobic_power=146, ftp=215)
-check(passed.get("available"), "K plausibel: Durchlassfall wird gesperrt")
-eq((passed.get("entry") or {}).get("target_w"), 154, "K plausibel: Zielleistung im Durchlassfall falsch")
-# Der Livestand steht 8 W vor dem eigenen Auslöser - die Regel ist keine ferne
-# Notbremse. Der Kipppunkt wird deshalb benannt und geprueft.
-tipping = W.fatigued_session(146 / W.DURABILITY_TEST_BLOCK_FRACTION - 1, aerobic_power=146, ftp=215)
-check(not tipping.get("available"), "K plausibel: knapp unter der Schwelle greift die Regel nicht")
-
-# --- 4 · KEIN ERMUEDETER TEST OHNE FRISCHEN ----------------------------------
-# Die Gegenprobe zu diesem Abschnitt entfernt die Anker-Abfrage, und dann
-# LAEUFT float(None) in fatigued_session auf einen TypeError. Ein Test, der
-# dabei abstuerzt, ueberspringt alles Folgende und meldet am Ende "0 Fehler" -
-# die Falle aus Paragraph 9. Deshalb faengt der Aufruf hier, damit die
-# Gegenprobe GEZAEHLT UND BENANNT faellt statt den Prüfstand abzubrechen.
-def build(*args, **kwargs):
-    try:
-        return W.fatigued_session(*args, **kwargs)
-    except Exception as err:  # noqa: BLE001 - der Absturz IST der Befund
-        return {"available": False, "why": f"Absturz: {type(err).__name__}", "reason": ""}
-
-
-for empty in (None, 0, 0.0):
-    missing = build(empty, aerobic_power=146, ftp=215)
-    check(not missing.get("available"), f"K ohne anker: {empty!r} liefert eine Einheit")
-    eq(missing.get("why"), "no_anchor", f"K ohne anker: falscher Grund bei {empty!r}")
-    eq(missing.get("cta"), "durability_test_fresh", f"K ohne anker: kein Knopf bei {empty!r}")
-    check("Termin 1" in (missing.get("reason") or ""), f"K ohne anker: Ersatzsatz fehlt bei {empty!r}")
-# Der Ersatzsatz sagt AUCH, dass die FTP bewusst nicht einspringt - sonst
-# liest es sich wie ein fehlendes Feld statt wie eine Entscheidung.
-check("FTP" in (build(None).get("reason") or ""),
-      "K ohne anker: der Grund nennt die FTP-Entscheidung nicht")
-
-# Und die Einheit steht nicht im Katalog: kein BY_KEY-Eintrag, keine Familie,
-# die sie als Variante fuehrt.
-check("durability_test_fatigued" not in W.BY_KEY,
-      "K katalog: der ermuedete Test steht als Katalogeintrag da")
-check("durability_test_fresh" in W.BY_KEY,
-      "K katalog: der frische Test fehlt im Katalog")
-_fam_keys = [k for _f, _l, keys in W.FAMILIES for k in keys]
-check("durability_test_fatigued" not in _fam_keys,
-      "K katalog: der ermuedete Test haengt in einer Familienliste")
-
-# --- 5 · DIE DAUER IST GERECHNET, NICHT EINGETRAGEN --------------------------
-for _p20, _expect_block in ((192.0, round(1_000_000 / 154 / 60)),
-                            (164.0, round(1_000_000 / 131 / 60))):
-    built = W.fatigued_session(_p20, aerobic_power=120, ftp=215).get("entry") or {}
-    eq(built.get("block_minutes"), _expect_block,
-       f"K dauer: Blockdauer bei frisch {_p20} W nicht aus der Arbeit gerechnet")
-    eq(built.get("minutes"), _expect_block + W.DURABILITY_TEST_WARMUP_MIN
-       + W.DURABILITY_TEST_SHORT_MIN + W.DURABILITY_TEST_RECOVERY_MIN
-       + W.DURABILITY_TEST_LONG_MIN + W.DURABILITY_TEST_COOLDOWN_MIN,
-       f"K dauer: Gesamtdauer bei frisch {_p20} W falsch summiert")
-
-# --- 6 · K4: die haerteste Einheit im Katalog --------------------------------
-eq(W.DURABILITY_TEST_FRESH["states"], ["ready"], "K4: der frische Test ist nicht auf ready begrenzt")
-eq(W.DURABILITY_TEST_FATIGUED_META["states"], ["ready"], "K4: der ermuedete Test ist nicht auf ready begrenzt")
-for _state in ("slump", "recovering", "rebound", "strained", "elevated", "unknown"):
-    verdict, reason = W.fit_for("durability_test", _state, 80)
-    eq(verdict, "no", f"K4: {_state} laesst den Test zu")
+# --- 3 · DIE ZUSTANDSREGEL AUS PAKET I, MIT EIGENER BEGRUENDUNG (K4) ----------
+# Uebernommen aus dem abgeloesten Protokoll, weil der Grund derselbe ist: bei
+# gelbem oder rotem Zustand ist die Zahl FALSCH, nicht die Einheit zu teuer.
+verdict, reason = W.fit_for("ramp_test", "ready", W.BY_KEY["ramp_test"]["intensity"])
+eq(verdict, "ok", "N: der Test ist im gruenen Zustand nicht vorgesehen")
+for _state in ("strained", "recovering", "slump"):
+    verdict, reason = W.fit_for("ramp_test", _state, W.BY_KEY["ramp_test"]["intensity"])
+    check(verdict != "ok", f"N: der Test wird im Zustand {_state} vorgeschlagen")
     check("Messfehler" in reason,
-          f"K4: {_state} begruendet die Sperre nicht als Messfehler")
-verdict, _reason = W.fit_for("durability_test", "ready", 80)
-eq(verdict, "ok", "K4: gruener Zustand sperrt den Test")
-# Die Vierstufigkeit gilt unveraendert, keine Ausnahme fuer die Testeinheit.
-over = W.protocol_block("ready", p20_fresh=192, aerobic_power=146, ftp=215,
-                        budget=10, recovery_offered=False)
-eq(((over.get("entry") or {}).get("stage") or {}).get("key"), "red", "K4: ueber Budget ohne Erholung ist nicht rot")
-eq(((over.get("entry") or {}).get("stage") or {}).get("blocked_by"), "budget", "K4: rot ohne Begruendung welches von beiden")
-stim = W.protocol_block("ready", p20_fresh=192, aerobic_power=146, ftp=215,
-                        budget=10, recovery_offered=True)
-eq(((stim.get("entry") or {}).get("stage") or {}).get("key"), "stimulus", "K4: die Reiz-Stufe gilt fuer die Testeinheit nicht")
-blocked_state = W.protocol_block("strained", p20_fresh=192, aerobic_power=146, ftp=215,
-                                 budget=999)
-eq(((blocked_state.get("entry") or {}).get("stage") or {}).get("key"), "red", "K4: gelber Zustand laesst den Test durch")
-eq(((blocked_state.get("entry") or {}).get("stage") or {}).get("blocked_by"), "state",
-   "K4: Zustandssperre wird als Budgetsperre ausgewiesen")
+          f"N: im Zustand {_state} steht die uebliche Kostenbegruendung statt "
+          f"der Messfehler-Begruendung")
+# Gegenprobe: eine ANDERE Familie bekommt diese Begruendung NICHT - sonst
+# prueft die Zeile darueber nur, dass der Satz irgendwo vorkommt.
+_, _other = W.fit_for("vo2max", "strained", 95)
+check("Messfehler" not in _other,
+      "N Gegenprobe: die Messfehler-Begruendung steht auch bei einer "
+      "Trainingsfamilie - der Test prueft nichts")
 
-# --- 7 · ALLE SCHWELLEN AUS const.py, GENAU EINMAL ---------------------------
-_wsrc = (Path(__file__).resolve().parents[1] / "custom_components" / "intervals_icu"
-         / "workouts.py").read_text(encoding="utf-8")
-_proto_src = _wsrc[_wsrc.index("DURABILITY_TEST_FRESH = {"):]
-for literal, name in ((" 1000", "1.000 kJ"), ("0.80", "80-%-Faktor"), ("0.8,", "80-%-Faktor")):
-    check(literal not in _proto_src,
-          f"K const: {name} steht als Zahl im Protokollteil von workouts.py")
-eq(W.DURABILITY_TEST_WORK_KJ, 1000.0, "K const: Arbeitsschwelle nicht 1.000 kJ")
-eq(W.DURABILITY_TEST_BLOCK_FRACTION, 0.80, "K const: Blockanteil nicht 80 %")
-# Die Erholungsdauer zwischen den All-outs muss an BEIDEN Terminen gleich sein,
-# sonst vergleicht Termin 2 etwas anderes (K1, eine Setzung).
-_fresh_rec = [b for b in W.DURABILITY_TEST_FRESH["blocks"] if b[2] == "locker"]
-_fat_rec = [b for b in (passed.get("entry") or {}).get("blocks_w") or [] if b[2] == "locker"]
-eq(_fresh_rec[0][0] if _fresh_rec else None, _fat_rec[0][0] if _fat_rec else None,
-   "K const: die Erholungsdauer unterscheidet sich zwischen den Terminen")
-eq(_fresh_rec[0][0] if _fresh_rec else None, W.DURABILITY_TEST_RECOVERY_MIN,
-   "K const: die Erholungsdauer kommt nicht aus const.py")
+# --- 4 · DIE BESCHREIBUNG IST DER WICHTIGSTE TEIL (N5) ------------------------
+# Sie entscheidet, ob jemand den Test richtig faehrt oder eine Stunde umsonst
+# tritt. Geprueft wird nicht die Formulierung, sondern dass jeder Punkt
+# VORKOMMT, den der Auftrag verlangt - und dass jede Zahl ihren Grund mitbringt.
+_std = " ".join(W.RAMP_TEST_STANDARD)
+for _pflicht, _was in (("BRUSTGURT", "der Brustgurt"),
+                       ("Handgelenk", "warum die optische Messung nicht taugt"),
+                       ("Ausgeruht", "der ausgeruhte Zustand"),
+                       ("einrollen", "das Einrollen"),
+                       ("GESETZT", "dass das Einrollen eine Setzung ist"),
+                       ("Sauerstoffaufnahme", "warum die Rampe flach ist"),
+                       ("nicht aus dem Sattel", "das Verhalten waehrend der Rampe"),
+                       ("VORGESEHEN", "dass der Abbruch vorgesehen ist"),
+                       ("NICHT abkürzen", "dass das Ausrollen nicht gekuerzt wird"),
+                       ("Teil der Messung", "warum es nicht gekuerzt wird"),
+                       ("MARKIEREN", "dass die Fahrt markiert werden muss"),
+                       ("NICHT kann", "was der Test nicht kann")):
+    check(_pflicht in _std, f"N Beschreibung: {_was} fehlt")
+# Und die Zahlen kommen aus const.py, nicht aus dem Text.
+for _zahl in (W.RAMP_WARMUP_MIN, W.RAMP_COOLDOWN_MIN, W.RAMP_STEP_W_PER_MIN):
+    check(str(_zahl) in _std, f"N Beschreibung: {_zahl} wird gar nicht genannt")
+
+# --- 5 · DAS ABGELOESTE PROTOKOLL IST WIRKLICH WEG ---------------------------
+# Ein halb entfernter Sonderweg ist schlimmer als keiner: die Karte zeigte
+# sonst eine Einheit, die es nicht mehr gibt.
+for _weg in ("durability_test_fresh", "durability_test_fatigued"):
+    check(_weg not in W.BY_KEY, f"N: {_weg} steht noch im Katalog")
+for _weg in ("fatigued_session", "protocol_block", "protocol_load"):
+    check(not hasattr(W, _weg), f"N: {_weg} existiert noch in workouts.py")
+check("durability_test" not in _ramp_src,
+      "N: die alte Familie steht noch im Quelltext")
 
 # --- L4: die Wattvorgabe kommt aus der eigenen Messung ------------------------
 # Gestaffelt wird auf der GEPAARTEN Reihe; bis zur letzten gemessenen Stunde

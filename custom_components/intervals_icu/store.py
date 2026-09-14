@@ -13,7 +13,7 @@ from typing import Any
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
-from . import day_context, durability_tests, importer, plan
+from . import day_context, importer, plan, ramp_tests
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
@@ -75,8 +75,8 @@ class IntervalsArchive:
             # MARKING and loses only its NUMBERS, because the athlete's
             # statement that this ride was a test does not expire when the
             # maths changes. A no-op returns None and must not save.
-            if (tests := durability_tests.migrate(self.data.get(durability_tests.BLOCK))) is not None:
-                self.data[durability_tests.BLOCK] = tests
+            if (tests := ramp_tests.migrate(self.data.get(ramp_tests.BLOCK))) is not None:
+                self.data[ramp_tests.BLOCK] = tests
                 self.schedule_save()
         _LOGGER.debug("archive loaded: %s", importer.archive_stats(self.data))
 

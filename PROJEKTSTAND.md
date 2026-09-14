@@ -7,7 +7,7 @@ Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lok
 archiviert, auswertet und in einem eigenen Seitenleisten-Panel darstellt.
 
 **Umfang:** ~14.760 Zeilen, davon ~4.960 Frontend · 27 WebSocket-Befehle · 16 Einheiten in
-9 Familien · 19 Testdateien mit **5.544** gezählten Einzelprüfungen · 58 Releases.
+9 Familien · 19 Testdateien mit **5.496** gezählten Einzelprüfungen · 58 Releases.
 
 ---
 
@@ -1369,21 +1369,21 @@ den Non-Responder-Befund (Manresa-Rocamora 2021).
 
 ## 9. Prüfstand
 
-**19 Dateien, 5.544 gezählte Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
+**19 Dateien, 5.496 gezählte Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
 HA-Instanz oder einen Browser.
 
 | Datei | prüft | Umfang |
 |---|---|---|
 | `test_derive.py` | Parselogik gegen echte Payloads | 44 |
 | `test_dfa.py` | DFA-Auswertung, Bandgrenzen, Artefakte, **die Plausibilitätsregel: Ausfall gegen Messung, Belegung je Wert getrennt, die alte `or`-Formel als Gegenprobe** | 44 |
-| `test_import.py` | vollständiger Import gegen einen Nachbau des Kontos, Schwellenreihe und `since`, day_context-Migration und Schreibweg, Quellenblock-Auflagen, **der Versionsmarken-Wächter mit Gegenprobe über eine dritte Marke, der Historienbeginn getrennt vom Bestandszeitraum** | 118 |
+| `test_import.py` | vollständiger Import gegen einen Nachbau des Kontos, Schwellenreihe und `since`, day_context-Migration und Schreibweg, Quellenblock-Auflagen, **der Versionsmarken-Wächter mit Gegenprobe über eine dritte Marke, der Historienbeginn getrennt vom Bestandszeitraum** | 112 |
 | `test_analytics.py` | Trainingsmetriken gegen bekannte Ergebnisse, Ebene-3-Wächter (Last kennt keine Etiketten, Quelltext und Verhalten), **die Wochenbilanz aus dem Archiv — Abgrenzung, und dass nichts gepaart wird** | 108 |
 | `test_setup_simulation.py` | Entity-Aufbau, Übersetzungen, unique_ids | 22 |
 | `test_laps.py` | Runden-Normalisierung | 34 |
 | `test_coach.py` | Zustandsregeln, Trigger-Schärfung, Infektverlauf, Nachtreaktion, Einordnung, Bereiche, benannter 42-Tage-Verlauf, Basislinien-Primitive mit AST-Wächter, eingefrorene No-op-Referenz, gewichtete Basislinie mit Fixture-Beweis, **Durability: die drei Ehrlichkeitsregeln einzeln, Gewichtungs- und Umrechnungs-Gegenprobe, Blockverlauf; der Kopf: belegte Dauer am gesperrten Fall, längste ≠ arbeitsreichste und Fahrt-Watt ≠ Pool-Median je erzwungen, Fensterausweitung mit Gegenfall, Progressionsfaktor mit 1,0-Gegenprobe**; **die Erholungs-Setzung hinter der Reiz-Stufe** | 424 |
 | `test_plan.py` | Zielprofil, Wochenmuster, Zeitbudget, Progressions- und Kalender-Anker-Vertrag, Profil-Migration | 405 |
-| `test_workouts.py` | Einheitenauswahl, HF-Klemme, Infektleiter, Wattumrechnung, Intervals-Syntax, **die vier Stufen über die volle Wahrheitstabelle, rot mit Begründung welches von beiden, dieselbe Einheit über alle vier Stufen, die Lastskalierung an den Zahlen des Livebestands, eine Zustandsregel für beide Ansichten, kein Urteil ohne Stufe**; **die Staffelung aus der Kurve: gepaarte Reihe, Studienform darüber, Ein- und Ausrollen bleiben FTP, harte Familien unberührt**; **die Vorgabe ist ein Anteil der Schwelle, nicht die Schwelle — Watt- und Pulsseite gegeneinander gehalten** ; **Watt und Puls der harten Familien aus DERSELBEN Quelle, mit dem umgeschriebenen Gleichstandstest: fällt eine Seite auf die FTP zurück, muss die andere mitfallen** | 1431 |
-| `test_websocket_registration.py` | Registrierung, Dekoratoren, FTP-Quelle, eine Ankerregel, day_context-Lese/Schreibweg, Ampel-Herkunftsnotiz, **der goal-Handler verdrahtet nur und bewertet ausschließlich die laufende Woche**; **`blocks` gehört zu den Payloads, ohne die eine Vorgabe still zurückfällt** | 367 |
+| `test_workouts.py` | Einheitenauswahl, HF-Klemme, Infektleiter, Wattumrechnung, Intervals-Syntax, **die vier Stufen über die volle Wahrheitstabelle, rot mit Begründung welches von beiden, dieselbe Einheit über alle vier Stufen, die Lastskalierung an den Zahlen des Livebestands, eine Zustandsregel für beide Ansichten, kein Urteil ohne Stufe**; **die Staffelung aus der Kurve: gepaarte Reihe, Studienform darüber, Ein- und Ausrollen bleiben FTP, harte Familien unberührt**; **die Vorgabe ist ein Anteil der Schwelle, nicht die Schwelle — Watt- und Pulsseite gegeneinander gehalten** ; **Watt und Puls der harten Familien aus DERSELBEN Quelle, mit dem umgeschriebenen Gleichstandstest: fällt eine Seite auf die FTP zurück, muss die andere mitfallen** | 1393 |
+| `test_websocket_registration.py` | Registrierung, Dekoratoren, FTP-Quelle, eine Ankerregel, day_context-Lese/Schreibweg, Ampel-Herkunftsnotiz, **der goal-Handler verdrahtet nur und bewertet ausschließlich die laufende Woche**; **`blocks` gehört zu den Payloads, ohne die eine Vorgabe still zurückfällt** | 363 |
 | `test_reconcile.py` | Abgleich mit Intervals: die drei Sperren einzeln, die datumslosen Aufräumstellen, No-op ohne Speichervorgang, der Handler am echten Aufruf (Import läuft, Historie nie geholt, Zwischenstand) | 130 |
 | `test_fatigue.py` | die Ermüdungskurve: strukturierte Einheiten VOR der Messung ausgeschlossen — mit der Gegenprobe, dass sie den Abfall von +4,0 auf +42,0 W verfälschen, wenn man sie drin lässt; Bereichsgrenzen aus der Belegung an zwei Beständen; Anker gemessen gegen Form gesetzt; **L1b: die HF-Setzung skaliert am eigenen Anker**; **die gepaarte Gegenrechnung und das Erkennungszeichen: die Belegung steigt, wo sie fallen müsste — mit Gegenprobe am sauberen Bestand**; **p050 wird erhoben und von nichts benutzt, mit Quelltext-Wächter über alle Verbraucher** | 54 |
 | `test_blocks.py` | ein Wert je Block: der Anlauf wird verworfen (mit der Gegenprobe am 4-Minuten-Block, wo auch der Median kippt), der echte Median gegen die Index-Bildung, der Regelkreis nach oben wie nach unten mit familieneigener Schrittgrenze, Steuergröße Median gegen Verlaufsgröße erster Block, Belegungsgrenze für die Linie; **die Physik-Gegenprobe an den echten Lap-Grenzen (Arbeit trägt mehr als die Pause daneben) mit dem Sekunden-Fehler als Gegenfall, und die fremde Gegenprobe gegen Intervals' eigenen Abschnittswert** | 66 |

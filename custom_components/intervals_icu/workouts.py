@@ -40,36 +40,20 @@ from typing import Any
 try:  # inside the package (Home Assistant)
     from .const import (
         DURABILITY_FUELLING_G_PER_H,
+        RAMP_COOLDOWN_MIN,
+        RAMP_EXPECTED_MIN,
+        RAMP_STEP_W_PER_MIN,
+        RAMP_WARMUP_MIN,
         CURVE_TARGET_SHARE,
-        DURABILITY_TEST_ALLOUT_5_FACTOR,
-        DURABILITY_TEST_BLOCK_FRACTION,
-        DURABILITY_TEST_COOLDOWN_MIN,
-        DURABILITY_TEST_EASY_FRACTION,
-        DURABILITY_TEST_LONG_MIN,
-        DURABILITY_TEST_RECOVERY_MIN,
-        DURABILITY_TEST_REFERENCE,
-        DURABILITY_TEST_SHORT_MIN,
-        DURABILITY_TEST_SPIN_FRACTION,
-        DURABILITY_TEST_WARMUP_MIN,
-        DURABILITY_TEST_WORK_J,
-        DURABILITY_TEST_WORK_KJ,
     )
 except ImportError:  # standalone (test suite loads this file directly)
     from const import (  # type: ignore[no-redef]
         DURABILITY_FUELLING_G_PER_H,
+        RAMP_COOLDOWN_MIN,
+        RAMP_EXPECTED_MIN,
+        RAMP_STEP_W_PER_MIN,
+        RAMP_WARMUP_MIN,
         CURVE_TARGET_SHARE,
-        DURABILITY_TEST_ALLOUT_5_FACTOR,
-        DURABILITY_TEST_BLOCK_FRACTION,
-        DURABILITY_TEST_COOLDOWN_MIN,
-        DURABILITY_TEST_EASY_FRACTION,
-        DURABILITY_TEST_LONG_MIN,
-        DURABILITY_TEST_RECOVERY_MIN,
-        DURABILITY_TEST_REFERENCE,
-        DURABILITY_TEST_SHORT_MIN,
-        DURABILITY_TEST_SPIN_FRACTION,
-        DURABILITY_TEST_WARMUP_MIN,
-        DURABILITY_TEST_WORK_J,
-        DURABILITY_TEST_WORK_KJ,
     )
 
 # Each entry: what it is, how it is built, what it should feel like in the
@@ -377,261 +361,88 @@ LIBRARY: list[dict[str, Any]] = [
 
 BY_KEY = {entry["key"]: entry for entry in LIBRARY}
 
-# --- the two protocol sessions (docs/ausbau.md K0/K1) -------------------------
-# These two are NOT ordinary catalogue entries and are deliberately kept out of
-# LIBRARY/BY_KEY's percentage world:
+# --- Der Stufentest (docs/ausbau.md N) ---------------------------------------
+# EIN Termin, EINE Fahrt, drei Zahlen. Anders als das abgeloeste
+# Durability-Protokoll braucht er weder einen Anker noch eine abgeleitete
+# Dauer - er steht deshalb als gewoehnlicher Katalogeintrag hier.
 #
-#   1. Their targets are a share of the athlete's own FRESH 20-MINUTE POWER,
-#      not of the FTP field. On this account the profile carries 215 W while
-#      the measured 20-minute best is 192 (K0). 80 % of an FTP-derived anchor
-#      would be ~181 W - 35 W above the measured aerobic threshold, a time
-#      trial to exhaustion instead of a fatigue block. So they carry ABSOLUTE
-#      WATTS and are marked `abs_watts`, and `scaled()` leaves them alone.
-#   2. The fatigued session's DURATION is derived, not catalogued: the fatigue
-#      block holds fixed WORK (1.000 kJ), so its length is 1.000.000 J divided
-#      by the target power. Write 108 minutes into a table and it is wrong
-#      after the next measurement - the load bug of I3, one layer up.
-#
-# The fresh session has no anchor requirement (it IS the measurement), so it
-# stands as a plain entry with percentage blocks like everything else.
-DURABILITY_TEST_FRESH = {
-    "key": "durability_test_fresh",
-    "title": "Durability-Test, frisch",
-    "purpose": "Termin 1: die beiden Bezugswerte",
-    "minutes": (DURABILITY_TEST_WARMUP_MIN + DURABILITY_TEST_SHORT_MIN
-                + DURABILITY_TEST_RECOVERY_MIN + DURABILITY_TEST_LONG_MIN
-                + DURABILITY_TEST_COOLDOWN_MIN),
-    "intensity": 78,
-    "load": 62,
-    # The two all-out percentages are an EXPECTATION, not a target: they feed
-    # the load estimate and give the rider something to pace against on a
-    # roller. What is measured is what the ride records. They are the one
-    # place in this session where an FTP percentage appears at all, and they
-    # decide nothing - the anchor is the RESULT of this session, not its input.
+# DIE EINZIGEN FESTEN ZAHLEN SIND DIE DAUERN (N1). Einrollen, Ausrollen und
+# die Rampensteigung stehen in const.py; die LEISTUNGEN kommen aus den eigenen
+# Werten. Die Prozentwerte in `blocks` sind eine ERWARTUNG fuer die
+# Lastschaetzung und keine Vorgabe: gemessen wird, was gefahren wurde. Ohne
+# eigene Messwerte faellt alles sichtbar auf die FTP zurueck.
+RAMP_TEST = {
+    "key": "ramp_test",
+    "title": "Stufentest",
+    "purpose": "Beide Schwellen in einer Fahrt",
+    # Die Rampendauer ist eine ERWARTUNG fuer die Lastschaetzung. Sie endet an
+    # einem ZUSTAND und nicht an der Uhr, und wie lange das dauert, haengt an
+    # der eigenen Spanne - bei einem starken Fahrer laenger.
+    "minutes": RAMP_WARMUP_MIN + RAMP_EXPECTED_MIN + RAMP_COOLDOWN_MIN,
+    "intensity": 72,
+    "load": 55,
     "blocks": [
-        (DURABILITY_TEST_WARMUP_MIN, 55, "Einrollen"),
-        (DURABILITY_TEST_SHORT_MIN, 115,
-         f"{DURABILITY_TEST_SHORT_MIN} min all-out (Erwartung, kein Ziel)"),
-        (DURABILITY_TEST_RECOVERY_MIN, 50, "locker"),
-        (DURABILITY_TEST_LONG_MIN, 100,
-         f"{DURABILITY_TEST_LONG_MIN} min all-out (Erwartung, kein Ziel)"),
-        (DURABILITY_TEST_COOLDOWN_MIN, 50, "Ausrollen"),
+        (RAMP_WARMUP_MIN, 60, "Einrollen, ruhig"),
+        (RAMP_EXPECTED_MIN, 90, "Rampe (Erwartung — sie endet am alpha-Wert, nicht an der Uhr)"),
+        (RAMP_COOLDOWN_MIN, 60, "Ausrollen, konstant"),
     ],
-    "text": (f"- {DURABILITY_TEST_WARMUP_MIN}m 55% 85rpm\n"
-             f"- {DURABILITY_TEST_SHORT_MIN}m 110-130% (all-out, nicht ERG)\n"
-             f"- {DURABILITY_TEST_RECOVERY_MIN}m 50%\n"
-             f"- {DURABILITY_TEST_LONG_MIN}m 95-110% (all-out, nicht ERG)\n"
-             f"- {DURABILITY_TEST_COOLDOWN_MIN}m 50%"),
-    "hr_hint": (1.00, 1.15),
-    "dfa": "in den All-outs weit unter 0,5 — wenn nicht, war es kein All-out",
-    "effect": (f"Misst nichts am Körper, sondern legt den Anker: die frische "
-               f"{DURABILITY_TEST_SHORT_MIN}- und "
-               f"{DURABILITY_TEST_LONG_MIN}-Minuten-Bestleistung. Aus der "
-               f"{DURABILITY_TEST_LONG_MIN}-Minuten-Leistung folgt die "
-               "Zielleistung von Termin 2 und damit alles Weitere."),
-    "evidence": ("Barsumyan/Soost/Burchard, BMC Sports Sci Med Rehabil 17:192 "
-                 "(2025): Heimtest an zwei Terminen, ausdrücklich für Amateure "
-                 "entwickelt statt für Profis. Validiert an 20 gut trainierten "
-                 f"Amateuren ({DURABILITY_TEST_REFERENCE})."),
-    "limit": ("Die Reihenfolge kurz vor lang stammt aus dem Protokoll und wird "
-              f"nicht gedreht. Die {DURABILITY_TEST_RECOVERY_MIN} Minuten "
-              "dazwischen sind eine SETZUNG — das Protokoll nennt keine "
-              "Erholungsdauer —, aber sie müssen an beiden Terminen gleich "
-              "sein, sonst vergleicht Termin 2 etwas anderes. Grüner Zustand "
-              "ist Pflicht: ein zu niedriger Anker macht den Ermüdungsblock zu "
-              "leicht und den gemessenen Erhalt zu gut."),
+    "text": (f"- {RAMP_WARMUP_MIN}m 60% 85rpm\n"
+             f"- {RAMP_EXPECTED_MIN}m ramp 60-115% ({RAMP_STEP_W_PER_MIN} W/min, nicht ERG)\n"
+             f"- {RAMP_COOLDOWN_MIN}m 60% (gleich bleiben, nicht abkürzen)"),
+    "hr_hint": (0.70, 1.00),
+    "dfa": "der Zweck der Fahrt: von über 1,0 stetig bis stabil unter 0,5",
+    "effect": ("Misst nichts am Körper und trainiert auch nichts — er liest deine "
+               "beiden Schwellen ab, in EINER Fahrt unter gleichen Bedingungen. "
+               "Alle paar Monate."),
+    "evidence": ("Rogers u. a. (2021): DFA a1 erreicht 0,75 an der ersten und 0,5 an "
+                 "der zweiten Schwelle. Die 0,75 stammt vom LAUFBAND; für das Rad "
+                 "gibt es eigene Belege (Elite-Triathleten 247,0 gegen 252,3 W; "
+                 "Herzpatienten 67,8 gegen 73,2 W bei r = 0,87)."),
+    "limit": ("Belastbar ist die VERÄNDERUNG bei dir, nicht die absolute Höhe: die "
+              "zweite Schwelle stimmt in Studien gut, die erste zeigt erheblichen "
+              "systematischen Bias. Grüner Zustand ist Pflicht — ein müder Test "
+              "misst die Müdigkeit."),
     "states": ["ready"],
-    "protocol": "fresh",
-    "standard": list(),  # filled below, once DURABILITY_TEST_STANDARD exists
 }
 
-DURABILITY_TEST_FATIGUED_META = {
-    "key": "durability_test_fatigued",
-    "title": "Durability-Test, ermüdet",
-    "purpose": "Termin 2: der Erhalt nach 1.000 kJ",
-    "hr_hint": (1.00, 1.15),
-    "dfa": "im Ermüdungsblock um 0,75, in den All-outs weit darunter",
-    "effect": ("Misst, wie viel der frischen Leistung nach "
-               f"{DURABILITY_TEST_WORK_KJ:.0f} kJ Arbeit übrig ist. Das ist "
-               "die Größe, die aus gewöhnlichen Fahrten nachweislich nicht "
-               "herausrechenbar ist."),
-    "evidence": ("Barsumyan/Soost/Burchard, BMC Sports Sci Med Rehabil 17:192 "
-                 f"(2025). Größenordnung der Validierung: {DURABILITY_TEST_REFERENCE}."),
-    "states": ["ready"],
-    "protocol": "fatigued",
-}
-
-# The standardisation both appointments carry, printed on the card (K1).
-DURABILITY_TEST_STANDARD = [
-    "Rolle, nicht Straße — konstante Bedingungen sind für einen Vergleichswert "
-    "wichtiger als Freiluft. Der Ermüdungsblock in ERG, die All-outs NICHT in "
-    "ERG: ERG deckelt genau das, was gemessen werden soll.",
-    "Gleiche Mahlzeit im gleichen zeitlichen Abstand vor beiden Terminen. "
-    f"Während Termin 2 mindestens {DURABILITY_FUELLING_G_PER_H} g Kohlenhydrate "
-    "je Stunde — ein schlecht gefütterter Termin 2 misst die Energiezufuhr, "
-    "nicht die Ermüdung.",
-    f"Die {DURABILITY_TEST_WORK_KJ:.0f} kJ zählen ab Beginn des "
-    "Ermüdungsblocks, nicht ab Fahrtbeginn. Der Radcomputer zeigt die "
-    "Gesamtarbeit: den Wert beim Blockstart notieren und "
-    f"{DURABILITY_TEST_WORK_KJ:.0f} addieren.",
-    "Gleiche Tageszeit, gleicher Lüfter, gleiche Übersetzung. Alles, was nicht "
-    "gleich war, gehört in den Rechenweg.",
+# Was zum Test dazugehoert, auf der Karte gedruckt. JEDE Zahl bringt ihren
+# GRUND mit: wer nur die Zahl liest, kuerzt sie beim naechsten Mal ab - und
+# die Beschreibung entscheidet, ob jemand den Test richtig faehrt oder eine
+# Stunde umsonst tritt (N5).
+RAMP_TEST_STANDARD = [
+    "Auf der Rolle, mit BRUSTGURT. Die optische Messung am Handgelenk taugt "
+    "dafür nachweislich nicht — sie liefert keine sauberen Abstände zwischen den "
+    "Herzschlägen, und genau die werden hier ausgewertet.",
+    "Ausgeruht. Bei gelbem oder rotem Zustand wird der Test gar nicht erst "
+    "vorgeschlagen: er misst dann deine Müdigkeit und nicht deine Schwellen.",
+    f"{RAMP_WARMUP_MIN} Minuten ruhig einrollen. Das Protokoll der Studien kennt "
+    "kein Einrollen — diese Zeit ist GESETZT, und der Grund ist unsere Auswertung: "
+    "der alpha-Wert braucht ein bis zwei Minuten, bis er eingeschwungen ist, und "
+    "das Rechenfenster ist zwei Minuten breit.",
+    f"Dann je Minute {RAMP_STEP_W_PER_MIN} Watt mehr, bis du nicht mehr kannst. "
+    "Die Steigung ist FLACH und wächst nicht mit deiner Stärke: bei steileren "
+    "Rampen hinkt die Sauerstoffaufnahme hinterher, und dann ist die Wattzahl "
+    "nicht mehr ablesbar. Der Preis ist ein längerer Test.",
+    "Während der Rampe: gleichmäßig treten, nicht aus dem Sattel, Trittfrequenz "
+    "konstant halten, nicht sprechen. Alles davon verändert die Abstände zwischen "
+    "den Herzschlägen — und die sind die Messung.",
+    "Abbrechen, wenn du nicht mehr kannst. Das ist VORGESEHEN und kein "
+    "Fehlversuch: wichtig ist nur, dass dein alpha vorher stabil unter 0,5 war. "
+    "Kommst du dort nicht an, fehlt die zweite Schwelle — die erste steht trotzdem.",
+    f"Danach {RAMP_COOLDOWN_MIN} Minuten ausrollen, bei derselben ruhigen "
+    "Leistung, gleich bleibend. NICHT abkürzen: diese Zeit ist Teil der Messung. "
+    "Eine Protokollvorgabe dafür gibt es nicht — gesetzt ist sie, weil sich in den "
+    "ersten Minuten nach der Belastung messbar etwas erholt und die Literatur "
+    "genau dieses Fenster betrachtet. Gleiche Haltung und gleiche Leistung wie "
+    "beim letzten Mal, sonst misst der zweite Test etwas anderes als der erste.",
+    "Danach die Fahrt im Aktivitätsdetail als Stufentest MARKIEREN. Das System "
+    "erkennt sie nicht von selbst — und soll es auch nicht.",
+    "Was der Test NICHT kann: er sagt nicht, wie hoch deine Schwellen absolut "
+    "sind. Belastbar ist, wie sie sich bei DIR über die Monate verändern.",
 ]
 
-DURABILITY_TEST_FRESH["standard"] = list(DURABILITY_TEST_STANDARD)
-
-# The fresh session IS an ordinary catalogue entry - percentages, fixed shape,
-# schedulable. Registering it here rather than inside LIBRARY keeps its long
-# comment next to the session it belongs to.
-LIBRARY.append(DURABILITY_TEST_FRESH)
-BY_KEY[DURABILITY_TEST_FRESH["key"]] = DURABILITY_TEST_FRESH
-
-
-def protocol_load(blocks_w: list[tuple], ftp: float | None) -> int | None:
-    """The load of a protocol session, COMPUTED from its absolute watts.
-
-    Why this is not a catalogue number, and why `session_load()` does not fit
-    (docs/ausbau.md K1, corrected before the build):
-
-    `session_load()` stretches a catalogue load by the ratio of the hours, and
-    its docstring says what makes that valid - CONSTANT INTENSITY. A longer
-    base ride is the same ride for longer. The fatigue block is not: it holds
-    fixed WORK, so a lower target power makes it LONGER and at the same time
-    LESS intense. The hours-scaler sees only the first half and moves the load
-    in the direction the second half contradicts.
-
-    So both inputs are taken as they are. Load is an intensity-squared times
-    hours quantity, and the reference for the intensity is the FTP INTERVALS
-    ITSELF COMPUTES WITH (`icu_ftp`) - not the anchor. The budget this number
-    is held against comes from Intervals' own `icu_training_load`, and two
-    numbers compared against each other must stand on the same reference, even
-    when one of them is the value K0 refuses to steer by. The anchor decides
-    the WATTS; the FTP decides what those watts cost.
-
-    Returns None without an FTP: percentages are the honest fallback for a
-    shape, but there is no honest fallback for a number.
-    """
-    if not ftp or ftp <= 0 or not blocks_w:
-        return None
-    total = 0.0
-    for block in blocks_w:
-        minutes = float(block[0])
-        watts = float(block[1])
-        if minutes <= 0 or watts <= 0:
-            continue
-        total += (watts / float(ftp)) ** 2 * (minutes / 60.0) * 100.0
-    return round(total)
-
-
-def fatigued_session(p20_fresh: float | None, aerobic_power: float | None = None,
-                     ftp: float | None = None) -> dict[str, Any]:
-    """Build Termin 2 from the fresh anchor - or refuse, and say why.
-
-    Three outcomes, never a silent one (Fehlerklasse 4):
-
-      * no anchor       -> `available` False, reason "Termin 1 fehlt"
-      * anchor too low  -> `available` False, the plausibility rule from K0
-      * otherwise       -> the full session, every number derived
-
-    The plausibility rule: if the target power computed from Termin 1 sits
-    BELOW the measured aerobic threshold, Termin 1 was not an all-out. A
-    fatigue block under the aerobic threshold does not fatigue. Both numbers
-    travel in the answer, because "not issued" without the two figures is the
-    silent exit again.
-
-    Note what the rule does NOT do: it is one-sided. It catches an anchor that
-    is too LOW. Against one that is too HIGH - the 215 W in the profile, which
-    would put the block 35 W above the aerobic threshold - it does nothing at
-    all. The only protection there is that the anchor is never read from the
-    FTP field, which is why that has its own counter-test.
-    """
-    if not p20_fresh or p20_fresh <= 0:
-        return {
-            "available": False,
-            "why": "no_anchor",
-            "reason": ("Termin 1 fehlt. Die Zielleistung des Ermüdungsblocks ist "
-                       f"{DURABILITY_TEST_BLOCK_FRACTION:.0%} der frischen "
-                       f"{DURABILITY_TEST_LONG_MIN}-Minuten-Leistung — ohne "
-                       "gemessenen frischen Test gibt es sie nicht, und aus dem "
-                       "FTP-Feld wird sie bewusst nicht abgeleitet."),
-            "cta": DURABILITY_TEST_FRESH["key"],
-        }
-
-    target = round(float(p20_fresh) * DURABILITY_TEST_BLOCK_FRACTION)
-    if aerobic_power and target < float(aerobic_power):
-        return {
-            "available": False,
-            "why": "below_aerobic",
-            "target_w": target,
-            "aerobic_w": round(float(aerobic_power)),
-            "p20_fresh": round(float(p20_fresh)),
-            "reason": (f"Die aus Termin 1 errechnete Zielleistung liegt bei {target} W "
-                       f"und damit unter der gemessenen aeroben Schwelle von "
-                       f"{round(float(aerobic_power))} W. Dann war Termin 1 kein "
-                       "All-out — ein Ermüdungsblock unterhalb der aeroben Schwelle "
-                       "ermüdet nicht. Termin 1 wiederholen, ausgeruht."),
-            "cta": DURABILITY_TEST_FRESH["key"],
-        }
-
-    block_min = round(DURABILITY_TEST_WORK_J / target / 60.0)
-    easy = round(float(p20_fresh) * DURABILITY_TEST_EASY_FRACTION)
-    spin = round(float(p20_fresh) * DURABILITY_TEST_SPIN_FRACTION)
-    # the two all-outs have NO target - these are the expected values that go
-    # into the load estimate only, and the card says so.
-    expect_long = round(float(p20_fresh))
-    expect_short = round(float(p20_fresh) * DURABILITY_TEST_ALLOUT_5_FACTOR)
-
-    blocks_w = [
-        (DURABILITY_TEST_WARMUP_MIN, easy, "Einrollen"),
-        (block_min, target, f"Ermüdungsblock bis {DURABILITY_TEST_WORK_KJ:.0f} kJ (ERG)"),
-        (DURABILITY_TEST_SHORT_MIN, expect_short,
-         f"{DURABILITY_TEST_SHORT_MIN} min all-out (kein Ziel)"),
-        (DURABILITY_TEST_RECOVERY_MIN, spin, "locker"),
-        (DURABILITY_TEST_LONG_MIN, expect_long,
-         f"{DURABILITY_TEST_LONG_MIN} min all-out (kein Ziel)"),
-        (DURABILITY_TEST_COOLDOWN_MIN, spin, "Ausrollen"),
-    ]
-    minutes = sum(int(block[0]) for block in blocks_w)
-    fuel = round(DURABILITY_FUELLING_G_PER_H * minutes / 60.0)
-
-    entry = {
-        **DURABILITY_TEST_FATIGUED_META,
-        "minutes": minutes,
-        "intensity": round(100.0 * target / float(p20_fresh)),
-        "blocks_w": blocks_w,
-        "abs_watts": True,
-        "target_w": target,
-        "p20_fresh": round(float(p20_fresh)),
-        "block_minutes": block_min,
-        "expected_w": {"short": expect_short, "long": expect_long},
-        "fuel_g": fuel,
-        "text_w": steps_text(blocks_w, None),
-        "load": protocol_load(blocks_w, ftp),
-        "limit": (f"Die härteste Einheit im Katalog: rund {minutes // 60} h "
-                  f"{minutes % 60:02d} min, davon {block_min} min Ermüdungsblock. "
-                  "Mindestens zwei ruhige Tage davor, grüner Zustand, keine harte "
-                  "Einheit in den 48 h danach. Der Grund: ein Test in müdem "
-                  "Zustand liefert eine Zahl, die später nicht mehr von einer "
-                  "echten Verschlechterung zu unterscheiden ist."),
-        "derivation": [
-            f"Anker: {round(float(p20_fresh))} W — die gemessene frische "
-            f"{DURABILITY_TEST_LONG_MIN}-Minuten-Leistung aus Termin 1, NICHT das "
-            "FTP-Feld.",
-            f"Zielleistung: {DURABILITY_TEST_BLOCK_FRACTION:.0%} davon = {target} W.",
-            f"Blockdauer: {DURABILITY_TEST_WORK_KJ:.0f} kJ ÷ {target} W = "
-            f"{block_min} min. Die Arbeit ist fest, die Dauer folgt daraus — "
-            "deshalb steht hier keine Zahl aus einer Tabelle.",
-            "Last: aus den Abschnitten gerechnet, nicht aus einem Katalogwert "
-            "auf die Dauer skaliert. Das Skalieren gilt bei KONSTANTER "
-            "Intensität; hier ist die Arbeit fest, also wird der Block bei "
-            "schwächerem Anker länger UND lockerer, und ein Stunden-Faktor "
-            "allein zöge die Last in die falsche Richtung.",
-            f"Verpflegung: mindestens {DURABILITY_FUELLING_G_PER_H} g "
-            f"Kohlenhydrate je Stunde, hier rund {fuel} g.",
-        ],
-        "standard": list(DURABILITY_TEST_STANDARD),
-    }
-    return {"available": True, "entry": entry}
+LIBRARY.append(RAMP_TEST)
+BY_KEY[RAMP_TEST["key"]] = RAMP_TEST
 
 # Which sessions fit which state, hardest first - the picker walks this list.
 PRIORITY: dict[str, list[str]] = {
@@ -826,12 +637,10 @@ FAMILIES: list[tuple[str, str, list[str]]] = [
     ("threshold", "Schwelle", ["threshold_4x10", "threshold_3x12"]),
     ("vo2max", "VO2max", ["vo2_4x4", "vo2_5x4", "vo2_3030", "vo2_3015", "vo2_4x8"]),
     ("return", "Wiedereinstieg", ["return_45"]),
-    # Own family, not a variant under "Lange Fahrt" (K1): a measurement is a
-    # different kind of session from a training session, and tucking it into
-    # the long-ride family would make it look like a harder version of one.
-    # The fatigued appointment is NOT listed here - it has no fixed shape to
-    # list, it is derived per anchor by fatigued_session().
-    ("durability_test", "Durability-Test", ["durability_test_fresh"]),
+    # Eigene Familie, keine Spielart der langen Fahrt (K1): eine MESSUNG ist
+    # eine andere Art von Einheit als ein Training, und unter den langen
+    # Fahrten saehe sie aus wie eine haertere Variante davon.
+    ("ramp_test", "Stufentest", ["ramp_test"]),
 ]
 
 # What each state can carry. Not a filter - a verdict per family, so every kind
@@ -839,25 +648,25 @@ FAMILIES: list[tuple[str, str, list[str]]] = [
 FIT_BY_STATE: dict[str, dict[str, str]] = {
     "slump":      {"recovery": "ok", "return": "maybe", "endurance": "no", "long": "no",
                    "tempo": "no", "sweetspot": "no", "threshold": "no", "vo2max": "no",
-                   "durability_test": "no"},
+                   "ramp_test": "no"},
     "recovering": {"recovery": "ok", "return": "ok", "endurance": "maybe", "long": "no",
                    "tempo": "no", "sweetspot": "no", "threshold": "no", "vo2max": "no",
-                   "durability_test": "no"},
+                   "ramp_test": "no"},
     "rebound":    {"recovery": "ok", "return": "ok", "endurance": "ok", "long": "maybe",
                    "tempo": "maybe", "sweetspot": "maybe", "threshold": "no", "vo2max": "no",
-                   "durability_test": "no"},
+                   "ramp_test": "no"},
     "strained":   {"recovery": "ok", "return": "ok", "endurance": "ok", "long": "maybe",
                    "tempo": "maybe", "sweetspot": "maybe", "threshold": "no", "vo2max": "no",
-                   "durability_test": "no"},
+                   "ramp_test": "no"},
     "ready":      {"recovery": "ok", "return": "ok", "endurance": "ok", "long": "ok",
                    "tempo": "ok", "sweetspot": "ok", "threshold": "ok", "vo2max": "ok",
-                   "durability_test": "ok"},
+                   "ramp_test": "ok"},
     "elevated":   {"recovery": "ok", "return": "ok", "endurance": "ok", "long": "maybe",
                    "tempo": "maybe", "sweetspot": "maybe", "threshold": "no", "vo2max": "no",
-                   "durability_test": "no"},
+                   "ramp_test": "no"},
     "unknown":    {"recovery": "ok", "return": "ok", "endurance": "ok", "long": "maybe",
                    "tempo": "maybe", "sweetspot": "maybe", "threshold": "maybe", "vo2max": "maybe",
-                   "durability_test": "no"},
+                   "ramp_test": "no"},
 }
 
 FIT_REASON = {
@@ -948,11 +757,11 @@ def fit_for(family_key: str, state: str, intensity: float,
     # this one says the NUMBER would be wrong. Only the generic state sentence
     # is replaced - the hard-day and infection rules below are more specific
     # and keep their own wording.
-    if family_key == "durability_test" and verdict != "ok" and reason == FIT_REASON.get(state, ""):
-        reason = ("Bei gelbem oder rotem Zustand misst der Test die Ermüdung statt der "
-                  "Durability. Das ist kein Sicherheitshinweis, sondern ein Messfehler: "
-                  "die Zahl wäre später nicht mehr von einer echten Verschlechterung zu "
-                  "unterscheiden.")
+    if family_key == "ramp_test" and verdict != "ok" and reason == FIT_REASON.get(state, ""):
+        reason = ("Bei gelbem oder rotem Zustand misst der Test deine Müdigkeit statt "
+                  "deiner Schwellen. Das ist kein Sicherheitshinweis, sondern ein "
+                  "Messfehler: die Zahl wäre später nicht mehr von einer echten "
+                  "Veränderung zu unterscheiden.")
     # after a real break the base ride stays on the table, judged - the
     # graded return is the better first step, not the only visible one
     if family_key == "endurance" and layoff_days and layoff_days >= 7 and verdict == "ok":
@@ -1188,11 +997,11 @@ def suggest(state: str, ftp: float | None = None, aerobic_hr: int | None = None,
     decision is the athlete's; the data's job is to say what it costs.
     """
     order = {
-        "long_ride": ["long", "endurance", "durability_test", "sweetspot", "tempo", "threshold", "vo2max", "recovery", "return"],
-        "ftp": ["threshold", "sweetspot", "endurance", "vo2max", "tempo", "long", "durability_test", "recovery", "return"],
-        "vo2max": ["vo2max", "threshold", "endurance", "sweetspot", "tempo", "long", "durability_test", "recovery", "return"],
-        "health": ["endurance", "tempo", "recovery", "sweetspot", "threshold", "vo2max", "long", "durability_test", "return"],
-    }.get(goal or "", ["endurance", "vo2max", "sweetspot", "threshold", "tempo", "long", "durability_test", "recovery", "return"])
+        "long_ride": ["long", "endurance", "ramp_test", "sweetspot", "tempo", "threshold", "vo2max", "recovery", "return"],
+        "ftp": ["threshold", "sweetspot", "endurance", "vo2max", "tempo", "long", "ramp_test", "recovery", "return"],
+        "vo2max": ["vo2max", "threshold", "endurance", "sweetspot", "tempo", "long", "ramp_test", "recovery", "return"],
+        "health": ["endurance", "tempo", "recovery", "sweetspot", "threshold", "vo2max", "long", "ramp_test", "return"],
+    }.get(goal or "", ["endurance", "vo2max", "sweetspot", "threshold", "tempo", "long", "ramp_test", "recovery", "return"])
 
     out: list[dict[str, Any]] = []
     for family in order:
@@ -1227,44 +1036,6 @@ def suggest(state: str, ftp: float | None = None, aerobic_hr: int | None = None,
         if len(out) >= limit:
             break
     return out
-
-
-def protocol_block(state: str, p20_fresh: float | None = None,
-                   aerobic_power: float | None = None, ftp: float | None = None,
-                   budget: float | None = None, hard_days_last_7: int = 0,
-                   recovery_offered: bool = False,
-                   infection: bool = False) -> dict[str, Any]:
-    """Termin 2 for the panel: either a graded session, or a sentence and a button.
-
-    K1 is explicit that a missing Termin 1 does not produce an empty slot or a
-    greyed-out card: the session is NOT in the catalogue, and what stands in
-    its place is a sentence saying WHICH appointment is missing, plus the
-    button that puts Termin 1 in the calendar. Same shape as "Was das ausbaut"
-    in G5 - the reason, not just the lack.
-
-    When it IS available it gets the full four-grade treatment from I3, with
-    no exception for being a test (K4). Exempting it would soften exactly the
-    rule I3 defends against special cases.
-    """
-    built = fatigued_session(p20_fresh, aerobic_power, ftp)
-    if not built.get("available"):
-        return {**built, "title": DURABILITY_TEST_FATIGUED_META["title"],
-                "cta_title": DURABILITY_TEST_FRESH["title"]}
-
-    entry = dict(built["entry"])
-    verdict, reason = fit_for("durability_test", state, entry["intensity"],
-                              hard_days_last_7=hard_days_last_7, infection=infection)
-    load = entry.get("load")
-    fits_budget = None if budget is None or load is None else load <= budget
-    entry.update({
-        "family": "durability_test",
-        "family_label": "Durability-Test",
-        "fit": verdict,
-        "fit_reason": reason,
-        "fits_budget": fits_budget,
-        "stage": stage(verdict, fits_budget, recovery_offered),
-    })
-    return {"available": True, "entry": entry}
 
 
 FAMILY_OF_KEY: dict[str, str] = {

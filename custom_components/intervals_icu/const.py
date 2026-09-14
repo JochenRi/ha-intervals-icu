@@ -302,6 +302,11 @@ RAMP_COOLDOWN_MIN = 10
 # ablesbar, auch wenn HF und VO2 es waeren (Fleitas-Paniagua 2023 gegen
 # Rogers). Die laengere Testdauer bei einem starken Fahrer ist der Preis.
 RAMP_STEP_W_PER_MIN = 5
+# ERWARTUNG fuer die Lastschaetzung der Katalogkarte, KEINE Vorgabe: die Rampe
+# endet an einem Zustand und nicht an der Uhr. Wie lange sie dauert, haengt an
+# der eigenen Spanne - bei einem starken Fahrer laenger, und das ist der Preis
+# der flachen Steigung und kein Konstruktionsfehler.
+RAMP_EXPECTED_MIN = 30
 # Quellen, als Groessenordnung neben dem eigenen Ergebnis. Sportart dazu: die
 # 0,75 stammt vom LAUFBAND (Rogers 2021a, 15 Laeufer, Bruce-Protokoll).
 RAMP_REFERENCE_RUN = "Laufband, 15 Läufer: VT1 bei 152 bpm gegen HRVT1 bei 154 bpm"
