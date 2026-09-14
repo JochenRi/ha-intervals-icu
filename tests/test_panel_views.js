@@ -1018,10 +1018,28 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   // Seit 0.49.0 ist der Rueckfall bei VO2max und SweetSpot eine echte
   // Auskunft: dort SOLL gemessen werden, und wenn es nicht reicht, gehoert es
   // gesagt. Fuer die uebrigen Familien gibt es nichts zurueckzufallen.
+  // 0.51.0: Tempo und Schwelle HABEN jetzt eine eigene Messung - den
+  // Stufentest. Der Rueckfall ist dort also eine echte Auskunft geworden, und
+  // der Waechter dreht sich um: er verlangt sie, statt sie zu verbieten.
   const hart = { ...base, watt_source: "ftp", family: "threshold",
     blocks_w: [[10, 194, "1"]] };
-  ok(!/Rückfall auf die FTP/.test(String(q._sessionCard(hart, opts))),
+  // Umbrueche im Template duerfen ueber einen Satz nicht entscheiden.
+  const flach = (x) => String(x).replace(/\s+/g, " ");
+  contains(flach(q._sessionCard(hart, opts)), "nicht gemessen",
+           "L4: Schwelle verschweigt den Rückfall, obwohl es seit dem "
+           + "Stufentest etwas zu messen gäbe");
+  // Und fuer eine Familie, die WEITERHIN nichts zu messen hat, gibt es auch
+  // weiterhin nichts zurueckzufallen - sonst stuende dort eine Warnung ohne
+  // Gegenstand.
+  const ohne = { ...base, watt_source: "ftp", family: "recovery",
+    blocks_w: [[10, 120, "ruhig"]] };
+  ok(!/Rückfall auf die FTP/.test(String(q._sessionCard(ohne, opts))),
      "L4: eine Familie ohne eigene Messung meldet einen Rückfall, den es nicht gibt");
+  // Gegenprobe, gezaehlt und benannt: der Ausdruck FINDET den Satz dort, wo er
+  // steht - sonst prueft die Zeile darueber nur, dass nie etwas gefunden wird.
+  ok(/Rückfall auf die FTP/.test(String(q._sessionCard(rueckfall, opts))),
+     "L4 Gegenprobe: der Ausdruck findet den Rückfall auch dort nicht, wo er "
+     + "steht - der Wächter ist blind");
   const duenn = { ...base, watt_source: "ftp", family: "vo2max",
     blocks_w: [[4, 220, "1"]] };
   contains(String(q._sessionCard(duenn, opts)).replace(/\s+/g, " "),
