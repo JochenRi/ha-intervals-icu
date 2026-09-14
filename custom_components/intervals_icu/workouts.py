@@ -536,9 +536,50 @@ def curve_watts(curve: dict[str, Any] | None, hours: float) -> dict[str, Any] | 
             "source": "literature", "n": None, "hour": None}
 
 
+# --- Die Quellenkette je Familie (docs/ausbau.md N2) -------------------------
+# EINE Tabelle, keine verstreuten Bedingungen. Die Rangfolge ist je Familie
+# VERSCHIEDEN, und genau deshalb steht sie an einer Stelle: eine Rangfolge, die
+# in drei if-Zweigen verteilt liegt, driftet beim naechsten Umbau auseinander -
+# das war in diesem Projekt siebenmal die Listen-Klasse (§7). Ein Waechter in
+# test_workouts haelt diese Tabelle gegen die Reihenfolge, die `scaled()`
+# tatsaechlich durchlaeuft.
+#
+# Warum welche Schwelle des Stufentests:
+#   HRVT2 (alpha 0,5) gehoert gegen die LEITZAHL, die Leistung im ersten
+#   eingeschwungenen Block - das ist per Definition dieselbe Groesse.
+#   HRVT1 (alpha 0,75) gehoert gegen P(0,75) aus der Ermuedungskurve, ebenfalls
+#   dieselbe Groesse. HRVT2 gegen eine VO2max-TRAININGSVORGABE zu halten waere
+#   0.49.2 in neuer Gestalt: zwei verschieden erhobene Zahlen unter einer
+#   Ueberschrift.
+#
+# Tempo und Schwelle haben keine eigene erste Stufe - fuer sie IST der
+# Stufentest die Messung. Welche seiner beiden Schwellen: HRVT2, weil beide
+# Familien am oberen Ende liegen. Das ist eine SETZUNG, keine Vorgabe aus N2.
+SOURCE_CHAIN: dict[str, tuple[str, ...]] = {
+    "vo2max":    ("blocks", "ramp_hrvt2", "ftp"),
+    "sweetspot": ("blocks", "ramp_hrvt2", "ftp"),
+    "tempo":     ("ramp_hrvt2", "ftp"),
+    "threshold": ("ramp_hrvt2", "ftp"),
+    "endurance": ("curve", "ramp_hrvt1", "ftp"),
+    "long":      ("curve", "ramp_hrvt1", "ftp"),
+}
+
+# Wie jede Stufe heisst, wenn die Karte sie nennt. Eine Zahl OHNE Herkunft ist
+# in diesem Projekt schon zweimal als Messung gelesen worden, die keine war -
+# deshalb traegt AUCH der Rueckfall eine Beschriftung.
+SOURCE_LABEL: dict[str, str] = {
+    "blocks": "gemessen an deinen Arbeitsblöcken",
+    "curve": "gemessen an deiner Ermüdungskurve",
+    "ramp_hrvt2": "gemessen im Stufentest, zweite Schwelle",
+    "ramp_hrvt1": "gemessen im Stufentest, erste Schwelle",
+    "ftp": "Rückfall auf die FTP — nicht gemessen",
+}
+
+
 def scaled(entry: dict[str, Any], ftp: float | None, aerobic_hr: int | None,
            max_hr: float | None = None, curve: dict[str, Any] | None = None,
-           blocks: dict[str, Any] | None = None) -> dict[str, Any]:
+           blocks: dict[str, Any] | None = None,
+           ramp: dict[str, Any] | None = None) -> dict[str, Any]:
     """Fill in the athlete's own numbers: watts from the MEASURED curve where
     it carries, from the FTP where it does not - and the origin travels with
     the session, so a changed number is explainable instead of surprising."""
@@ -609,6 +650,68 @@ def scaled(entry: dict[str, Any], ftp: float | None, aerobic_hr: int | None,
             out["blocks_w"] = staged
             out["text_w"] = steps_text(staged, None)
             out["watt_source"] = "curve"
+    # --- Der Stufentest als naechste Stufe (N2) -------------------------------
+    # Er steht NACH der Blockmessung und NACH der Kurve, weil SOURCE_CHAIN es
+    # so sagt - fuer Tempo und Schwelle ist er die erste Stufe, weil dort
+    # nichts darueber liegt. Hat eine hoehere Stufe getragen, ist hier
+    # nichts mehr zu tun.
+    if out.get("watt_source") not in (None, "ftp"):
+        return out
+    chain = SOURCE_CHAIN.get(fam or "", ("ftp",))
+    want = next((step for step in chain if step.startswith("ramp_")), None)
+    node = None
+    if want and ramp:
+        node = (ramp.get("result") or {}).get(
+            "hrvt2" if want == "ramp_hrvt2" else "hrvt1")
+    # BEIDE Seiten aus derselben Quelle (0.47.1). Traegt der Test an dieser
+    # Stelle keine Herzfrequenz, wird er auch fuer die Watt nicht benutzt -
+    # sonst faellt eine Seite auf ihn und die andere auf die aerobe Schwelle,
+    # und genau das ist der Gleichstandsfehler, gegen den 0.47.1 gebaut wurde.
+    if node and node.get("watts") and node.get("hr"):
+        # Die MESSUNG IST NICHT IMMER DIE VORGABE: an der zweiten Schwelle ist
+        # die gemessene Leistung dieselbe Groesse wie die Leitzahl und wird
+        # direkt uebernommen; an der ersten ist sie eine SCHWELLE, und gefahren
+        # wird derselbe Anteil davon wie bei der Kurve - eine Regel, nicht zwei.
+        share = 1.0 if want == "ramp_hrvt2" else CURVE_TARGET_SHARE
+        target = round(float(node["watts"]) * share)
+        staged = []
+        changed = False
+        for block in entry["blocks"]:
+            # WELCHE Abschnitte die Zahl bekommen, entscheidet dieselbe Regel
+            # wie bei der Stufe, die der Test ersetzt - sonst faehrt dieselbe
+            # Einheit je nach Quelle eine andere FORM. Bei der zweiten Schwelle
+            # sind das die Arbeitsbloecke (wie bei der Blockmessung), bei der
+            # ersten der gleichmaessige Hauptteil (wie bei der Kurve).
+            work = (len(block) > 3 and block[3]) or (
+                want == "ramp_hrvt2"
+                and str(block[2]).lower().startswith(("block", "1", "2", "3", "4")))
+            if work:
+                staged.append((block[0], target, block[2], *block[3:]))
+                changed = True
+            else:
+                staged.append((block[0], round(ftp * block[1] / 100) if ftp else None,
+                               block[2], *block[3:]))
+        if changed:
+            out["blocks_w"] = staged
+            out["text_w"] = steps_text(staged, None)
+            out["watt_source"] = want
+            out["ramp_source"] = {
+                "alpha": node.get("alpha"), "watts": node.get("watts"),
+                "hr": node.get("hr"), "date": ramp.get("date"),
+                "share": share,
+            }
+            # Die Pulsseite kommt aus DEMSELBEN Messpunkt. Ein Punkt, kein
+            # Fenster - eine Breite dazuzuerfinden waere eine Setzung, die
+            # niemand belegen kann.
+            # Ueber .get(), nicht ueber []: ein fehlendes Feld ist genau das,
+            # was eine Mutation herstellt - mit [] stuerzt der Lauf ab, statt
+            # den Fehler zaehlen zu lassen (§9, zweite Bauregel).
+            _hr = node.get("hr")
+            out["hr_point"] = round(float(_hr)) if _hr else None
+            out["hr_source"] = {"kind": want, "family": fam,
+                                "hr": out["hr_point"], "date": ramp.get("date")}
+            return out
+
     if aerobic_hr and entry.get("hr_hint"):
         low, high = entry["hr_hint"]
         lo, hi = round(aerobic_hr * low), round(aerobic_hr * high)
@@ -988,7 +1091,8 @@ def suggest(state: str, ftp: float | None = None, aerobic_hr: int | None = None,
             goal: str | None = None,
             recovery_offered: bool = False,
             curve: dict[str, Any] | None = None,
-            blocks: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+            blocks: dict[str, Any] | None = None,
+            ramp: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """One session per family, each judged for today - never filtered away.
 
     The earlier version filtered: in a rebound state everything hard vanished
@@ -1016,7 +1120,7 @@ def suggest(state: str, ftp: float | None = None, aerobic_hr: int | None = None,
             continue
 
         key = _variant(keys, state, ftp, budget, hard_days_last_7)
-        entry = dict(scaled(BY_KEY[key], ftp, aerobic_hr, max_hr, curve, blocks))
+        entry = dict(scaled(BY_KEY[key], ftp, aerobic_hr, max_hr, curve, blocks, ramp))
         verdict, reason = fit_for(
             family_key, state, entry["intensity"],
             hard_days_last_7=hard_days_last_7, layoff_days=layoff_days,
@@ -1056,7 +1160,8 @@ def rate_sessions(sessions: list[dict[str, Any]], state: str,
                   aerobic_hr: int | None = None,
                   max_hr: float | None = None,
                   curve: dict[str, Any] | None = None,
-                  blocks: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+                  blocks: dict[str, Any] | None = None,
+                  ramp: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """Grade the planned sessions of the CURRENT week - a view, not a planner.
 
     Every session the plan produced carries a `workout` key into the catalogue.
@@ -1091,7 +1196,7 @@ def rate_sessions(sessions: list[dict[str, Any]], state: str,
             template["blocks"] = stretched
             template["minutes"] = sum(block[0] for block in stretched)
             template["text"] = steps_text(stretched, None)
-        full = scaled(template, ftp, aerobic_hr, max_hr, curve, blocks)
+        full = scaled(template, ftp, aerobic_hr, max_hr, curve, blocks, ramp)
         if stretched and ftp:
             full["text_w"] = steps_text(stretched, ftp)
         load = session_load(entry, session.get("hours"))

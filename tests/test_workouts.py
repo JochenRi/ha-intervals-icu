@@ -716,6 +716,131 @@ for _weg in ("fatigued_session", "protocol_block", "protocol_load"):
 check("durability_test" not in _ramp_src,
       "N: die alte Familie steht noch im Quelltext")
 
+# ==============================================================================
+# Paket N2 - die Quellenkette je Familie
+# ==============================================================================
+# Die Rangfolge ist je Familie VERSCHIEDEN. Sie steht deshalb als EINE Tabelle
+# in workouts.py, und dieser Abschnitt haelt sie gegen das, was `scaled()`
+# tatsaechlich tut - eine Rangfolge in drei if-Zweigen driftet beim naechsten
+# Umbau auseinander (§7, Listen-Klasse).
+_RAMP = {"date": "2026-09-14",
+         "result": {"hrvt1": {"alpha": 0.75, "watts": 196.0, "hr": 152.0},
+                    "hrvt2": {"alpha": 0.5, "watts": 248.0, "hr": 171.0}}}
+_BLOCKS = {"families": {"vo2max": {
+    "source_ok": True, "sessions": 6, "from": "2026-07-23", "to": "2026-09-08",
+    "hr_window": {"low": 176, "high": 185, "n": 6},
+    "latest": {"date": "2026-09-08", "median_watts": 252, "median_alpha": 0.41,
+               "n_blocks": 4}}}}
+_CURVE = {"measured": [{"hour": 1, "t": 0.5, "watts": 152.5, "n": 26},
+                       {"hour": 2, "t": 1.5, "watts": 142.2, "n": 23}],
+          "literature": [{"hour": 1, "t": 0.5, "watts": 152.5},
+                         {"hour": 2, "t": 1.5, "watts": 149.1}],
+          "solid_until_hour": 2, "thin_until_hour": 2}
+
+# --- 1 · DIE TABELLE IST VOLLSTAENDIG UND ENDET IMMER BEI DER FTP -------------
+for _fam, _label, _keys in W.FAMILIES:
+    if _fam in ("recovery", "return", "ramp_test"):
+        continue   # keine Wattvorgabe aus einer Messung, das ist Absicht
+    check(_fam in W.SOURCE_CHAIN, f"N2: Familie {_fam} steht in keiner Kette")
+    _chain = W.SOURCE_CHAIN.get(_fam, ())
+    eq(_chain[-1:] and _chain[-1], "ftp",
+       f"N2: die Kette von {_fam} endet nicht auf dem Rueckfall")
+    for _step in _chain:
+        check(_step in W.SOURCE_LABEL,
+              f"N2: die Stufe {_step} traegt keine Beschriftung — eine Zahl "
+              f"ohne Herkunft ist in diesem Projekt zweimal als Messung "
+              f"gelesen worden, die keine war")
+check("nicht gemessen" in W.SOURCE_LABEL["ftp"],
+      "N2: der Rueckfall ist nicht als Rueckfall beschriftet")
+
+# --- 2 · DIE RANGFOLGE WIRD ERZWUNGEN, NICHT BESCHRIEBEN ---------------------
+# Fuer jede Familie: die hoechste Stufe, die Daten hat, muss gewinnen. Geprueft
+# wird nicht der Quelltext, sondern das ERGEBNIS von scaled().
+for _fam, _first, _key in (("vo2max", "blocks", "vo2_4x4"),
+                           ("endurance", "curve", "z2_90"),
+                           ("tempo", "ramp_hrvt2", "tempo_2x20")):
+    _entry = W.BY_KEY[_key]
+    _alles = W.scaled(_entry, 215, 146, curve=_CURVE, blocks=_BLOCKS, ramp=_RAMP)
+    eq(_alles.get("watt_source"), _first,
+       f"N2: bei {_fam} gewinnt nicht die erste Stufe der Kette")
+    # Faellt die erste Stufe weg, muss GENAU die zweite greifen. Der Zugriff
+    # ist null-geprueft: eine gekuerzte Kette ist genau das, was eine Mutation
+    # herstellt, und mit [1] stuerzt der Test dann ab statt zu zaehlen (§9).
+    _kette = W.SOURCE_CHAIN.get(_fam) or ()
+    check(len(_kette) >= 2, f"N2: die Kette von {_fam} hat keine zweite Stufe")
+    _zweite = _kette[1] if len(_kette) >= 2 else None
+    _ohne = W.scaled(_entry, 215, 146, ramp=_RAMP) if _first != "ramp_hrvt2" else \
+        W.scaled(_entry, 215, 146)
+    eq(_ohne.get("watt_source"), _zweite,
+       f"N2: bei {_fam} greift nach dem Wegfall der ersten Stufe nicht {_zweite}")
+
+# Fixture-Beweis: die drei Quellen tragen UNTERSCHIEDLICHE Zahlen. Waeren sie
+# gleich, pruefte der Abschnitt oben ueberhaupt keine Rangfolge.
+check(len({252, 248, 215}) == 3,
+      "N2 Fixture-Beweis: Blockmessung, Stufentest und FTP tragen dieselbe "
+      "Zahl — die Rangfolge waere nicht pruefbar")
+
+# --- 3 · DER GLEICHSTAND AUS 0.47.1 GILT WEITER ------------------------------
+# Watt- und Pulsseite derselben Einheit kommen aus DERSELBEN Quelle. Der
+# Stufentest als zweite Stufe darf das nicht aufbrechen.
+_ramp_only = W.scaled(W.BY_KEY["vo2_4x4"], 215, 146, ramp=_RAMP)
+eq(_ramp_only.get("watt_source"), "ramp_hrvt2", "N2: der Test greift gar nicht")
+eq((_ramp_only.get("hr_source") or {}).get("kind"), "ramp_hrvt2",
+   "N2 Gleichstand: die Wattseite kommt aus dem Test, die Pulsseite nicht")
+check(_ramp_only.get("hr_window") is None,
+      "N2 Gleichstand: neben dem gemessenen Punkt steht zusaetzlich ein "
+      "Fenster aus der aeroben Schwelle — zwei Quellen in einer Karte")
+eq((_ramp_only or {}).get("hr_point"), 171,
+   "N2 Gleichstand: der Puls kommt nicht aus demselben Messpunkt wie die Watt")
+# Und die Gegenprobe: OHNE Puls am Messpunkt faellt AUCH die Wattseite zurueck.
+_kein_puls = {"date": "2026-09-14",
+              "result": {"hrvt2": {"alpha": 0.5, "watts": 248.0, "hr": None}}}
+_halb = W.scaled(W.BY_KEY["vo2_4x4"], 215, 146, ramp=_kein_puls)
+eq(_halb.get("watt_source"), "ftp",
+   "N2 Gleichstand: die Wattseite nimmt den Test, obwohl die Pulsseite dort "
+   "nichts hergibt — genau der Fehler aus 0.47.1")
+check(_halb.get("hr_window") is not None,
+   "N2 Gleichstand: nach dem Rueckfall fehlt auch das gewohnte HF-Fenster")
+
+# --- 4 · IM LEEREN ZUSTAND AENDERT SICH NICHTS -------------------------------
+# Solange kein Stufentest markiert ist, muss die Kette EXAKT so entscheiden wie
+# vor diesem Paket. Nicht "aehnlich" - Zahl fuer Zahl.
+for _key in ("vo2_4x4", "sweetspot_2x20", "tempo_2x20", "threshold_4x10",
+             "z2_90", "z2_210_late", "recovery_40", "z2_60"):
+    _e = W.BY_KEY[_key]
+    _ohne_alles = W.scaled(_e, 215, 146)
+    for _leer in (None, {}, {"result": None}, {"result": {}},
+                  {"result": {"hrvt1": None, "hrvt2": None}}):
+        _mit_leer = W.scaled(_e, 215, 146, ramp=_leer)
+        eq(_mit_leer.get("blocks_w"), _ohne_alles.get("blocks_w"),
+           f"N2 Leerzustand: {_key} faehrt mit leerem Test andere Watt")
+        eq(_mit_leer.get("watt_source"), _ohne_alles.get("watt_source"),
+           f"N2 Leerzustand: {_key} nennt mit leerem Test eine andere Quelle")
+        eq(_mit_leer.get("hr_window"), _ohne_alles.get("hr_window"),
+           f"N2 Leerzustand: {_key} traegt mit leerem Test ein anderes HF-Fenster")
+# Gegenprobe, gezaehlt und benannt: mit einem GEFUELLTEN Test aendert sich
+# sehr wohl etwas - sonst prueft der Abschnitt oben nur, dass nie etwas
+# passiert.
+check(W.scaled(W.BY_KEY["vo2_4x4"], 215, 146).get("blocks_w")
+      != W.scaled(W.BY_KEY["vo2_4x4"], 215, 146, ramp=_RAMP).get("blocks_w"),
+      "N2 Leerzustand Gegenprobe: auch ein gefuellter Test aendert nichts — "
+      "die Pruefung ist blind")
+
+# --- 5 · DIE MESSUNG IST NICHT IMMER DIE VORGABE -----------------------------
+# An der zweiten Schwelle ist die gemessene Leistung dieselbe Groesse wie die
+# Leitzahl und wird direkt uebernommen. An der ERSTEN ist sie eine Schwelle -
+# gefahren wird derselbe Anteil davon wie bei der Kurve, eine Regel und nicht
+# zwei.
+eq((_ramp_only.get("ramp_source") or {}).get("share"), 1.0,
+   "N2: an der zweiten Schwelle wird ein Anteil abgezogen")
+_lang = W.scaled(W.BY_KEY["z2_90"], 215, 146, ramp=_RAMP)
+eq((_lang.get("ramp_source") or {}).get("share"), W.CURVE_TARGET_SHARE,
+   "N2: an der ersten Schwelle wird NICHT derselbe Anteil benutzt wie bei der "
+   "Kurve — zwei Regeln fuer dieselbe Groesse")
+check(max(b[1] for b in _lang["blocks_w"] if b[1]) < 196,
+      "N2: die Grundlageneinheit sitzt AUF der gemessenen Schwelle statt "
+      "darunter")
+
 # --- L4: die Wattvorgabe kommt aus der eigenen Messung ------------------------
 # Gestaffelt wird auf der GEPAARTEN Reihe; bis zur letzten gemessenen Stunde
 # ist es Messung, darueber Studienform - und jeder Abschnitt sagt, welches.

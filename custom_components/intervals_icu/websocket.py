@@ -757,6 +757,10 @@ def websocket_workouts(hass, connection, msg) -> None:
         curve=fatigue.curve(data, aerobic_hr=anchors.get("aerobic_hr"),
                             aerobic_power=anchors.get("aerobic_power")),
         blocks=blocks_lib.series(data),
+        # Der Stufentest als naechste Stufe der Quellenkette (N2). Er wird
+        # IMMER mitgegeben; ob er greift, entscheidet SOURCE_CHAIN je Familie -
+        # und ohne markierten Test ist er None und aendert nichts.
+        ramp=ramp_lib.latest(data),
     )
     connection.send_result(msg["id"], {
         "ftp": ftp,
@@ -959,6 +963,10 @@ def websocket_goal(hass, connection, msg) -> None:
             curve=fatigue.curve(data, aerobic_hr=anchors.get("aerobic_hr"),
                                 aerobic_power=anchors.get("aerobic_power")),
             blocks=blocks_lib.series(data),
+            # Der Stufentest als naechste Stufe der Quellenkette (N2). Er wird
+            # IMMER mitgegeben; ob er greift, entscheidet SOURCE_CHAIN je Familie -
+            # und ohne markierten Test ist er None und aendert nichts.
+            ramp=ramp_lib.latest(data),
         )
         weeks[0]["rated"] = True
         weeks[0]["done"] = analytics.week_done(data, weeks[0]["start"])
