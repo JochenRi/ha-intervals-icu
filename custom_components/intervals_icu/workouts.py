@@ -41,7 +41,10 @@ try:  # inside the package (Home Assistant)
     from .const import (
         DURABILITY_FUELLING_G_PER_H,
         RAMP_COOLDOWN_MIN,
+        RAMP_END_RESERVE_MIN,
         RAMP_EXPECTED_MIN,
+        RAMP_FALLBACK_END_PCT,
+        RAMP_FALLBACK_START_PCT,
         RAMP_STEP_W_PER_MIN,
         RAMP_WARMUP_MIN,
         CURVE_TARGET_SHARE,
@@ -50,7 +53,10 @@ except ImportError:  # standalone (test suite loads this file directly)
     from const import (  # type: ignore[no-redef]
         DURABILITY_FUELLING_G_PER_H,
         RAMP_COOLDOWN_MIN,
+        RAMP_END_RESERVE_MIN,
         RAMP_EXPECTED_MIN,
+        RAMP_FALLBACK_END_PCT,
+        RAMP_FALLBACK_START_PCT,
         RAMP_STEP_W_PER_MIN,
         RAMP_WARMUP_MIN,
         CURVE_TARGET_SHARE,
@@ -381,14 +387,21 @@ RAMP_TEST = {
     "minutes": RAMP_WARMUP_MIN + RAMP_EXPECTED_MIN + RAMP_COOLDOWN_MIN,
     "intensity": 72,
     "load": 55,
+    # PLATZHALTER, und zwar ausdruecklich: ramp_protocol() ersetzt Leistungen
+    # UND Dauer der Rampe immer. Ohne FTP gibt es keine Dauer, weil die Spanne
+    # an den eigenen Werten haengt - eine Zahl, die hier stuende, waere genau
+    # der Widerspruch aus §7 (Dauer, Steigung und Spanne passten nur bei einer
+    # einzigen FTP zusammen). Die Prozentwerte sind der FTP-Rueckfall und
+    # stehen in const.py.
     "blocks": [
-        (RAMP_WARMUP_MIN, 60, "Einrollen, ruhig"),
-        (RAMP_EXPECTED_MIN, 90, "Rampe (Erwartung — sie endet am alpha-Wert, nicht an der Uhr)"),
-        (RAMP_COOLDOWN_MIN, 60, "Ausrollen, konstant"),
+        (RAMP_WARMUP_MIN, RAMP_FALLBACK_START_PCT, "Einrollen, ruhig"),
+        (RAMP_EXPECTED_MIN, RAMP_FALLBACK_END_PCT, "Rampe (Platzhalter — die Dauer wird gerechnet)"),
+        (RAMP_COOLDOWN_MIN, RAMP_FALLBACK_START_PCT, "Ausrollen, konstant"),
     ],
-    "text": (f"- {RAMP_WARMUP_MIN}m 60% 85rpm\n"
-             f"- {RAMP_EXPECTED_MIN}m ramp 60-115% ({RAMP_STEP_W_PER_MIN} W/min, nicht ERG)\n"
-             f"- {RAMP_COOLDOWN_MIN}m 60% (gleich bleiben, nicht abkürzen)"),
+    "text": (f"- {RAMP_WARMUP_MIN}m {RAMP_FALLBACK_START_PCT}% 85rpm\n"
+             f"- ramp {RAMP_FALLBACK_START_PCT}-{RAMP_FALLBACK_END_PCT}% "
+             f"({RAMP_STEP_W_PER_MIN} W/min, nicht ERG)\n"
+             f"- {RAMP_COOLDOWN_MIN}m {RAMP_FALLBACK_START_PCT}% (gleich bleiben, nicht abkürzen)"),
     "hr_hint": (0.70, 1.00),
     "dfa": "der Zweck der Fahrt: von über 1,0 stetig bis stabil unter 0,5",
     "effect": ("Misst nichts am Körper und trainiert auch nichts — er liest deine "
@@ -576,6 +589,115 @@ SOURCE_LABEL: dict[str, str] = {
 }
 
 
+RAMP_START_CHAIN: tuple[str, ...] = ("curve", "ramp_hrvt1", "ftp")
+RAMP_END_CHAIN: tuple[str, ...] = ("blocks", "ramp_hrvt2", "ftp")
+
+
+def _ramp_node(ramp: dict[str, Any] | None, which: str) -> dict[str, Any] | None:
+    """Eine Schwelle aus einem markierten Stufentest, oder nichts."""
+    node = ((ramp or {}).get("result") or {}).get(which)
+    return node if isinstance(node, dict) and node.get("watts") else None
+
+
+def ramp_protocol(ftp: float | None, curve: dict[str, Any] | None = None,
+                  blocks: dict[str, Any] | None = None,
+                  ramp: dict[str, Any] | None = None) -> dict[str, Any] | None:
+    """Start- und Endleistung des Stufentests - und die DARAUS gerechnete Dauer.
+
+    N1 laesst genau drei feste Zahlen zu: Einrolldauer, Ausrolldauer und die
+    Rampensteigung. Alles andere kommt aus den eigenen Werten, jede Seite mit
+    ihrer eigenen Rangfolge:
+
+        Start   Ermuedungskurve -> Stufentest HRVT1 -> FTP
+        Ende    Blockmessung (LEITZAHL) -> Stufentest HRVT2 -> FTP
+
+    WARUM DIE LEITZAHL UND NICHT DIE TRAININGSVORGABE. N2 sagt es ausdruecklich:
+    HRVT2 liegt bei alpha 0,5, und die Leitzahl ist der erste eingeschwungene
+    Block - per Definition dieselbe Groesse. Die Trainingsvorgabe steht am
+    MEDIAN-alpha (am eigenen Bestand 0,40 gegen 0,47) und ist eine andere Zahl.
+    Sie hier zu nehmen waere 0.49.2 in neuer Gestalt: zwei verschieden erhobene
+    Groessen unter einer Ueberschrift.
+
+    DIE RESERVE IST EINE ZEIT, KEIN ANTEIL. Die Rampe muss ueber die eigene
+    Leitzahl HINAUS gehen, sonst wird die flache Strecke unter 0,5 nie
+    aufgezeichnet und die zweite Schwelle faellt aus - genau der Fall, den
+    0.51.0 ausgeliefert hat (Ende 230 W bei einer Leitzahl von 257 W). Eine
+    Zeit sagt, was sie bedeutet; ein Prozentsatz waere eine zweite Zahl, deren
+    Bezug niemand mehr nachliest. SETZUNG, und die Karte sagt das.
+
+    DIE DAUER WIRD GERECHNET, NIE GESETZT. Vorher standen Dauer, Steigung und
+    Spanne nebeneinander und passten nur bei genau einer FTP zusammen
+    (272,7 W). Jetzt folgt die Dauer aus den beiden Enden, und der Widerspruch
+    ist nicht mehr herstellbar (§7, achtzehnter Fall).
+    """
+    if not ftp:
+        return None
+    step = float(RAMP_STEP_W_PER_MIN)
+    reserve = RAMP_END_RESERVE_MIN * step
+
+    # --- Start: dieselbe Groesse wie die Grundlagenvorgabe fuer eine Stunde ---
+    start, start_from = None, "ftp"
+    for stage_name in RAMP_START_CHAIN:
+        if stage_name == "curve":
+            at = curve_watts(curve, 0.5)
+            if at:
+                start, start_from = round(at["watts"] * CURVE_TARGET_SHARE), "curve"
+                break
+        elif stage_name == "ramp_hrvt1":
+            node = _ramp_node(ramp, "hrvt1")
+            if node:
+                start = round(float(node["watts"]) * CURVE_TARGET_SHARE)
+                start_from = "ramp_hrvt1"
+                break
+        else:
+            start = round(ftp * RAMP_FALLBACK_START_PCT / 100)
+    if start is None:
+        start = round(ftp * RAMP_FALLBACK_START_PCT / 100)
+
+    # --- Ende: die eigene Leitzahl plus Reserve -------------------------------
+    end, end_from, lead = None, "ftp", None
+    for stage_name in RAMP_END_CHAIN:
+        if stage_name == "blocks":
+            fam = ((blocks or {}).get("families") or {}).get("vo2max") or {}
+            latest = fam.get("latest") if fam.get("source_ok") else None
+            if isinstance(latest, dict) and latest.get("first_watts"):
+                lead = {"watts": latest["first_watts"], "alpha": latest.get("first_alpha"),
+                        "date": latest.get("date")}
+                end, end_from = round(float(latest["first_watts"]) + reserve), "blocks"
+                break
+        elif stage_name == "ramp_hrvt2":
+            node = _ramp_node(ramp, "hrvt2")
+            if node:
+                lead = {"watts": node["watts"], "alpha": node.get("alpha"),
+                        "date": (ramp or {}).get("date")}
+                end, end_from = round(float(node["watts"]) + reserve), "ramp_hrvt2"
+                break
+        else:
+            end = round(ftp * RAMP_FALLBACK_END_PCT / 100)
+    if end is None:
+        end = round(ftp * RAMP_FALLBACK_END_PCT / 100)
+
+    # Ein Ende unter dem Start ist keine Rampe. Das kann nur der gemischte Fall
+    # herstellen (gemessener Start, FTP-Rueckfall am Ende) - dann faellt AUCH
+    # der Start zurueck, damit nicht eine Seite gemessen neben einer geratenen
+    # steht. Dieselbe Regel wie beim Gleichstand aus 0.47.1.
+    if end <= start:
+        start, start_from = round(ftp * RAMP_FALLBACK_START_PCT / 100), "ftp"
+        end, end_from = round(ftp * RAMP_FALLBACK_END_PCT / 100), "ftp"
+        lead = None
+
+    minutes = max(1, round((end - start) / step))
+    return {
+        "start_w": start, "end_w": end, "minutes": minutes,
+        "start_source": {"kind": start_from, "label": SOURCE_LABEL[start_from],
+                         "share": CURVE_TARGET_SHARE if start_from != "ftp" else None},
+        "end_source": {"kind": end_from, "label": SOURCE_LABEL[end_from],
+                       "lead": lead, "reserve_min": RAMP_END_RESERVE_MIN,
+                       "reserve_w": round(reserve)},
+        "step_w_per_min": RAMP_STEP_W_PER_MIN,
+    }
+
+
 def scaled(entry: dict[str, Any], ftp: float | None, aerobic_hr: int | None,
            max_hr: float | None = None, curve: dict[str, Any] | None = None,
            blocks: dict[str, Any] | None = None,
@@ -594,6 +716,39 @@ def scaled(entry: dict[str, Any], ftp: float | None, aerobic_hr: int | None,
     # Schwelle waere in drei Monaten auseinander - gemessen wandern beide
     # gemeinsam (216 -> 251 W bei 176 -> 185 bpm, PROJEKTSTAND §7).
     fam = entry.get("family") or _family_of(entry.get("key"))
+
+    # --- Der Stufentest hat ZWEI Anker und deshalb einen eigenen Weg ----------
+    # Er ist keine Trainingseinheit mit einer Vorgabe, sondern eine Messung mit
+    # einem Anfang und einem Ende, die aus VERSCHIEDENEN Quellen kommen. Die
+    # gemeinsame Mechanik unten kennt nur eine Quelle je Einheit und koennte
+    # das nicht abbilden.
+    if entry.get("key") == "ramp_test":
+        proto = ramp_protocol(ftp, curve, blocks, ramp)
+        if proto:
+            staged = [
+                (RAMP_WARMUP_MIN, proto["start_w"], "Einrollen, ruhig"),
+                (proto["minutes"], proto["end_w"],
+                 f"Rampe {proto['start_w']}\u2013{proto['end_w']} W "
+                 f"({RAMP_STEP_W_PER_MIN} W/min) — sie endet am alpha-Wert, nicht an der Uhr"),
+                (RAMP_COOLDOWN_MIN, proto["start_w"], "Ausrollen, konstant"),
+            ]
+            out["blocks_w"] = staged
+            out["ramp_protocol"] = proto
+            out["minutes"] = sum(block[0] for block in staged)
+            out["template_minutes"] = entry.get("minutes")
+            out["watt_source"] = proto["end_source"]["kind"]
+            out["text_w"] = (
+                f"- {RAMP_WARMUP_MIN}m {proto['start_w']}w  (Einrollen, ruhig)\n"
+                f"- {proto['minutes']}m ramp {proto['start_w']}-{proto['end_w']}w  "
+                f"({RAMP_STEP_W_PER_MIN} W/min, nicht ERG)\n"
+                f"- {RAMP_COOLDOWN_MIN}m {proto['start_w']}w  (gleich bleiben, nicht abkürzen)")
+        # UNVERAENDERT bis Punkt 3 entschieden ist: das Fenster kommt weiter
+        # aus `hr_hint`. Es ist nachweislich falsch (0,70-1,00 der AEROBEN
+        # Schwelle, waehrend die Rampe bis ueber die anaerobe geht) - aber ein
+        # Schritt, der Punkt 1 und 2 baut, entscheidet Punkt 3 nicht nebenbei.
+        _apply_hr_hint(out, entry, aerobic_hr, max_hr)
+        return out
+
     measured = ((blocks or {}).get("families") or {}).get(fam) if blocks else None
     if measured and measured.get("source_ok") and measured.get("latest"):
         latest = measured["latest"]
@@ -717,6 +872,20 @@ def scaled(entry: dict[str, Any], ftp: float | None, aerobic_hr: int | None,
                                 "hr": out["hr_point"], "date": ramp.get("date")}
             return out
 
+    _apply_hr_hint(out, entry, aerobic_hr, max_hr)
+    return out
+
+
+def _apply_hr_hint(out: dict[str, Any], entry: dict[str, Any],
+                   aerobic_hr: int | None, max_hr: float | None) -> None:
+    """Das Pulsfenster aus `hr_hint`, als eigener Schritt.
+
+    Herausgezogen in 0.51.1, weil der Stufentest die gemeinsame Mechanik
+    frueher verlaesst und sein Fenster sonst STILL verlieren wuerde. Ein
+    Schritt, der nur Punkt 1 und 2 aendern soll, darf nicht nebenbei die
+    Anzeige veraendern - wo das Fenster herkommt und ob es hier ueberhaupt
+    taugt, ist eine eigene Entscheidung.
+    """
     if aerobic_hr and entry.get("hr_hint"):
         low, high = entry["hr_hint"]
         lo, hi = round(aerobic_hr * low), round(aerobic_hr * high)
@@ -730,7 +899,6 @@ def scaled(entry: dict[str, Any], ftp: float | None, aerobic_hr: int | None,
                 lo = hi + 1
         if lo <= hi:
             out["hr_window"] = (lo, hi)
-    return out
 
 
 # One entry per FAMILY, so the choice is between different kinds of training

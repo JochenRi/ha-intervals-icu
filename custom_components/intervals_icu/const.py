@@ -307,6 +307,20 @@ RAMP_STEP_W_PER_MIN = 5
 # der eigenen Spanne - bei einem starken Fahrer laenger, und das ist der Preis
 # der flachen Steigung und kein Konstruktionsfehler.
 RAMP_EXPECTED_MIN = 30
+# Reserve ueber der eigenen Leitzahl hinaus, als ZEIT und nicht als Anteil:
+# nach dem Erreichen der Leitzahl wird noch so lange weitergefahren, damit die
+# flache Strecke unter 0,5 ueberhaupt aufgezeichnet wird. SETZUNG - die
+# Literatur nennt dafuer nichts. RAMP_FLAT_S (60 s) ist das mathematische
+# Minimum; das hier ist eine Testauslegung. Eine Zeit sagt, was sie bedeutet,
+# und haengt nicht an einer zweiten Prozentzahl.
+RAMP_END_RESERVE_MIN = 10
+# Der sichtbare Rueckfall auf die FTP, wenn weder Ermuedungskurve noch
+# Blockmessung tragen - der Einsteigerfall aus N1. BEIDE Enden werden als
+# Rueckfall beschriftet, wie ueberall sonst. Diese zwei Zahlen sind die
+# EINZIGEN Prozentwerte des Tests und stehen deshalb hier und nicht im
+# Katalogeintrag (0.51.0 hatte sie dort, und kein Waechter sah hin - §7).
+RAMP_FALLBACK_START_PCT = 60
+RAMP_FALLBACK_END_PCT = 115
 # Quellen, als Groessenordnung neben dem eigenen Ergebnis. Sportart dazu: die
 # 0,75 stammt vom LAUFBAND (Rogers 2021a, 15 Laeufer, Bruce-Protokoll).
 RAMP_REFERENCE_RUN = "Laufband, 15 Läufer: VT1 bei 152 bpm gegen HRVT1 bei 154 bpm"

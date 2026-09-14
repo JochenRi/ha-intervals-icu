@@ -274,7 +274,12 @@ wtree = ast.parse(WORKOUTS.read_text(encoding="utf-8"))
 
 # DIESE LISTE IST VON HAND ZU PFLEGEN. Kommt eine Urteilsfunktion dazu, gehoert
 # sie hier hinein - Pruefung (b) unten faellt sonst, benannt.
-JUDGEMENT_FUNCTIONS = {"suggest", "rate_sessions", "fit_for", "stage", "scaled"}
+# `ramp_protocol` kam in 0.51.1 dazu - und der Waechter hat es beim ERSTEN
+# Lauf gemeldet, wie 0.44.0 bei `fatigued_session()` und `scaled()`. Eine
+# Liste ohne Vollstaendigkeitspruefung schuetzt genau bis zur naechsten
+# Funktion (vierte Bauregel, §9).
+JUDGEMENT_FUNCTIONS = {"suggest", "rate_sessions", "fit_for", "stage", "scaled",
+                       "ramp_protocol"}
 
 # Eingaenge, die ein Urteil VERAENDERN. `limit` ist eine Anzeigegrenze und
 # steht bewusst nicht dabei: ein Waechter, der Harmloses mitzaehlt, wird

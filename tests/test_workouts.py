@@ -666,6 +666,125 @@ eq(W.BY_KEY["ramp_test"]["minutes"],
    W.RAMP_WARMUP_MIN + W.RAMP_EXPECTED_MIN + W.RAMP_COOLDOWN_MIN,
    "N: die Gesamtdauer ist nicht die Summe ihrer Abschnitte")
 
+# --- 2a · UND DIE ANDERE HAELFTE VON N1: KEINE LEISTUNGSZAHLEN (0.51.1) ------
+# Der Waechter darueber bewacht die AUSNAHME (die Dauern duerfen fest sein) und
+# sagte nichts ueber die REGEL (die Leistungen duerfen es nicht). Genau deshalb
+# ging "ramp 60-115%" durch: eine Rampe, die an der FTP haengt, endete bei
+# diesem Athleten 27 W UNTER der Leistung, bei der er schon mit alpha 0,47
+# misst - die zweite Schwelle war nicht erreichbar (§7, achtzehnter Fall).
+# Die zwei Rueckfall-Prozente stehen jetzt in const.py und tragen dort ihren
+# Grund; im Katalogeintrag darf keine nackte Leistungszahl mehr stehen.
+for _literal, _name in ((" 60,", "Rueckfall-Startleistung"), (" 90,", "Rampenmitte"),
+                        ("60-115", "die Rampenspanne"), (" 115,", "Rueckfall-Endleistung")):
+    check(_literal not in _entry_src,
+          f"N1: {_name} steht als Zahl im Katalogeintrag statt in const.py")
+# Gegenprobe, gezaehlt und benannt: die Ausdruecke finden so eine Zahl auch.
+check(" 90," in '    (RAMP_EXPECTED_MIN, 90, "Rampe"),',
+      "N1 Gegenprobe: eine eingebaute Leistungszahl wird NICHT gefunden - "
+      "der Waechter ist blind")
+check("60-115" in "- 30m ramp 60-115% (5 W/min)",
+      "N1 Gegenprobe: die Rampenspanne wird NICHT gefunden - der Waechter ist blind")
+
+# --- 2b · DIE DAUER WIRD GERECHNET, NICHT GESETZT (0.51.1) -------------------
+# Vorher standen Dauer (30 min), Steigung (5 W/min) und Spanne (55 % der FTP)
+# nebeneinander und passten nur bei EINER einzigen FTP zusammen: 272,7 W. Bei
+# 200 W behauptete die Karte 30 Minuten fuer eine Rampe, die nach 22 zu Ende
+# ist. Die Zusicherung haelt jetzt alle drei gegeneinander - und weil die Dauer
+# GERECHNET wird, ist der Widerspruch gar nicht mehr herstellbar.
+_CURVE = {"measured": [{"hour": 1, "t": 0.5, "watts": 152.9, "n": 11},
+                       {"hour": 2, "t": 1.5, "watts": 137.6, "n": 12}], "paired": []}
+_BLOCKS = {"families": {"vo2max": {"source_ok": True, "sessions": 15,
+    "from": "2026-06-03", "to": "2026-09-01",
+    "latest": {"date": "2026-09-01", "first_watts": 257, "first_alpha": 0.472,
+               "median_watts": 250, "median_alpha": 0.401, "n_blocks": 4}}}}
+
+
+def _ramp_case(label, **kw):
+    """Eine skalierte Karte plus ihre Zusicherung ueber die drei Zahlen."""
+    entry = W.scaled(W.BY_KEY["ramp_test"], 200.0, 160, None,
+                     kw.get("curve"), kw.get("blocks"), kw.get("ramp"))
+    proto = entry.get("ramp_protocol") or {}
+    if not proto:
+        check(False, f"N1 {label}: die Karte traegt kein ramp_protocol")
+        return entry, proto
+    span = proto["end_w"] - proto["start_w"]
+    # TOLERANZ AUS DEM UNTERSCHIED DER RECHENWEGE, nicht aus Wunschgenauigkeit
+    # (§7): die Dauer ist auf ganze Minuten gerundet, also darf sie um bis zu
+    # eine halbe Schrittweite von der Spanne abweichen - mehr nicht.
+    check(abs(span - proto["minutes"] * W.RAMP_STEP_W_PER_MIN) <= W.RAMP_STEP_W_PER_MIN / 2,
+          f"N1 {label}: Spanne {span} W, Steigung {W.RAMP_STEP_W_PER_MIN} W/min und "
+          f"Dauer {proto['minutes']} min passen nicht zusammen")
+    eq(entry["minutes"], W.RAMP_WARMUP_MIN + proto["minutes"] + W.RAMP_COOLDOWN_MIN,
+       f"N1 {label}: die Gesamtdauer ist nicht die Summe der Abschnitte")
+    eq([b[1] for b in entry["blocks_w"]],
+       [proto["start_w"], proto["end_w"], proto["start_w"]],
+       f"N1 {label}: die Abschnitte tragen andere Zahlen als das Protokoll")
+    return entry, proto
+
+
+_ftp_only, _p_ftp = _ramp_case("Rueckfall")
+_full, _p_full = _ramp_case("gemessen", curve=_CURVE, blocks=_BLOCKS)
+
+# --- 2c · JEDE SEITE IHRE EIGENE KETTE, JEDE STUFE BESCHRIFTET ---------------
+eq(_p_ftp["start_source"]["kind"], "ftp", "N2 Rueckfall: der Start ist nicht die FTP")
+eq(_p_ftp["end_source"]["kind"], "ftp", "N2 Rueckfall: das Ende ist nicht die FTP")
+for _side in ("start_source", "end_source"):
+    check("Rückfall" in _p_ftp[_side]["label"],
+          f"N2 Rueckfall: {_side} ist nicht als Rueckfall beschriftet")
+eq([b[1] for b in _ftp_only["blocks_w"]], [120, 230, 120],
+   "N2 Rueckfall: der Einsteigerfall hat sich veraendert")
+
+eq(_p_full["start_source"]["kind"], "curve",
+   "N2: der Start kommt nicht aus der Ermuedungskurve")
+eq(_p_full["end_source"]["kind"], "blocks",
+   "N2: das Ende kommt nicht aus der Blockmessung")
+eq(_p_full["start_w"], 138, "N2: die Startleistung ist nicht die Grundlagenvorgabe")
+eq(_p_full["end_w"], 307, "N2: die Endleistung ist nicht Leitzahl plus Reserve")
+eq(_p_full["minutes"], 34, "N2: die Rampendauer ist nicht gerechnet")
+
+# DIE LEITZAHL, NICHT DIE TRAININGSVORGABE (N2). Die Leitzahl steht am ersten
+# eingeschwungenen Block (257 W bei alpha 0,47) und ist per Definition dieselbe
+# Groesse wie HRVT2. Die Trainingsvorgabe steht am Median-alpha (250 W bei
+# 0,40) und ist eine andere. Sie zu nehmen waere 0.49.2 in neuer Gestalt -
+# deshalb wird hier nicht nur der Wert geprueft, sondern der FALSCHE
+# ausdruecklich ausgeschlossen.
+eq((_p_full["end_source"]["lead"] or {}).get("watts"), 257,
+   "N2: das Ende haengt nicht an der Leitzahl")
+check(_p_full["end_w"] != round(250 + W.RAMP_END_RESERVE_MIN * W.RAMP_STEP_W_PER_MIN),
+      "N2: das Ende ist aus der TRAININGSVORGABE gerechnet statt aus der "
+      "Leitzahl - das ist 0.49.2 in neuer Gestalt")
+
+# UND DER GRUND, WARUM ES DIESE RESERVE GIBT: ohne sie endet die Rampe AUF der
+# Leitzahl, und die flache Strecke unter 0,5 wird nie aufgezeichnet. Der Fall,
+# den 0.51.0 ausgeliefert hat, wird hier namentlich ausgeschlossen.
+check(_p_full["end_w"] > 257,
+      "N1: die Rampe endet nicht ueber der eigenen Leitzahl - die zweite "
+      "Schwelle waere nicht erreichbar, genau der Fehler aus 0.51.0")
+eq(_p_full["end_source"]["reserve_w"], W.RAMP_END_RESERVE_MIN * W.RAMP_STEP_W_PER_MIN,
+   "N1: die Reserve ist nicht die ausgewiesene Zeit mal die Steigung")
+
+# --- 2d · DER GEMISCHTE FALL FAELLT GANZ ZURUECK, NICHT HALB ----------------
+# Gemessener Start neben einem geratenen Ende waere derselbe Gleichstandsfehler
+# wie in 0.47.1: eine Seite wandert mit der Messung, die andere nicht.
+_hoch = {"measured": [{"hour": 1, "t": 0.5, "watts": 400.0, "n": 11}], "paired": []}
+_gemischt, _p_mix = _ramp_case("gemischt", curve=_hoch)
+eq(_p_mix["start_source"]["kind"], "ftp",
+   "N2: der Start bleibt gemessen, obwohl das Ende auf die FTP zurueckfaellt")
+eq(_p_mix["end_source"]["kind"], "ftp", "N2 gemischt: das Ende ist nicht die FTP")
+check(_p_mix["end_w"] > _p_mix["start_w"],
+      "N2 gemischt: das Ende liegt nicht ueber dem Start")
+
+# --- 2e · DER STUFENTEST ALS ZWEITE STUFE, WENN KEINE BLOCKMESSUNG DA IST ----
+_rt = {"date": "2026-09-20", "result": {
+    "hrvt1": {"watts": 150, "alpha": 0.75, "hr": 152},
+    "hrvt2": {"watts": 265, "alpha": 0.5, "hr": 178}}}
+_aus_test, _p_test = _ramp_case("aus dem Test", ramp=_rt)
+eq(_p_test["start_source"]["kind"], "ramp_hrvt1",
+   "N2: ohne Kurve greift die zweite Stufe des Starts nicht")
+eq(_p_test["end_source"]["kind"], "ramp_hrvt2",
+   "N2: ohne Blockmessung greift die zweite Stufe des Endes nicht")
+eq(_p_test["end_w"], 315, "N2: HRVT2 plus Reserve ergibt eine andere Zahl")
+
 # --- 3 · DIE ZUSTANDSREGEL AUS PAKET I, MIT EIGENER BEGRUENDUNG (K4) ----------
 # Uebernommen aus dem abgeloesten Protokoll, weil der Grund derselbe ist: bei
 # gelbem oder rotem Zustand ist die Zahl FALSCH, nicht die Einheit zu teuer.
