@@ -2026,5 +2026,111 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   ok(q._sharedReasons([{}, {}]).size === 0, "warnung: Einheiten ohne Grund erzeugen einen");
 }
 
+/* ── N3: die Stufentest-Karte ───────────────────────────────────────────────
+   Drei Zahlen, die dritte als Zusatz und nicht als Ersatz; der Leerzustand
+   erklaert statt zu schweigen; die offene 40-Watt-Frage steht sichtbar in der
+   Karte und nicht nur in der Spezifikation. */
+{
+  const q = new M.Panel();
+  q._nowIso = F.TODAY;
+  q._blocks = F.blocks();
+  q._fatigue = F.fatigue();
+  const eineZeile = (x) => String(x).replace(/\s+/g, " ");
+
+  // --- 1 Leerzustand: kein leerer Platz ------------------------------------
+  const leer = eineZeile(q.rRampTest({ tests: [], latest: null, sources: [] }));
+  clean(leer, "Stufentest-Karte ohne Test");
+  for (const [satz, was] of [["noch keinen Stufentest", "der Ausgangszustand"],
+                             ["kein Fehler", "dass es kein Fehler ist"],
+                             ["beide Schwellen", "was der Test liefern würde"],
+                             ["denselben Bedingungen", "warum eine Fahrt besser ist"],
+                             ["ändert sich <b>nichts</b>", "dass sich bis dahin nichts ändert"],
+                             ["grünen Zustand", "dass er nur ausgeruht gefahren wird"]]) {
+    contains(leer, satz, `N3 leer: ${was} fehlt`);
+  }
+  ok(!/–<\/b>/.test(leer), "N3 leer: es stehen Striche da, wo eine Erklärung stehen sollte");
+
+  // --- 2 Die drei Zahlen ---------------------------------------------------
+  const rt = { tests: [{ activity_id: "1", date: "2026-09-14" }],
+    sources: ["Metaanalyse, Sports Med Open (2024): HRV-Schwellen allgemein, "
+              + "DFA a1 das zweite auf sechs Studien."],
+    latest: { date: "2026-09-14", result: {
+      hrvt1: { alpha: 0.75, watts: 196, hr: 152 },
+      hrvt2: { alpha: 0.5, watts: 248, hr: 171 },
+      hrvt1_pers: { alpha: 0.95, watts: 172, hr: 142 },
+      max_alpha_start: 1.4, pers_alpha: 0.95, reached_anaerobic: true,
+      segment: { points: 1200, r2: 0.98 } } } };
+  const voll = eineZeile(q.rRampTest(rt));
+  clean(voll, "Stufentest-Karte mit Test");
+  ok((voll.match(/class="stat"/g) || []).length === 3,
+     "N3: es stehen nicht genau drei Zahlen da");
+  for (const w of [196, 248, 172]) {
+    contains(voll, String(w), `N3: die Zahl ${w} W fehlt in der Karte`);
+  }
+  contains(voll, "0,75", "N3: der alpha-Wert der ersten Schwelle fehlt");
+  contains(voll, "0,50", "N3: der alpha-Wert der zweiten Schwelle fehlt");
+
+  // --- 3 Die dritte Zahl ist ein ZUSATZ, kein Ersatz -----------------------
+  contains(voll, "daneben, nicht anstelle", "N3: die dritte Zahl wird als Ersatz gezeigt");
+  contains(voll, "umstritten", "N3: der umstrittene Nutzen wird verschwiegen");
+  contains(voll, "0,67", "N3: die Korrelationen werden nicht genannt");
+  contains(voll, "zweiter Hand", "N3: die Operationalisierung wird nicht als solche benannt");
+  contains(voll, "Zeitfenster",
+           "N3: der Unterschied zwischen den beiden Formulierungen fehlt");
+  // Gegenprobe, gezaehlt und benannt: die Ausdruecke finden ihre Saetze auch
+  // dort, wo sie NICHT stehen? Nein - im Leerzustand darf keiner davon stehen.
+  ok(!/umstritten/.test(leer),
+     "N3 Gegenprobe: der Satz zur dritten Zahl steht auch ohne Test da");
+
+  // --- 4 Fehlende zweite Schwelle: Auskunft, kein Fehlversuch --------------
+  const halb = eineZeile(q.rRampTest({ ...rt, latest: { date: "2026-09-14", result: {
+    ...rt.latest.result, hrvt2: null, reached_anaerobic: false } } }));
+  contains(halb, "nie stabil unter 0,5", "N3: die fehlende zweite Schwelle wird nicht erklärt");
+  contains(halb, "nicht hochgerechnet", "N3: die Regel gegen das Hochrechnen fehlt");
+  contains(halb, "kein Fehlversuch", "N3: der Abbruch wird als Fehlversuch dargestellt");
+  ok(!/nie stabil/.test(voll),
+     "N3 Gegenprobe: der Hinweis steht auch da, wo die Schwelle erreicht wurde");
+
+  // --- 5 Der Rechenweg nennt Setzung und Verfahren -------------------------
+  contains(voll, "gefittet", "N3 Rechenweg: dass gefittet wird, fehlt");
+  contains(voll, "unsere Setzung", "N3 Rechenweg: die Segmentwahl wird nicht als Setzung benannt");
+  contains(voll, "von Hand", "N3 Rechenweg: dass die Arbeiten es von Hand tun, fehlt");
+  contains(voll, "HRV-Schwellen allgemein",
+           "N3 Rechenweg: die Einschränkung zur Metaanalyse fehlt");
+  ok(!/r = 0,85 für DFA/.test(voll),
+     "N3: die Metaanalyse wird als DFA-Beleg ausgegeben — sie gilt für alle "
+     + "HRV-Verfahren zusammen");
+
+  // --- 6 Die 40-Watt-Frage -------------------------------------------------
+  const fam = F.blocks().families.sweetspot || F.blocks().families.vo2max;
+  const p1 = F.fatigue().measured.find((x) => x.hour === 1);
+  ok(Math.abs(fam.latest.first_watts - p1.watts) > 20,
+     "N3 Fixture-Beweis: die beiden Messungen liegen zu dicht beieinander — "
+     + "die offene Frage wäre nicht prüfbar");
+  const ohne = eineZeile(q.rRampGap(F.blocks(), F.fatigue(), { tests: [], latest: null }));
+  clean(ohne, "40-Watt-Frage ohne Test");
+  contains(ohne, "offene Frage", "N3 Frage: die Gegenüberstellung fehlt");
+  contains(ohne, String(Math.round(fam.latest.first_watts)),
+           "N3 Frage: die Leistung aus den Blöcken fehlt");
+  contains(ohne, String(Math.round(p1.watts)),
+           "N3 Frage: die Leistung aus der Kurve fehlt");
+  contains(ohne, "keine ist falsch",
+           "N3 Frage: eine der beiden Messungen wird für falsch erklärt");
+  contains(ohne, "Genau dafür ist der Stufentest da",
+           "N3 Frage: ohne Test fehlt der Verweis auf ihn");
+  const mit = eineZeile(q.rRampGap(F.blocks(), F.fatigue(), rt));
+  contains(mit, "Hinweis und kein Urteil",
+           "N3 Frage: mit Test wird die Frage für entschieden erklärt");
+  contains(mit, "196", "N3 Frage: die Zahl des Tests fehlt in der Gegenüberstellung");
+  ok(!/Genau dafür ist der Stufentest da/.test(mit),
+     "N3 Frage: mit Test steht weiterhin der Werbesatz da");
+
+  // --- 7 Ohne Daten keine Karte -------------------------------------------
+  ok(q.rRampTest(null) === "", "N3: ohne Payload wird eine Karte gebaut");
+  ok(q.rRampGap(null, F.fatigue(), rt) === "", "N3 Frage: ohne Blöcke wird verglichen");
+  ok(q.rRampGap(F.blocks(), null, rt) === "", "N3 Frage: ohne Kurve wird verglichen");
+}
+
+
 report("test_panel_views");
 })();

@@ -484,6 +484,33 @@ async def main():
     check("Einträge kommen nach Datum",
           [r["activity_id"] for r in rts.entries(noval)], ["445", "444"])
 
+    # --- Die Quellenkette der Karte, am BAUTEIL geprueft ---------------------
+    # Die Karte druckt SOURCES; ob dort das Richtige steht, entscheidet sich
+    # hier. Die Metaanalyse gilt fuer HRV-Schwellen ALLGEMEIN - DFA a1 steht
+    # darin an zweiter Stelle und ruht auf sechs Studien. Sie als DFA-Beleg
+    # auszugeben waere der achte §7-Fall in die guenstige Richtung.
+    _q = " ".join(rts.SOURCES)
+    check("Metaanalyse: die Einschraenkung auf alle HRV-Verfahren fehlt",
+          "HRV-Verfahren" in _q or "HRV-Schwellen allgemein" in _q, True)
+    check("Metaanalyse: die sechs Studien fuer DFA fehlen", "sechs Studien" in _q, True)
+    check("Metaanalyse: r = 0,85 wird DFA allein zugeschrieben",
+          "r = 0,85" in _q and "allgemein" not in _q, False)
+    check("Rogers 2021a: die Sportart des Laufband-Belegs fehlt", "LAUFBAND" in _q, True)
+    check("Rogers 2024: die Korrelationen werden genannt", "0,67" in _q, True)
+    # Der Bias steht OHNE Zahl da: die 21-45 W aus der Vorlage liessen sich am
+    # Volltext nicht belegen, und eine Zahl, die niemand nachlesen kann, gehoert
+    # nicht in die Karte.
+    check("Olieslagers: der Bias wird genannt", "systematischem Bias" in _q, True)
+    # Geprueft wird eine WATTZAHL, nicht die Ziffer 21 - die steht dort als
+    # Stichprobengroesse ("21 Trainierte") und ist belegt.
+    check("Olieslagers: eine unbelegte Wattzahl steht doch in der Quelle",
+          any(x in _q for x in ("21 W", "45 W", "21-45", "21–45", "21 bis 45")), False)
+    # Gegenprobe, gezaehlt und benannt: die Ausdruecke finden ihre Saetze auch
+    # in einem gepflanzten Text - sonst prueft der Block nur, dass SOURCES
+    # ueberhaupt Text enthaelt.
+    check("Quellen-Gegenprobe: ein gepflanzter Satz wird gefunden",
+          "sechs Studien" in "ruht auf sechs Studien", True)
+
     # --- Waechter: eine fehlende Versionsmarke heisst URALT ------------------
     # PROJEKTSTAND §7 (0.45.0). `store.async_load` fuellt das Grundgeruest auf,
     # und genau dabei wurde eine FEHLENDE Marke als AKTUELLE eingesetzt - der
