@@ -2354,7 +2354,7 @@ class IntervalsIcuPanel extends HTMLElement {
           ? `<p class="fitwhy">${ico("warn", C.amber, 14)} <b>Rückfall auf die FTP — nicht gemessen.</b> Für diese
               Einheit liegt keine tragfähige eigene Messung vor.</p>`
           : entry.watt_source === "ftp" && (entry.family === "vo2max" || entry.family === "sweetspot")
-            ? `<p class="fitwhy">${ico("warn", C.amber, 14)} <b>Rückfall auf die FTP — nicht gemessen.</b> Noch zu
+            ? `<p class="fitwhy">${ico("warn", C.amber, 14)} <b>Rückfall auf die FTP — nicht gemessen:</b> noch zu
                 wenige gemessene Einheiten dieser Familie — bis dahin bleibt die alte Vorgabe
                 stehen, statt halb umgestellt zu werden.</p>`
             : ""}
