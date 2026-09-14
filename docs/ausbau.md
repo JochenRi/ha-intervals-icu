@@ -2966,3 +2966,103 @@ statt eine Zahl zu übernehmen, die wie ein Befund aussieht.
   Ausrollzeit NICHT abkürzen, sie ist Teil der Messung), und was der Test NICHT
   kann (die absolute Höhe ist unsicher, belastbar ist die Veränderung bei
   derselben Person).
+
+---
+
+## Paket O — Anzeige-Release 0.50.0 (ÜBERGABESTAND, noch nichts gebaut)
+
+**Stand: 14.09.2026. Reine Darstellung: kein neuer Algorithmus, KEIN
+Algorithmus-Bump, KEINE Neuberechnung.**
+
+### O0 · Die Teilung — Teil B nur ganz, nie halb
+
+**Teil A: Punkte 1, 2, 4, 6.** Umbauten an bestehender Darstellung. Keine neue
+Interaktionslogik.
+
+**Teil B: Punkte 3 und 5.** Sie sind DIESELBE Mechanik — die große Zahl folgt
+dem Zeiger, an Graph und Tabelle, in der Ermüdungskachel wie in den
+Block-Karten. **Wer die Zeigerlogik trennt, baut zweimal dasselbe und bekommt
+zwei Fassungen.** Das ist dieselbe Klasse wie die Reiter-Zuordnung aus 0.48.1,
+nur eine Ebene tiefer: dort ging es um den Ort einer Kachel, hier um die
+Mechanik hinter zweien. Beide Punkte brauchen DOM-Aussagen am simulierten
+`pointermove`, nicht per grep.
+
+### O1 · DIE HASH-WARNUNG — und eine Richtigstellung
+
+**Grundsatz:** kippt ein eingefrorener `chart()`-Hash, **ist das die Funktion
+des Wächters und nicht sein Versagen.** Die Neusetzung muss im Commit sichtbar
+sein, mit Begründung — sie darf nicht als Nebeneffekt eines Umbaus
+durchrutschen. Wer einen Hash stillschweigend nachzieht, hat den Wächter
+abgeschaltet, statt ihm zu antworten.
+
+**RICHTIGSTELLUNG (nachgesehen, nicht vermutet):** ich hatte gewarnt, Punkt 6
+kippe die Hashes „mit Sicherheit". **Das stimmt so nicht.** Die sieben
+eingefrorenen Fälle in `tests/test_panel_design.js` (`CHART_CASES` /
+`CHART_FROZEN`: balken, linie+flaeche, punkte, baender+marken, achsen+tags,
+einzelpunkt, entartet) rufen `chart()` mit FESTEN Optionen auf — die
+x-Beschriftungen stehen dort als Literale (`xt: [{ i: 0, t: "Mo" }]`). Sie
+prüfen den gemeinsamen HELFER, nicht seine Aufrufer.
+
+- **Punkt 6** (Datumsachse mit Monat) ändert `dShort()` bzw. die Stelle, an der
+  die Aufrufer ihre `xt` bilden — **außerhalb** von `chart()`. Die Hashes
+  bleiben voraussichtlich stehen.
+- **Punkt 5** (Ableseleiste) ist HTML im Kartenkopf plus die bereits
+  vorhandene `grp:`-Option (im eingefrorenen Fall „punkte" schon belegt).
+  Ebenfalls kein Kippen zu erwarten.
+- **Kippen würden sie**, wenn jemand `chart()` selbst anfasst — etwa die
+  x-Achsen-Ausgabe im Helfer statt bei den Aufrufern ändert. **Das ist dann der
+  Hinweis, dass der Eingriff an der falschen Stelle sitzt**, und sollte den
+  Umbau zurück zu den Aufrufern schieben, statt die Hashes neu zu setzen.
+
+### O2 · Die sechs Punkte im Wortlaut
+
+**1 · Der Kopfbereich der Ermüdungskachel fällt weg.** Die drei Kacheln („Was
+du kannst" / „Wie weit du gekommen bist" / „Was als Nächstes") und die
+Erklärabsätze darüber. Zwei davon sind aus dem Graphen ablesbar. **Die
+Erklärungen werden NICHT gelöscht, sondern in den Rechenweg verschoben** —
+einschließlich des Hinweises, dass die 10 % aus einer Kohortenstudie an Läufern
+stammen und keine Trainingsvorschrift sind. Der gehört zur Zahl dazu.
+
+**2 · Die Progressionszeile wandert in den Trainer.** „Was als Nächstes — bis
+3 h 50" ist die einzige der drei, die im Graphen nicht steht: sie sagt, wie
+LANG die nächste Fahrt sein darf, nicht wie viel Watt. Sie gehört zu „Die
+nächsten Wochen", wo über Dauern entschieden wird. **Als eine Zeile, nicht als
+Kachel**, mit der Herkunft dabei (höchstens 10 % über der längsten Fahrt der
+letzten 30 Tage).
+
+**3 · Die große Zahl folgt dem Zeiger.** Heute steht oben 154 W für Dauer null
+und bleibt stehen. Künftig zeigt sie den Wert der Stelle, auf die gezeigt wird,
+samt der Infos darunter (gemessen oder Studienform, Belegung, Datum bzw.
+Dauer). **An BEIDEN Stellen: Graph UND Wertetabelle** — in der Tabelle auf
+„2 h" heißt oben 138 W. Geht der Zeiger weg, fällt sie auf den Ausgangswert
+zurück.
+
+**4 · Die doppelte Tabelle auflösen. ENTSCHIEDEN: die Tabelle im RECHENWEG
+bleibt, die obere fällt weg.** Begründung: sie trägt die Abweichungsspalte und
+steht dort, wo ohnehin nachgelesen wird, wie die Zahl zustande kommt; die obere
+wiederholt nur, was der Graph zeigt. **Die Bandbreite wandert in die Ablesezeile
+aus Punkt 3**, wo sie zur jeweiligen Stelle gehört statt als Spalte für alle —
+das ist besser als der Ist-Zustand, nicht bloß ein Ersatz.
+
+**5 · Ableseleiste für die Block-Kurven** (SweetSpot, VO2max, Tempo). Heute
+kommt beim Überfahren nichts, obwohl die Ermüdungskurve daneben es kann.
+Fehlen: welche Einheit, welches Datum, wie viel Watt, bei welchem alpha, auf
+wie vielen Blöcken. **Alle Zahlen liegen bereits in der Payload** (`points[]`
+trägt `date`, `first_watts`, `median_alpha`, `n_blocks`, `block_alphas`).
+**Dieselbe Bauart wie bei der Ermüdungskurve: feste Leiste im Kartenkopf, kein
+schwebender Kasten**, und die große Zahl folgt wie in Punkt 3.
+
+**6 · Datumsachse mit Monat.** Heute „Mi 03." / „Di 16." — bei einer Kurve über
+drei Monate nicht zuzuordnen.
+
+### O3 · Nicht verhandelbar
+
+- Suite grün, neue Zählung melden; **alle Wächter grün**, einschließlich
+  Zuordnungstabelle Kachel → Reiter und Vorgabewert-Wächter.
+- Die eingefrorenen `chart()`-Hashes müssen halten — siehe O1. Kippt einer,
+  **vor** dem Umbau melden.
+- **DOM-Aussagen am simulierten `pointermove`**, nicht per grep. Gilt besonders
+  für Punkt 3 und 5.
+- Jede Gegenprobe gilt erst als bestanden, wenn der Fehler **gezählt und
+  benannt** erscheint.
+- Eine **sinkende** Prüfungszahl in einer Datei muss einzeln erklärt werden.
