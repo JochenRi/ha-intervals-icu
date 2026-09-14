@@ -1,13 +1,13 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 14.09.2026 · **Version:** 0.50.0 · **Status:** produktiv auf HEIMDALL,
+**Stand:** 14.09.2026 · **Version:** 0.51.0 · **Status:** produktiv auf HEIMDALL,
 Auslieferung über HACS aus `github.com/JochenRi/ha-intervals-icu`
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lokal
 archiviert, auswertet und in einem eigenen Seitenleisten-Panel darstellt.
 
 **Umfang:** ~14.760 Zeilen, davon ~4.960 Frontend · 27 WebSocket-Befehle · 16 Einheiten in
-9 Familien · 19 Testdateien mit **5.758** gezählten Einzelprüfungen · 58 Releases.
+9 Familien · 19 Testdateien mit **5.758** gezählten Einzelprüfungen · 59 Releases.
 
 ---
 
@@ -111,7 +111,7 @@ Jede Kennzahl trägt Quelle und Grenze sichtbar mit sich.
 | Intensitätsverteilung | Dreizonenmodell Seiler, Elite ≈ 75/8/17 | 80/20 ist eine Beschreibung, keine Vorschrift; Review 2023: sieben Studien, kein Beleg für ein überlegenes Modell |
 | HRV-Trend | 7-Tage-Mittel ln(rMSSD) gegen 60-Tage-Band, Schwelle 0,5 SD (Plews/Altini) | Nachtmessung der Uhr, nicht die validierte Morgenmessung im Liegen |
 | Entkopplung | Friel: ≤ 5 %; trainierte oft < 3 %, Freizeit 5–10 % | nur bei gleichmäßiger Fahrt aussagekräftig |
-| DFA alpha-1 | Rogers/Gronwald: 0,75 ≈ VT1, 0,5 ≈ VT2 | gegen Gasaustausch validiert; empfindlich für Artefakte und Gerät |
+| DFA alpha-1 | Rogers/Gronwald: 0,75 ≈ VT1, 0,5 ≈ VT2 | **Validierungslage 2024–2026, nicht „gegen Gasaustausch validiert"**: die zweite Schwelle (0,5) hält durchgängig, die erste (0,75) nicht — Olieslagers 2026 findet für HRVT1 schlechte Übereinstimmung mit LT1/VT1 bei einem Bias von −21 bis −45 W. Empfindlich für Artefakte und Gerät. Die Zeile stand bis 0.51.0 noch auf dem alten Stand, obwohl 0.34.0 „beide DFA-Quellzeilen" umgestellt haben wollte (§7, siebzehnter Fall) |
 | Durability | Maunder: Zeitpunkt und Ausmaß der Verschlechterung während langer Belastung; über angesammelte Arbeit indiziert | eigene Eigenschaft, unabhängig von FTP und VO2max; **am eigenen Bestand ist die Steigung über der Arbeit nicht von null zu unterscheiden** — die Kachel sagt das, statt eine Leitzahl zu erfinden |
 | Kardiale Drift | HF steigt bei konstanter Last; bei Trainierten abgeschwächt | das *Was*; ob Watt/Herzschlag hält, ist das *Na und* |
 | Nachtreaktion | Nachtmessung ist die sauberste Bedingung; Rückkehr zur Ruhe-HRV dauert Minuten bis 24 h | **glockenförmiger** Zusammenhang zwischen Last und HRV-Änderung — deshalb nur gegen die eigene übliche Antwort lesbar |
@@ -479,6 +479,62 @@ Zeichenkette gescheitert, die es nicht mehr gab. Jedes Mal hat die
 Trefferzusicherung aus 0.51.0 zugeschlagen, laut gemeldet und **nichts
 geschrieben**. Genau so soll ein Fehler aussehen. Der Größenfall zeigt die
 Stelle, an der noch keiner laut scheitert.
+
+**Sechzehnter Fall (0.51.0): eine Bauregel, die nur aufgeschrieben ist — und
+ein Kommentar, der sie falsch zitiert.** Die erste der zwei Bauregeln aus
+0.41.0 (§9) verlangt, dass Feldzugriffe **im Testcode** über `.get()` laufen und
+nie über `[]`: ein fehlendes Feld ist genau das, was eine Mutation herstellt,
+und es muss als gezählter, benannter Fehler erscheinen. **Sie ist an keiner
+Stelle erzwungen.** Kein Wächter prüft sie; sie steht in §9 und sonst nirgends.
+
+**Die neue Testdatei verletzt sie an 41 Stellen.** Alle 41 liegen auf
+Payloads, die das Bauteil zurückgibt — `res` aus `ramp.evaluate()` (33), `seg`
+aus `ramp.segment()` (5), `_f` aus `ramp._fit()` (2) —, also genau auf der
+Klasse von Objekten, gegen die eine Mutation gefahren wird. Nachgestellt mit
+Trefferzusicherung und kaltem Cache, `"hrvt1"` aus der Payload entfernt:
+
+    File ".../test_ramp.py", line 118, in <module>
+        near("HRVT1: Zeitpunkt", at(res["hrvt1"], "seconds"), ...)
+    KeyError: 'hrvt1'
+
+Kein Summary, keine Zählung, kein benannter Fehler — nur `rc=1`. Das ist
+wortwörtlich die Fehlerklasse, gegen die die Regel 0.41.0 geschrieben wurde,
+fünf Releases später und in der Datei, die sie hätte kennen müssen.
+
+**Gefangen hat es trotzdem etwas, aber auf einem Umweg:** `test_projektstand`
+fährt jede Datei als Unterprozess und meldete den Absturz als vier gezählte,
+benannte Fehler („meldet keine Zahl", „läuft nicht grün", „steht in der
+Tabelle, läuft aber nicht", Kopfzahl 5.758 statt 5.669). Die Panne wird also
+gesehen — aber als **Prüfstandsdefekt**, nicht als der Befund, den die Mutation
+beweisen sollte. **Ein Rauchmelder im Flur, kein Feuerlöscher am Herd.**
+
+**Und der Grund, warum dieser Befund zweimal falsch weitergereicht wurde,
+gehört in denselben Eintrag.** Ein Kommentar in `workouts.py` zitierte die
+Regel als „§9, **zweite** Bauregel" — sie ist die erste — und er stand an einer
+Stelle im **Bauteil**, für die sie ihrem Wortlaut nach gar nicht gilt. Daraus
+entstand über zwei Sitzungen der Auftrag, „einen Verstoß im Bauteil"
+aufzuschreiben, den es nie gab: das danebenstehende `node["watts"]` liegt unter
+der Vorprüfung `if node.get("watts") and node.get("hr")` in derselben Bedingung
+und kann nicht fehlen. **Dieselbe Klasse wie der falsche Kommentar in
+`normalize_laps` aus 0.48.1: ein Hinweis, der nicht stimmt, ist gefährlicher
+als keiner, weil er wie eine Klärung aussieht** — und dieser hier hat zusätzlich
+bewirkt, dass niemand die Regel nachlas. Der Kommentar ist in 0.51.0
+geradegezogen, mit dem Geltungsbereich daneben. **Der Wächter ist bewusst NICHT
+in diesem Release gebaut** (§10): er erzwingt eine Regel, die über alle
+Python-Testdateien 1.633 lesende `[]`-Zugriffe beträfe, und ein Umbau dieser
+Größe gehört nicht in ein Auslieferungs-Release.
+
+**Siebzehnter Fall (0.51.0): eine Aufräumrunde, die „alle Stellen" behauptet,
+ohne eine Prüfung zu hinterlassen, die es erzwingt.** 0.34.0 hält fest, dass
+**beide** DFA-Quellzeilen die Validierungslage 2024–2026 tragen statt „gegen
+Gasaustausch validiert". Die Zeile in §5 trug den alten Satz weiter — aufgefallen
+erst, als der Bau von Paket N sich auf Olieslagers 2026 stützte und damit auf
+einen Befund, dem die eigene Belegtabelle widersprach. **Siebter Fall der
+Listen-Klasse** (vierte Bauregel, §9): eine handgepflegte Vollständigkeit ohne
+Vollständigkeitsprüfung hält genau bis zur nächsten Stelle, an die niemand
+denkt. Hier ist die Stelle korrigiert; die Klasse bleibt offen, weil ein
+Wächter über Fließtext-Belege in einer Markdown-Tabelle mehr verspräche, als er
+halten kann.
 
 **Regel: wer zwei verschieden gerechnete Größen vergleicht, bildet die Toleranz
 aus dem Unterschied der Rechenwege, nicht aus einer Wunschgenauigkeit.** Die
@@ -1434,6 +1490,13 @@ Und jeder Regex-Treffer wird auf `null` geprüft, bevor auf `[0]` zugegriffen wi
 eigenen benannten Prüfung für das Fehlen. Ohne beides stürzt der Test bei der Mutation ab, statt
 sie zu zählen.
 
+**Beide sind bis heute NUR AUFGESCHRIEBEN — kein Wächter erzwingt sie** (§7, sechzehnter Fall).
+`test_ramp.py` verletzt die erste an 41 Stellen, und eine Mutation stürzt dort ab, statt
+gezählt zu werden. Gesehen wird das nur mittelbar, über den §9-Wächter, der die Datei als
+Unterprozess fährt und „meldet keine Zahl" zurückgibt: ein Rauchmelder im Flur, kein
+Feuerlöscher am Herd. Der Umbau steht in §10 mit seinen Zahlen; er gehört nicht in ein
+Auslieferungs-Release.
+
 **Dritte Bauregel, aus 0.44.0: wer einen Wächter für einen Sonderfall lockert, hat ab dann
 keinen mehr.** Die Prüfung „keine Schwelle als Zahl im Protokollteil von `workouts.py`" meldete
 eine nackte `1000`. Die war eine **Einheitenumrechnung** (kJ → J) und keine Schwelle — die Prüfung
@@ -1521,6 +1584,16 @@ und `scaled()`. Eine Liste ohne Vollständigkeitsprüfung schützt genau bis zur
    entstanden sind (gemeinsame Grundlinie, Farbregister, Direktbeschriftung).
 4. **Ein systematischer Durchlauf durch alle Datenquellen.** Zwei Felder wurden am falschen
    Ort gesucht; es gibt vermutlich weitere.
+5. **Die erste Bauregel aus 0.41.0 ist nicht erzwungen** (§7, sechzehnter Fall). Feldzugriffe
+   im Testcode sollen über `.get()` laufen; geprüft wird es nirgends. Stand 0.51.0:
+   **41** lesende `[]`-Zugriffe in `test_ramp.py`, alle auf Bauteil-Payloads, und
+   **1.633** über alle Python-Testdateien zusammen; die JS-Seite ist sauber (2 Stellen, und
+   dort wird durchgehend `?.` benutzt). Ein Wächter dafür ist ~20 Zeilen AST — der Umbau
+   dahinter ist es nicht. **Zwei Zuschnitte stehen zur Wahl:** nur `test_ramp.py` und alles
+   Neue ab 0.51.0 (41 Stellen, überschaubar, braucht aber eine eingefrorene Altbestandsliste
+   — genau die Bauart, vor der die vierte Bauregel warnt), oder der ganze Bestand (1.633
+   Stellen). **Bewusst nicht in 0.51.0 gebaut**, damit ein Auslieferungs-Release nicht an
+   einem Prüfstands-Umbau hängt.
 
 **Funktional offen:**
 - Webhooks statt Polling
@@ -1624,6 +1697,7 @@ bzw. ein Reiter je Chat.
 | **Trainer (Leistung je Block, Paket M)** | ✅ gebaut als **0.48.0**. Ein Wert je Arbeitsblock, direkt abgelesen nach dem Verwerfen der ersten zwei Minuten (Rogers 2021, am Bestand bestätigt: Anlauf endet bei 90–120 s). Verlauf je Familie mit der Leistung im ersten eingeschwungenen Block als Leitzahl; dazu ein Regelkreis, der einen Vorschlag rechnet und nichts selbst tut. Blockgrenzen aus Intervals' eigenen Abschnitten (K2). Die Vermessung lief in drei Runden und korrigierte drei Zahlen, bevor eine Zeile entstand (§7). Verifikation am System steht aus |
 | **Anzeige-Release (Paket O)** | ✅ gebaut als **0.50.0**. Reine Darstellung, kein Algorithmus-Bump: der Kopf der Durability-Kachel entfällt, die Progressionszeile steht jetzt im Wochenplan (samt ihrer Grenze), die doppelte Wertetabelle ist auf die im Rechenweg zusammengezogen, die Bandbreite ist als **Spanne** in die Ableseleiste gewandert, und die Leitzahl folgt dem Zeiger — **nur in der Ermüdungskachel**; in den Block-Karten bleibt sie stehen, weil sie dort die Steuergröße ist. Beide Verhaltensweisen sind zugesichert. Die Spezifikation wurde vor dem Bau an sechs Stellen korrigiert (docs/ausbau.md): der Kopf sitzt in `rDurability` und nicht in `rFatigue`; „aus dem Graphen ablesbar" galt nur für die Dauer, nicht für die Watt; Punkt 3 und 4 widersprachen sich über die Wertetabelle; die Bandbreite war nicht „nirgends", sondern als Breite statt als Spanne da; beim Überfahren einer Block-Kurve kam nicht „nichts", sondern ein Wert der Ermüdungskurve (§7); und „bei welchem alpha" nannte den Median statt des alpha des aufgetragenen Blocks. Die sieben eingefrorenen `chart()`-Hashes haben gehalten. Verifikation am System steht aus |
 | **Block-Kurven: Ableseleiste und Datumsachse** | ✅ Ableseleiste als **0.50.0** gebaut — Einheit, Datum, Watt, alpha des aufgetragenen Blocks und Zahl der Blöcke, je Familie eine eigene geschachtelte Zeigergruppe. **Die Datumsachse ist gestrichen**, nicht vertagt: wer beim Überfahren das volle Datum bekommt, braucht den Monat unter der Achse nicht (Entscheidung des Athleten, 14.09.2026). Verifikation am System steht aus |
+| **Stufentest (Paket N)** | ✅ gebaut als **0.51.0**. Der Durability-Test ist aus dem Katalog entfernt, der Stufentest steht dort neu — beide Schwellen aus EINER Fahrt, unter gleichen Bedingungen, statt zweier Termine und 1.000 kJ, die auf absehbare Zeit nicht gefahren würden. Neu: `ramp.py` (die Schwelle wird **gefittet, nicht abgelesen** — eine Ausgleichsgerade durch den Abfall von DFA a1, Schnittpunkt mit 0,75 bzw. 0,5; über das gemessene Segment hinaus wird **nicht** hochgerechnet), `ramp_tests.py` (Archivblock mit Migration und Messmarke, drei Regeln aus K2: keine Erkennung, keine stille Messung, rücknehmbar), `set_ramp_test` an der Stelle von `set_durability_test` (Ströme LIVE und ungedünnt, nur das Ergebnis wird gespeichert), die **Quellenkette je Familie** als eine Mechanik mit verschiedener Rangfolge, und die Stufentest-Karte mit drei Zahlen plus der 40-Watt-Frage. **Kein Algorithmus-Bump, keine Neuberechnung.** Die Spezifikation wurde beim Bau an fünf Stellen korrigiert (docs/ausbau.md): N4 ist nicht „nachzulesen", sondern in den zugänglichen Quellen **nicht beantwortbar** — Einrollen, Startleistung und Abbruchkriterium stehen dort nicht so, wie die Spec annahm; die Segmentregel ist deshalb eine **Setzung**, weil beide Arbeiten das Segment von Hand am Plot bestimmen; die personalisierte Schwelle ist eine Operationalisierung **aus zweiter Hand**; das Ausrollfenster ist eine eigene Idee ohne Protokollvorgabe; und die Erholungsgröße fließt in keine Vorgabe ein. Verifikation am System steht aus |
 | **Konstanten-Dubletten (DFA/ACWR) + toter ring()/rd-Code** | ⬜ eigenes Paket, vom Wächter bei 2+2 eingefroren (docs/ausbau.md) |
 | Heute, Kalender (voller Audit), Fitness, Aktivitäten | offen |
 

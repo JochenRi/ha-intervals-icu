@@ -2831,9 +2831,12 @@ Mathematik und Formulierung. Sollte später daran gedreht werden, kommt es als
 
 ---
 
-## Paket N — Stufentest (ÜBERGABESTAND, noch nichts gebaut)
+## Paket N — Stufentest (GEBAUT, 0.51.0, 14.09.2026)
 
-**Stand: 14.09.2026. Aufgeschrieben zur Fortsetzung in einer neuen Sitzung.**
+**Aufgeschrieben als Übergabestand, gebaut in der Folgesitzung. Was der Bau an
+diesem Abschnitt korrigiert hat, steht unten — besonders N4: die offenen
+Fragen sind nicht beantwortet worden, sie sind als unbeantwortbar
+zurückgekommen.**
 
 ### N0 · Der Auftrag
 
@@ -2966,6 +2969,88 @@ statt eine Zahl zu übernehmen, die wie ein Befund aussieht.
   Ausrollzeit NICHT abkürzen, sie ist Teil der Messung), und was der Test NICHT
   kann (die absolute Höhe ist unsicher, belastbar ist die Veränderung bei
   derselben Person).
+
+---
+
+## Was der Bau von N an dieser Spezifikation korrigiert hat
+
+**Nachgetragen am 14.09.2026, nach 0.51.0.** Fünf Stellen, alle vor der ersten
+Zeile Code gemeldet und einzeln entschieden — Lehre 1 aus Paket A: **am Feld
+prüfen, nicht am Text.**
+
+**1 · N4 ist nicht „im Volltext nachzulesen" — die Quellen geben es nicht
+her.** Die drei Punkte, an denen die Spezifikation auf eine Antwort gewartet
+hat, haben keine:
+
+| N4-Punkt | Was die Spec annahm | Was tatsächlich dasteht |
+|---|---|---|
+| Einrollen | Dauer und Leistung stehen im Protokoll | **Kein Protokoll nennt beides.** Die Arbeiten beschreiben die Rampe, nicht den Vorlauf |
+| Startleistung | „woraus abgeleitet?" — also: es gibt eine Ableitung | **Es gibt keine.** Wo eine Zahl steht, ist sie absolut und an die jeweilige Kohorte gebunden — genau das, was N1 verbietet |
+| Abbruchkriterium | im Originalprotokoll benannt | **Willentliche Erschöpfung** bzw. Abbruch des Probanden. Ein Zustand, kein Wert — und damit nichts, woraus sich eine Wattzahl ableiten ließe |
+
+**Entscheidung: gesetzt und als gesetzt beschriftet, statt eine Zahl zu
+übernehmen, die wie ein Befund aussieht.** `RAMP_WARMUP_MIN = 15`,
+`RAMP_COOLDOWN_MIN = 10`, `RAMP_STEP_W_PER_MIN = 5` stehen in `const.py`, jede
+mit ihrem Grund und ihrem Status daneben. Das ist kein Mangel des Baus, sondern
+die Auskunft, die N4 selbst verlangt hat: **wo die Quellen schweigen, wird das
+gesagt.** Die Spec hat diese Möglichkeit vorgesehen und trotzdem so formuliert,
+als sei sie der Ausnahmefall. Sie war der Regelfall.
+
+**2 · Die Segmentregel ist eine SETZUNG, und zwar eine unvermeidliche.** Die
+Spec sprach vom „Rampenende an einem Zustand" und las sich, als sei das
+Segment damit bestimmt. Ist es nicht: **in beiden Arbeiten wird der lineare
+Abfall VON HAND am Plot abgegrenzt** — visuell, vom Autor. Es gibt dort keine
+Vorschrift, die man nachbauen könnte, nur ein Bild und ein Ergebnis.
+
+Damit hängt an der Segmentwahl alles: ein einzelner Ausreißer entscheidet
+nichts mehr (das ist der Gewinn der Gerade gegenüber dem Ablesen), dafür
+entscheidet die Wahl der Grenzen das ganze Ergebnis. Gebaut ist: **Ende** = der
+erste Punkt, ab dem die geglättete Kurve `RAMP_FLAT_S` unter 0,5 bleibt;
+**Anfang** = der letzte Hochpunkt davor. Geglättet wird nur für die Suche,
+gerechnet auf den ungeglätteten Werten. **Die Karte sagt ausdrücklich, dass
+diese Wahl unsere ist** — und das ist keine Bescheidenheitsfloskel, sondern die
+einzige ehrliche Beschriftung für eine Zahl, deren Bezugsgröße wir selbst
+festlegen.
+
+**3 · Die personalisierte Schwelle ist aus zweiter Hand, und die beiden Sätze
+sind nicht derselbe.** N2 zitiert Rogers 2024: mittig zwischen dem „maximum
+seen during the early ramp incremental" und 0,5. Was „früh" heißt, steht dort
+nicht, und die Arbeit ist nicht frei zugänglich. Olieslagers 2026 setzt es um
+und zitiert Rogers dafür — aber als **höchsten Wert am Beginn des linearen
+Abfalls**. **Ein Maximum in einem ZEITFENSTER ist etwas anderes als eines an
+einem KURVENPUNKT.** Gebaut ist die Fassung von Olieslagers, weil nur sie
+implementierbar ist und an dasselbe Segment hängt, das die Regression ohnehin
+braucht — **beschriftet als Operationalisierung aus zweiter Hand, nicht als
+Rogers' Wortlaut.** Das ist dieselbe Klasse wie der achte und neunte Fall in
+§7: zwei verschieden erhobene Größen unter einer Überschrift.
+
+**4 · Die Erholungsmessung hat kein Fenster in der Literatur.** N4 Punkt 5
+fragte nach der „Dauer der parasympathischen Reaktivierung". Belegt ist das
+Fenster 0–10 min nach Belastungsende (Michael 2017) und die vollständige
+Rückkehr in 24–72 h (Stanley/Peake/Buchheit 2013) — **eine Ausrolldauer nennt
+niemand.** `RAMP_RECOVERY_WINDOW_S = 120` ist gesetzt, in `const.py` als eigene
+Idee ohne Protokollvorgabe markiert, und die Größe fließt nach N5 in **keine**
+Vorgabe ein.
+
+**5 · Und eine Ergänzung, die die Spec nicht hatte: das Ausleseverfahren ist
+selbst eine Abweichung.** Die Arbeiten lesen VO2 und Herzfrequenz an der
+Schnittstelle über **eigene Regressionen** ab. Hier steht der **Median eines
+30-Sekunden-Fensters** um den Zeitpunkt. Das ist die praktikable Variante auf
+einem Sekundenstrom, aber es ist nicht dasselbe Verfahren — `RAMP_READ_WINDOW_S`
+trägt den Vermerk „ABWEICHUNG, beschriftet". N1 verlangt genau das für jede
+Abweichung; diese hier stand in N1 nur nicht auf der Liste, weil niemand sie
+kommen sah.
+
+**Zur Teilung:** „alles in einem Release" (N0) hat gehalten, und die Begründung
+auch — ein Katalogeintrag ohne Auswertung hätte eine Fahrt im Archiv erzeugt,
+die niemand lesen kann. Ausgeliefert sind Katalogeintrag, Auswertung,
+Archivblock, Quellenkette und Karte zusammen.
+
+**Was der Bau NICHT beantwortet hat: die 40 Watt (N3).** Das war immer die
+Aufgabe des Tests, nicht die des Baus. Die Frage steht jetzt sichtbar in der
+Karte — mit beiden eigenen Zahlen nebeneinander und dem Satz, dass es bisher
+nichts gibt, was zwischen ihnen entscheidet. **Sie wird beantwortet, wenn der
+erste Test gefahren ist.**
 
 ---
 

@@ -703,9 +703,14 @@ def scaled(entry: dict[str, Any], ftp: float | None, aerobic_hr: int | None,
             # Die Pulsseite kommt aus DEMSELBEN Messpunkt. Ein Punkt, kein
             # Fenster - eine Breite dazuzuerfinden waere eine Setzung, die
             # niemand belegen kann.
-            # Ueber .get(), nicht ueber []: ein fehlendes Feld ist genau das,
-            # was eine Mutation herstellt - mit [] stuerzt der Lauf ab, statt
-            # den Fehler zaehlen zu lassen (§9, zweite Bauregel).
+            # Ueber .get() aus Gewohnheit, nicht aus Pflicht: die Bauregel
+            # dazu (§9, ERSTE der zwei aus 0.41.0) gilt ihrem Wortlaut nach
+            # fuer TESTCODE, nicht fuer dieses Modul. Der Satz stand hier
+            # frueher mit falscher Nummer und ohne diesen Vorbehalt - und hat
+            # damit zwei Sitzungen lang einen Befund erzeugt, den es nicht
+            # gab (§7, sechzehnter Fall). node["watts"] drei Zeilen weiter
+            # oben ist deshalb KEIN Verstoss; es steht unter der Vorpruefung
+            # in derselben Bedingung und kann nicht fehlen.
             _hr = node.get("hr")
             out["hr_point"] = round(float(_hr)) if _hr else None
             out["hr_source"] = {"kind": want, "family": fam,
