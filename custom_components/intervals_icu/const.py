@@ -264,6 +264,50 @@ DURABILITY_TEST_ALLOUT_5_FACTOR = 1.30
 # Validierung der Quelle, als Groessenordnung neben dem eigenen Ergebnis.
 DURABILITY_TEST_REFERENCE = "-10,1 ± 6,5 % über 20 min, -10,8 ± 7,8 % über 5 min"
 
+# --- Stufentest (docs/ausbau.md N) -------------------------------------------
+# Die Auswertung nach Rogers/Olieslagers: eine Regressionsgerade durch den
+# nahezu linearen Abfall von DFA a1, und die Schwelle ist der SCHNITTPUNKT der
+# Geraden mit 0,75 bzw. 0,5. Das ist NICHT "der erste Punkt unter 0,75" - eine
+# andere Rechnung mit einem anderen Ergebnis. In beiden Arbeiten wird das
+# Segment von Hand bestimmt; unsere Regel dafuer ist deshalb eine SETZUNG und
+# steht als solche in der Karte.
+#
+# Glaettungsbreite fuer die SEGMENTSUCHE. Gerechnet wird danach auf den
+# ungeglaetteten Werten - die Glaettung sucht die Grenzen, sie verschiebt
+# keinen Messwert. SETZUNG.
+RAMP_SMOOTH_S = 30
+# Wie lange die geglaettete Kurve unter 0,5 bleiben muss, damit der Abfall als
+# beendet gilt. Ein einzelner Ausreisser unter 0,5 ist kein Ende. SETZUNG.
+RAMP_FLAT_S = 60
+# Fensterbreite, aus der Watt und Puls AN einer Schnittstelle abgelesen werden.
+# Die Arbeiten lesen VO2 und HF ueber eigene Regressionen ab; wir lesen den
+# Median eines Fensters um den Zeitpunkt. ABWEICHUNG, beschriftet.
+RAMP_READ_WINDOW_S = 30
+# Unter so vielen Punkten im Abfall wird keine Gerade gelegt. Aus zwei Punkten
+# wird keine Regression, und aus zwanzig keine belastbare.
+RAMP_MIN_POINTS = 60
+# Erholung im Ausrollen: Fenster am Ende der Fahrt, aus dem der Erholungswert
+# gebildet wird. EIGENE IDEE OHNE PROTOKOLLVORGABE - die Literatur betrachtet
+# das Fenster 0-10 min nach Belastungsende (Michael 2017; Stanley/Peake/
+# Buchheit 2013 fuer die vollstaendige Rueckkehr in 24-72 h), nennt aber keine
+# Dauer fuer ein Ausrollen. Gesetzt, nicht gemessen.
+RAMP_RECOVERY_WINDOW_S = 120
+# Protokolldauern. Die EINZIGEN festen Zahlen des Tests (docs/ausbau.md N1) -
+# alle Leistungen leiten sich aus den eigenen Werten ab.
+RAMP_WARMUP_MIN = 15
+RAMP_COOLDOWN_MIN = 10
+# Rampensteigung. FLACH, und sie waechst NICHT mit der eigenen Spanne: bei
+# steileren Rampen liegt die Leistung am selben VO2 hoeher, weil die
+# Sauerstoffaufnahme hinterherhinkt - dann ist die WATTZAHL nicht mehr
+# ablesbar, auch wenn HF und VO2 es waeren (Fleitas-Paniagua 2023 gegen
+# Rogers). Die laengere Testdauer bei einem starken Fahrer ist der Preis.
+RAMP_STEP_W_PER_MIN = 5
+# Quellen, als Groessenordnung neben dem eigenen Ergebnis. Sportart dazu: die
+# 0,75 stammt vom LAUFBAND (Rogers 2021a, 15 Laeufer, Bruce-Protokoll).
+RAMP_REFERENCE_RUN = "Laufband, 15 Läufer: VT1 bei 152 bpm gegen HRVT1 bei 154 bpm"
+RAMP_REFERENCE_BIKE = "Rad, 9 Elite-Triathleten: LT1 bei 252,3 W gegen HRVT1 bei 247,0 W"
+RAMP_REFERENCE_PATIENTS = "Rad, Herzpatienten: 73,2 W gegen 67,8 W, r = 0,87"
+
 # --- Progressionsregel (docs/ausbau.md H2) ------------------------------------
 # BJSM-Kohortenstudie ueber 18 Monate mit mehr als 5.200 Laeufern: deutlich
 # erhoehtes Ueberlastungsrisiko, wenn eine EINZELNE Einheit die laengste der
