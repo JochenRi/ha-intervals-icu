@@ -2329,11 +2329,32 @@ class IntervalsIcuPanel extends HTMLElement {
               ? fmt(entry.curve_blocks[0].threshold) + " W" : "–"} in diesem Abschnitt) —
             eine Grundlageneinheit gehört unter die Schwelle, nicht auf sie. Abschnitte ohne
             Kennzeichnung sind Ein- und Ausrollen und bleiben Prozent der FTP.</p>`
+        : entry.watt_source === "ramp_hrvt2" || entry.watt_source === "ramp_hrvt1"
+        ? `<p class="fitwhy">${ico("info", C.blue, 14)} <b>Watt und Puls kommen aus deinem
+            Stufentest</b> — ${fmt((entry.ramp_source || {}).watts)} W bei alpha
+            ${fmt((entry.ramp_source || {}).alpha, 2)} und
+            ${fmt((entry.ramp_source || {}).hr)} bpm, gemessen am
+            ${dMed((entry.ramp_source || {}).date)}.
+            ${(entry.ramp_source || {}).share === 1
+              ? `Die Leistung an der zweiten Schwelle ist dieselbe Größe wie die Leistung im
+                 ersten eingeschwungenen Block — sie wird deshalb direkt übernommen.`
+              : `Gefahren wird <b>${fmt(((entry.ramp_source || {}).share || 0) * 100, 0)} %</b>
+                 davon: an der ersten Schwelle ist die Zahl eine SCHWELLE, und eine
+                 Grundlageneinheit gehört darunter — dieselbe Regel wie bei der
+                 Ermüdungskurve.`}
+            <b>Beide Seiten aus demselben Messpunkt</b>, damit sie gemeinsam wandern.
+            ${ico("warn", C.amber, 13)} Der Puls ist ein <b>Punkt</b> und kein Fenster: eine
+            Breite dazuzuerfinden wäre eine Setzung, die niemand belegen kann. Ein- und
+            Ausrollen bleiben Prozent der FTP.</p>`
+        : entry.watt_source === "ftp" && (entry.family === "tempo" || entry.family === "threshold")
+        ? `<p class="fitwhy">${ico("warn", C.amber, 14)} <b>Rückfall auf die FTP — nicht
+            gemessen.</b> Für Tempo und Schwelle gibt es keine eigene Messung außer dem
+            Stufentest; solange keiner vorliegt, bleibt die FTP die Grundlage.</p>`
         : entry.watt_source === "ftp" && (entry.family === "endurance" || entry.family === "long")
-          ? `<p class="fitwhy">${ico("warn", C.amber, 14)} <b>Rückfall auf die FTP:</b> für diese
+          ? `<p class="fitwhy">${ico("warn", C.amber, 14)} <b>Rückfall auf die FTP — nicht gemessen.</b> Für diese
               Einheit liegt keine tragfähige eigene Messung vor.</p>`
           : entry.watt_source === "ftp" && (entry.family === "vo2max" || entry.family === "sweetspot")
-            ? `<p class="fitwhy">${ico("warn", C.amber, 14)} <b>Rückfall auf die FTP:</b> noch zu
+            ? `<p class="fitwhy">${ico("warn", C.amber, 14)} <b>Rückfall auf die FTP — nicht gemessen.</b> Noch zu
                 wenige gemessene Einheiten dieser Familie — bis dahin bleibt die alte Vorgabe
                 stehen, statt halb umgestellt zu werden.</p>`
             : ""}
