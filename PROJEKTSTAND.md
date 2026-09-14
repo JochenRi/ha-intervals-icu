@@ -310,6 +310,26 @@ bei dieser Konstellation anschlägt — nicht, dass sie noch vorkommt.
 **Lehre: solche Fälle VOR der Neuberechnung als Fixture sichern, nicht danach
 suchen.**
 
+**Achter Fall (Paket N, in der Literatur statt im Code): aus zwei Arbeiten je
+die passende Hälfte.** Für den Stufentest wurde die personalisierte Schwelle
+als „praktisch exakt" zitiert (Rogers 2024) und die Unsicherheit der absoluten
+Schwellenhöhe mit 21–45 W beziffert — **die zweite Zahl stammt aus einer Arbeit
+von 2026, die genau diese personalisierte Schwelle NICHT bestätigt** (nur
+marginale Verbesserung, systematischer Bias bleibt). Aus der einen Quelle kam
+das Günstige, aus der anderen das Skeptische, und der Widerspruch zwischen
+beiden fiel niemandem auf. **Wer aus zwei Arbeiten je die passende Hälfte
+zitiert, baut sich einen Beleg, den es nicht gibt.**
+
+**Neunter Fall, derselben Klasse und ebenfalls aus der Literatur: zwei
+verschieden ERHOBENE Größen unter einer Überschrift.** Fleitas-Paniagua 2023
+fand keinen Effekt der Rampensteigung auf HRVT1/HRVT2 — gemessen in HF und VO2.
+Rogers warnt davor, aus steilen Rampen die LEISTUNG abzulesen. Das sah nach
+Widerspruch aus und ist keiner: bei steileren Rampen liegt die Leistung am
+selben VO2 höher, weil die Sauerstoffaufnahme hinterherhinkt. **Dieselbe Klasse
+wie 0.49.2, nur diesmal zwischen zwei Veröffentlichungen statt zwischen zwei
+Rechenwegen.** Wer Studien vergleicht, prüft zuerst, in WELCHER Größe sie
+gemessen haben.
+
 **Regel: wer zwei verschieden gerechnete Größen vergleicht, bildet die Toleranz
 aus dem Unterschied der Rechenwege, nicht aus einer Wunschgenauigkeit.** Die
 Empfindlichkeit einer Prüfung ist selbst eine Messgröße — dieselbe Klasse wie

@@ -2827,3 +2827,142 @@ die Leiter läuft automatisch, die gegriffene Stufe wird ausgewiesen, **kein
 Schlüssel im Archiv**. Damit ist C wieder das, als was es hier steht —
 Mathematik und Formulierung. Sollte später daran gedreht werden, kommt es als
 `localStorage`-Anzeigepräferenz in der Bauart des Zeitwählers aus A2.
+
+
+---
+
+## Paket N — Stufentest (ÜBERGABESTAND, noch nichts gebaut)
+
+**Stand: 14.09.2026. Aufgeschrieben zur Fortsetzung in einer neuen Sitzung.**
+
+### N0 · Der Auftrag
+
+**Der Durability-Test kommt RAUS, der Stufentest kommt REIN.** Begründung des
+Athleten: der Durability-Test misst nur die Durability, braucht zwei Termine
+und 1.000 kJ und wird auf absehbare Zeit nicht gefahren. Der Stufentest misst
+BEIDE Schwellen plus die Erholung, dauert knapp eine Stunde auf der Rolle und
+prüft die Zahlen nach, die heute aus den Einheiten kommen. Er ist zugleich der
+Einstieg für jemanden, der die App neu nutzt und noch keine Messwerte hat.
+
+**ALLES IN EINEM RELEASE** — Katalogeintrag und Auswertung zusammen. Ein
+Katalogeintrag ohne Auswertung hieße: eine Fahrt liegt im Archiv, die niemand
+lesen kann, und die Auswertung muss später rückwirkend an sie heran. Genau der
+Zwischenzustand, der in diesem Projekt schon zweimal Arbeit gekostet hat. Es
+eilt nicht, der Test ist alle paar Monate gedacht.
+
+### N1 · DER GRUNDSATZ, der alles andere bestimmt
+
+**Das Protokoll wird nach der STUDIENLAGE gebaut** und nur dort auf dieses
+System zugeschnitten, wo die Auswertung es erzwingt. **Jede Abweichung wird als
+solche beschriftet, mit Grund.**
+
+**KEINE FESTEN LEISTUNGSZAHLEN.** Alles leitet sich aus den gerechneten
+DFA-Werten ab. Eine feste Endleistung wäre für den einen richtig und für einen
+Fahrer, der 800 W tritt, sinnlos.
+
+    Einrollen    feste DAUER, Leistung = Grundlagenvorgabe für 1 h
+    Rampenstart  dieselbe Zahl
+    Rampenende   an einem ZUSTAND, nicht an einer Wattzahl: wenn alpha stabil
+                 unter 0,5 liegt, ist der Tiefpunkt nachgewiesen. Die Zahl
+                 fällt an (hier vielleicht 290 W, bei einem Spitzenfahrer 480),
+                 sie wird nicht gesetzt.
+    Ausrollen    feste DAUER, Leistung = dieselbe Grundlagenvorgabe, KONSTANT
+    Ohne eigene Messwerte fällt alles sichtbar auf die FTP zurück.
+
+**Die einzigen festen Zahlen im ganzen Test sind die DAUER von Ein- und
+Ausrollen.** Alle Leistungen kommen aus den eigenen Zonen.
+
+### N2 · GEKLÄRT
+
+**Die Rampensteigung — der Widerspruch löst sich auf, es sind zwei Größen.**
+Fleitas-Paniagua 2023 fand bei 15/30/45 W/min keinen Effekt auf HRVT1/HRVT2 —
+aber gemessen in **HF und VO2**, nicht in Watt (so auch die Definition dort:
+"the V̇O2 or HR at which DFA a1 reached 0.75"). Rogers spricht von der
+**Leistung**, und die liegt bei steileren Rampen am selben VO2 systematisch
+höher, weil die Sauerstoffaufnahme hinterherhinkt. **Kein Widerspruch — zwei
+verschieden erhobene Größen unter einer Überschrift** (dieselbe Klasse wie
+0.49.2, diesmal in der Literatur statt im Code).
+
+**Folge: FLACHE RAMPE, und die Steigung wächst NICHT mit der eigenen Spanne.**
+Eine relative Steigung wäre für einen starken Fahrer genau die steile Rampe,
+aus der man die Leistung nicht ablesen darf. Die längere Testdauer bei einem
+starken Fahrer ist der Preis, kein Konstruktionsfehler.
+
+**Die personalisierte Schwelle — Definition bestätigt, Nutzen umstritten.**
+Rogers 2024 definiert sie als den DFA-a1-Wert mittig zwischen dem "maximum seen
+during the early ramp incremental" und 0,5, und berichtet nahezu exakte
+Übereinstimmung mit der Laborschwelle. **Eine Arbeit von 2026 findet das
+Gegenteil**: HRVT1 zeigte schlechte Übereinstimmung mit VT1/LT1 (Bias bei der
+Leistung −21 bis −45 W), und die personalisierte Variante brachte nur
+marginale Verbesserung. **Dieselbe Arbeit ist die Quelle der 21–45 W**, die im
+Beschreibungstext als Unsicherheit genannt werden sollen.
+
+→ **Berechnen, als DRITTE Zahl neben HRVT1 zeigen, Nutzen als umstritten
+beschriften. Kein Ersatz für HRVT1.** HRVT2 ist die belastbarere der beiden
+Schwellen (durchgängig hohe Übereinstimmung mit zweiten Schwellen).
+
+**Die Quellenkette — eine Mechanik, verschiedene Rangfolge:**
+
+| Familie | 1. Wahl | 2. | 3. |
+|---|---|---|---|
+| VO2max, SweetSpot | Blockmessung | **Stufentest** | FTP |
+| Grundlage, lange Fahrt | Ermüdungskurve | **Stufentest** (HRVT1) | FTP |
+| Tempo, Schwelle | **Stufentest** | — | FTP |
+
+Für einen Einsteiger rutscht der Test automatisch nach oben, weil nichts
+darüber liegt. Die Karte beschriftet wie überall, welche Stufe greift.
+
+**Die Zuordnung zu unseren Größen — NICHT Schwelle gegen Trainingsvorgabe:**
+HRVT2 (alpha 0,5) gehört gegen die **Leitzahl**, den ersten eingeschwungenen
+Block (260 W bei alpha 0,49) — das ist per Definition dieselbe Größe. HRVT1
+(alpha 0,75) gegen **P(0,75) aus der Ermüdungskurve** (153 W). HRVT2 gegen die
+VO2max-Trainingsvorgabe (250 W bei Median-alpha 0,405) zu halten wäre 0.49.2
+in neuer Gestalt.
+
+### N3 · DIE OFFENE FRAGE, DIE DER TEST BEANTWORTEN SOLL
+
+**Die 40 Watt.** Die SweetSpot-Blöcke liegen bei **alpha 0,73 und 194 W**, die
+Ermüdungskurve kommt bei **alpha 0,75 auf 153 W**. Derselbe alpha-Wert, 41 Watt
+Unterschied, seit Wochen bekannt und nie aufgelöst. **Der Stufentest erhebt
+beide Zahlen in EINER Fahrt unter gleichen Bedingungen — das ist der stärkste
+Grund, ihn zu bauen, und er darf nicht untergehen.**
+
+### N4 · OFFEN — vor dem Bau im VOLLTEXT nachzulesen
+
+Aus den Abstracts NICHT zu beantworten, deshalb ungeklärt:
+
+1. **Einrollen** — Dauer, Leistung, überhaupt vorhanden? (Rogers 2021a,
+   Olieslagers 2026)
+2. **Startleistung der Rampe** — woraus abgeleitet?
+3. **Rampenende / Abbruchkriterium** im Originalprotokoll
+4. **"early ramp incremental"** bei Rogers 2024 — wie genau abgegrenzt? Das ist
+   die Grundlage der personalisierten Schwelle
+5. **Dauer der parasympathischen Reaktivierung** für das Ausrollen. Die
+   Erholungsmessung ist eine EIGENE Idee ohne Protokollvorgabe und als
+   Ergänzung zu beschriften, nicht als Protokollteil. Ergibt die Literatur
+   nichts Belastbares, wird bewusst gesetzt und als gesetzt benannt.
+
+**Wo die Quellen schweigen, wird das gesagt** — dann setzen wir mit Begründung,
+statt eine Zahl zu übernehmen, die wie ein Befund aussieht.
+
+### N5 · Weitere Festlegungen
+
+- **Keine Abweichungstoleranz beim ersten Test:** beide Zahlen nebeneinander,
+  kein Urteil. Eine Toleranz wird gebildet, wenn es mehrere Tests gibt — wie
+  bei der HF-Spanne und der Gegenprobe.
+- **Die Erholungsgröße fließt in KEINE Vorgabe ein.** Messen, anzeigen, und
+  beschriften, dass es dafür keine Studienlage gibt (belegt ist nur, dass fitte
+  Menschen sich autonom schneller erholen). Sie sagt erst nach mehreren Tests
+  etwas.
+- **Zustandsbewertung aus Paket I:** bei gelbem oder rotem Zustand wird der
+  Test NICHT vorgeschlagen, er gehört ausgeruht gefahren.
+- **Die BESCHREIBUNG ist der wichtigste Teil.** Sie entscheidet, ob jemand den
+  Test richtig fährt oder eine Stunde umsonst tritt. Inhalt mindestens: wofür,
+  wie oft (alle paar Monate), Voraussetzungen (Rolle, BRUSTGURT — optische
+  Messung am Handgelenk taugt nachweislich nicht — ausgeruht), während des
+  Tests (gleichmäßig treten, nicht aus dem Sattel, Trittfrequenz konstant,
+  nicht sprechen), Abbruch (wenn du nicht mehr kannst — vorgesehen und kein
+  Fehlversuch, wichtig ist nur dass alpha vorher unter 0,5 war), danach (die
+  Ausrollzeit NICHT abkürzen, sie ist Teil der Messung), und was der Test NICHT
+  kann (die absolute Höhe ist unsicher, belastbar ist die Veränderung bei
+  derselben Person).
