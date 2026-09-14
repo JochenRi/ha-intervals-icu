@@ -1106,7 +1106,15 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   // nicht im Rechenweg, wo ihn niemand sucht.
   contains(html.split("Rechenweg")[0], "keinen DFA-Strom tragen",
            "L1: die fehlenden Fahrten werden nicht erklärt");
-  const ohneLuecke = String(q.rFatigue(F.fatigue({ dropped_counts: { structured: 2 } })));
+  const mitLuecke = F.fatigue(), ohneZaehler = F.fatigue({ dropped_counts: { structured: 2 } });
+  // Trefferzusicherung (0.50.0, §7 elfter Fall): der Gegenfall muss die Zahl,
+  // um die es geht, wirklich entfernt haben - und die Ausgangslage muss sie
+  // gehabt haben. Sonst prueft die Zeile darunter den Originalzustand.
+  ok((mitLuecke.dropped_counts || {}).no_dfa > 0,
+     "L1 Gegenprobe: schon die Ausgangs-Fixture kennt keine fehlenden Stroeme");
+  ok(!(ohneZaehler.dropped_counts || {}).no_dfa,
+     "L1 Gegenprobe: der Gegenfall traegt die Zahl immer noch - er greift nicht");
+  const ohneLuecke = String(q.rFatigue(ohneZaehler));
   ok(!/keinen DFA-Strom tragen/.test(ohneLuecke),
      "L1 Gegenprobe: der Hinweis erscheint auch ohne fehlende Ströme");
 
@@ -1581,6 +1589,32 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
     contains(flatSum[2] || "", "unter der", "durability flach: die Zusammenfassungszeile fehlt");
     contains(flatSum[2] || "", "kein Block trägt bisher einen Trend",
              "durability flach: der Blockstand fehlt in der Zeile");
+    /* 0.50.0 Punkt 4: die doppelte Wertetabelle ist aufgeloest. Geblieben ist
+       die im Rechenweg - sie traegt die Abweichungsspalte und steht dort, wo
+       ohnehin nachgelesen wird. Die Bandbreite ist in die Ableseleiste
+       gewandert, wo sie zur jeweiligen Stelle gehoert statt als Spalte fuer
+       alle. */
+    {
+      const kachel = p.rFatigue(F.fatigue());
+      const tabellen = (kachel.match(/<table class="dfatab">/g) || []).length;
+      const rechenweg = kachel.slice(kachel.indexOf("<summary>Rechenweg</summary>"));
+      ok(rechenweg.length > 0, "Punkt 4: der Rechenweg fehlt");
+      ok(/<th>Abweichung<\/th>/.test(rechenweg),
+         "Punkt 4: die verbliebene Tabelle traegt die Abweichungsspalte nicht");
+      const oben = kachel.slice(0, kachel.indexOf("<summary>Rechenweg</summary>"));
+      ok(!/<th>Band<\/th>/.test(oben),
+         "Punkt 4: die obere Wertetabelle steht noch da");
+      ok(!/<h4 class="subsec">Ablesen<\/h4>/.test(oben),
+         "Punkt 4: die Ueberschrift der oberen Tabelle steht noch da");
+      // Gegenprobe, gezaehlt und benannt: der Ausdruck findet eine
+      // wiedereingebaute Tabelle auch - sonst prueft die Null oben nichts.
+      ok(/<th>Band<\/th>/.test('<table><tr><th>Band</th></tr></table>'),
+         "Punkt 4 Gegenprobe: eine wiedereingebaute obere Tabelle wird NICHT gefunden - blind");
+      ok(tabellen >= 1, `Punkt 4: gar keine Wertetabelle mehr (${tabellen})`);
+      // Und beide Leserichtungen stehen weiter im Hauptbild, nicht im Rechenweg.
+      ok(/class="twoway"/.test(oben), "Punkt 4: die beiden Leserichtungen sind mitgefallen");
+    }
+
     // GEGENPROBE, gezaehlt und benannt: sobald ein Block einen Trend traegt,
     // geht derselbe Abschnitt von selbst auf. Ohne diesen Fall pruefte die
     // Zusicherung oben nur, dass das Attribut nie gesetzt wird.
@@ -1638,90 +1672,89 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
     const tileClear = p.rDurability(clear);
     const pr = flat.progression, prc = clear.progression;
 
-    // H1 Zeile 1: steht da, OBWOHL der Kachelkoerper gesperrt ist.
+    /* 0.50.0 Punkt 1 und 2: der Kopf ist WEG. Zwei der drei Zeilen sind aus
+       dem Graphen ablesbar, die dritte ist in den Wochenplan gewandert. Was
+       hier stand, wird deshalb an ZWEI Orten geprueft - hier, dass es fort
+       ist, und unten, dass es angekommen ist. Ein Umzug ohne beide Haelften
+       ist eine Loeschung mit Absichtserklaerung. */
     ok(flat.blocked === "flat", "H Fixture-Beweis: der flache Fall ist doch nicht gesperrt");
-    contains(tileFlat, "WAS DU KANNST", "H1: die belegte Faehigkeit fehlt im Kopf");
-    contains(tileFlat, M.hmn(pr.demonstrated.minutes),
-             "H1: die belegte Dauer wird nicht genannt");
-    contains(tileFlat, M.fmt(pr.demonstrated.watts, 0) + " W",
-             "H1: die Leistung DIESER Fahrt fehlt");
-    contains(tileFlat, M.dMed(pr.demonstrated.date), "H1: das Datum der belegten Fahrt fehlt");
+    ok(!/<div class="durhead">/.test(tileFlat), "Punkt 1: der Kopfbereich steht noch da");
+    for (const wort of ["WAS DU KANNST", "WIE WEIT DU GEKOMMEN BIST", "WAS ALS NÄCHSTES"]) {
+      ok(!tileFlat.includes(wort), `Punkt 1: die Zeile "${wort}" steht noch im Kopf`);
+    }
+    // Gegenprobe, gezaehlt und benannt: die Ausdruecke finden einen
+    // wiedereingebauten Kopf - sonst pruefen die Nullen oben gar nichts.
+    ok(/<div class="durhead">/.test('<div class="durhead"><div class="dhcard">…'),
+       "Punkt 1 Gegenprobe: ein wiedereingebauter Kopf wird NICHT gefunden - blind");
 
-    // Die Falle, die am Livebestand unsichtbar waere: die Zeile-1-Wattzahl
-    // ist NICHT der Pool-Median aus der Umrechnung. Faende der Test beide
-    // gleich, pruefte er die Unterscheidung ueberhaupt nicht.
-    ok(pr.demonstrated.watts !== flat.power.watts,
-       "H1 Fixture-Beweis: Fahrt-Leistung und Pool-Median sind in der Fixture identisch - " +
-       "eine Verwechslung waere unsichtbar");
-    // Faellt der Kopf ganz weg, soll der Test das ZAEHLEN und BENENNEN statt
-    // am null-Treffer abzustuerzen - ein Absturz ueberspringt alles Folgende.
-    const headHit = /<div class="durhead">[\s\S]*?\n    <\/div>/.exec(tileFlat);
-    ok(headHit !== null, "H1: der Kopfbereich fehlt vollstaendig");
-    const headFlat = headHit ? headHit[0] : "";
-    ok(!headFlat.includes(M.fmt(flat.power.watts, 0) + " W"),
-       "H1: im Kopf steht der Pool-Median statt der Leistung der Fahrt selbst");
+    // ERSATZLOS aufgegeben: Dauer, Datum und Leistung der laengsten Fahrt. Das
+    // ist eine Entscheidung, kein Versehen - und sie steht im Rechenweg, sonst
+    // sucht die Angabe in vier Wochen jemand.
+    const rw = tileFlat.slice(tileFlat.indexOf("<summary>Der Rechenweg</summary>"));
+    ok(rw.length > 0, "Punkt 1: der Rechenweg der Kachel fehlt");
+    for (const satz of ["Ersatzlos aufgegeben", "Durchschnitt", "Schwellenleistung"]) {
+      ok(rw.includes(satz), `Punkt 1: der Rechenweg sagt nicht, was mit dem Kopf geschah (${satz})`);
+    }
+    ok(!tileFlat.includes(M.dMed(pr.demonstrated.date)),
+       "Punkt 1: das Datum der laengsten Fahrt steht noch in der Kachel");
 
-    // Und die zweite: laengste Fahrt (nach ZEIT) ist nicht die
-    // arbeitsreichste (nach kJ). Beide Superlative sind beschriftet.
-    const heaviest = flat.points.reduce((a, b) => (b.kj > a.kj ? b : a));
-    const longest = flat.points.reduce((a, b) => (b.minutes > a.minutes ? b : a));
-    ok(heaviest.id !== longest.id,
-       "H Fixture-Beweis: laengste und arbeitsreichste Fahrt sind dieselbe - " +
-       "der Widerspruch waere nicht pruefbar");
-    ok(longest.minutes === pr.demonstrated.minutes && longest.kj === pr.demonstrated.kj,
-       "H1: der Kopf zeigt nicht die laengste Fahrt des Pools");
-    ok(/<b>längste<\/b>/.test(headFlat), "H1: 'laengste' ist nicht als Zeitmass ausgewiesen");
-    contains(tileFlat, "arbeitsreichste", "H1: die Arbeitsgroesse ist nicht als solche beschriftet");
-
-    // H1 Zeile 2 und die Zusicherung: der Bezug kann die belegte Dauer nie
-    // uebersteigen - beide stammen aus derselben Liste.
-    contains(tileFlat, "WIE WEIT DU GEKOMMEN BIST", "H1: die zweite Zeile fehlt");
-    for (const q of [pr, prc]) {
-      ok(q.recent.minutes <= q.demonstrated.minutes,
-         "H1: der Bezug uebersteigt die belegte Dauer - zwei verschiedene Grundgesamtheiten");
+    // Und die Zeile ist NICHT still in der Kachel geblieben - sonst gaebe es
+    // sie zweimal, in der Kachel und im Wochenplan.
+    for (const q of [tileFlat, tileClear]) {
+      ok(!/Risikoknick/.test(q), "Punkt 2: die Progressionszeile steht noch in der Durability-Kachel");
+      ok(!q.includes("keine Trainingsvorschrift"),
+         "Punkt 2: die Grenze der Progressionsregel steht noch in der Kachel");
     }
 
-    // H2: der naechste Schritt, der Faktor und die Grenzen der Regel.
-    contains(tileFlat, "WAS ALS NÄCHSTES", "H2: die dritte Zeile fehlt");
-    contains(tileFlat, M.hmn(pr.next_minutes), "H2: der naechste Schritt wird nicht genannt");
-    contains(tileFlat, M.fmt(pr.factor, 2), "H2: der Faktor steht nicht in der Kachel");
-    contains(tileFlat, "Läufern", "H2: die Grenze 'an Laeufern erhoben' fehlt");
-    contains(tileFlat, "keine Trainingsvorschrift", "H2: der Risikoknick wird als Vorschrift verkauft");
-    contains(tileFlat, M.fmt((pr.factor - 1) * 100, 0) + " %",
-             "H2: der Prozentsatz wird nicht aus dem Faktor gerechnet");
+    /* Angekommen: dieselbe Zeile im Wochenplan, mit allem, was zu ihr gehoert.
+       Sie sagt, wie LANG die naechste Fahrt sein darf - deshalb steht sie
+       dort, wo ueber Dauern entschieden wird. */
+    // Umbruecke im Template duerfen ueber einen Satz nicht entscheiden.
+    const eineZeile = (x) => String(x).replace(/\s+/g, " ");
+    const plan = eineZeile(p.rPlanWeeks(F.goal(), pr));
+    const planClear = eineZeile(p.rPlanWeeks(F.goal(), prc));
+    clean(plan, "wochenplan mit Progressionszeile");
+    contains(plan, M.hmn(pr.next_minutes), "Punkt 2: der naechste Schritt fehlt im Wochenplan");
+    contains(plan, M.fmt(pr.factor, 2), "Punkt 2: der Faktor fehlt im Wochenplan");
+    contains(plan, M.fmt((pr.factor - 1) * 100, 0) + " %",
+             "Punkt 2: der Prozentsatz wird nicht aus dem Faktor gerechnet");
+    contains(plan, "Läufern", "Punkt 2: die Grenze 'an Laeufern erhoben' fehlt");
+    contains(plan, "keine Trainingsvorschrift", "Punkt 2: der Risikoknick wird als Vorschrift verkauft");
+    contains(plan, M.dMed(pr.recent.date), "Punkt 2: die Bezugsfahrt wird nicht benannt");
+    // Eine Zeile, keine Kachel.
+    ok(!/dhcard|durhead/.test(plan), "Punkt 2: die Zeile ist als Kachel gebaut worden");
 
-    // Der Rueckfall-Fall - kein Sonderzweig, sondern die Regel, sobald Zeile 3
-    // unter Zeile 1 liegt. Am Livebestand trifft das heute zu.
+    // Der Rueckfall-Fall - kein Sonderzweig, sondern die Regel, sobald der
+    // Schritt unter der belegten Faehigkeit liegt.
     ok(pr.below_demonstrated === true && prc.below_demonstrated === false,
        "H Fixture-Beweis: beide Faelle sind im Rueckfall gleich - der Zweig ist nicht pruefbar");
-    contains(tileFlat, "nicht deine Bestleistung", "H2: der Rueckfall-Satz fehlt");
-    contains(tileFlat, "was gerade in den Beinen steckt",
-             "H2: der Rueckfall-Satz nennt den Grund nicht");
-    ok(!/nicht deine Bestleistung/.test(tileClear),
-       "H2: der Rueckfall-Satz steht auch da, wo der Schritt UEBER der Bestleistung liegt");
+    contains(plan, "nicht deine Bestleistung", "Punkt 2: der Rueckfall-Satz fehlt");
+    contains(plan, "was gerade in den Beinen steckt",
+             "Punkt 2: der Rueckfall-Satz nennt den Grund nicht");
+    ok(!/nicht deine Bestleistung/.test(planClear),
+       "Punkt 2: der Rueckfall-Satz steht auch da, wo der Schritt UEBER der Bestleistung liegt");
 
     // Ausweitung des Bezugsfensters: nie still.
     ok(prc.recent.widened === true && pr.recent.widened === false,
        "H Fixture-Beweis: kein ausgeweiteter Fall in der Fixture");
-    contains(tileClear, "letzten " + M.fmt(prc.recent.days, 0) + " Tage",
-             "H2: der ausgeweitete Zeitraum wird nicht genannt");
-    contains(tileClear, "deshalb der weitere Zeitraum",
-             "H2: die Ausweitung geschieht still");
-    ok(!/deshalb der weitere Zeitraum/.test(tileFlat),
-       "H2: der Ausweitungshinweis steht auch im nicht ausgeweiteten Fall");
+    contains(planClear, "letzten " + M.fmt(prc.recent.days, 0) + " Tage",
+             "Punkt 2: der ausgeweitete Zeitraum wird nicht genannt");
+    contains(planClear, "deshalb der weitere Zeitraum",
+             "Punkt 2: die Ausweitung geschieht still");
+    ok(!/der weitere Zeitraum/.test(plan),
+       "Punkt 2: der Ausweitungshinweis steht auch im nicht ausgeweiteten Fall");
 
-    // Zwei Farbregister, die sich nie mischen. Der Kopf traegt KEINS davon:
-    // "was du kannst" ist eine Tatsache, "was als Naechstes" eine
-    // Risikoaussage - kein Ampelzustand, und das Datenregister ist in dieser
-    // Ansicht schon an Wolke und Gerade vergeben.
-    for (const judge of [M.C.green, M.C.amber, M.C.red]) {
-      ok(!headFlat.toLowerCase().includes(String(judge).toLowerCase()),
-         `H1: der Kopf traegt mit ${judge} eine Urteilsfarbe`);
-    }
-    for (const data of [M.C.blue, M.C.violet, M.C.cyan, M.C.magenta]) {
-      ok(!headFlat.toLowerCase().includes(String(data).toLowerCase()),
-         `H1: der Kopf greift mit ${data} in das Datenregister der Wolke`);
-    }
+    // Und sie verschwindet NICHT still, wenn der Plan noch nicht steht: sie
+    // haengt am Bestand, nicht am Ziel (Fehlerklasse aus 0.42.1).
+    const ohneZiel = eineZeile(p.rPlanWeeks({ plan: { ready: false, weeks: [] } }, pr));
+    contains(ohneZiel, M.hmn(pr.next_minutes),
+             "Punkt 2: ohne stehenden Plan faellt die Zeile still weg");
+    ok(p.rPlanWeeks({ plan: { ready: false, weeks: [] } }, null) === "",
+       "Punkt 2: ohne Progression bleibt trotzdem eine leere Karte stehen");
+
+    const progHit = /<p class="hint">[^<]*<svg[\s\S]*?Trainingsvorschrift[\s\S]*?<\/p>/.exec(plan);
+    ok(progHit !== null, "Punkt 2: die Progressionszeile ist im Wochenplan nicht auffindbar");
+    const progLine = progHit ? progHit[0] : "";
 
     // H3: die Stueckzahl ist Beleg, nicht Botschaft - sie steht im Rechenweg.
     const cut = tileFlat.indexOf('<details class="more">');

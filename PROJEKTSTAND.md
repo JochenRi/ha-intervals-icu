@@ -1,13 +1,13 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 13.09.2026 · **Version:** 0.44.0 · **Status:** produktiv auf HEIMDALL,
+**Stand:** 14.09.2026 · **Version:** 0.50.0 · **Status:** produktiv auf HEIMDALL,
 Auslieferung über HACS aus `github.com/JochenRi/ha-intervals-icu`
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lokal
 archiviert, auswertet und in einem eigenen Seitenleisten-Panel darstellt.
 
 **Umfang:** ~14.760 Zeilen, davon ~4.960 Frontend · 27 WebSocket-Befehle · 16 Einheiten in
-9 Familien · 18 Testdateien mit **5.388** gezählten Einzelprüfungen · 57 Releases.
+9 Familien · 18 Testdateien mit **5.413** gezählten Einzelprüfungen · 58 Releases.
 
 ---
 
@@ -329,6 +329,60 @@ selben VO2 höher, weil die Sauerstoffaufnahme hinterherhinkt. **Dieselbe Klasse
 wie 0.49.2, nur diesmal zwischen zwei Veröffentlichungen statt zwischen zwei
 Rechenwegen.** Wer Studien vergleicht, prüft zuerst, in WELCHER Größe sie
 gemessen haben.
+
+**Zehnter Fall (0.50.0, gefunden vor dem Bau): eine Ableseleiste, die den Wert
+einer ANDEREN Kurve zeigte.** Die Spezifikation zu Paket O sagte, beim
+Überfahren der Block-Kurven komme „nichts". Am Code nachgesehen kam sehr wohl
+etwas — nur das Falsche. Die Durability-Kachel klammert Kopf, Ermüdungskurve,
+Block-Karten, Tabellen und Rechenweg in EINEN Gruppen-Wrapper
+(`data-grp="fat"`). Der Zeiger-Handler sucht mit `closest("[data-grp]")` und
+findet damit auch über einer Block-Karte diesen Wrapper; `_xhMove` nahm dann
+`querySelector("svg.ch")`, also das ERSTE Diagramm darin — die Ermüdungskurve.
+Simuliert: der Zeiger auf Höhe einer Block-Karte schrieb „2,50 h Fahrtzeit"
+samt gemessen/Studienform/Belegung in die Leiste.
+
+**Dieselbe Klasse wie die sechs Fälle darüber, nur eine Ebene tiefer: eine
+Zahl, die nicht misst, was daneben steht.** Der Unterschied ist die Herkunft —
+die anderen entstanden in einer Rechnung, diese in einem WRAPPER. Kein
+Testfall war falsch, keine Formel war falsch; falsch war, welches Element der
+Handler unter dem Zeiger für zuständig hielt. **Eine Gruppierung im DOM ist
+eine Zuständigkeitsaussage und gehört geprüft wie eine Formel.**
+
+Behoben an der Wurzel statt an der Stelle: die Leiste schreibt nur noch, wenn
+der Zeiger senkrecht über dem Diagramm liegt, und die Block-Karten bekommen je
+Familie eine eigene, geschachtelte Gruppe. Waagerecht bleibt es beim Klemmen —
+ein Zeiger neben der Achsenbeschriftung meint den ersten Punkt und nicht
+„nichts", und das ist seit 0.9.3 zugesichert.
+
+**Elfter Fall (0.50.0, in der eigenen Gegenprobe): eine Mutation, die nicht
+griff, sieht aus wie ein bestandener Test.** Eine der Gegenproben zu Paket O
+drehte den Läufer-Hinweis zurück — und die Suite blieb grün. Die Ersetzung
+hatte den Text gar nicht getroffen (ein Zeilenumbruch im Template), also
+prüfte die Gegenprobe eine unveränderte Datei. Mit einer Trefferzusicherung
+vor der Mutation fiel derselbe Test sofort an vier Stellen.
+**Lehre: eine Gegenprobe braucht den Nachweis, dass sie überhaupt etwas
+verändert hat** — sonst ist „grün nach der Mutation" die Auskunft über eine
+Mutation, die es nie gab. Dieselbe Klasse wie die stumpfen Tests aus 0.36.0,
+nur auf der Werkzeugseite.
+
+**Nachgesehen, ob es eine Klasse ist — und die Zahl steht hier, weil sie die
+Frage beantwortet, wie viele Prüfungen womöglich nichts prüfen.** 122 Stellen
+im Prüfstand tragen das Wort „Gegenprobe" oder „Fixture-Beweis", davon 44 als
+reiner Kommentar, bleiben 78 Prüfungen. Aufgeteilt: **9** pflanzen ein Literal
+und halten den Wächter-Ausdruck dagegen (die Mutation IST das Literal, ein
+Fehlschlag ist unmöglich), **26** sind Fixture-Beweise, die genau diesen
+Nachweis bereits führen, **43** bauen einen eigenen Gegenfall. Von diesen 43
+konnten **drei** unbemerkt zum Nichts werden: das gefilterte Literaturraster in
+`test_panel_fixes`, die geleerte Ausschlusszahl in `test_panel_views` und
+`mutated.pop("checked_unavailable", None)` in `test_reconcile` — `pop` mit
+Vorgabewert schluckt einen Schlüsselnamen, der sich geändert hat. **Alle drei
+haben in 0.50.0 eine Trefferzusicherung bekommen**, jede einzeln gegengeprüft:
+zum No-op entschärft, fällt sie benannt. Der Fall in `test_reconcile` fiel
+dabei schon über die bestehende Prüfung — die neue Zusicherung deckt die
+andere Richtung ab, in der das Feld ganz aus dem Bericht verschwindet.
+**Keine Datei nutzt die riskanteste Bauart** (eine Textersetzung am echten
+Quelltext) für eine Gegenprobe; die trat nur in der Sitzungsarbeit auf, und
+genau dort hat sie zugeschlagen.
 
 **Regel: wer zwei verschieden gerechnete Größen vergleicht, bildet die Toleranz
 aus dem Unterschied der Rechenwege, nicht aus einer Wunschgenauigkeit.** Die
@@ -1246,7 +1300,7 @@ den Non-Responder-Befund (Manresa-Rocamora 2021).
 
 ## 9. Prüfstand
 
-**18 Dateien, 5.388 gezählte Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
+**18 Dateien, 5.413 gezählte Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
 HA-Instanz oder einen Browser.
 
 | Datei | prüft | Umfang |
@@ -1261,12 +1315,12 @@ HA-Instanz oder einen Browser.
 | `test_plan.py` | Zielprofil, Wochenmuster, Zeitbudget, Progressions- und Kalender-Anker-Vertrag, Profil-Migration | 405 |
 | `test_workouts.py` | Einheitenauswahl, HF-Klemme, Infektleiter, Wattumrechnung, Intervals-Syntax, **die vier Stufen über die volle Wahrheitstabelle, rot mit Begründung welches von beiden, dieselbe Einheit über alle vier Stufen, die Lastskalierung an den Zahlen des Livebestands, eine Zustandsregel für beide Ansichten, kein Urteil ohne Stufe**; **die Staffelung aus der Kurve: gepaarte Reihe, Studienform darüber, Ein- und Ausrollen bleiben FTP, harte Familien unberührt**; **die Vorgabe ist ein Anteil der Schwelle, nicht die Schwelle — Watt- und Pulsseite gegeneinander gehalten** ; **Watt und Puls der harten Familien aus DERSELBEN Quelle, mit dem umgeschriebenen Gleichstandstest: fällt eine Seite auf die FTP zurück, muss die andere mitfallen** | 1431 |
 | `test_websocket_registration.py` | Registrierung, Dekoratoren, FTP-Quelle, eine Ankerregel, day_context-Lese/Schreibweg, Ampel-Herkunftsnotiz, **der goal-Handler verdrahtet nur und bewertet ausschließlich die laufende Woche**; **`blocks` gehört zu den Payloads, ohne die eine Vorgabe still zurückfällt** | 367 |
-| `test_reconcile.py` | Abgleich mit Intervals: die drei Sperren einzeln, die datumslosen Aufräumstellen, No-op ohne Speichervorgang, der Handler am echten Aufruf (Import läuft, Historie nie geholt, Zwischenstand) | 129 |
+| `test_reconcile.py` | Abgleich mit Intervals: die drei Sperren einzeln, die datumslosen Aufräumstellen, No-op ohne Speichervorgang, der Handler am echten Aufruf (Import läuft, Historie nie geholt, Zwischenstand) | 130 |
 | `test_fatigue.py` | die Ermüdungskurve: strukturierte Einheiten VOR der Messung ausgeschlossen — mit der Gegenprobe, dass sie den Abfall von +4,0 auf +42,0 W verfälschen, wenn man sie drin lässt; Bereichsgrenzen aus der Belegung an zwei Beständen; Anker gemessen gegen Form gesetzt; **L1b: die HF-Setzung skaliert am eigenen Anker**; **die gepaarte Gegenrechnung und das Erkennungszeichen: die Belegung steigt, wo sie fallen müsste — mit Gegenprobe am sauberen Bestand**; **p050 wird erhoben und von nichts benutzt, mit Quelltext-Wächter über alle Verbraucher** | 54 |
 | `test_blocks.py` | ein Wert je Block: der Anlauf wird verworfen (mit der Gegenprobe am 4-Minuten-Block, wo auch der Median kippt), der echte Median gegen die Index-Bildung, der Regelkreis nach oben wie nach unten mit familieneigener Schrittgrenze, Steuergröße Median gegen Verlaufsgröße erster Block, Belegungsgrenze für die Linie; **die Physik-Gegenprobe an den echten Lap-Grenzen (Arbeit trägt mehr als die Pause daneben) mit dem Sekunden-Fehler als Gegenfall, und die fremde Gegenprobe gegen Intervals' eigenen Abschnittswert** | 66 |
 | `test_suite_hygiene.py` | der Prüfstand prüft sich selbst: **genau eine** Summary je Datei, die etwas zählt, nichts Gezähltes dahinter, Fehler werden gedruckt | 81 |
-| `test_panel_views.js` | alle Ansichten gegen volle, leere, löchrige, entartete Daten; Zeitfenster, Brushing, Achsenregel; Tagesbeschriftung und Abgleich-Dialog mit Schreibweg und Scroll-Erhalt; **die Durability-Wolke: Gewicht als Größe und Deckkraft, Gerade nur bei gesicherter Steigung, Register getrennt; der Kopf: drei Zeilen, weder Urteils- noch Datenregister, Rückfall-Satz und Ausweitungshinweis je mit Gegenfall**; **der Wochenplan: Stufen nur in der laufenden Woche, Satz statt Stufe ab Woche zwei, gefahren gegen vorgesehen ohne Paarung, Legende und Quellenblock**; **der Historienbeginn: eigener DFA-Zeitraum in Kopfzeile und Reiter, mit Gegenfall und leerer Payload**; **die Ermüdungskurve: Beleg und Setzung im Bild und im Text getrennt, beide Leserichtungen, die namentliche Ausschlussliste, der Zustand „rechnet noch" mit Fortschritt**; **L1b als Setzung beschriftet, mit der eigenen Messung daneben**; **der Umzug in die Durability-Kachel: die Ehrlichkeitsregel übertragen, die Ausschlusszahl aus dem Zählfeld statt aus der gekappten Liste**; **die tauben Abschnitte klappen zu, und die Datenlage öffnet sie wieder — mit beiden Öffnungsbedingungen einzeln**; **die Einheitenkarte nennt die Herkunft je Abschnitt — gemessen, Studienform oder Rückfall auf die FTP; **die Herkunft an der Einheit samt Rolle-Grenze, und der Rückfall-Hinweis nur dort, wo gemessen werden soll**; **die Blockmessung: der Widerspruch der fremden Gegenprobe wird als Hinweis und nicht als Fehler beschriftet, Leitzahl erster Block, Steuerung auf ihren Einzelwerten sichtbar, Belegung mit Gegenfall, die Rolle-Grenze** | 1270 |
-| `test_panel_fixes.js` | je ein Nachweis pro behobenem Fehler, plus die Zeiger-Simulation; Quelltext-Wächter über das ganze Frontend, beidseitig (keine Zahl im Quelltext, jede Schwelle nachweislich aus der Payload), seit 0.41.0 auch über Progressionsfaktor, Risikoknick, Rundungsschritt und Bezugsfenster, **seit 0.42.0 über `rWorkouts` UND `rPlanWeeks` (keine Urteilsregel im Frontend) plus den Wortabgleich Fixture gegen `workouts.py`**, **seit 0.45.0 über `rFatigue` samt Rechenweg-Helfer — je Kachel nachzutragen, deshalb mit Existenzprüfung der Liste**; **der Zeiger über der Ermüdungskurve am simulierten Ereignis, und der eine Ladeweg für ihre Payload**; **`rBlocks` unter demselben Wächter**; **die Zuordnung Kachel → Reiter, vollständig und mit Gegenprobe** | 496 |
+| `test_panel_views.js` | alle Ansichten gegen volle, leere, löchrige, entartete Daten; Zeitfenster, Brushing, Achsenregel; Tagesbeschriftung und Abgleich-Dialog mit Schreibweg und Scroll-Erhalt; **die Durability-Wolke: Gewicht als Größe und Deckkraft, Gerade nur bei gesicherter Steigung, Register getrennt; der Kopf: drei Zeilen, weder Urteils- noch Datenregister, Rückfall-Satz und Ausweitungshinweis je mit Gegenfall**; **der Wochenplan: Stufen nur in der laufenden Woche, Satz statt Stufe ab Woche zwei, gefahren gegen vorgesehen ohne Paarung, Legende und Quellenblock**; **der Historienbeginn: eigener DFA-Zeitraum in Kopfzeile und Reiter, mit Gegenfall und leerer Payload**; **die Ermüdungskurve: Beleg und Setzung im Bild und im Text getrennt, beide Leserichtungen, die namentliche Ausschlussliste, der Zustand „rechnet noch" mit Fortschritt**; **L1b als Setzung beschriftet, mit der eigenen Messung daneben**; **der Umzug in die Durability-Kachel: die Ehrlichkeitsregel übertragen, die Ausschlusszahl aus dem Zählfeld statt aus der gekappten Liste**; **die tauben Abschnitte klappen zu, und die Datenlage öffnet sie wieder — mit beiden Öffnungsbedingungen einzeln**; **die Einheitenkarte nennt die Herkunft je Abschnitt — gemessen, Studienform oder Rückfall auf die FTP; **die Herkunft an der Einheit samt Rolle-Grenze, und der Rückfall-Hinweis nur dort, wo gemessen werden soll**; **die Blockmessung: der Widerspruch der fremden Gegenprobe wird als Hinweis und nicht als Fehler beschriftet, Leitzahl erster Block, Steuerung auf ihren Einzelwerten sichtbar, Belegung mit Gegenfall, die Rolle-Grenze**; **0.50.0: der Kopf der Durability-Kachel ist fort und der Rechenweg sagt, wohin — die Progressionszeile in den Wochenplan, die längste Fahrt ersatzlos; die doppelte Wertetabelle aufgelöst, die Bandbreite als SPANNE in der Leiste** | 1281 |
+| `test_panel_fixes.js` | je ein Nachweis pro behobenem Fehler, plus die Zeiger-Simulation; Quelltext-Wächter über das ganze Frontend, beidseitig (keine Zahl im Quelltext, jede Schwelle nachweislich aus der Payload), seit 0.41.0 auch über Progressionsfaktor, Risikoknick, Rundungsschritt und Bezugsfenster, **seit 0.42.0 über `rWorkouts` UND `rPlanWeeks` (keine Urteilsregel im Frontend) plus den Wortabgleich Fixture gegen `workouts.py`**, **seit 0.45.0 über `rFatigue` samt Rechenweg-Helfer — je Kachel nachzutragen, deshalb mit Existenzprüfung der Liste**; **der Zeiger über der Ermüdungskurve am simulierten Ereignis, und der eine Ladeweg für ihre Payload**; **`rBlocks` unter demselben Wächter**; **die Zuordnung Kachel → Reiter, vollständig und mit Gegenprobe**; **seit 0.50.0 die Zeigerlogik als EINE Mechanik mit ZWEI zugesicherten Verhaltensweisen: die Leitzahl folgt in der Ermüdungskachel und bleibt in den Block-Karten stehen, beides am simulierten `pointermove`; der Wächter über `rPlanWeeks`, dem die Progressionszahlen gefolgt sind** | 509 |
 | `test_panel_design.js` | Gestaltungsregeln als Zusicherung, Auswahl als Form, Achse im Aufklappen, Etiketten im Kategorienregister; **eingefrorene `chart()`-Referenz aus dem Stand vor dem Eingriff** und der Zeiger-Unverändert-Beweis über vier Ansichten; **vier Urteilsfarben, vier Formen, der Reiz-Ton in keinem Kategorienregister, die Reiz-Form kein Last-Blitz** | 235 |
 | `test_projektstand.py` | die Tabelle unter diesem Absatz gegen einen echten Suite-Lauf: jede Zeile einzeln, Dateien ohne gemeldete Zahl, Kopfzeile und Einleitungssatz; **die eigene Zeile gegen den eigenen Zähler** | 60 |
 
@@ -1291,6 +1345,13 @@ einer Schwelle nicht unterscheiden, und die Ausnahme, die man ihm dafür beibrin
 für jede Zahl, die sich als Umrechnung ausgibt. **Die Zahl wird aufgelöst, nicht die Prüfung
 aufgeweicht** — `DURABILITY_TEST_WORK_J` steht jetzt in `const.py`, direkt neben der Größe in kJ,
 mit dem Grund daneben.
+
+**Achte Bauregel, aus 0.50.0: ein Gegenfall weist nach, dass er etwas verändert hat.** Wer
+einen Wert filtert, eine Zahl entfernt oder einen Schlüssel `pop`t, prüft zuerst, dass der
+Bestand vorher anders war — sonst läuft die Gegenprobe am Originalzustand und besteht dabei.
+Der Fall aus §7 kostete nichts, weil er auffiel; er wäre nicht aufgefallen, wenn die Mutation
+nur beinahe getroffen hätte. **Das gilt für die Sitzungsarbeit genauso wie für den Prüfstand:
+vor jeder zurückgedrehten Zeile steht eine Zusicherung, dass die Ersetzung gegriffen hat.**
 
 **Siebte Bauregel, aus 0.48.1: ein Ausschnitt aus einem Strom braucht eine Plausibilitätsprüfung
 gegen die erwartete Physik.** Ein Abschnitt, der als Arbeit etikettiert ist, muss mehr Leistung
@@ -1437,7 +1498,8 @@ bzw. ein Reiter je Chat.
 | **Trainer (Ermüdungskurve, Paket L)** | ✅ gebaut als **0.45.0**, in **0.46.0** an ihren Platz gerückt: sie ist das Hauptbild der Durability-Kachel im Trainer und ersetzt dort die Punktwolke — vorher stand sie im DFA-Reiter neben einer zweiten Kachel zur selben Frage (§7). Dazu die fehlende Bedienung (Ablesestreifen, Zeiger, Wertetabelle, beide Leserichtungen) und die gepaarte Gegenrechnung zum Auswahleffekt. L1/L1a/L1b: Anker gemessen (Repräsentantenmethode je Fahrtstunde, aus den ungedünnten Strömen beim Import), Form nach Gallo gesetzt und daran verankert, Unsicherheitsband aus der publizierten Streuung. Die Bereichsgrenzen rechnen sich aus der Belegung — zwei Bestände ergeben nachweislich zwei Grenzen. Vorgeschaltet zwei Bugfixes, die heute schon wirken: die Plausibilitätsregel an EINER Stelle statt in fünf Fassungen, und der Historienbeginn. Die Spezifikation wurde vor dem Bau an vier Stellen korrigiert: L1 war NICHT payload-fertig (das Archiv trug ein Fenstermittel je Fahrt, keinen Stundenverlauf — also Algorithmus-Bump, Neuberechnung, Fortschrittsanzeige), die Ausdünnung ist auf dem Importweg gar nicht da, der VI kann strukturierte Einheiten nicht trennen (§7), und L2–L6 existieren nicht und wurden nicht erfunden. Verifikation am System steht aus |
 | **Trainer (Wattvorgaben, Paket L4)** | ✅ gebaut als **0.47.0**, korrigiert in **0.47.1** (die Vorgabe ist ein Anteil der Schwelle, nicht die Schwelle selbst — §7). Grundlage und lange Fahrt beziehen ihre Watt aus der gemessenen Kurve, gestaffelt nach Fahrtdauer auf der gepaarten Reihe; die übrigen Familien bleiben bei der FTP, die dort als **Rückfall** beschriftet ist. Die Einheitenkarte nennt je Abschnitt, ob die Zahl gemessen oder Studienform ist. Die Spezifikation wurde vor dem Bau an einer Stelle korrigiert: nicht „SweetSpot liegt außerhalb des Messbereichs" (falsch — es liegt drin), sondern „aus arbiträren Fahrten ist dort kein tragfähiger Fit zu gewinnen". Dazu `p050` und die Signalqualität unter alpha 0,5 erhoben, von nichts benutzt. Verifikation am System steht aus |
 | **Trainer (Leistung je Block, Paket M)** | ✅ gebaut als **0.48.0**. Ein Wert je Arbeitsblock, direkt abgelesen nach dem Verwerfen der ersten zwei Minuten (Rogers 2021, am Bestand bestätigt: Anlauf endet bei 90–120 s). Verlauf je Familie mit der Leistung im ersten eingeschwungenen Block als Leitzahl; dazu ein Regelkreis, der einen Vorschlag rechnet und nichts selbst tut. Blockgrenzen aus Intervals' eigenen Abschnitten (K2). Die Vermessung lief in drei Runden und korrigierte drei Zahlen, bevor eine Zeile entstand (§7). Verifikation am System steht aus |
-| **Block-Kurven: Ableseleiste und Datumsachse** | ⏳ offen. Beim Überfahren eines Punktes kommt nichts — die Ermüdungskurve daneben kann es. Fehlen: **welche Einheit, welches Datum, wie viel Watt, bei welchem alpha, auf wie vielen Blöcken**. Die Zahlen liegen alle in der Payload (`points[]` trägt `date`, `first_watts`, `median_alpha`, `n_blocks`, `block_alphas`), es fehlt nur die Leiste. Dazu die **Datumsachse: Wochentag und Tag ohne Monat** — bei einer Kurve über drei Monate nicht zuzuordnen |
+| **Anzeige-Release (Paket O)** | ✅ gebaut als **0.50.0**. Reine Darstellung, kein Algorithmus-Bump: der Kopf der Durability-Kachel entfällt, die Progressionszeile steht jetzt im Wochenplan (samt ihrer Grenze), die doppelte Wertetabelle ist auf die im Rechenweg zusammengezogen, die Bandbreite ist als **Spanne** in die Ableseleiste gewandert, und die Leitzahl folgt dem Zeiger — **nur in der Ermüdungskachel**; in den Block-Karten bleibt sie stehen, weil sie dort die Steuergröße ist. Beide Verhaltensweisen sind zugesichert. Die Spezifikation wurde vor dem Bau an sechs Stellen korrigiert (docs/ausbau.md): der Kopf sitzt in `rDurability` und nicht in `rFatigue`; „aus dem Graphen ablesbar" galt nur für die Dauer, nicht für die Watt; Punkt 3 und 4 widersprachen sich über die Wertetabelle; die Bandbreite war nicht „nirgends", sondern als Breite statt als Spanne da; beim Überfahren einer Block-Kurve kam nicht „nichts", sondern ein Wert der Ermüdungskurve (§7); und „bei welchem alpha" nannte den Median statt des alpha des aufgetragenen Blocks. Die sieben eingefrorenen `chart()`-Hashes haben gehalten. Verifikation am System steht aus |
+| **Block-Kurven: Ableseleiste und Datumsachse** | ✅ Ableseleiste als **0.50.0** gebaut — Einheit, Datum, Watt, alpha des aufgetragenen Blocks und Zahl der Blöcke, je Familie eine eigene geschachtelte Zeigergruppe. **Die Datumsachse ist gestrichen**, nicht vertagt: wer beim Überfahren das volle Datum bekommt, braucht den Monat unter der Achse nicht (Entscheidung des Athleten, 14.09.2026). Verifikation am System steht aus |
 | **Konstanten-Dubletten (DFA/ACWR) + toter ring()/rd-Code** | ⬜ eigenes Paket, vom Wächter bei 2+2 eingefroren (docs/ausbau.md) |
 | Heute, Kalender (voller Audit), Fitness, Aktivitäten | offen |
 

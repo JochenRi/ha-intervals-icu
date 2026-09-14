@@ -303,7 +303,7 @@ const acts = F.activities(), thr = F.thresholds();
   ok(!/plan\.weeks/.test(source), "16 rGoal berechnet weiter Wochen, die es nicht rendert");
   ok(!/budget_note/.test(source), "16 rGoal berechnet weiter die Note, die es nicht rendert");
   const assembly = H.source();
-  ok(assembly.includes("this.rPlanWeeks(this._goal)"),
+  ok(/this\.rPlanWeeks\(this\._goal,/.test(assembly),
      "16 rPlanWeeks wird nirgends in eine Ansicht eingesetzt");
 }
 
@@ -666,10 +666,31 @@ const acts = F.activities(), thr = F.thresholds();
   // aus der Payload gelesen werden - sonst ist der Wächter oben nur still.
   for (const key of ["vi_full", "vi_none", "min_weight_sum", "min_weight_sum_block",
                      "min_slope_t", "block_weeks", "power_days", "power_days_fallback",
-                     "fuelling_g_per_h", "max_intensity", "min_minutes", "decoupling_good",
-                     "progression"]) {
+                     "fuelling_g_per_h", "max_intensity", "min_minutes", "decoupling_good"]) {
     ok(tile.includes("d." + key), `Wächter: rDurability liest ${key} nicht aus der Payload`);
   }
+
+  /* 0.50.0: die Progressionszeile ist in den Wochenplan gewandert - und der
+     Wächter mit ihr. Eine Zahl, die umzieht und ihre Prüfung zurücklässt, ist
+     ab dem Umzug ungeprüft; genau das ist die vierte Bauregel aus 0.44.0, nur
+     auf eine Kachel angewandt statt auf eine Liste. Die vier Muster sind
+     dieselben wie oben, sie stehen nur an ihrem neuen Ort. */
+  const weekTile = (/rPlanWeeks\(g, prog\) \{[\s\S]*?\n  \}/.exec(src) || [""])[0];
+  ok(weekTile.length > 0, "Wächter: rPlanWeeks nicht gefunden (Signatur geändert?)");
+  for (const [name, re] of [["Progressionsfaktor", /1[.,]10?\b/],
+                            ["Risikoknick in Prozent", /\b10\s*%/],
+                            ["Rundungsschritt", /\b5\s*Minuten/],
+                            ["Bezugsfenster", /\b30\s*Tag/]]) {
+    ok(!re.test(weekTile), `Wächter: ${name} steht als Zahl in rPlanWeeks statt in der Payload`);
+  }
+  for (const key of ["next_minutes", "factor", "round_minutes", "below_demonstrated",
+                     "window_days"]) {
+    ok(weekTile.includes("prog." + key) || weekTile.includes("prog.recent"),
+       `Wächter: rPlanWeeks liest ${key} nicht aus der Payload`);
+  }
+  // Und die Zeile darf nicht an ZWEI Orten stehen - sonst gibt es sie zweimal.
+  ok(!/Läufern/.test(tile), "Wächter: die Progressionsregel steht noch in rDurability");
+  ok(/Läufern/.test(weekTile), "Wächter: die Grenze der Regel ist beim Umzug verloren gegangen");
 }
 
 /* ── 0.46.0: der Zeiger ueber der Ermuedungskurve, SIMULIERT ──────────────
@@ -700,8 +721,16 @@ const acts = F.activities(), thr = F.thresholds();
   ok(/1[.,]50 h Fahrtzeit/.test(text), `zeiger: falsche Dauer im Streifen (${text})`);
   ok(!/Studienform, keine Messung/.test(text),
      "zeiger: eine gemessene Stunde wird als Studienform ausgegeben");
+  // Die Bandbreite ist die SPANNE, nicht ihre Breite: 143–151 W sagt, wo die
+  // Setzung liegt. Bis 0.49.2 stand die Breite in der Leiste und die Spanne in
+  // der Tabelle darunter - zwei Zahlen unter einem Namen, und die Tabelle
+  // faellt in diesem Release weg.
+  const lit2 = fat.literature.find((r) => r.hour === 2);
+  ok(M.fmt(lit2.hi - lit2.lo) !== M.fmt(lit2.lo),
+     "zeiger Fixture-Beweis: Breite und Spannenanfang sind gleich - die Verwechslung waere unsichtbar");
   for (const [label, want] of [["gemessen", "142"], ["Studienform", "149"],
-                               ["Bandbreite", "7"], ["Belegung", "23"]]) {
+                               ["Bandbreite", M.fmt(lit2.lo) + "–" + M.fmt(lit2.hi)],
+                               ["Belegung", "23"]]) {
     ok(html.includes(label), `zeiger: der Streifen zeigt "${label}" nicht`);
     ok(html.includes(want), `zeiger: "${label}" traegt nicht den Wert ${want} (${html.slice(0, 200)})`);
   }
@@ -720,6 +749,12 @@ const acts = F.activities(), thr = F.thresholds();
   const q2 = new M.Panel();
   q2._nowIso = F.TODAY;
   const nurGemessen = F.fatigue({ literature: fat.literature.filter((r) => r.hour != null) });
+  // Trefferzusicherung (0.50.0, §7 elfter Fall): ein Gegenfall, der nichts
+  // veraendert hat, ist kein Gegenfall - er prueft dann den Originalzustand
+  // und sieht dabei aus wie eine bestandene Pruefung.
+  ok(nurGemessen.literature.length < fat.literature.length,
+     `zeiger Gegenprobe: das Raster ist unveraendert (${nurGemessen.literature.length} `
+     + `von ${fat.literature.length}) - der Gegenfall greift nicht`);
   q2.rFatigue(nurGemessen);
   q2.shadowRoot.querySelector = (sel) => (/data-rdo="fat"/.test(sel) ? strip : null);
   q2._fillReadout("fat", 0);
@@ -749,7 +784,7 @@ const acts = F.activities(), thr = F.thresholds();
   const strip = (body) => body.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
   const views = {
     rWorkouts: strip(cut("rWorkouts(w, forTomorrow) {", "  rGoal(g) {")),
-    rPlanWeeks: strip(cut("rPlanWeeks(g) {", "  _goalForm(g) {")),
+    rPlanWeeks: strip(cut("rPlanWeeks(g, prog) {", "  _goalForm(g) {")),
   };
 
   for (const [name, body] of Object.entries(views)) {
@@ -923,7 +958,7 @@ const acts = F.activities(), thr = F.thresholds();
   const cut = (from, to) => src.slice(src.indexOf(from), src.indexOf(to));
   const strip = (b) => b.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
   const workouts = strip(cut("rWorkouts(w, forTomorrow) {", "  rGoal(g) {"));
-  const weeks = strip(cut("rPlanWeeks(g) {", "  _weekReasons(w) {"));
+  const weeks = strip(cut("rPlanWeeks(g, prog) {", "  _weekReasons(w) {"));
 
   for (const [name, body] of [["rWorkouts", workouts], ["rPlanWeeks", weeks]]) {
     ok(/_sessionCard\(/.test(body), `karte: ${name} baut die Einheit nicht über _sessionCard`);

@@ -862,46 +862,13 @@ class IntervalsIcuPanel extends HTMLElement {
       ? ` Zum Einordnen: mit dem zuletzt gemessenen Gewicht (${fmt(d.weight.kg, 1)} kg vom ${dMed(d.weight.day)}) sind ${fmt(d.max_kj, 0)} kJ rund ${fmt(d.max_kj / d.weight.kg, 1)} kJ/kg — Nebeninformation, gerechnet wird in kJ.`
       : " Eine Umrechnung in kJ/kg steht nicht dabei: im Archiv liegt kein Gewicht.";
 
-    /* Der Kopf (H1/H2). Drei Zeilen in der Bauart der Signalkarten - Aufbau und
-       Typografie uebernommen, die FARBLOGIK ausdruecklich nicht: „was du kannst"
-       ist eine Tatsache und „was als Naechstes" eine Risikoaussage, keins von
-       beidem ein Ampelzustand. Gruen/Gelb/Rot haben hier nichts verloren, und
-       das Datenregister ist in dieser Ansicht schon an die Wolke (blau) und die
-       Trendgerade (violett) vergeben. Also neutral - Text traegt die Aussage. */
-    const p = d.progression;
-    const refSpan = !p ? "" : (p.recent.days == null
-      ? "dein ganzer Bestand" : `die letzten ${fmt(p.recent.days, 0)} Tage`);
-    const headCard = (lab, big, small, foot) => `<div class="dhcard">
-      <div class="dhlab">${lab}</div>
-      <div class="dhbig">${big}${small ? `<small>${small}</small>` : ""}</div>
-      <div class="dhfoot">${foot}</div></div>`;
-
-    const head = !p ? "" : `<div class="durhead">
-      ${headCard("WAS DU KANNST", hmn(p.demonstrated.minutes),
-        p.demonstrated.watts == null ? "" : `bei ${fmt(p.demonstrated.watts, 0)} W`,
-        `deine <b>längste</b> gleichmäßige Fahrt — ${dMed(p.demonstrated.date)},
-         ${fmt(p.demonstrated.kj, 0)} kJ`)}
-      ${headCard("WIE WEIT DU GEKOMMEN BIST", hmn(p.recent.minutes),
-        p.recent.watts == null ? "" : `bei ${fmt(p.recent.watts, 0)} W`,
-        p.recent.days == null
-          ? `längste Fahrt deines ganzen Bestands — ${dMed(p.recent.date)}. In den letzten
-             ${fmt(p.window_days, 0)} Tagen steht nichts Qualifiziertes.`
-          : `längste Fahrt der letzten ${fmt(p.recent.days, 0)} Tage — ${dMed(p.recent.date)},
-             ${fmt(p.recent.n, 0)} ${p.recent.n === 1 ? "Fahrt" : "Fahrten"} im Fenster${
-             p.recent.widened ? `. In den letzten ${fmt(p.window_days, 0)} Tagen stand nichts
-             Qualifiziertes, deshalb der weitere Zeitraum.` : "."}`)}
-      ${headCard("WAS ALS NÄCHSTES", "bis " + hmn(p.next_minutes), "",
-        `${fmt(p.recent.minutes, 0)} min × ${fmt(p.factor, 2)},
-         auf ${fmt(p.round_minutes, 0)} Minuten gerundet`)}
-    </div>
-    ${p.below_demonstrated ? `<p class="hint">Dein nächster Schritt liegt unter dem, was du schon
-       gefahren bist — der Bezug ist bewusst ${refSpan}, nicht deine Bestleistung. Riskant ist der
-       Sprung gegen das, was gerade in den Beinen steckt, nicht der Abstand zum Rekord.</p>` : ""}
-    <p class="hint">Grenzen, die dazugehören: die Regel stammt aus einer Kohortenstudie an
-      <b>Läufern</b>, nicht an Radfahrern, und die ${fmt((p.factor - 1) * 100, 0)} % sind der
-      gemessene Risikoknick, keine Trainingsvorschrift. Der Satz sagt, was ohne erhöhtes Risiko geht,
-      nicht was nötig ist.</p>`;
-
+    /* Der Kopf (H1/H2) ist in 0.50.0 entfallen. Was er trug, steht anderswo
+       oder ist bewusst aufgegeben - beides steht im Rechenweg, sonst sucht es
+       in vier Wochen jemand. Die Progressionszeile ist die einzige der drei
+       Angaben, die im Graphen nicht steht; sie sagt, wie LANG die naechste
+       Fahrt sein darf, und gehoert damit dorthin, wo ueber Dauern entschieden
+       wird: "Die naechsten Wochen". Die Grenze der Regel ist mitgewandert -
+       sie gehoert zur Zahl. */
     const forward = d.needed_sessions
       ? `<p class="src"><b>Was die Messung voranbringt:</b> bei dieser Streuung
           bräuchte es rund ${fmt(d.needed_sessions, 0)} qualifizierte Einheiten statt ${fmt(d.n, 0)}.
@@ -911,7 +878,6 @@ class IntervalsIcuPanel extends HTMLElement {
 
     return `<h3 class="secname">Wie lange trägt die Grundlage?</h3>
       <div class="card pad" data-grp="fat">
-        ${head}
         <p class="effect">${esc(d.headline)}</p>
         ${this.rFatigue(this._fatigue)}
         ${this.rBlocks(this._blocks)}
@@ -1008,7 +974,17 @@ class IntervalsIcuPanel extends HTMLElement {
           <p class="src"><b>Warum über der Arbeit und nicht über der Dauer:</b> Durability wird in der
             Literatur über angesammelte Arbeit gemessen, nicht über die Uhr (Maunder 2021; Spragg
             trennt das Leistungsprofil bei 2000 kJ). Die <i>Achse</i> ist belegt.</p>
-          <p class="src"><b>Die Grenze:</b> ${esc(d.source)}</p>
+          <p class="src"><b>Was der Kopf dieser Karte trug, und wo es geblieben ist.</b>
+            Bis 0.49.2 standen hier drei Kacheln. Der naechste Schritt — wie lang die naechste
+            Fahrt sein darf — steht jetzt im Wochenplan unter „Die nächsten Wochen“, samt der
+            Grenze, aus welcher Kohorte der Aufschlag stammt und was er nicht ist — sie gehört
+            zur Zahl und ist mit ihr gewandert. <b>Ersatzlos aufgegeben ist die
+            Angabe zur längsten gleichmäßigen Fahrt</b> (Dauer, Datum und Leistung DIESER Fahrt):
+            die Dauer steht am rechten Ende der Kurve, und die Wattzahl war der Durchschnitt
+            jener einen Fahrt und nicht die Schwellenleistung an dieser Stelle — zwei
+            verschiedene Größen, und gefahren wird nach der zweiten. Die Angabe fehlt also
+            nicht, sie ist gestrichen.</p>
+        <p class="src"><b>Die Grenze:</b> ${esc(d.source)}</p>
         </details>
       </div>`;
   }
@@ -1130,14 +1106,18 @@ class IntervalsIcuPanel extends HTMLElement {
         val: (i) => fmt(measuredAt[i] == null ? grid[i].watts : measuredAt[i]),
         color: (i) => (measuredAt[i] == null ? C.slate : ROLE.series),
         note: (i) => (measuredAt[i] == null
-          ? `Studienform, keine Messung · Spanne ${fmt(grid[i].lo)}–${fmt(grid[i].hi)} W`
+          ? "Studienform, keine Messung"
           : `gemessen · ${fmt(occupied(i))} ${occupied(i) === 1 ? "Fahrt" : "Fahrten"}`
-            + ` · Studienform ${fmt(grid[i].watts)} W · Spanne ${fmt(grid[i].lo)}–${fmt(grid[i].hi)} W`),
+            + ` · Studienform ${fmt(grid[i].watts)} W`),
       },
       rows: [
         { l: "gemessen", c: ROLE.series, u: "W", dec: 0, vals: measuredAt },
         { l: "Studienform", c: C.slate, u: "W", dec: 0, vals: grid.map((q) => q.watts) },
-        { l: "Bandbreite", c: C.slate, u: "W", dec: 0, vals: grid.map((q) => q.hi - q.lo) },
+        // SPANNE, nicht Breite: "143-151 W" sagt, wo die Setzung liegt, "7 W"
+        // nur, wie breit sie ist. Bis 0.49.2 stand die eine Zahl in der Leiste
+        // und die andere in der Tabelle darunter - unter demselben Namen.
+        { l: "Bandbreite", c: C.slate, u: "W",
+          vals: grid.map((q) => (q.lo == null || q.hi == null ? null : fmt(q.lo) + "–" + fmt(q.hi))) },
         { l: "Belegung", c: C.tx2, u: "", dec: 0,
           vals: grid.map((q) => {
             const m = f.measured.find((r) => r.hour != null && r.hour === q.hour);
@@ -1178,18 +1158,6 @@ class IntervalsIcuPanel extends HTMLElement {
         ${solid ? `Getragen wird die Aussage bis Stunde ${fmt(solid)}.` : ""}</p>
       ${this._fatigueHistory(f)}
       ${this._fatigueDoubt(f)}
-      <h4 class="subsec">Ablesen</h4>
-      <table class="dfatab"><thead><tr><th>Dauer</th><th>gemessen</th><th>Studienform</th>
-        <th>Band</th><th>Belegung</th></tr></thead><tbody>${
-        f.measured.map((r) => {
-          const l = lit.find((q) => q.hour === r.hour) || {};
-          return `<tr><td>${fmt(r.hour)} h</td>
-            <td class="tn">${fmt(r.watts)} W</td>
-            <td class="tn">${l.watts == null ? "–" : fmt(l.watts) + " W"}</td>
-            <td class="tn mut">${l.lo == null ? "–" : fmt(l.lo) + "–" + fmt(l.hi) + " W"}</td>
-            <td>${badge(r.band === "solid" ? "green" : r.band === "thin" ? "amber" : "slate",
-              r.n + (r.n === 1 ? " Fahrt" : " Fahrten"))}</td></tr>`;
-        }).join("")}</tbody></table>
       <div class="twoway">
         <p><b>${fmt(letzte.t)} h — wie viel Watt?</b> ${fmt(letzte.watts)} W
           (${fmt(letzte.n)} ${letzte.n === 1 ? "Fahrt" : "Fahrten"}).</p>
@@ -1817,7 +1785,8 @@ class IntervalsIcuPanel extends HTMLElement {
     if (this._err && !this._rd) {
       html = `<div class="card pad err">Daten konnten nicht geladen werden: ${esc(this._err)}</div>`;
     } else if (this._tab === "trainer") {
-      html = this.rGoal(this._goal) + this.rTrainer(this._coach, this._rd) + this.rPlanWeeks(this._goal);
+      html = this.rGoal(this._goal) + this.rTrainer(this._coach, this._rd)
+        + this.rPlanWeeks(this._goal, ((this._coach || {}).durability || {}).progression);
     }
     else if (this._tab === "signale") html = this.rSignale(this._signals);
     else if (this._tab === "heute") html = this.rHeute(this._today);
@@ -2568,13 +2537,37 @@ class IntervalsIcuPanel extends HTMLElement {
      this going". The big day is marked as the exception it is, and the
      budget note explains the rhythm instead of demanding weekly hours the
      athlete does not have. */
-  rPlanWeeks(g) {
+  rPlanWeeks(g, prog) {
     // no payload is a DEFECT and says so; a goal that is simply not set yet is
     // not - rGoal already shows the form for that, and a second notice next to
     // it would be noise
     if (!g) return this._dataGap("goal", "Die nächsten Wochen");
     const plan = g.plan || {};
-    if (!plan.ready || !(plan.weeks || []).length) return "";
+    /* 0.50.0 Punkt 2: die Progressionszeile aus dem Kopf der Durability-Kachel.
+       Hier steht sie richtig - dies ist die Ansicht, in der ueber DAUERN
+       entschieden wird, und die Zeile sagt, wie lang die naechste Fahrt sein
+       darf, nicht wie viel Watt. Eine Zeile, keine Kachel. Jede Zahl kommt aus
+       der Payload, auch der Prozentsatz: er wird aus dem Faktor gerechnet. */
+    const progLine = !prog || prog.next_minutes == null ? "" : `<p class="hint">${
+      ico("clock", C.tx2, 13)} <b>Die lange Fahrt darf bis ${hmn(prog.next_minutes)} gehen.</b>
+      ${fmt(prog.recent.minutes, 0)} min × ${fmt(prog.factor, 2)}, auf ${fmt(prog.round_minutes, 0)}
+      Minuten gerundet. Bezug ist die längste gleichmäßige Fahrt ${prog.recent.days == null
+        ? "deines ganzen Bestands" : `der letzten ${fmt(prog.recent.days, 0)} Tage`} (${
+        dMed(prog.recent.date)})${prog.recent.widened
+        ? `; in den letzten ${fmt(prog.window_days, 0)} Tagen stand nichts Qualifiziertes, deshalb
+           der weitere Zeitraum` : ""}.${prog.below_demonstrated
+        ? ` Der Schritt liegt unter dem, was du schon gefahren bist — der Bezug ist bewusst dieser
+           Zeitraum und nicht deine Bestleistung: riskant ist der Sprung gegen das, was gerade in
+           den Beinen steckt.` : ""} <b>Die ${fmt((prog.factor - 1) * 100, 0)} %</b> sind der
+      gemessene Risikoknick aus einer Kohortenstudie an <b>Läufern</b>, keine
+      Trainingsvorschrift — die Zeile sagt, was ohne erhöhtes Risiko geht, nicht was nötig ist.</p>`;
+    // Ein Plan, der noch nicht steht, darf die Zeile nicht MITNEHMEN: sie
+    // haengt am Bestand, nicht am Ziel. Sonst verschwaende sie still - genau
+    // die Luecke aus 0.42.1, nur andersherum.
+    if (!plan.ready || !(plan.weeks || []).length) {
+      return progLine ? `<h3 class="secname">Die nächsten Wochen</h3>
+        <div class="card pad">${progLine}</div>` : "";
+    }
 
     const note = plan.budget_note;
     const choice = plan.choice || {};
@@ -2616,6 +2609,7 @@ class IntervalsIcuPanel extends HTMLElement {
     return `<h3 class="secname">Die nächsten Wochen
         <span class="hint">— ${esc(plan.pattern)} an Kalenderwochen verankert; der große Tag
         wächst, die Wochen dazwischen bleiben gewöhnlich</span></h3>
+      ${progLine}
       ${note ? `<div class="warnrow">${ico("info", C.amber, 16)} <span>${esc(note.text)}</span></div>` : ""}
       <div class="pweeks">${weeks}</div>
       ${this._stageLegend(plan)}

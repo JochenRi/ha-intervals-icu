@@ -433,6 +433,11 @@ check("D6a: Fixture-Beweis - die Aufschlüsselung hat nur einen besetzten Topf",
 # Gegenprobe, gezählt und benannt: fehlt einer der drei Töpfe, muss die
 # Summenprüfung fallen - und zwar als gezählter Fehler, nicht als Absturz.
 mutated = dict(report)
+# Trefferzusicherung (0.50.0, §7 elfter Fall): pop mit Vorgabewert schluckt
+# einen Schluesselnamen, der sich geaendert hat - dann mutiert nichts und die
+# Pruefung darunter liest den Originalbericht.
+check("D6a Fixture-Beweis: der Topf steht gar nicht im Bericht - die Mutation greift nicht",
+      "checked_unavailable" in report)
 mutated.pop("checked_unavailable", None)
 check("D6a Gegenprobe: eine fehlende Teilzahl bleibt unbemerkt",
       sum(mutated.get(key, 0) for key in parts) != mutated["checked"])

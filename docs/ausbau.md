@@ -2969,7 +2969,7 @@ statt eine Zahl zu übernehmen, die wie ein Befund aussieht.
 
 ---
 
-## Paket O — Anzeige-Release 0.50.0 (ÜBERGABESTAND, noch nichts gebaut)
+## Paket O — Anzeige-Release 0.50.0 (GEBAUT, 14.09.2026)
 
 **Fünf Punkte: 1, 2, 3, 4, 5 — Punkt 6 ist gestrichen.**
 
@@ -3091,3 +3091,64 @@ ist.** Der Punkt ist erledigt, nicht vertagt.
 - Jede Gegenprobe gilt erst als bestanden, wenn der Fehler **gezählt und
   benannt** erscheint.
 - Eine **sinkende** Prüfungszahl in einer Datei muss einzeln erklärt werden.
+
+---
+
+## Was der Bau von O an dieser Spezifikation korrigiert hat
+
+**Nachgetragen am 14.09.2026, nach 0.50.0.** Die Bau-Session hat sechs
+Widersprüche zwischen diesem Abschnitt und dem Quelltext gemeldet, bevor eine
+Zeile entstand — Lehre 1 aus Paket A angewandt: **am Feld prüfen, nicht am
+Text.** Alle sechs wurden vorgelegt und einzeln entschieden.
+
+**1 · Der Kopf sitzt nicht in der Ermüdungskachel.** Punkt 1 sprach vom
+„Kopfbereich der Ermüdungskachel". Die drei Kacheln und ihre Erklärabsätze
+stehen in `rDurability`; `rFatigue` wird von dort aus aufgerufen. Nur eine
+Ortsangabe, aber eine, an der sich der Eingriff entscheidet.
+
+**2 · „Zwei davon sind aus dem Graphen ablesbar" galt nur zur Hälfte.** Die
+Kurve trägt **Schwellenleistung** über der Fahrtdauer. „Was du kannst" nennt
+Minuten und die **Durchschnittsleistung jener einen Fahrt** — eine andere
+Größe. Ablesbar ist die Dauer am Kurvenende, die Wattzahl nicht.
+**Entscheidung: ersatzlos aufgegeben**, weil gefahren wird nach alpha und
+Schwellenleistung und nicht nach dem Schnitt einer alten Fahrt. Der Rechenweg
+sagt, dass die Angabe gestrichen ist und warum — sonst sucht sie in vier Wochen
+jemand.
+
+**3 · Punkt 3 und Punkt 4 widersprachen sich.** Punkt 3 verlangte den Zeiger
+„an BEIDEN Stellen: Graph UND Wertetabelle". Die Wertetabelle ist die obere —
+und genau die streicht Punkt 4. **Entscheidung: der Zeilen-Zeiger sitzt auf der
+Rechenweg-Tabelle**, der einzigen, die bleibt.
+
+**4 · „Die Bandbreite wäre zwischenzeitlich NIRGENDS" stimmte nicht — und die
+Abhängigkeit war eine andere.** Die Ableseleiste trägt seit 0.45.0 eine Zeile
+`Bandbreite`. Sie zeigte aber die **Breite** (`hi − lo`, „7 W"), die Tabelle
+die **Spanne** („143–151 W"). Zwei verschiedene Zahlen unter einem Namen.
+Gestrichen wurde also nicht die Bandbreite, sondern die Spanne.
+**Entscheidung: die Leiste zeigt die Spanne** — sie ist auch die nützlichere
+Zahl. Das ist die echte Kopplung von Punkt 4 an 3/5.
+
+**5 · „Heute kommt beim Überfahren nichts" stimmte nicht, und der Ist-Zustand
+war schlechter als nichts.** Es kam ein Wert der **Ermüdungskurve**, weil alle
+Block-Karten im selben Gruppen-Wrapper liegen (PROJEKTSTAND §7, zehnter Fall).
+Keine fehlende Funktion, sondern eine falsche Anzeige. Behoben an der Wurzel:
+geschachtelte Gruppen je Familie **und** die Leiste schreibt nur noch, wenn der
+Zeiger senkrecht über dem Diagramm liegt — halb beheben wäre schlechter
+gewesen, weil es dann bei den Block-Karten stimmt und beim Rest nicht.
+
+**6 · „Bei welchem alpha" nannte das falsche Feld.** Punkt 5 führte
+`median_alpha` auf. Aufgetragen wird `first_watts`, also gehört `first_alpha`
+daneben; der Median ist die **Steuergröße** und steht als eigene Zeile. Das ist
+genau die Trennung, die `test_blocks.py` erzwingt — sie wäre im Frontend wieder
+eingerissen worden. Zusatz: `points[]` trägt auch `name`, „welche Einheit" ist
+damit wörtlich beantwortbar.
+
+**Und zur Teilung:** die Empfehlung „ein Release" hielt, ihre Begründung nicht.
+Sie stützte sich darauf, dass die Bandbreite zwischenzeitlich nirgends wäre —
+das war falsch (Punkt 4 oben). Getragen hat sie trotzdem, aus dem korrigierten
+Grund: die Leiste musste von Breite auf Spanne umgestellt werden, und das
+gehört zur Mechanik aus 3/5.
+
+**Zur Hash-Warnung:** die Richtigstellung in O1 war richtig. Angefasst wurden
+ausschließlich die Aufrufer; `grp:` ist eine vorhandene Option, im eingefrorenen
+Fall „punkte" schon belegt. **Alle sieben Hashes haben gehalten.**
