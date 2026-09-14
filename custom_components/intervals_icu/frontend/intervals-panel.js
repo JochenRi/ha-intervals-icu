@@ -2905,6 +2905,135 @@ class IntervalsIcuPanel extends HTMLElement {
      inserted below - a computed block that never reaches the DOM is the
      bug that silently dropped the infection warning in 0.31.0, and
      test_panel_fixes now proves these render. */
+  /* Die Stufentest-Karte (docs/ausbau.md N3).
+
+     Sie zeigt DREI Zahlen, nicht zwei: die beiden Schwellen und daneben die
+     personalisierte erste. Letztere ist KEIN Ersatz - ihr Nutzen ist
+     umstritten, und ihre Rechenvorschrift stammt aus zweiter Hand. Beides
+     steht in der Karte und nicht nur in der Spezifikation.
+
+     Und sie zeigt die Frage, die der Test beantworten soll: die beiden
+     eigenen Messungen widersprechen sich um rund 40 Watt, und bisher gab es
+     nichts, was zwischen ihnen entscheidet. */
+  rRampTest(rt) {
+    if (!rt) return "";
+    const letzter = rt.latest || null;
+    const r = letzter && letzter.result;
+    const anz = (rt.tests || []).length;
+
+    const zelle = (node, titel, unten) => `<div class="stat">
+      <small>${titel}</small>
+      <b class="tn" style="color:${node ? ROLE.series : C.tx3}">${node && node.watts != null
+        ? fmt(node.watts, 0) : "–"} <span class="unit">W</span></b>
+      <span class="mut">${node
+        ? `alpha ${fmt(node.alpha, 2)}${node.hr != null ? " · " + fmt(node.hr, 0) + " bpm" : ""}`
+        : esc(unten)}</span></div>`;
+
+    // Ohne Test steht hier kein leerer Platz, sondern was er liefern wuerde.
+    // Eine Kachel, die nichts sagt, ist die Luecke aus 0.42.1 in huebsch.
+    const leer = `<div class="card pad">
+      <p class="effect">Du hast noch keinen Stufentest gefahren — deshalb stehen hier keine
+        Zahlen. Das ist kein Fehler, sondern der Ausgangszustand.</p>
+      <p>Der Test misst in <b>einer Fahrt</b> beide Schwellen: die erste, unter der eine
+        Grundlageneinheit bleiben soll, und die zweite, an der die harten Blöcke liegen.
+        Beide unter <b>denselben Bedingungen</b>, am selben Tag, mit demselben Gurt — das
+        ist der Unterschied zu Zahlen, die aus verschiedenen Fahrten über Monate
+        zusammenkommen.</p>
+      <p>Solange er fehlt, ändert sich <b>nichts</b> an deinen Vorgaben: jede Einheit nennt
+        weiterhin die Quelle, aus der ihre Watt kommen, und fällt auf die FTP zurück, wo es
+        keine gibt.</p>
+      <p class="src">Zu finden im Katalog unter <b>Stufentest</b>. Er wird nur im grünen
+        Zustand vorgeschlagen — ein müder Test misst die Müdigkeit.</p></div>`;
+
+    const zahlen = !r ? "" : `
+      <div class="statgrid">
+        ${zelle(r.hrvt1, "Erste Schwelle (HRVT1)", "")}
+        ${zelle(r.hrvt2, "Zweite Schwelle (HRVT2)",
+                r.reached_anaerobic ? "" : "nie stabil unter 0,5 — nicht erreicht")}
+        ${zelle(r.hrvt1_pers, "Erste, personalisiert", "")}
+      </div>
+      <p class="src"><b>Die dritte Zahl steht daneben, nicht anstelle der ersten.</b>
+        Sie liegt mittig zwischen dem Hochpunkt am Beginn deines Abfalls
+        (alpha ${fmt(r.max_alpha_start, 2)}) und 0,5, hier also alpha
+        ${fmt(r.pers_alpha, 2)}. <b>Ihr Nutzen ist umstritten:</b> eine Arbeit berichtet
+        bessere Übereinstimmung als der feste Wert, aber nur Korrelationen zwischen 0,67
+        und 0,70; eine zweite findet auch für sie nur triviale bis mittlere Zusammenhänge.
+        Und die Rechenvorschrift ist eine <b>Operationalisierung aus zweiter Hand</b>:
+        die Urarbeit spricht vom „Maximum während der frühen Rampe“, die Umsetzung vom
+        „höchsten Wert am Beginn des linearen Abfalls“ — ein Maximum in einem Zeitfenster
+        ist etwas anderes als eines an einem Kurvenpunkt. Gebaut ist die zweite Fassung,
+        weil nur sie sich rechnen lässt.</p>
+      ${r.reached_anaerobic ? "" : `<p class="hint">${ico("info", C.amber, 13)}
+        <b>Die zweite Schwelle fehlt.</b> Dein alpha war nie stabil unter 0,5 — der Abbruch
+        kam vorher. Das ist eine Auskunft und kein Fehlversuch; die erste Schwelle steht
+        trotzdem. Über das Gemessene hinaus wird nicht hochgerechnet.</p>`}`;
+
+    return `<h3 class="secname">Stufentest
+      <span class="hint">— beide Schwellen aus einer Fahrt${anz
+        ? `, ${anz} ${anz === 1 ? "Test" : "Tests"} markiert` : ""}</span></h3>
+      ${r ? `<div class="card pad">
+        <p class="effect">Gemessen am ${dMed(letzter.date)}.</p>
+        ${zahlen}
+        <details><summary>Der Rechenweg</summary>
+          <p class="src">Die Schwelle wird <b>nicht abgelesen, sondern gefittet</b>: durch
+            den nahezu linearen Abfall von DFA a1 läuft eine Ausgleichsgerade, und die
+            Schwelle ist deren Schnittpunkt mit 0,75 beziehungsweise 0,5. Ein einzelner
+            Ausreißer entscheidet damit nichts — dafür entscheidet die Wahl des Abschnitts
+            alles.</p>
+          <p class="src"><b>Diese Wahl ist unsere Setzung.</b> In beiden Arbeiten wird der
+            Abschnitt von Hand am Diagramm bestimmt. Hier läuft er vom letzten Hochpunkt vor
+            dem Abfall bis zu der Stelle, ab der die Kurve flach unter 0,5 bleibt — beides
+            aus der geglätteten Kurve, gerechnet wird auf den ungeglätteten Werten.
+            ${r.segment ? `Für diesen Test: ${fmt(r.segment.points, 0)} Punkte,
+            Bestimmtheitsmaß ${fmt(r.segment.r2, 2)}.` : ""}</p>
+          <p class="src"><b>Ein- und Ausrollen gehören zur Messung.</b> Die Dauern sind die
+            einzigen festen Zahlen des Tests; alle Leistungen kommen aus deinen eigenen
+            Werten. Für das Ausrollen gibt es keine Protokollvorgabe — gesetzt ist es, weil
+            sich in den ersten Minuten nach der Belastung messbar etwas erholt.</p>
+          <p class="src"><b>Was die Quellen sagen.</b>
+            ${(rt.sources || []).map((q) => `<br>· ${esc(q)}`).join("")}</p>
+        </details></div>` : leer}`;
+  }
+
+  /* Die 40-Watt-Frage (docs/ausbau.md N3). Zwei eigene Messungen widersprechen
+     sich, und bisher gab es nichts, was zwischen ihnen entscheidet. Das steht
+     sichtbar in der Karte und nicht nur in der Spezifikation - eine offene
+     Frage, die nur im Dokument steht, ist für den, der fährt, keine. */
+  rRampGap(blocks, curve, rt) {
+    const fam = ((blocks || {}).families || {}).sweetspot
+      || ((blocks || {}).families || {}).vo2max;
+    const l = fam && fam.latest;
+    const p = curve && (curve.measured || []).find((q) => q.hour === 1);
+    if (!l || !p) return "";
+    const diff = Math.round(l.first_watts - p.watts);
+    if (!diff) return "";
+    const r = ((rt || {}).latest || {}).result;
+    return `<div class="card pad">
+      <h4 class="subsec">Die offene Frage: ${fmt(Math.abs(diff), 0)} Watt</h4>
+      <p>Deine beiden eigenen Messungen sagen etwas Verschiedenes. In deinen Blöcken liegt
+        alpha bei <b>${fmt(l.first_alpha, 2)}</b> und die Leistung bei
+        <b>${fmt(l.first_watts, 0)} W</b>. Deine Ermüdungskurve setzt alpha 0,75 bei
+        <b>${fmt(p.watts, 0)} W</b> an. Das sind
+        <b>${fmt(Math.abs(diff), 0)} Watt</b> Unterschied bei fast demselben alpha-Wert.</p>
+      <p>Beide Zahlen sind gemessen, keine ist falsch — sie kommen nur aus
+        <b>verschiedenen Situationen</b>: die eine aus kurzen Blöcken in harten Einheiten,
+        die andere aus langen gleichmäßigen Abschnitten über viele Fahrten und Monate.
+        Welche von beiden näher an deiner tatsächlichen ersten Schwelle liegt, konnte bisher
+        nichts entscheiden.</p>
+      ${r && r.hrvt1
+        ? `<p class="effect">Der Stufentest sagt dazu: <b>${fmt(r.hrvt1.watts, 0)} W</b> an
+            der ersten Schwelle, an einem Tag und unter gleichen Bedingungen gemessen.
+            <b>Das ist ein Hinweis und kein Urteil</b> — eine dritte Messung, die näher an
+            der einen oder der anderen liegt, entscheidet die Frage nicht, sie verschiebt
+            sie. Belastbar wird es erst, wenn sich derselbe Test über die Monate
+            wiederholt.</p>`
+        : `<p class="hint">${ico("info", C.blue, 13)} <b>Genau dafür ist der Stufentest da.</b>
+            Er misst beide Schwellen an einem Tag, unter gleichen Bedingungen, und liefert
+            damit eine dritte Zahl neben diesen beiden. Sie entscheidet die Frage nicht
+            allein — aber sie ist die erste, die unter denselben Bedingungen entsteht wie
+            die Frage selbst.</p>`}</div>`;
+  }
+
   rTrainer(c, rd) {
     if (!c) return this._dataGap("coach", "Der Trainer");
     const st = c.state || {};
@@ -3002,6 +3131,8 @@ class IntervalsIcuPanel extends HTMLElement {
         : `Die Leistung an der aeroben Schwelle hat sich nicht verbessert.`}</p>` : ""}
 
       ${dur ? this.rDurability(dur) : ""}
+      ${this.rRampTest(this._rtests)}
+      ${this.rRampGap(this._blocks, this._fatigue, this._rtests)}
 
       <div class="card pad">
         <details class="more"><summary>Worauf diese Empfehlung beruht — und was sie nicht kann</summary>

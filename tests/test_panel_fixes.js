@@ -906,6 +906,7 @@ const acts = F.activities(), thr = F.thresholds();
   const HOME = {
     rTrainer: "trainer", rGoal: "trainer", rPlanWeeks: "trainer", rWorkouts: "trainer",
     rDurability: "trainer", rFatigue: "trainer", rBlocks: "trainer",
+    rRampTest: "trainer", rRampGap: "trainer",
     rHeute: "heute", rSignale: "signale", rFitness: "fitness",
     rAkt: "akt", rDfa: "dfa", rKalender: "kalender", rBelastung: "belastung",
   };
