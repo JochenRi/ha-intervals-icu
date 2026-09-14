@@ -1,5 +1,6 @@
 """Full import simulation against a replay of the live account's shapes."""
 
+import coldcache  # noqa: F401,E402  - MUSS vor jedem Bauteil-Import stehen (§9)
 import asyncio
 import json
 import random

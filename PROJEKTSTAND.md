@@ -7,7 +7,7 @@ Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lok
 archiviert, auswertet und in einem eigenen Seitenleisten-Panel darstellt.
 
 **Umfang:** ~14.760 Zeilen, davon ~4.960 Frontend · 27 WebSocket-Befehle · 16 Einheiten in
-9 Familien · 19 Testdateien mit **5.510** gezählten Einzelprüfungen · 58 Releases.
+9 Familien · 19 Testdateien mit **5.544** gezählten Einzelprüfungen · 58 Releases.
 
 ---
 
@@ -383,6 +383,75 @@ andere Richtung ab, in der das Feld ganz aus dem Bericht verschwindet.
 **Keine Datei nutzt die riskanteste Bauart** (eine Textersetzung am echten
 Quelltext) für eine Gegenprobe; die trat nur in der Sitzungsarbeit auf, und
 genau dort hat sie zugeschlagen.
+
+**Zwölfter Fall (0.51.0): ein Fix, der das Problem nicht behob — und dabei
+aussah, als hätte er es.** Bei den Gegenproben zur Stufentest-Auswertung
+meldeten fünf von acht Mutationen grün. Nicht weil die Tests stumpf waren:
+Python hatte die **alte Fassung aus dem Bytecode-Cache** geladen. Die
+Invalidierung einer `.pyc` läuft über mtime **und** Größe der Quelldatei — und
+eine Mutation, die gleich lang ist und in derselben Sekunde geschrieben wird,
+ist genau der Fall, in dem beides unverändert aussieht. Eine Gegenprobe, die
+die alte Fassung misst, ist keine.
+
+**Die zweite Schicht ist die schlimmere.** Als Abhilfe lief die nächste Runde
+mit `python3 -B`, und alle zehn Mutationen fielen — gemeldet als „alle zehn
+fallen gezählt und benannt". **`-B` verhindert nur das SCHREIBEN neuer
+Dateien; vorhandene liest Python weiterhin.** Der Fix hat nichts behoben und
+sah aus wie eine Lösung. Nachgestellt, Quelle 100 → 999 bei gleicher Länge und
+zurückgesetzter mtime:
+
+| Aufruf | geladen |
+|---|---|
+| `python3` | 100 (Cache) |
+| `python3 -B` | **100 — der Fix greift nicht** |
+| frischer `pycache_prefix` | 999 |
+| `rm -rf __pycache__` | 999 |
+
+**Das ist die Verwandte des elften Falls, eine Ebene tiefer.** Dort verfehlte
+eine Ersetzung ihren Text; die Antwort darauf war eine Trefferzusicherung auf
+der DATEI. Die reicht nicht — sie prüft, was auf der Platte steht, nicht was
+der Interpreter daraus lädt. **Zwischen „die Datei ist geändert" und „der Test
+misst die Änderung" liegt eine Schicht, die niemand geprüft hatte.**
+
+**Die Reichweite ist offen, und das gehört gesagt.** Jede Gegenprobe dieses
+Projekts, die vor dieser Erkenntnis gefahren wurde, könnte betroffen sein —
+überall dort, wo eine Mutation gleich lang war und schnell genug kam. Eine
+Nachprüfung aller Prüfungen findet nicht statt; was stattfindet, ist die
+Regel, die es ab jetzt unmöglich macht. **Ein Befund, der nur als Einzelfall
+verbucht wird, wiederholt sich in der nächsten Datei.**
+
+**Dreizehnter Fall (0.51.0): eine Zahl, die aus einer GERADEN entsteht statt
+aus einer Messung.** Die Stufentest-Auswertung legt eine Ausgleichsgerade
+durch den Abfall von DFA a1 und liest die Schwelle als deren Schnittpunkt mit
+0,75 bzw. 0,5. Bei einem **konvexen** Abfall — steil, dann flach, Boden bei
+0,55 — schneidet diese Gerade die 0,5 **mitten im Segment**, während die
+Messung nie unter 0,55 war. Ohne eine Bedingung stünde dort eine zweite
+Schwelle, die der Athlet nie gefahren ist: eine Zahl mit Einheit, Datum und
+Herkunftsangabe, und ohne Messung dahinter.
+
+**Dieselbe Klasse wie die Zahlen, die nicht messen, was ihr Name sagt — nur
+ist die Quelle diesmal ein Rechenverfahren.** Die Regel heißt jetzt: eine
+Schwelle gibt es nur, wenn der zugehörige Bereich auch gemessen wurde, und
+über das Segment hinaus wird nicht hochgerechnet. Dieselbe Regel, die die
+Durability-Kachel über ihre arbeitsreichste Fahrt hinaus einhält.
+
+**Und der Weg dorthin gehört dazu: eine eigene Fixture hat den Autor
+widerlegt.** Gebaut war zuerst ein Fall mit kurz gehaltenem Boden, in der
+Annahme, `reached_anaerobic` bedeute „der Boden wurde gehalten". Der Code
+meinte „die Kurve ging unter 0,5 und blieb dort" — bei einer Rampe, die auf
+0,45 endet, ist das dasselbe, und die Fixture prüfte nichts. Erst der konvexe
+Fall trennt beides. **Eine Fixture, die die eigene Annahme nicht überlebt, ist
+der billigste Befund, den dieses Projekt kennt.**
+
+**Vierzehnter Fall, derselben Runde: sechs Gegenproben bissen nicht, weil die
+saubere Fixture ihre Regel nie beanspruchte.** Nach dem Abschalten des Caches
+fielen von zehn Mutationen zunächst nur vier. Die übrigen sechs — kein
+Hochrechnen, gemessener Boden, Glättung, zwei Haltebedingungen, Median beim
+Ablesen — waren nicht falsch, sie waren **ungeprüft**: der glatte, saubere
+Testfall löst keine einzige dieser Regeln aus. **Dieselbe Lehre wie die
+Dosis-Frage aus 0.45.0**, nur auf der Fixture-Seite: eine Gegenprobe muss den
+Fall treffen, für den die Regel gebaut wurde, nicht den Normalfall. Jede der
+sechs hat jetzt eine eigene Fixture, die genau ihre Regel trifft.
 
 **Regel: wer zwei verschieden gerechnete Größen vergleicht, bildet die Toleranz
 aus dem Unterschied der Rechenwege, nicht aus einer Wunschgenauigkeit.** Die
@@ -1300,7 +1369,7 @@ den Non-Responder-Befund (Manresa-Rocamora 2021).
 
 ## 9. Prüfstand
 
-**19 Dateien, 5.510 gezählte Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
+**19 Dateien, 5.544 gezählte Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
 HA-Instanz oder einen Browser.
 
 | Datei | prüft | Umfang |
@@ -1318,7 +1387,7 @@ HA-Instanz oder einen Browser.
 | `test_reconcile.py` | Abgleich mit Intervals: die drei Sperren einzeln, die datumslosen Aufräumstellen, No-op ohne Speichervorgang, der Handler am echten Aufruf (Import läuft, Historie nie geholt, Zwischenstand) | 130 |
 | `test_fatigue.py` | die Ermüdungskurve: strukturierte Einheiten VOR der Messung ausgeschlossen — mit der Gegenprobe, dass sie den Abfall von +4,0 auf +42,0 W verfälschen, wenn man sie drin lässt; Bereichsgrenzen aus der Belegung an zwei Beständen; Anker gemessen gegen Form gesetzt; **L1b: die HF-Setzung skaliert am eigenen Anker**; **die gepaarte Gegenrechnung und das Erkennungszeichen: die Belegung steigt, wo sie fallen müsste — mit Gegenprobe am sauberen Bestand**; **p050 wird erhoben und von nichts benutzt, mit Quelltext-Wächter über alle Verbraucher** | 54 |
 | `test_blocks.py` | ein Wert je Block: der Anlauf wird verworfen (mit der Gegenprobe am 4-Minuten-Block, wo auch der Median kippt), der echte Median gegen die Index-Bildung, der Regelkreis nach oben wie nach unten mit familieneigener Schrittgrenze, Steuergröße Median gegen Verlaufsgröße erster Block, Belegungsgrenze für die Linie; **die Physik-Gegenprobe an den echten Lap-Grenzen (Arbeit trägt mehr als die Pause daneben) mit dem Sekunden-Fehler als Gegenfall, und die fremde Gegenprobe gegen Intervals' eigenen Abschnittswert** | 66 |
-| `test_suite_hygiene.py` | der Prüfstand prüft sich selbst: **genau eine** Summary je Datei, die etwas zählt, nichts Gezähltes dahinter, Fehler werden gedruckt | 86 |
+| `test_suite_hygiene.py` | der Prüfstand prüft sich selbst: **genau eine** Summary je Datei, die etwas zählt, nichts Gezähltes dahinter, Fehler werden gedruckt; **seit 0.51.0 der kalte Bytecode-Cache — Import vorhanden, VOR dem ersten Bauteil-Import, und das Verzeichnis nicht fest, jedes mit Gegenprobe** | 120 |
 | `test_panel_views.js` | alle Ansichten gegen volle, leere, löchrige, entartete Daten; Zeitfenster, Brushing, Achsenregel; Tagesbeschriftung und Abgleich-Dialog mit Schreibweg und Scroll-Erhalt; **die Durability-Wolke: Gewicht als Größe und Deckkraft, Gerade nur bei gesicherter Steigung, Register getrennt; der Kopf: drei Zeilen, weder Urteils- noch Datenregister, Rückfall-Satz und Ausweitungshinweis je mit Gegenfall**; **der Wochenplan: Stufen nur in der laufenden Woche, Satz statt Stufe ab Woche zwei, gefahren gegen vorgesehen ohne Paarung, Legende und Quellenblock**; **der Historienbeginn: eigener DFA-Zeitraum in Kopfzeile und Reiter, mit Gegenfall und leerer Payload**; **die Ermüdungskurve: Beleg und Setzung im Bild und im Text getrennt, beide Leserichtungen, die namentliche Ausschlussliste, der Zustand „rechnet noch" mit Fortschritt**; **L1b als Setzung beschriftet, mit der eigenen Messung daneben**; **der Umzug in die Durability-Kachel: die Ehrlichkeitsregel übertragen, die Ausschlusszahl aus dem Zählfeld statt aus der gekappten Liste**; **die tauben Abschnitte klappen zu, und die Datenlage öffnet sie wieder — mit beiden Öffnungsbedingungen einzeln**; **die Einheitenkarte nennt die Herkunft je Abschnitt — gemessen, Studienform oder Rückfall auf die FTP; **die Herkunft an der Einheit samt Rolle-Grenze, und der Rückfall-Hinweis nur dort, wo gemessen werden soll**; **die Blockmessung: der Widerspruch der fremden Gegenprobe wird als Hinweis und nicht als Fehler beschriftet, Leitzahl erster Block, Steuerung auf ihren Einzelwerten sichtbar, Belegung mit Gegenfall, die Rolle-Grenze**; **0.50.0: der Kopf der Durability-Kachel ist fort und der Rechenweg sagt, wohin — die Progressionszeile in den Wochenplan, die längste Fahrt ersatzlos; die doppelte Wertetabelle aufgelöst, die Bandbreite als SPANNE in der Leiste** | 1281 |
 | `test_panel_fixes.js` | je ein Nachweis pro behobenem Fehler, plus die Zeiger-Simulation; Quelltext-Wächter über das ganze Frontend, beidseitig (keine Zahl im Quelltext, jede Schwelle nachweislich aus der Payload), seit 0.41.0 auch über Progressionsfaktor, Risikoknick, Rundungsschritt und Bezugsfenster, **seit 0.42.0 über `rWorkouts` UND `rPlanWeeks` (keine Urteilsregel im Frontend) plus den Wortabgleich Fixture gegen `workouts.py`**, **seit 0.45.0 über `rFatigue` samt Rechenweg-Helfer — je Kachel nachzutragen, deshalb mit Existenzprüfung der Liste**; **der Zeiger über der Ermüdungskurve am simulierten Ereignis, und der eine Ladeweg für ihre Payload**; **`rBlocks` unter demselben Wächter**; **die Zuordnung Kachel → Reiter, vollständig und mit Gegenprobe**; **seit 0.50.0 die Zeigerlogik als EINE Mechanik mit ZWEI zugesicherten Verhaltensweisen: die Leitzahl folgt in der Ermüdungskachel und bleibt in den Block-Karten stehen, beides am simulierten `pointermove`; der Wächter über `rPlanWeeks`, dem die Progressionszahlen gefolgt sind** | 509 |
 | `test_panel_design.js` | Gestaltungsregeln als Zusicherung, Auswahl als Form, Achse im Aufklappen, Etiketten im Kategorienregister; **eingefrorene `chart()`-Referenz aus dem Stand vor dem Eingriff** und der Zeiger-Unverändert-Beweis über vier Ansichten; **vier Urteilsfarben, vier Formen, der Reiz-Ton in keinem Kategorienregister, die Reiz-Form kein Last-Blitz** | 235 |
@@ -1346,6 +1415,21 @@ einer Schwelle nicht unterscheiden, und die Ausnahme, die man ihm dafür beibrin
 für jede Zahl, die sich als Umrechnung ausgibt. **Die Zahl wird aufgelöst, nicht die Prüfung
 aufgeweicht** — `DURABILITY_TEST_WORK_J` steht jetzt in `const.py`, direkt neben der Größe in kJ,
 mit dem Grund daneben.
+
+**Neunte Bauregel, aus 0.51.0: eine Gegenprobe läuft mit KALTEM Bytecode-Cache — erzwungen,
+nicht aufgeschrieben.** Python invalidiert eine `.pyc` über mtime und Größe der Quelle; eine
+Mutation, die gleich lang ist und in derselben Sekunde geschrieben wird, sieht damit wie keine
+Änderung aus (§7, zwölfter Fall). `python3 -B` hilft nicht — es verhindert nur das Schreiben.
+**Gewählt ist ein frischer `sys.pycache_prefix` je Lauf und nicht das Löschen von
+`__pycache__`:** löschen muss jemand VOR jedem Lauf an jeder Aufrufstelle, und eine
+handgepflegte Regel schützt in diesem Projekt nachweislich bis zum nächsten Mal, an dem
+niemand daran denkt. Ein frisches Verzeichnis ist **kalt von Bauart** — es gibt nichts zu
+invalidieren, die Länge der Mutation spielt keine Rolle und die Sekunde auch nicht, und es
+löscht nichts (ein `rm -rf` mit falschem Pfad ist ein eigenes Risiko). Umgesetzt in
+`tests/coldcache.py`, importiert als erste Zeile jeder Testdatei, die ein Bauteil lädt.
+**Der Wächter in `test_suite_hygiene` erzwingt es** und prüft drei Dinge einzeln: dass der
+Import da ist, dass er VOR dem ersten Bauteil-Import steht (dahinter wäre er wirkungslos),
+und dass das Verzeichnis nicht fest ist (sonst ist es beim zweiten Lauf nicht mehr kalt).
 
 **Achte Bauregel, aus 0.50.0: ein Gegenfall weist nach, dass er etwas verändert hat.** Wer
 einen Wert filtert, eine Zahl entfernt oder einen Schlüssel `pop`t, prüft zuerst, dass der

@@ -11,6 +11,7 @@ aiohttp are stubbed to the few names the module touches, so the test still
 needs neither a running instance nor a browser (PROJEKTSTAND §9).
 """
 
+import coldcache  # noqa: F401,E402  - MUSS vor jedem Bauteil-Import stehen (§9)
 import asyncio
 import importlib.util
 import json

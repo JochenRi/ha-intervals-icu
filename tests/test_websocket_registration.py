@@ -355,6 +355,7 @@ check(calls >= 3, f"Vorgabewert-Wächter: nur {calls} Aufrufe gefunden — "
 # Nicht "erscheint in beiden", sondern: gleicher Zustand, gleiches Budget,
 # gleiche Erholungslage -> DIESELBE Stufe. Anwesenheit allein waere erneut
 # stumpf, genau wie die elf Gegenproben aus 0.42.0.
+import coldcache  # noqa: F401,E402  - MUSS vor jedem Bauteil-Import stehen (§9)
 sys.path.insert(0, str(WORKOUTS.parent))
 import workouts as WK  # noqa: E402
 

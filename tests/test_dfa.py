@@ -4,6 +4,7 @@ import random
 import sys
 from pathlib import Path
 
+import coldcache  # noqa: F401  - MUSS vor jedem Bauteil-Import stehen (§9)
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "custom_components" / "intervals_icu"))
 import derive  # noqa: E402
 

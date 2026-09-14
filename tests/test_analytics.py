@@ -5,6 +5,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 COMP = Path(__file__).resolve().parents[1] / "custom_components" / "intervals_icu"
+import coldcache  # noqa: F401  - MUSS vor jedem Bauteil-Import stehen (§9)
 sys.path.insert(0, str(COMP))
 import analytics  # noqa: E402
 import derive  # noqa: E402

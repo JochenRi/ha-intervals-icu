@@ -9,6 +9,7 @@ in a hole. Both are checked.
 import sys
 from pathlib import Path
 
+import coldcache  # noqa: F401,E402  - MUSS vor jedem Bauteil-Import stehen (§9)
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "custom_components" / "intervals_icu"))
 
 import plan as P  # noqa: E402

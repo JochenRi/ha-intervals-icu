@@ -15,6 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 COMP = ROOT / "custom_components" / "intervals_icu"
+import coldcache  # noqa: F401,E402  - MUSS vor jedem Bauteil-Import stehen (§9)
 sys.path.insert(0, str(COMP))
 
 import derive  # noqa: E402

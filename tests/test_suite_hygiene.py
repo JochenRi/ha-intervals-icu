@@ -116,6 +116,52 @@ for path in js_files:
             f"(Zeile {summary}) - sie wird nicht gemeldet",
         )
 
+# --- Neunte Bauregel (0.51.0, §7): der Bytecode-Cache wird ERZWUNGEN kalt ----
+# Python invalidiert eine .pyc ueber mtime UND Groesse der Quelle. Eine
+# Mutation, die gleich lang ist und in derselben Sekunde geschrieben wird - was
+# jede Gegenprobe tut - sieht damit wie keine Aenderung aus, und der Test misst
+# die ALTE Fassung. `python3 -B` hilft NICHT, es verhindert nur das Schreiben.
+#
+# Die Regel steht deshalb nicht in einem Dokument, sondern hier: jede Testdatei,
+# die ein Bauteil laedt, importiert `coldcache` VOR dem ersten Bauteil-Import.
+# Eine handgepflegte Regel schuetzt bis zum naechsten Mal, an dem jemand nicht
+# daran denkt - das war in diesem Projekt sechsmal dieselbe Klasse (§7).
+COLD = "import coldcache"
+for path in py_files:
+    text = path.read_text(encoding="utf-8")
+    name = path.name
+    if "custom_components" not in text:
+        # Dateien, die kein Bauteil laden, brauchen ihn nicht - test_projektstand
+        # faehrt Unterprozesse, und jeder davon setzt ihn selbst.
+        check(COLD not in text,
+              f"{name} laedt kein Bauteil, holt sich aber trotzdem einen Cache-Prefix")
+        continue
+    check(COLD in text, f"{name}: kein kalter Bytecode-Cache - eine Gegenprobe "
+                        f"in dieser Datei kann die alte Fassung messen")
+    if COLD in text:
+        # Die REIHENFOLGE entscheidet: nach dem ersten Bauteil-Import ist das
+        # Modul geladen und der Prefix wirkungslos.
+        first_load = min([i for i in (text.find("sys.path.insert("),
+                                      text.find("spec_from_file_location"))
+                          if i >= 0] or [len(text)])
+        check(text.find(COLD) < first_load,
+              f"{name}: coldcache steht HINTER dem ersten Bauteil-Import - "
+              f"dann ist er wirkungslos")
+
+# Und der Prefix muss auch wirklich gesetzt werden, nicht nur importiert sein.
+cold_src = (TESTS / "coldcache.py").read_text(encoding="utf-8")
+check("sys.pycache_prefix" in cold_src, "coldcache setzt gar keinen Prefix")
+check("mkdtemp" in cold_src,
+      "coldcache benutzt ein FESTES Verzeichnis - dann ist es beim zweiten "
+      "Lauf nicht mehr kalt")
+# Gegenprobe, gezaehlt und benannt: die Pruefung findet eine Datei, die den
+# Import hinter den Bauteil-Import setzt - sonst prueft die Schleife nur, dass
+# die Zeichenkette irgendwo vorkommt.
+_planted = "sys.path.insert(0, 'x')\nimport coldcache\n"
+check(_planted.find(COLD) > _planted.find("sys.path.insert("),
+      "Reihenfolge Gegenprobe: eine falsch platzierte Zeile wird NICHT "
+      "gefunden - der Waechter ist blind")
+
 print(f"test_suite_hygiene: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)
