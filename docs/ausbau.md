@@ -4340,6 +4340,68 @@ die Markenspalte ist auf dem Telefon unsichtbar, und damit ist die Aussage
 CSS-Kleinigkeit, und sie wird beim Bau von P5 getroffen, nicht vorweg.** P5
 baut die Spalte für den Rechner.
 
+#### Zwei Familien fallen aus der Markierungsreihe — mit dem Grund, nicht nur der Entscheidung
+
+**Entscheidung des Athleten vom 15.09.2026, am Code nachgeprüft.** Markiert
+werden nur noch **VO2max · SweetSpot · Tempo · Grundlage**, dazu der Stufentest
+als ganze Fahrt.
+
+- **`long` rechnet mit `endurance` identisch.** Beide tragen in
+  `workouts.SOURCE_CHAIN` dieselbe Kette (`curve`, `ramp_hrvt1`, `ftp`) und
+  stehen beide in `CURVE_FAMILIES`. Und die Kurve misst **je Fahrtstunde**:
+  eine Achtstundenfahrt liefert acht Punkte, eine Zweistundenfahrt zwei — sie
+  ordnet sich von selbst ein und braucht kein Etikett. Eine Grenze „ab wann ist
+  lang" wäre für einen Anfänger mit zwei Stunden und einen Trainierten mit acht
+  verschieden, und niemand könnte sie prüfen. **Zwei Familien mit identischer
+  Rechnung sind zwei Namen für eine Sache.**
+- **`threshold` kommt in `blocks.py` und `BLOCK_CORRIDORS` überhaupt nicht
+  vor**: keine Blockmessung, kein Zielkorridor. Ihr Wert kommt allein aus dem
+  Stufentest — ein Haken dort ändert nichts. **Ein Bedienelement ohne Wirkung
+  ist schlimmer als keines**, und es war zugleich die Wurzel des
+  dreiundzwanzigsten §7-Falls: `FAM_BLOCKS` musste für sie zwei Bedeutungen
+  tragen.
+
+**Im Trainer bleibt die Unterscheidung unberührt** — dort entscheidet `long`,
+welche Einheit vorgeschlagen und wie der Zustand bewertet wird. `CURVE_FAMILIES`
+wird nicht angefasst. Stillgelegt ist nur das MARKIEREN.
+
+**Die Migration sagt, was sie wegwirft.** Die Leseschleife läuft über
+`FAMILIES`; eine Alt-Marke fiele damit still, und der Eintrag sähe aus, als
+hätte dort nie jemand gehakt. Sie wird deshalb benannt und steht an der Kachel.
+Die **eine** Lage, in der der Hinweis nicht ankommt: trug eine Fahrt NUR
+stillgelegte Familien, fällt der ganze Eintrag (P3d, ein Rumpf ist kein
+Eintrag). Am Bestand vom 15.09.2026 sind das null Fahrten (Schwelle 0, lange
+Fahrt 0, am System gelesen) — die Grenze steht hier, damit sie niemand für eine
+Zusicherung hält.
+
+#### Die Schwellen-Kachel im Trainer: nach B2, und warum nicht früher
+
+`coach.anchors()` nimmt heute den Median der letzten fünf DFA-Ablesungen über
+ALLE Fahrten. Das widerspricht der Regel über allem — eine bei 30 Grad
+verfälschte Fahrt verfälscht auch die Schwellenzahl. Die Kette soll dieselbe
+werden wie überall: **markierte Fahrten → Stufentest → FTP.**
+
+**Nicht in B1, und der Grund steht am Code, nicht am Umfang.** `anchors()` liest
+`derive.threshold_verdict(summary)` — die **Ganzfahrt-Ablesung** aus dem Archiv,
+nicht die maskierten Stunden. Ein Filter „nur markierte Fahrten" nähme von der
+Fahrt vom 04.09.2026 weiterhin den WORK-Teil in der Mitte mit, den der Athlet
+bewusst NICHT markiert hat. **Ein Filter, der Fahrten filtert statt Abschnitte,
+wäre ein halber Umbau, der aussieht wie ein ganzer** — und die Halbheit wäre
+danach unsichtbar, weil die Zahl plausibel bleibt. Die ehrliche Fassung liest
+die maskierte Messung, und die gibt es erst, wenn B1 gelaufen ist. Dazu kommt
+der Rückfall mit sichtbarer Beschriftung plus „noch N Fahrten" — das ist das
+B2-Muster.
+
+**Am Bestand gerechnet, bevor es gebaut wird (15.09.2026):** die heutigen fünf
+tragenden Ablesungen (27.08. bis 13.09.) gehören **alle fünf** zu markierten
+Fahrten. Der Anker steht mit und ohne Filter bei **160 bpm / 146 W** — der
+Umbau bewegt heute nichts, und deshalb bewegt sich auch am Pulsfenster der
+Einheiten und an der FTP-Konfliktwarnung nichts. **Das ist ein Zufall des
+Zeitpunkts und keine Zusicherung:** die einzige nicht markierte Fahrt im Fenster
+ist die VO2max-Einheit vom 02.08. mit 168,1 W — läge sie unter den letzten
+fünf, zöge sie den Leistungsanker nach oben. Genau dagegen ist der Filter
+gebaut.
+
 ### Was die Prüfung dieser Spezifikation ergeben hat
 
 **Sieben Korrekturen, alle VOR dem Schreiben gemeldet und einzeln freigegeben** —

@@ -1608,6 +1608,47 @@ Braucht man dieselben Namen für eine zweite Frage, ist das eine zweite Liste
 oder eine Abfrage, die VOR der ersten steht — und die Reihenfolge gehört
 kommentiert, weil sie sonst beim nächsten Umbau umsortiert wird.
 
+**Vierundzwanzigster Fall (B1, in der eigenen Arbeit gefunden — zum zweiten
+Mal in derselben Woche): eine Regel, die nur aufgeschrieben ist, wird von dem
+verletzt, der sie gerade gelesen hat.** Die erste §9-Bauregel lautet seit
+0.41.0: Feldzugriffe im Testcode gehen über `.get()` / `?.`, nie über `[]` —
+weil ein fehlendes Feld genau das ist, was eine Mutation herstellt, und ein
+abgestürzter Test alles Folgende überspringt und am Ende **„0 Fehler"** meldet.
+
+**Zwei belegte Beinahe-Fälle, beide von Hand gefunden, keiner von einem
+Wächter:**
+
+1. **0.51.1, im Wächtercode selbst.** Zwei neue Prüfzeilen in
+   `test_workouts.py` standen auf `[]`; die eigene Gegenprobe stürzte ab,
+   statt zu zählen. Der Autor der Regel hat sie zwei Sitzungen später selbst
+   verletzt (§10).
+2. **B1, in frisch geschriebenem Testcode.** Die Maskierungsprüfungen in
+   `test_dfa.py` griffen mit `spaet[1]["p075"]` zu. Die schärfste Mutation
+   dieses Pakets — **Zusammenschieben statt Maskieren** — macht die
+   Stundenliste KÜRZER, und genau daran stürzte der Lauf ab. Gemerkt wurde es
+   nur, weil die Gegenprobe ausdrücklich gefahren wurde; ein grüner Lauf hätte
+   nichts gesagt, denn im sauberen Zustand ist der Zugriff gültig. **Die
+   Mutation, gegen die das Paket gebaut ist, wäre durchgekommen.** Nach der
+   Härtung auf einen `_h(rows, i)`-Helfer wird sie mit **zehn** gezählten und
+   benannten Fehlern gefangen.
+
+**Der Unterschied zum sechzehnten Fall ist nicht der Fehler, sondern die
+Beweislage.** Dort stand: „bis heute nur aufgeschrieben, kein Wächter erzwingt
+sie" — mit einer Vermutung, dass es irgendwann teuer wird. Inzwischen sind es
+**zwei belegte Beinahe-Fälle in einer Woche**, beide in Dateien, deren Autor
+die Regel kannte. **Eine Regel, die zweimal von Leuten verletzt wird, die sie
+gelesen haben, ist keine Regel, sondern eine Absichtserklärung.**
+
+**Damit steht die Frage aus §10 anders da.** Der Zuschnitt nach **Herkunft** —
+`[]` auf Variablen aus einem Bauteil-Aufruf — trifft **632 Stellen** und hätte
+alle drei Verstöße gefangen. Die Zahl ist gemessen, nicht geschätzt. Gebaut
+wird sie hier ausdrücklich **nicht**: ein Auslieferungs-Release hängt nicht an
+einem Prüfstands-Umbau dieser Größe. Aber sie steht ab hier nicht mehr als
+Vorschlag da, sondern als **offene Schuld mit Preisschild** — und die
+Zwischenlösung ist nicht „daran denken", sondern: **jede neue Gegenprobe wird
+gefahren, bevor der Schritt als grün gemeldet wird.** Ein grüner Lauf ohne
+gefahrene Mutation sagt über diese Fehlerklasse nichts.
+
 ### Die drei Fehlerklassen, die sich durchziehen
 
 1. **Falsche Quelle statt falscher Anzeige.** FTP, Tageslast — beide standen in den Daten und
