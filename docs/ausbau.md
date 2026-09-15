@@ -4172,6 +4172,127 @@ Datum — geprüft wird beim Setzen, das Datum steht im Eintrag. Deshalb sind
 dann nicht loswerden zu können, wenn die Schnittstelle klemmt, wäre der
 ärgerlichste denkbare Zustand.
 
+#### Die Regel über allem: WAS MARKIERT IST, ZÄHLT. WAS NICHT MARKIERT IST, NICHT
+
+**Entscheidung des Athleten vom 15.09.2026, und sie hebt eine frühere Formulierung
+auf.** P4 sprach davon, das VI-Tor für markierte Fahrten zu umgehen. Das ist zu
+wenig und auch falsch gedacht: **die Filter werden nicht umgangen, sie fallen.**
+
+Kein Filter, keine Prüfung, keine Heuristik entscheidet mehr mit. Ein Filter
+weiß nicht, wie warm es war oder ob der Athlet verpflegt war — der Athlet weiß
+es. Wer eine Fahrt nicht gewertet haben will, markiert sie nicht. **Und es gibt
+auch keinen Hinweis darauf, was ein Filter gesagt hätte** — den gibt es dann
+nicht mehr.
+
+Betroffen sind alle drei Tore in `derive.fatigue_curve_reason` (`short`,
+`structured`, `variable`), nicht nur `variable`. Der Anlass war eine echte
+Fahrt: die vom 04.09.2026 hat drei Abschnitte, die beiden Grundlagenteile sind
+markiert, der WORK-Teil in der Mitte bewusst nicht. Genau richtig markiert — und
+`structured` hätte sie ausgeschlossen, **bevor** irgendetwas gemessen wird, weil
+es den Z2-plus-Anteil der GANZEN Fahrt liest. Ein Tor, das die Handauswahl
+überstimmt, ist die Automatik durch die Hintertür.
+
+`rides()["dropped"]` behält seine Bauart und wechselt die Bedeutung: statt
+„vom Filter ausgeschlossen" trägt es künftig „markiert, noch nicht gemessen"
+und „Abschnitte in Intervals verschoben". Dieselbe Liste, ehrlichere Gründe.
+
+#### Der Einstellungs-Reiter kommt zurück — jetzt mit einem Zweck
+
+P1 entfiel mit der Vorschlags-Streichung, weil ein Archivblock ohne Schlüssel
+Vorrat auf Verdacht gewesen wäre. **Mit dem Umschalten hat er einen Zweck** und
+kommt zurück: dort wird die automatische Erkennung abgeschaltet. Solange sie an
+ist, läuft alles wie heute; ist sie aus, zählen nur die Markierungen. Damit hat
+der Athlet den Übergang in der Hand — erst in Ruhe sammeln, dann umlegen.
+
+**Er gehört nach B2, nicht nach B1:** erst die Messung sehen, dann umschalten.
+
+**ZWEI Schalter, nicht einer, und die Trennlinie läuft entlang der MESSWEGE:**
+
+1. *Blockfamilien* (VO2max, SweetSpot, Tempo, Schwelle) → speisen
+   `blocks.series` und darüber `workouts.SOURCE_CHAIN`.
+2. *Ermüdungskurve* (Grundlage, lange Fahrt) → speist `fatigue.curve`.
+
+Der Grund ist nicht Geschmack, sondern die Reifezeit: drei markierte Einheiten
+je Blockfamilie sind in zwei Wochen beisammen, acht lange Fahrten dauern
+Monate. Ein einziger Schalter zwänge dazu, entweder auf den langsameren zu
+warten oder die Kurve zu früh umzustellen.
+
+**Drei oder mehr Schalter wären falsch**, und zwar nach derselben Regel, die
+0.46.0 gekostet hat: Schalter dürfen sich nicht kreuzen. Die beiden oben haben
+getrennte Verbraucher und überschneiden sich nirgends — alle vier Zustände sind
+sinnvoll. Ein dritter Schalter etwa für die Familienerkennung aus dem Namen
+träfe denselben Verbraucher wie Schalter 1; man könnte ihn so stellen, dass eine
+markierte Fahrt trotzdem nicht zählt, und suchte dann den Fehler an der falschen
+Stelle.
+
+**Der Stufentest bleibt von beiden unberührt** — er ist seit 0.51.1 Handarbeit
+und hat mit der Erkennung nichts zu tun. Das ist kein dritter Schalter, nur eine
+Klarstellung.
+
+**Jeder Schalter sagt, was er bewirkt, und nennt seinen Stand**, nicht bloß
+an/aus: „Aus — nur deine Markierungen zählen. Derzeit: 12 markierte Fahrten."
+
+#### Der Rest-Stellvertreter bei der Drift — benannt, nicht versteckt
+
+`fatigue.rides()` ist eine reine Archivfunktion ohne Netzzugang und hat die
+Runden nicht; `section_marks.usable_hours` braucht sie aber, um den Anker zu
+vergleichen. Für dreihundert Fahrten wären das dreihundert Abrufe.
+
+**Also wird die Drift dort geprüft, wo die Runden ohnehin vorliegen:** beim
+Messen und beim Öffnen der Fahrt. Ein Eintrag mit `hours` ist damit driftfrei
+**zum Messzeitpunkt** — das ist der Stellvertreter, und er steht hier, damit
+niemand ihn für eine Zusicherung hält.
+
+**Entschärft wird er so:** wird eine gedriftete Fahrt geöffnet, werden ihre
+`hours` gelöscht. Sie fällt aus der Kurve, sobald man sie ansieht, statt erst
+wenn man reagiert. Der Rest — zwischen dem Umbau in Intervals und dem nächsten
+Öffnen rechnet die Kurve mit den alten Zahlen — bleibt und ist hiermit benannt.
+
+#### `short` fällt ganz weg, statt auf die markierte Dauer umgestellt zu werden
+
+P4 Auflage 5 wollte `short` für markierte Fahrten neu rechnen. **Das ist falsch
+herum.** Die Achse der Ermüdungskurve ist die FAHRTZEIT — `dfa_hours` bildet die
+Stunden über die Stromposition. Eine fünfstündige Fahrt mit vierzig markierten
+Minuten in Stunde fünf ist für die Kurve wertvoll, weil sie einen Punkt in
+Stunde fünf liefert. Auf die markierte Dauer gerechnet, flöge genau dieser Fall
+raus. Was zu wenige Punkte hat, regelt die Nicht-Extrapolation von selbst:
+`p075` bleibt `None`, und die Stunde trägt nichts bei.
+
+#### Maskieren heißt VERWERFEN, nicht ZUSAMMENSCHIEBEN
+
+Die naheliegende Abkürzung wäre, die markierten Punkte aneinanderzureihen.
+Dann wäre „Stunde 2" die zweite Stunde der MARKIERTEN TEILE statt die zweite
+Stunde der Fahrt — und die Ermüdungsfrage, wie weit man in der Fahrt ist, wäre
+falsch beantwortet. **Die Achse bleibt, die Punkte fallen weg.** Genau daher
+kommt die Verschlechterung aus P9c.
+
+#### B ist geteilt: B1 misst, B2 rechnet damit
+
+**Entschieden vor dem Bau.** B1: der Übernehmen-Knopf, der Messweg mit zwei
+Abrufen, die Maskierung in `dfa_hours`, `set_measurement`. Die Fahrt bekommt
+ihre maskierten Stunden und zeigt sie — die Kurve nutzt sie noch nicht. B2: die
+Kurve schaltet um, die Tore fallen, `occupancy_rising` zählt angebotene Stunden,
+dazu der Einstellungs-Reiter, die P9c-Ansage und die Zeile „noch eine Einheit,
+dann misst SweetSpot".
+
+Der Schnitt ist nicht nur Umfang: **so sind die maskierten Zahlen zu sehen,
+bevor die Kurve darauf umschaltet.** P9c wird damit ablesbar statt vorhergesagt,
+und der B2-Release kann sagen, was sich an den ZAHLEN DES ATHLETEN verschiebt,
+statt es allgemein zu behaupten.
+
+#### Der Übernehmen-Knopf, und was nach einer Änderung passiert
+
+Er misst NUR, was markiert ist. Er hakt nichts an, schlägt nichts vor, ergänzt
+nichts. Grün bei Erfolg, sonst der Grund im Klartext mit den drei Fällen aus dem
+Schreibweg.
+
+**Ändert sich die Auswahl nach dem Messen, wird der Knopf wieder aktiv und die
+Kachel sagt, dass die Messung veraltet ist.** Der Mechanismus steht schon:
+`set_mark` und `unset_mark` setzen `hours` bei jeder Änderung auf `None`. Was
+fehlt, ist die UNTERSCHEIDUNG — „Auswahl geändert, neu zu messen" ist eine
+andere Aussage als „noch nicht gemessen", und wer schon einmal gemessen hat,
+soll die erste lesen. Das braucht ein Feld im Eintrag, keinen neuen Weg.
+
 #### P8 ist nicht frontend-only — das dritte Mal
 
 Die Auflage lautet, 0,75 und 0,5 kämen aus der Payload (fünfte Bauregel).
