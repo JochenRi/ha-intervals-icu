@@ -1502,5 +1502,122 @@ const acts = F.activities(), thr = F.thresholds();
      "markenspalte Gegenprobe: ohne Payload verschwindet die Kopfzeile");
 }
 
+/* ── Die Aufklappung je Familie (0.53.1) ──────────────────────────────────
+   Drei Fragen je Kachel, die Zahlen aus der Payload — und der offene Zustand
+   muss das Re-Render überleben, das die Familienwahl auslöst. Am simulierten
+   Ereignis geprüft, nicht am Markup allein. */
+{
+  const q = new M.Panel();
+  const act = { id: "a1", name: "Tempo", dfa: { blocks: [{ start_index: 600 }] } };
+  q._laps = { a1: { laps: [] } };
+  q._rtests = { tests: [] };
+  q._smarks = { marks: [], families: Object.keys(M.FAM), stale_reason: {},
+                not_measured: "Markiert, noch nicht gemessen — der Knopf dafür kommt mit der Messung.",
+                corridors: { vo2max: [0.2, 0.5], sweetspot: [0.5, 0.75], tempo: [0.75, 1.0] },
+                discard_s: 120, min_seconds: 150, min_for_source: 3 };
+  q._render = () => {};
+  q._famSel = null; q._famOpen = {};
+  q._attach();
+  const onClick = q.shadowRoot._listeners.click;
+  const fire = (dataset) => onClick({ target: { closest: (sel) => (sel === "[data-act]" ? { dataset } : null) } });
+
+  // zu, dann auf
+  ok(!/famexp/.test(q._marksBlock(act)), "aufklappung: sie ist von vornherein offen");
+  fire({ act: "fammore", id: "sweetspot" });
+  const auf = q._marksBlock(act);
+  ok(/class="famexp"/.test(auf), "aufklappung: der Klick öffnet sie nicht");
+
+  // drei Fragen, immer dieselben drei
+  for (const frage of ["Womit du sie fütterst", "Was daraus gerechnet wird",
+                       "Was es an deinen Vorgaben ändert"]) {
+    ok(auf.includes(frage), `aufklappung: die Frage „${frage}“ fehlt`);
+  }
+
+  // DIE ZAHLEN KOMMEN AUS DER PAYLOAD, nicht als Literale
+  ok(/0,50 und 0,75/.test(auf),
+     "aufklappung: der Zielkorridor steht nicht drin oder nicht aus der Payload");
+  ok(auf.includes("120 Sekunden"), "aufklappung: die verworfene Anlaufzeit fehlt");
+  ok(auf.includes("Ab 3 markierten"), "aufklappung: die Zahl aus min_for_source fehlt");
+  // GEGENPROBE: andere Payload, andere Zahlen — sonst wären es doch Literale
+  q._smarks.corridors.sweetspot = [0.31, 0.62];
+  q._smarks.discard_s = 90;
+  const andere = q._marksBlock(act);
+  ok(/0,31 und 0,62/.test(andere) && andere.includes("90 Sekunden"),
+     "aufklappung Gegenprobe: die Zahlen folgen der Payload nicht — sie stehen als Literal im Panel");
+  ok(!/0,50 und 0,75/.test(andere),
+     "aufklappung Gegenprobe: die alte Zahl steht weiter da");
+  q._smarks.corridors.sweetspot = [0.5, 0.75];
+  q._smarks.discard_s = 120;
+  // und ohne Payload bricht nichts, es fehlt nur die Zahl
+  const ohneZahlen = (() => { const alt = q._smarks;
+    q._smarks = { marks: [], families: Object.keys(M.FAM), stale_reason: {} };
+    const out = q._marksBlock(act); q._smarks = alt; return out; })();
+  H.clean(ohneZahlen, "aufklappung ohne zahlen");
+  ok(!/undefined|NaN|null/.test(ohneZahlen),
+     "aufklappung: ohne Payload steht eine Platzhalterzahl da");
+
+  // JE FAMILIE VERSCHIEDEN: Blöcke, Stundenverlauf, Schwelle, Stufentest
+  q._famOpen = { vo2max: true, endurance: true, threshold: true, ramp: true };
+  const alle = q._marksBlock(act);
+  ok(/DFA-a1-Wert/.test(alle), "aufklappung: die Blockfamilie erklärt ihre Messung nicht");
+  ok(/für jede Fahrtstunde/.test(alle),
+     "aufklappung: Grundlage erklärt den Stundenverlauf nicht");
+  ok(/Blöcke braucht es dafür nicht/.test(alle),
+     "aufklappung: der Unterschied zu den Blockfamilien wird nicht gesagt");
+  ok(/misst nicht selbst/.test(alle) && /aus dem Stufentest/.test(alle),
+     "aufklappung: Schwelle behauptet eine eigene Messung");
+  ok(/Beide Schwellen aus einer Fahrt/.test(alle),
+     "aufklappung: der Stufentest erklärt sein Besonderes nicht");
+  // Gegenprobe: die Blockerklärung steht NICHT bei Grundlage
+  const nurGA = (() => { q._famOpen = { endurance: true };
+    return q._marksBlock(act); })();
+  ok(!/DFA-a1-Wert/.test(nurGA),
+     "aufklappung Gegenprobe: alle Familien bekommen denselben Text");
+
+  // ── DIE AUFKLAPPUNG ÜBERLEBT DIE FAMILIENWAHL ──────────────────────────
+  // Das ist der Punkt: ein natives <details> wäre beim Re-Render zugefallen.
+  q._famOpen = {}; q._famSel = null;
+  fire({ act: "fammore", id: "sweetspot" });
+  const vorher2 = q._marksBlock(act);
+  const reihenfolge = (html) => (html.match(/data-act="famsel" data-id="(\w+)"/g) || [])
+    .map((m) => (/data-id="(\w+)"/.exec(m) || [])[1]);
+  const vorPos = reihenfolge(vorher2);
+  fire({ act: "famsel", id: "tempo" });
+  const nachher = q._marksBlock(act);
+  ok(q._famSel === "tempo", "aufklappung: die Familienwahl kam nicht an");
+  ok(/class="famexp"/.test(nachher),
+     "aufklappung: sie fällt beim Wählen einer Familie zu — der Zustand überlebt das Re-Render nicht");
+  // die Reihe springt nicht: gleiche Kacheln, gleiche Reihenfolge
+  ok(JSON.stringify(reihenfolge(nachher)) === JSON.stringify(vorPos),
+     "aufklappung: die Reihenfolge der Kacheln ändert sich, wenn eine Erklärung offen ist");
+  // und die aktive Kachel ist als solche erkennbar, obwohl eine andere offen ist
+  const tempoTile = new RegExp('<div class="famtile ([^"]*)"[^>]*>\\s*<button class="famhit" data-act="famsel" data-id="tempo"');
+  ok(tempoTile.test(nachher) && /on/.test((tempoTile.exec(nachher) || ["", ""])[1]),
+     "aufklappung: die gewählte Kachel verliert ihre Kennzeichnung, wenn eine Erklärung offen ist");
+  // die offene Erklärung gehört weiter der ANDEREN Familie
+  ok(/data-act="fammore" data-id="sweetspot"[^>]*aria-expanded="true"/.test(nachher),
+     "aufklappung: die offene Erklärung wandert bei der Familienwahl mit");
+  // zweiter Klick schließt wieder
+  fire({ act: "fammore", id: "sweetspot" });
+  ok(!/class="famexp"/.test(q._marksBlock(act)), "aufklappung: sie lässt sich nicht schließen");
+
+  // ── der Satz schickt nicht mehr auf die Suche ──────────────────────────
+  q._smarks.marks = [{ activity_id: "a1", date: "2026-09-10", marks: { tempo: [600] },
+                       hours: null, reason: "", set_at: "2026-09-12" }];
+  const satz = q._marksBlock(act);
+  ok(!/übernehmen und messen/.test(satz),
+     "der satz: er verweist weiter auf einen Knopf, den es noch nicht gibt");
+  ok(/kommt mit der Messung/.test(satz),
+     "der satz: er sagt nicht, dass der Knopf noch kommt");
+  ok(/Im Archiv:/.test(satz), "der satz: die Quittung ist dabei verlorengegangen");
+  // Gegenprobe: ein ECHTER Grund aus der Payload verdrängt ihn
+  q._smarks.marks[0].reason = "Die Abschnitte waren nicht abrufbar.";
+  const echt = q._marksBlock(act);
+  ok(/nicht abrufbar/.test(echt),
+     "der satz: ein echter Grund aus dem Archiv wird verschluckt");
+  ok(!/kommt mit der Messung/.test(echt),
+     "der satz: der allgemeine Satz steht neben dem echten Grund");
+}
+
 report("test_panel_fixes");
 })();

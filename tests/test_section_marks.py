@@ -246,6 +246,27 @@ check("Messmarke Gegenprobe: bei aktueller Marke bleiben die Stunden",
       (behalten or aktuell).get("a9", {}).get("hours"), [{"hour": 1, "p075": 210}])
 
 
+# Altbestaende: der frueher GESPEICHERTE Anzeigetext verwies auf einen Knopf,
+# den es nicht gab. Er faellt beim Laden - und NUR er.
+legacy = {"a7": {"date": "2026-09-01", "marks": {"tempo": [600]},
+                 "anchor": {"laps": 3, "sections": [{"i": 600, "s": 600}]},
+                 "hours": None, "v": sm.MEASURE_VERSION, "set_at": "",
+                 "reason": "Markiert, noch nicht gemessen — die Messung läuft auf "
+                           "„übernehmen und messen“."},
+          "a8": {"date": "2026-09-01", "marks": {"tempo": [600]},
+                 "anchor": {"laps": 3, "sections": [{"i": 600, "s": 600}]},
+                 "hours": None, "v": sm.MEASURE_VERSION, "set_at": "",
+                 "reason": "Die Abschnitte waren nicht abrufbar."}}
+ok("Altbestand: die Fixture traegt den alten Satz wirklich",
+   "übernehmen und messen" in legacy["a7"]["reason"])
+gereinigt = sm.migrate(copy.deepcopy(legacy)) or {}
+check("Altbestand: der veraltete Anzeigetext faellt",
+      gereinigt.get("a7", {}).get("reason"), "")
+check("Altbestand: die Marken bleiben dabei unberuehrt",
+      gereinigt.get("a7", {}).get("marks"), {"tempo": [600]})
+check("Altbestand: ein ECHTER Grund bleibt stehen",
+      gereinigt.get("a8", {}).get("reason"), "Die Abschnitte waren nicht abrufbar.")
+
 # --- 4 · die Ruecknahme sitzt auf der einzelnen Marke --------------------------
 print("\n=== 4 · Ruecknahme: eine Marke, nicht 'letzter Zustand' ===")
 
@@ -315,16 +336,26 @@ def haken_misst_nicht(entry_):
     Einmal am echten Code, einmal am eingebauten Messpfad - sonst prueft die
     Gegenprobe nur, dass eine Mutation etwas veraendert, und nicht, dass die
     Zusicherung sie FINDET.
+
+    Der Zustand steht in `hours is None`, NICHT in einem Satz: seit 0.53.1
+    wird kein Anzeigetext mehr in den Eintrag geschrieben (er veraltete mit
+    dem naechsten Umbau und stand dann in Altbestaenden weiter).
     """
     return (entry_ or {}).get("hours") is None \
-        and "noch nicht gemessen" in (entry_ or {}).get("reason", "")
+        and not (entry_ or {}).get("reason")
 
 
 mess = {"section_marks": {}}
 frisch = sm.set_mark(mess, "c1", "2026-09-12", "endurance", 0, LAPS, set_at="2026-09-12")
 check("Haken: der Eintrag steht ohne Zahlen", frisch.get("hours"), None)
-ok("Haken: mit dem Grund daneben", "noch nicht gemessen" in frisch.get("reason", ""))
+check("Haken: und OHNE gespeicherten Anzeigetext", frisch.get("reason"), "")
 check("Haken: die Zusicherung haelt am echten Code", haken_misst_nicht(frisch), True)
+# Der Satz reist im LESEWEG mit, statt im Eintrag zu stehen - eine Stelle,
+# kein Altbestand, der migriert werden muss.
+ok("Haken: der Satz nennt den Knopf nicht mehr, den es noch nicht gibt",
+   "übernehmen und messen" not in sm.NOT_MEASURED)
+ok("Haken: er sagt stattdessen, dass der Knopf noch kommt",
+   "kommt mit der Messung" in sm.NOT_MEASURED)
 check("Haken: usable_hours gibt nichts her", sm.usable_hours(frisch, LAPS), None)
 
 gemessen = sm.set_measurement(mess, "c1", hours=[{"hour": 1, "p075": 208}], reason="")

@@ -17,6 +17,10 @@ from homeassistant.util import dt as dt_util
 from . import analytics, blocks as blocks_lib, coach as coach_module, day_context as day_context_lib, derive, fatigue, importer, plan as plan_lib, ramp, ramp_tests as ramp_lib, reconcile as reconcile_lib, section_marks as marks_lib, workouts as workout_lib
 from .api import IntervalsError
 from .const import (
+    BLOCK_CORRIDORS,
+    BLOCK_MIN_FOR_SOURCE,
+    BLOCK_MIN_SECONDS,
+    BLOCK_WARMUP_DISCARD_S,
     DECOUPLING_GOOD,
     DFA_BATCH_SIZE,
     DOMAIN,
@@ -1087,6 +1091,13 @@ def websocket_section_marks(hass, connection, msg) -> None:
         # Grund selbst (fuenfte Bauregel).
         "stale_reason": marks_lib.STALE_REASON,
         "not_measured": marks_lib.NOT_MEASURED,
+        # Die Zahlen fuer die Erklaerung je Familie reisen MIT: eine Schwelle,
+        # die das Panel als Literal fuehrt, ist eine zweite Wahrheit (fuenfte
+        # Bauregel), und der Dublettenwaechter meldet sie zu Recht.
+        "corridors": BLOCK_CORRIDORS,
+        "discard_s": BLOCK_WARMUP_DISCARD_S,
+        "min_seconds": BLOCK_MIN_SECONDS,
+        "min_for_source": BLOCK_MIN_FOR_SOURCE,
         "v": marks_lib.MEASURE_VERSION,
     })
 

@@ -718,6 +718,81 @@ const FAM = {
   endurance: { k: "GA",   ic: "famEnd", c: C.slate,   l: "Grundlage" },
   long:      { k: "LANG", ic: "famLng", c: C.deep,    l: "lange Fahrt" },
 };
+/* Was in einer Familie steckt - in kurzen Saetzen, zum ENTSCHEIDEN, nicht zum
+   Lernen der Methode. Drei Fragen je Familie, immer dieselben drei:
+   womit fuettere ich sie, was wird daraus gerechnet, was aendert sich dadurch
+   an meinen Wattvorgaben.
+
+   DIE ZAHLEN STEHEN HIER NICHT. Sie kommen aus der Payload (`corridors`,
+   `discard_s`, `min_for_source`) - eine Schwelle als Literal im Frontend
+   waere eine zweite Wahrheit, und der Dublettenwaechter meldet sie zu Recht. */
+const FAM_HELP = (key, sm) => {
+  const c = ((sm && sm.corridors) || {})[key] || null;
+  const discard = (sm && sm.discard_s) != null ? sm.discard_s : null;
+  const min3 = (sm && sm.min_for_source) != null ? sm.min_for_source : null;
+  // ZUERST die Schwelle: sie steht in FAM_BLOCKS, weil sie ohne ausgewertete
+  // Abschnitte nichts anzeigen kann - sie MISST aber nicht darüber, ihr Wert
+  // kommt aus dem Stufentest. Stünde diese Abfrage hinter dem Blockzweig,
+  // bekäme sie dessen Erklärung. Ein Test hat genau das gefunden.
+  if (key === "threshold") {
+    return [
+      ["Womit du sie fütterst",
+       "Mit nichts. Diese Familie misst nicht selbst — ihr Wert kommt aus dem Stufentest. "
+       + "Du kannst Abschnitte anhaken, um sie wiederzufinden; gerechnet wird daraus nichts."],
+      ["Was daraus gerechnet wird",
+       "Nichts. Markiere stattdessen eine Fahrt als Stufentest — die Kachel ganz rechts."],
+      ["Was es an deinen Vorgaben ändert",
+       "Die Watt für Schwellenintervalle, sobald ein Stufentest gemessen ist."],
+    ];
+  }
+  if (FAM_BLOCKS.includes(key)) {
+    return [
+      ["Womit du sie fütterst",
+       "Die Abschnitte, in denen du wirklich in diesem Bereich gefahren bist — "
+       + "der harte Teil. Nicht das Einrollen davor, nicht die Pause danach."],
+      ["Was daraus gerechnet wird",
+       "Aus jedem angehakten Abschnitt wird ein DFA-a1-Wert genommen: ein Maß dafür, "
+       + "wie gleichmäßig dein Herz in diesem Abschnitt geschlagen hat. Je härter du "
+       + "fährst, desto kleiner wird er."
+       + (discard != null
+          ? ` Die ersten ${discard} Sekunden jedes Abschnitts zählen nicht mit — der Wert `
+            + "pendelt sich dort erst ein." : "")],
+      ["Was es an deinen Vorgaben ändert",
+       (c
+         ? `Für diese Familie soll der Wert zwischen ${fmt(c[0], 2)} und ${fmt(c[1], 2)} liegen. `
+           + "Liegt er darüber, war es zu leicht und der Trainer schlägt mehr Watt vor. "
+           + "Liegt er darunter, war es zu hart und er nimmt Watt weg."
+         : "Der Zielbereich steht in den Einstellungen des Trainers.")
+       + (min3 != null
+          ? ` Ab ${min3} markierten Einheiten rechnet er mit deinen Werten statt mit einer Schätzung.`
+          : "")],
+    ];
+  }
+  return [
+    ["Womit du sie fütterst",
+     "Die ruhigen Teile einer Fahrt — die Abschnitte, in denen du gleichmäßig gefahren bist. "
+     + "Harte Stücke mittendrin lässt du draußen."],
+    ["Was daraus gerechnet wird",
+     "Aus den angehakten Abschnitten entsteht ein bereinigter Verlauf. Darauf wird für jede "
+     + "Fahrtstunde abgelesen, wie viel Leistung du zu diesem Zeitpunkt noch locker halten "
+     + "konntest. Blöcke braucht es dafür nicht."],
+    ["Was es an deinen Vorgaben ändert",
+     "Die Watt für lange Einheiten — und wie stark sie mit jeder Stunde Fahrtzeit nachgeben."],
+  ];
+};
+
+const RAMP_HELP = [
+  ["Womit du sie fütterst",
+   "Mit einer ganzen Fahrt, nicht mit einzelnen Abschnitten. Eine Stufenfahrt, bei der "
+   + "die Leistung regelmäßig steigt, bis es nicht mehr geht."],
+  ["Was daraus gerechnet wird",
+   "Beide Schwellen aus einer Fahrt: die, ab der es anstrengend wird, und die, ab der "
+   + "du nicht mehr lange durchhältst. Gemessen wird aus den ungedünnten Strömen."],
+  ["Was es an deinen Vorgaben ändert",
+   "Die Watt für Schwellen- und Tempoeinheiten. Diese Kachel misst beim Klick, "
+   + "die sechs anderen haken nur an."],
+];
+
 /* Welche Familien ueber BLOECKE messen und welche ueber den Stundenverlauf.
    Grundlage und lange Fahrt brauchen keine Bloecke - sie messen ueber
    `hours` (P2c, dritte Zeile). */
@@ -1879,6 +1954,13 @@ class IntervalsIcuPanel extends HTMLElement {
         // Dieselbe Kachel noch einmal hebt die Wahl auf - sonst gaebe es
         // keinen Weg zurueck in "keine Familie gewaehlt".
         this._famSel = this._famSel === id ? null : id;
+        const scroll = this.scrollTop;
+        this._render();
+        this.scrollTop = scroll;
+      }
+      else if (act === "fammore") {
+        this._famOpen = this._famOpen || {};
+        this._famOpen[id] = !this._famOpen[id];
         const scroll = this.scrollTop;
         this._render();
         this.scrollTop = scroll;
@@ -3934,15 +4016,18 @@ class IntervalsIcuPanel extends HTMLElement {
       const f = FAM[key], n = ((cur && cur.marks && cur.marks[key]) || []).length;
       const ganz = n === 1 && lapCount === 1;
       const dis = off(key);
-      return `<button class="famtile ${sel === key ? "on" : ""} ${dis ? "off" : ""}"
-        data-act="famsel" data-id="${key}" style="--fc:${f.c}" ${dis ? "disabled" : ""}>
-        <span class="famic">${ico(f.ic, f.c, 18)}</span>
-        <b class="famk">${f.k}</b>
-        <span class="famn">${esc(f.l)}</span>
-        <span class="famcnt">${!n ? "—"
-          : (ganz ? "die ganze Fahrt" : `${n} Abschnitt${n === 1 ? "" : "e"}`)}</span>
-        ${sel === key ? `<em class="famon">gewählt</em>` : ""}
-      </button>`;
+      return `<div class="famtile ${sel === key ? "on" : ""} ${dis ? "off" : ""}"
+        style="--fc:${f.c}">
+        <button class="famhit" data-act="famsel" data-id="${key}" ${dis ? "disabled" : ""}>
+          <span class="famic">${ico(f.ic, f.c, 18)}</span>
+          <b class="famk">${f.k}</b>
+          <span class="famn">${esc(f.l)}</span>
+          <span class="famcnt">${!n ? "—"
+            : (ganz ? "die ganze Fahrt" : `${n} Abschnitt${n === 1 ? "" : "e"}`)}</span>
+          ${sel === key ? `<em class="famon">gewählt</em>` : ""}
+        </button>
+        ${this._famHelp(key, FAM_HELP(key, sm))}
+      </div>`;
     }).join("");
 
     const rt = this._rtests;
@@ -3950,15 +4035,18 @@ class IntervalsIcuPanel extends HTMLElement {
     const rtBusy = this._rtBusy === String(a.id);
     const rtErr = this._rtErr && this._rtErr.id === String(a.id) ? this._rtErr.msg : null;
     const r = test && test.result;
-    const rampTile = !rt ? "" : `<button class="famtile ramp ${test ? "on" : ""}"
-      data-act="rtset" data-id="${esc(a.id)}" ${rtBusy ? "disabled" : ""} style="--fc:${C.tx2}">
-      <span class="famic">${ico("gauge", C.tx2, 18)}</span>
-      <b class="famk">STUF</b>
-      <span class="famn">Stufentest</span>
-      <span class="famcnt">ganze Fahrt</span>
-      <em class="famwarn">misst beim Klick: holt die Ströme und wertet aus</em>
-      ${test ? `<em class="famon">markiert</em>` : ""}
-    </button>`;
+    const rampTile = !rt ? "" : `<div class="famtile ramp ${test ? "on" : ""}"
+      style="--fc:${C.tx2}">
+      <button class="famhit" data-act="rtset" data-id="${esc(a.id)}" ${rtBusy ? "disabled" : ""}>
+        <span class="famic">${ico("gauge", C.tx2, 18)}</span>
+        <b class="famk">STUF</b>
+        <span class="famn">Stufentest</span>
+        <span class="famcnt">ganze Fahrt</span>
+        <em class="famwarn">misst beim Klick: holt die Ströme und wertet aus</em>
+        ${test ? `<em class="famon">markiert</em>` : ""}
+      </button>
+      ${this._famHelp("ramp", RAMP_HELP)}
+    </div>`;
 
     const zahl = (node, label) => !node
       ? `<span class="durband"><em>${label}</em><b class="tn">–</b>
@@ -4016,7 +4104,12 @@ class IntervalsIcuPanel extends HTMLElement {
         ${cur.hours
           ? `Gemessen über ${cur.hours.length} Stunde${cur.hours.length === 1 ? "" : "n"}
              aus dem markierten Bereich.`
-          : esc(cur.reason || "")}</p>`;
+          // Ein ECHTER Grund aus dem Archiv (gescheiterte Messung,
+          // Versionswechsel) gewinnt; sonst der Satz aus dem Leseweg. Er steht
+          // seit 0.53.1 nicht mehr im Eintrag, weil ein gespeicherter
+          // Anzeigetext mit dem naechsten Umbau veraltet - und dann auf einen
+          // Knopf verweist, den es nicht gibt.
+          : esc(cur.reason || sm.not_measured || "")}</p>`;
 
     return `<h3 class="secname">Zuordnung
       <span class="hint">— du ordnest zu, das System erkennt nicht. Familie wählen, dann die
@@ -4033,6 +4126,24 @@ class IntervalsIcuPanel extends HTMLElement {
         ${stand}
         ${gemessen}
       </div>`;
+  }
+
+  /* Die Aufklappung je Kachel.
+
+     KEIN natives <details>: die Familienwahl loest ein Re-Render aus, und
+     innerHTML wirft den offenen Zustand mit den alten Knoten weg. Der Athlet
+     klappt auf, waehlt eine Familie - und die Erklaerung ist wieder zu. Also
+     ein eigener Zustand, der das Re-Render ueberlebt.
+
+     Die Reihe steht auf `align-items:flex-start`: eine wachsende Kachel
+     schiebt ihre Nachbarn nicht nach unten, und die gewaehlte bleibt da, wo
+     sie war. */
+  _famHelp(key, rows) {
+    const open = (this._famOpen || {})[key];
+    return `<button class="fammore" data-act="fammore" data-id="${key}"
+      aria-expanded="${open ? "true" : "false"}">${open ? "weniger" : "mehr anzeigen"}</button>
+      ${open ? `<div class="famexp">${rows.map(
+        ([titel, text]) => `<p><b>${esc(titel)}</b><br>${esc(text)}</p>`).join("")}</div>` : ""}`;
   }
 
   /* Eine Marke setzen oder zuruecknehmen.
@@ -5228,11 +5339,22 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
    Die AKTIVE Kachel traegt Rahmen, Form UND das Wort "gewählt" - nicht nur
    eine Saettigungsstufe. Wer die aktive Kachel nicht sieht, hakt in die
    falsche Familie, und das ist ein Fehler ohne Fehlermeldung. */
-.famrow{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px}
-.famtile{display:grid;grid-template-columns:auto auto;grid-auto-rows:min-content;
-  gap:2px 8px;align-items:center;min-width:132px;padding:8px 10px;cursor:pointer;
+.famrow{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px;align-items:flex-start}
+.famtile{min-width:132px;max-width:236px;padding:8px 10px;
   background:${C.card2};border:2px solid ${C.line};border-radius:10px;
   color:${C.tx};text-align:left;font:inherit}
+.famhit{display:grid;grid-template-columns:auto auto;grid-auto-rows:min-content;
+  gap:2px 8px;align-items:center;width:100%;padding:0;cursor:pointer;
+  background:none;border:0;color:inherit;text-align:left;font:inherit}
+.famhit:disabled{cursor:not-allowed}
+.fammore{margin-top:6px;padding:0;background:none;border:0;cursor:pointer;
+  color:${C.tx3};font:inherit;font-size:11.5px;text-decoration:underline}
+.fammore:hover{color:var(--fc)}
+.famexp{margin-top:6px;border-top:1px solid ${C.line};padding-top:6px;
+  font-size:12px;line-height:1.45;color:${C.tx2}}
+.famexp p{margin:0 0 6px}
+.famexp p:last-child{margin-bottom:0}
+.famexp b{color:${C.tx}}
 .famtile:hover{border-color:var(--fc)}
 .famtile.on{border-color:var(--fc);background:color-mix(in srgb,var(--fc) 14%,${C.card2});
   box-shadow:0 0 0 2px color-mix(in srgb,var(--fc) 35%,transparent)}

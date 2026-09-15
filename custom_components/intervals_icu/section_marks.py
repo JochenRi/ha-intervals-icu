@@ -68,12 +68,29 @@ FAMILIES: tuple[str, ...] = (
 
 REASON_LIMIT = 256
 
-# Der Grund, der nach dem Haken dasteht, solange nicht gemessen wurde. Ein
-# leeres Feld OHNE Grund ist der stille Ausstieg aus 0.42.1 - und "beim
-# Verlassen messen" gibt es nicht, weil das Aktivitaetsdetail mindestens vier
-# Ausgaenge hat und keiner davon ueber den Close-Handler laeuft (P2b).
-NOT_MEASURED = ("Markiert, noch nicht gemessen — die Messung läuft auf "
-                "„übernehmen und messen“.")
+# Der Satz, der nach dem Haken dasteht, solange nicht gemessen wurde.
+#
+# ER WIRD NICHT MEHR IN DEN EINTRAG GESCHRIEBEN, sondern reist im Leseweg mit.
+# Der Grund steht in 0.53.1: der alte Satz verwies auf einen Knopf, den es
+# noch nicht gibt, und weil er GESPEICHERT war, stand er auch in Eintraegen,
+# die laengst vor der Textaenderung entstanden sind. Ein gespeicherter
+# Anzeigetext veraltet mit jedem Umbau und muss dann migriert werden - das ist
+# die Listen-Klasse aus §7, nur mit Prosa statt mit Zahlen.
+#
+# `reason` bleibt fuer ECHTE Gruende: eine gescheiterte Messung, ein
+# Versionswechsel. Die blosse ABWESENHEIT einer Messung ist kein Grund, sie
+# ist ein Zustand - und Zustaende werden aus `hours is None` gelesen, nicht
+# aus einem Satz.
+NOT_MEASURED = ("Markiert, noch nicht gemessen — der Knopf dafür kommt mit der "
+                "Messung.")
+
+# Was frueher in die Eintraege geschrieben wurde. Wird beim Laden GEZIELT
+# geleert, damit kein veralteter Satz stehenbleibt; alles andere in `reason`
+# bleibt unangetastet.
+_LEGACY_NOT_MEASURED = (
+    "Markiert, noch nicht gemessen — die Messung läuft auf „übernehmen und messen“.",
+    "Markiert, noch nicht gemessen",
+)
 
 # Warum eine vorhandene Messung nicht mehr gilt.
 STALE_REASON = {
@@ -401,7 +418,8 @@ def _write(block: dict[str, Any], key: str, old: dict[str, Any] | None,
         # gilt eine vorhandene Messung nicht mehr. Sie faellt SICHTBAR, mit
         # Grund - nicht still.
         "hours": None,
-        "reason": NOT_MEASURED,
+        # KEIN Anzeigetext in den Eintrag - siehe NOT_MEASURED.
+        "reason": "",
         "set_at": set_at,
         "v": MEASURE_VERSION,
     }
@@ -425,7 +443,7 @@ def set_measurement(data: dict[str, Any], activity_id: Any,
     if not isinstance(reason, str):
         raise ValueError("Grund muss Text sein")
     entry["hours"] = hours
-    entry["reason"] = (reason or ("" if hours else NOT_MEASURED))[:REASON_LIMIT]
+    entry["reason"] = (reason or "")[:REASON_LIMIT]
     entry["v"] = MEASURE_VERSION
     return entry
 
@@ -453,7 +471,7 @@ def reanchor(data: dict[str, Any], activity_id: Any, laps: Any) -> dict[str, Any
         )
     entry["anchor"] = anchor_of(rows, marked(entry))
     entry["hours"] = None
-    entry["reason"] = NOT_MEASURED
+    entry["reason"] = ""
     entry["v"] = MEASURE_VERSION
     return entry
 
@@ -524,8 +542,10 @@ def migrate(block: Any) -> dict[str, Any] | None:
                              "die Ströme liegen nicht im Archiv. Die Zuordnung "
                              "und ihr Anker bleiben stehen.")
             changed = True
-        if not row["hours"] and not row["reason"]:
-            row["reason"] = NOT_MEASURED
+        if row["reason"] in _LEGACY_NOT_MEASURED:
+            # Der veraltete Anzeigetext faellt; der Zustand steht weiter in
+            # `hours is None` und der Satz kommt jetzt aus dem Leseweg.
+            row["reason"] = ""
             changed = True
         if row != {k: entry.get(k) for k in row}:
             changed = True

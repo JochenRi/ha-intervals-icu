@@ -39,7 +39,7 @@ PANEL_COMPONENT = "intervals-icu-panel"
 PANEL_FILE = "intervals-panel.js"
 PANEL_TITLE = "Intervals"
 PANEL_ICON = "mdi:chart-timeline-variant"
-PANEL_VERSION = "0.53.0"
+PANEL_VERSION = "0.53.1"
 
 # --- thresholds shared by backend and panel -----------------------------------
 # One definition per number, here, because the panel has to show several of them
