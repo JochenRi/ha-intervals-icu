@@ -3887,15 +3887,24 @@ class IntervalsIcuPanel extends HTMLElement {
     const hasBlocks = !!(dfa && (dfa.blocks || []).length);
     const off = (key) => !dfa || (FAM_BLOCKS.includes(key) && !hasBlocks);
 
+    // EIN Abschnitt ist kein Mangel, sondern der Normalfall einer
+    // Rolleneinheit: sie IST die ganze Fahrt. "1 Abschnitt" klaenge nach einem
+    // Ausschnitt aus etwas Groesserem und saet damit einen Zweifel, den es
+    // nicht gibt. Der Hinweis auf Unterteilen kommt nur, wenn Intervals GAR
+    // KEINE Abschnitte liefert - das entscheidet der Schreibweg, nicht diese
+    // Zeile.
+    const lapCount = ((this._laps[a.id] || {}).laps || []).length;
     const tiles = Object.keys(FAM).map((key) => {
       const f = FAM[key], n = ((cur && cur.marks && cur.marks[key]) || []).length;
+      const ganz = n === 1 && lapCount === 1;
       const dis = off(key);
       return `<button class="famtile ${sel === key ? "on" : ""} ${dis ? "off" : ""}"
         data-act="famsel" data-id="${key}" style="--fc:${f.c}" ${dis ? "disabled" : ""}>
         <span class="famic">${ico(f.ic, f.c, 18)}</span>
         <b class="famk">${f.k}</b>
         <span class="famn">${esc(f.l)}</span>
-        <span class="famcnt">${n ? `${n} Abschnitt${n === 1 ? "" : "e"}` : "—"}</span>
+        <span class="famcnt">${!n ? "—"
+          : (ganz ? "die ganze Fahrt" : `${n} Abschnitt${n === 1 ? "" : "e"}`)}</span>
         ${sel === key ? `<em class="famon">gewählt</em>` : ""}
       </button>`;
     }).join("");

@@ -1328,6 +1328,46 @@ const acts = F.activities(), thr = F.thresholds();
      "quittung: eine gemessene Fahrt behauptet weiter, sie sei nicht gemessen");
   q._smarks.marks[0].hours = null;
 
+  // ── EIN Abschnitt ist kein Mangel ──────────────────────────────────────
+  // Eine Rolleneinheit hat genau einen Abschnitt, und der IST die ganze Fahrt.
+  // Nichts im Panel darf das als Mangel lesen - der Hinweis auf Unterteilen
+  // gehoert allein dem Fall "gar keine Abschnitte".
+  const einLap = [{ n: 1, label: "Rolle", start_index: 0, moving_time: 3600,
+                    avg_watts: 180, avg_hr: 150, ef: 1.2, dfa_a1: 0.7 }];
+  q._laps = { a1: { laps: einLap } };
+  q._smarks = { marks: [{ activity_id: "a1", date: "2026-09-10", marks: { endurance: [0] },
+                          anchor: { laps: 1, sections: [{ i: 0, s: 3600 }] },
+                          hours: null, set_at: "2026-09-12", reason: "Markiert, noch nicht gemessen" }],
+                families: Object.keys(M.FAM), stale_reason: {} };
+  const eine = q._marksBlock(act) + q._lapBlock(act);
+  ok(!/unterteil/i.test(eine),
+     "ein Abschnitt: die Karte verlangt Unterteilen, obwohl ein Abschnitt reicht");
+  ok(!/nur ein|zu wenig|mindestens/i.test(eine),
+     "ein Abschnitt: die Karte liest einen Abschnitt als Mangel");
+  ok(eine.includes("die ganze Fahrt"),
+     "ein Abschnitt: die Kachel sagt nicht, dass der eine Abschnitt die ganze Fahrt ist");
+  ok(!/1 Abschnitt</.test(eine),
+     "ein Abschnitt: die Kachel sagt weiter „1 Abschnitt“ — das klingt nach einem Ausschnitt");
+  // der Haken funktioniert dabei ganz normal
+  const boxEins = attrsOf(q._lapBlock(act), 'data-idx="0"');
+  ok(boxEins !== null, "ein Abschnitt: es gibt keinen Haken für die einzige Runde");
+  // GEGENPROBE: bei MEHREREN Abschnitten zählt die Kachel wieder Abschnitte -
+  // sonst prüft das obige nur, dass irgendein Text dasteht.
+  q._laps = { a1: { laps } };
+  q._smarks.marks[0].marks = { endurance: [0] };
+  q._smarks.marks[0].anchor = { laps: 4, sections: [{ i: 0, s: 600 }] };
+  const mehrere = q._marksBlock(act);
+  ok(/1 Abschnitt</.test(mehrere),
+     "ein Abschnitt Gegenprobe: eine Fahrt mit vier Runden sagt auch „die ganze Fahrt“");
+  ok(!/die ganze Fahrt/.test(mehrere),
+     "ein Abschnitt Gegenprobe: der Satz erscheint auch dort, wo er falsch ist");
+  q._smarks = { marks: [{ activity_id: "a1", date: "2026-09-10",
+                          marks: { tempo: [1290], sweetspot: [600] },
+                          anchor: { laps: 4, sections: [{ i: 600, s: 600 }, { i: 1290, s: 600 }] },
+                          hours: null, set_at: "2026-09-12",
+                          reason: "Markiert, noch nicht gemessen — die Messung läuft auf „übernehmen und messen“." }],
+                families: Object.keys(M.FAM), stale_reason: {} };
+
   // ── ein Abschnitt OHNE start_index ist nicht zuzuordnen, und sagt es ────
   q._laps = { a1: { laps: laps.concat([{ n: 5, label: "ENDE", moving_time: 300, avg_watts: 90 }]) } };
   const liste3 = q._lapBlock(act);
