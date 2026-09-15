@@ -3046,6 +3046,27 @@ auch — ein Katalogeintrag ohne Auswertung hätte eine Fahrt im Archiv erzeugt,
 die niemand lesen kann. Ausgeliefert sind Katalogeintrag, Auswertung,
 Archivblock, Quellenkette und Karte zusammen.
 
+**6 · Nachtrag aus dem Live-Blick (0.51.1): die Spezifikation hat übersehen,
+woraus die Rampe gerechnet wird.** N1 verbot feste Leistungszahlen, sagte aber
+nirgends, WORAUS Start und Ende dann kommen sollen. Gebaut wurde daraufhin ein
+Katalogeintrag mit `ramp 60-115%` — Prozente der FTP, also formal keine „feste
+Zahl" und sachlich genau das, was N1 verhindern wollte. Bei diesem Athleten
+endete die Rampe damit **27 W unter seiner eigenen Leitzahl**, und die zweite
+Schwelle war nicht erreichbar. **Ein Verbot ohne benannte Quelle ist keine
+Vorschrift, sondern eine Lücke mit gutem Gewissen.** Die Spezifikation trägt
+seit 0.51.1 die beiden Ketten ausdrücklich: Start aus der Ermüdungskurve, Ende
+aus der Blockmessungs-**Leitzahl** (nicht der Trainingsvorgabe), beides mit
+Rückfall auf die FTP und beschrifteten Enden.
+
+**7 · Und eine Regel über Zahlen, die N4 hätte brauchen können.** Das
+Pulsfenster des Tests war mit 112–160 bpm falsch — aber der Reflex, es zu
+verbreitern, wäre ebenfalls falsch gewesen. Bei einer Rampe wandert der Puls
+über den ganzen Bereich; ein Fenster ist dort die **falsche Art von Aussage**,
+nicht bloß der falsche Wert. 110–190 bpm wäre korrekt und nutzlos gewesen —
+**eine breitere Spanne hätte es nur unauffälliger gemacht, nicht besser.**
+Daraus die Regel für jede künftige Spezifikation: **eine Zahl, die man
+korrigieren kann, ohne dass sie richtig wird, gehört weg und nicht angepasst.**
+
 **Was der Bau NICHT beantwortet hat: die 40 Watt (N3).** Das war immer die
 Aufgabe des Tests, nicht die des Baus. Die Frage steht jetzt sichtbar in der
 Karte — mit beiden eigenen Zahlen nebeneinander und dem Satz, dass es bisher

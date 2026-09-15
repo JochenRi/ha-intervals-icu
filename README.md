@@ -3,7 +3,7 @@
 Bring your [Intervals.icu](https://intervals.icu) training data into Home Assistant.
 Not affiliated with, endorsed by, or supported by Intervals.icu.
 
-> **Status: 0.9.1 — the panel, rebuilt.** Seven views, opening on today's
+> **Status: 0.51.1 — the ramp test replaces the durability test.** Eight views, opening on today's
 > verdict: a readiness ring made of one segment per signal, the load budget as
 > a bullet graph with its arithmetic laid open, per-activity charts stacked on
 > a shared time axis, and every derived number carrying its source next to it.
@@ -110,7 +110,7 @@ Every derived number in the panel carries its origin and its limits:
 | Intensity distribution | Seiler's three-zone model, elite reference ≈ 75/8/17 | polarized wins on VO2peak by a small margin, and is disputed |
 | HRV trend | 7-day rolling mean of ln(rMSSD) against the smallest worthwhile change | your value is an overnight wearable reading, not a morning supine one |
 | Decoupling | Joe Friel: ≤ 5 % on steady aerobic rides | only meaningful on steady sessions |
-| DFA alpha-1 | Rogers/Gronwald: 0.75 ≈ aerobic threshold (VT1), 0.5 ≈ anaerobic (VT2) | validated against gas exchange; sensitive to artefacts and recording device |
+| DFA alpha-1 | Rogers/Gronwald: 0.75 ≈ aerobic threshold (VT1), 0.5 ≈ anaerobic (VT2) | **Validation status 2024–2026, not "validated against gas exchange"**: the second threshold (0.5) holds throughout, the first (0.75) does not — Olieslagers 2026 reports poor agreement of HRVT1 with LT1/VT1 at a bias of −21 to −45 W, and the 0.75 figure comes from the TREADMILL. Sensitive to artefacts and recording device |
 | Subjective wellness | Saw et al., systematic review | self-reported measures track load more sensitively than objective ones |
 | Readiness light | composed here from the rows above | the components are published, the combination is not — and no commercial readiness score is independently validated |
 | Load budget | the ACWR definition solved for today | 7 × chronic × target − last six days; the target choice per light colour is a setting, not a finding |
@@ -141,7 +141,7 @@ Every derived number in the panel carries its origin and its limits:
 Holt deine Trainingsdaten von [Intervals.icu](https://intervals.icu) nach Home
 Assistant. Kein offizielles Projekt von Intervals.icu.
 
-> **Stand: 0.9.1 — das Panel, neu gebaut.** Sieben Ansichten, Startseite ist
+> **Stand: 0.51.1 — der Stufentest löst den Durability-Test ab.** Acht Ansichten, Startseite ist
 > das Urteil für heute: ein Bereitschaftsring aus je einem Segment pro Signal,
 > das Lastbudget als Bullet-Graph mit offengelegtem Rechenweg, Verlaufskurven
 > je Einheit über einer gemeinsamen Zeitachse, jede Zahl mit ihrer Quelle.
@@ -249,7 +249,7 @@ Jede abgeleitete Zahl im Panel trägt ihre Herkunft und ihre Grenzen mit sich:
 | Intensitätsverteilung | Dreizonenmodell nach Seiler, Elite-Referenz ≈ 75/8/17 | polarisiert liegt beim VO2peak knapp vorn und wird bestritten |
 | HRV-Trend | 7-Tage-Mittel von ln(rMSSD) gegen die kleinste bedeutsame Änderung | dein Wert kommt aus der Nachtmessung, nicht aus der Morgenmessung im Liegen |
 | Entkopplung | Joe Friel: ≤ 5 % bei ruhigen Dauereinheiten | nur bei gleichmäßiger Fahrt aussagekräftig |
-| DFA alpha-1 | Rogers/Gronwald: 0,75 ≈ aerobe Schwelle (VT1), 0,5 ≈ anaerobe (VT2) | gegen Gasaustausch validiert; empfindlich für Artefakte und Aufzeichnungsgerät |
+| DFA alpha-1 | Rogers/Gronwald: 0,75 ≈ aerobe Schwelle (VT1), 0,5 ≈ anaerobe (VT2) | **Validierungslage 2024–2026, nicht „gegen Gasaustausch validiert"**: die zweite Schwelle (0,5) hält durchgängig, die erste (0,75) nicht — Olieslagers 2026 findet für HRVT1 schlechte Übereinstimmung mit LT1/VT1 bei einem Bias von −21 bis −45 W, und die 0,75 stammt vom LAUFBAND. Empfindlich für Artefakte und Aufzeichnungsgerät |
 | Selbsteinschätzung | Saw et al., systematischer Review | eigene Angaben bilden Belastung empfindlicher ab als objektive Messwerte |
 | Bereitschaftsampel | hier aus den Zeilen darüber zusammengesetzt | die Bestandteile sind belegt, die Kombination nicht — und kein kommerzieller Bereitschaftswert ist unabhängig validiert |
 | Lastbudget | die ACWR-Definition nach heute aufgelöst | 7 × chronisch × Ziel − letzte sechs Tage; die Zielwahl je Ampelfarbe ist eine Setzung, kein Befund |

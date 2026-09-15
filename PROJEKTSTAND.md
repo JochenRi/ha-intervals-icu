@@ -529,12 +529,115 @@ ohne eine Prüfung zu hinterlassen, die es erzwingt.** 0.34.0 hält fest, dass
 **beide** DFA-Quellzeilen die Validierungslage 2024–2026 tragen statt „gegen
 Gasaustausch validiert". Die Zeile in §5 trug den alten Satz weiter — aufgefallen
 erst, als der Bau von Paket N sich auf Olieslagers 2026 stützte und damit auf
-einen Befund, dem die eigene Belegtabelle widersprach. **Siebter Fall der
+einen Befund, dem die eigene Belegtabelle widersprach.
+
+**Und der Suchraum war kleiner als der Befund.** Nachgezählt in 0.51.1: der Satz
+steht nicht nur im PROJEKTSTAND, sondern auch **zweimal im README** — Zeile 113
+englisch, Zeile 252 deutsch, dieselbe Tabelle in beiden Sprachfassungen. Die
+Aufräumrunde von 0.34.0 hat nur im PROJEKTSTAND gesucht und „beide" gesagt, ohne
+zu benennen, **worin** sie gesucht hat. Das ist die Verschärfung der
+Listen-Klasse: eine handgepflegte Vollständigkeit scheitert nicht erst an der
+nächsten Stelle, sondern schon an der nächsten **Datei** — und ein Suchraum, den
+niemand aufschreibt, kann von keinem Nachfolger nachgeprüft werden. Seit 0.51.1
+stehen alle auf der Validierungslage 2024–2026. **Siebter Fall der
 Listen-Klasse** (vierte Bauregel, §9): eine handgepflegte Vollständigkeit ohne
 Vollständigkeitsprüfung hält genau bis zur nächsten Stelle, an die niemand
 denkt. Hier ist die Stelle korrigiert; die Klasse bleibt offen, weil ein
 Wächter über Fließtext-Belege in einer Markdown-Tabelle mehr verspräche, als er
 halten kann.
+
+**Achtzehnter Fall (0.51.1): ein Wächter, der die Ausnahme bewacht und die
+Regel nicht.** N1 lässt für den Stufentest genau drei feste Zahlen zu —
+Einrolldauer, Ausrolldauer, Rampensteigung — und verbietet alles andere:
+**keine festen Leistungszahlen.** Ausgeliefert wurde in 0.51.0 ein
+Katalogeintrag mit `ramp 60-115%` und den Blöcken 60/90/60, **allesamt
+Ableitungen der FTP**. Ein Wächter darüber existierte, war grün, und prüfte:
+
+    for _literal, _name in ((" 15 ", "Einrolldauer"), (" 10 ", "Ausrolldauer"),
+                            (" 5 W", "Rampensteigung")):
+
+Er stellte sicher, dass die **Dauern** nicht im Eintrag stehen — also genau das,
+was N1 als einzige feste Zahlen **erlaubt**. Über die Prozentwerte, also über
+das, was N1 **verbietet**, sagte er nichts. **Ein Wächter, der die Ausnahme
+bewacht und die Regel nicht, ist schlimmer als keiner: er sieht aus wie
+Absicherung und lässt genau das durch, wogegen die Regel geschrieben wurde.**
+
+**Und es funktionierte nicht, messbar.** Bei FTP 200 endete die Rampe bei
+230 W, während die eigene VO2max-Leitzahl bei **257 W und alpha 0,47** steht —
+also **27 W unter** der Leistung, bei der der Athlet bereits unter 0,5 misst.
+Die zweite Schwelle war nicht erreichbar; der halbe Test lieferte nichts. Genau
+die Schwelle, für die der Test gebaut wurde, und genau die Frage (die 40 Watt),
+die er beantworten sollte.
+
+**Dazu ein zweiter Widerspruch, im selben Eintrag.** Dauer (30 min), Steigung
+(5 W/min) und Spanne (55 % der FTP) standen nebeneinander und passten **nur bei
+einer einzigen FTP** zusammen: 272,7 W. Bei 200 W behauptete die Karte 30
+Minuten für eine Rampe, die nach 22 zu Ende ist. Drei Zahlen, von denen keine
+aus den anderen folgte.
+
+Gebaut ist seit 0.51.1: zwei getrennte Quellenketten (Start aus der
+Ermüdungskurve, Ende aus der Blockmessung), die Reserve als **Zeit** statt als
+Anteil — sie sagt, was sie bedeutet, und hängt nicht an einer zweiten
+Prozentzahl —, und **die Dauer wird gerechnet, nie gesetzt**. Der Widerspruch
+ist damit nicht mehr herstellbar, nicht bloß geprüft. **Regel: wo ein
+Widerspruch konstruierbar bleibt, genügt eine Zusicherung nicht; die bessere
+Antwort ist, die dritte Zahl aus den beiden anderen zu rechnen.**
+
+Und beim Bau lauerte die Falle daneben: die Blockmessung liefert **zwei**
+Zahlen, die Leitzahl (257 W bei alpha 0,47) und die Trainingsvorgabe (250 W bei
+Median-alpha 0,40). Die falsche hätte 300 W ergeben — plausibel aussehend und
+falsch begründet, **0.49.2 in neuer Gestalt**. Der Wächter prüft deshalb nicht
+nur den richtigen Wert, sondern **schließt den falschen namentlich aus**. Das
+ist die schärfere Bauart und ab hier das Muster: *eine Prüfung, die nur das
+Richtige bestätigt, übersteht jede Verwechslung, die zufällig auch richtig
+aussieht.*
+
+**Neunzehnter Fall (0.51.1): ein Umzug zwischen zwei Payloads, und ein `|| []`,
+das ihn verschluckt hat.** Die zehn Punkte, die sagen, **wie** der Stufentest zu
+fahren ist, waren in 0.51.0 unsichtbar. Das Bauteil legte sie als `protocol` in
+die `ramp_tests`-Payload; das Panel liest sie als `entry.standard` **an der
+Einheit**. Zwei verschiedene Payloads, zwei verschiedene Namen — und
+`(entry.standard || []).length ? … : ""` macht aus einem fehlenden Feld eine
+leere Liste und aus einem Fehler **eine Anzeige ohne Inhalt.** Kein Test schlug
+an: der eine prüft die Liste im Bauteil, der andere die Darstellung im Panel,
+und dazwischen sah niemand hin. **Das leere Fallback ist der eigentliche Täter.**
+
+Warum es nie auffiel: bis 0.50.0 stand dort das Durability-Protokoll — eine
+Einheit, die nie gefahren wurde. **Ein Feld, das niemand vermisst, ist kein
+Beweis dafür, dass es ankommt.** Erst als Paket N zehn Punkte hineinlegte, die
+jemand lesen wollte, wurde die Lücke sichtbar. Dasselbe gilt für `derivation`:
+es stand seit 0.51.0 leer, weil niemand es mehr füllte, und niemand bemerkte es.
+
+**Die Bauart-Umfrage entlastet den Rest:** 64 stille Rückfälle
+(`x.feld || []`) auf payload-artige Objekte im Panel, davon lesen **zwei** einen
+Namen, den kein Bauteil schreibt — genau `standard` und `derivation`. Die
+übrigen sind Panel-Eigenzustand und Diagramm-Optionen. **Kein Muster, ein Nest.**
+
+**Und ein Befund über den Befund.** Die erste Meldung dieses Falls lautete
+„seit 0.44.0 unsichtbar, sieben Releases" — und war falsch: durchsucht worden
+war nur `websocket.py`, während die Felder in `workouts.py` an den
+Durability-Katalogeinträgen hingen und dort bis 0.50.0 gerendert wurden.
+Gebrochen ist es in **einem** Release, nicht sieben, und der Mechanismus ist ein
+anderer: kein Umbenennen, sondern ein Umzug zwischen zwei Payloads. **Eine
+schärfere Zahl, als die Prüfung hergibt, macht einen richtigen Befund
+angreifbar** — derselbe Satz wie bei der 24-Fenster-Richtigstellung aus 0.46.0,
+und das **zweite Mal**.
+
+**Zwanzigster Fall (0.51.1): eine Zahl, die man korrigieren kann, ohne dass sie
+richtig wird.** Die Stufentest-Karte nannte ein Pulsfenster von 112–160 bpm —
+`hr_hint` (0,70–1,00) skaliert auf die **aerobe** Schwelle von 160 bpm. Die
+Rampe geht bis stabil unter alpha 0,5; die eigene Blockmessung liegt dort bei
+**172–186 bpm**. Das Fenster konnte den Test nicht beschreiben: es hörte
+bauartbedingt an der aeroben Schwelle auf.
+
+Der Reflex wäre, die Spanne zu verbreitern. **Der wäre falsch.** Bei jeder
+anderen Einheit ist das Fenster ein **Ziel**, in dem man bleibt. Bei einer Rampe
+wandert der Puls über den ganzen Bereich — ein Fenster ist dort nicht bloß
+ungenau, es ist die **falsche Art von Aussage**: wer darin bliebe, bräche den
+Test ab. 110–190 bpm wäre korrekt und nutzlos gewesen. **Eine breitere Spanne
+hätte es nur unauffälliger gemacht, nicht besser.** Regel: **eine Zahl, die man
+korrigieren kann, ohne dass sie richtig wird, gehört weg und nicht angepasst.**
+An ihrer Stelle steht seit 0.51.1 ein Satz, der genau das sagt.
 
 **Regel: wer zwei verschieden gerechnete Größen vergleicht, bildet die Toleranz
 aus dem Unterschied der Rechenwege, nicht aus einer Wunschgenauigkeit.** Die
@@ -1490,6 +1593,27 @@ Und jeder Regex-Treffer wird auf `null` geprüft, bevor auf `[0]` zugegriffen wi
 eigenen benannten Prüfung für das Fehlen. Ohne beides stürzt der Test bei der Mutation ab, statt
 sie zu zählen.
 
+**Regel über Wächter selbst (0.51.1): ein Wächter, der bei RICHTIGEM Text
+anschlägt, wird abgeschaltet statt befolgt.** Die Zahlenprüfung des
+Stufentest-Katalogeintrags durchsuchte per Textsuche alles bis
+`LIBRARY.append` — also auch die Beschreibung und die Kommentare — und meldete
+den völlig richtigen Satz „im Fenster 0 bis 10 Minuten" als verbotene Zahl. Der
+Ausweg ist **verengen, nicht entschärfen**: sie trifft jetzt über den AST genau
+das Dict, trägt eine eigene Prüfung, dass sie den richtigen Abschnitt sieht, und
+ihre Gegenproben beißen unverändert. Derselbe Gedanke steht seit 0.44.0 am
+Kommentar von `JUDGEMENT_INPUTS` — ab hier gilt er als Regel für jeden Wächter.
+
+**Wofür die §9-Tabelle da ist, an einer einzigen Zahl.** In 0.51.1 ist
+`test_coach` **zweimal** von 424 auf 423 gefallen, an derselben Schleife (sie
+zählt eine Prüfung je Einheit **mit** Pulsfenster). Beim **ersten** Mal war es
+ein Fehler: ein zu früher `return` in `scaled()` nahm dem Stufentest sein
+Fenster **still** — also eine Entscheidung, die niemand getroffen hatte. Beim
+**zweiten** Mal war es die Folge genau dieser Entscheidung (§7, zwanzigster
+Fall). **Eine Zahl, die sich ändert, ohne dass jemand es wollte, ist ein
+Befund** — und die Tabelle ist die Stelle, an der man den Unterschied überhaupt
+bemerkt. Wer sie bei einer Abweichung nachzieht, statt ihr nachzugehen, schaltet
+den einzigen Melder ab, der beide Fälle sichtbar macht.
+
 **Beide sind bis heute NUR AUFGESCHRIEBEN — kein Wächter erzwingt sie** (§7, sechzehnter Fall).
 `test_ramp.py` verletzt die erste an 41 Stellen, und eine Mutation stürzt dort ab, statt
 gezählt zu werden. Gesehen wird das nur mittelbar, über den §9-Wächter, der die Datei als
@@ -1589,11 +1713,26 @@ und `scaled()`. Eine Liste ohne Vollständigkeitsprüfung schützt genau bis zur
    **41** lesende `[]`-Zugriffe in `test_ramp.py`, alle auf Bauteil-Payloads, und
    **1.633** über alle Python-Testdateien zusammen; die JS-Seite ist sauber (2 Stellen, und
    dort wird durchgehend `?.` benutzt). Ein Wächter dafür ist ~20 Zeilen AST — der Umbau
-   dahinter ist es nicht. **Zwei Zuschnitte stehen zur Wahl:** nur `test_ramp.py` und alles
-   Neue ab 0.51.0 (41 Stellen, überschaubar, braucht aber eine eingefrorene Altbestandsliste
-   — genau die Bauart, vor der die vierte Bauregel warnt), oder der ganze Bestand (1.633
-   Stellen). **Bewusst nicht in 0.51.0 gebaut**, damit ein Auslieferungs-Release nicht an
-   einem Prüfstands-Umbau hängt.
+   dahinter ist es nicht.
+
+   **Der Autor der Regel hat sie selbst verletzt.** Beim Bau von 0.51.1 standen zwei neue
+   Prüfzeilen auf `[]`, und die eigene Gegenprobe **stürzte ab, statt zu zählen** — genau
+   der sechzehnte Fall, in der Datei, die ihn aufgeschrieben hat, zwei Sitzungen später.
+   Es wurde nicht daran gedacht, obwohl der Fall aus derselben Hand stammt. **Eine Regel,
+   die ihr eigener Autor zwei Sitzungen später verletzt, ist nicht aufgeschrieben genug —
+   sie muss erzwungen werden.**
+
+   **Drei Zuschnitte, gemessen in 0.51.1:**
+
+   | Zuschnitt | Stellen | Taugt er? |
+   |---|---|---|
+   | nur Neubau (`test_ramp.py`) | **41** | **Nein.** Der Verstoß von 0.51.1 lag in `test_workouts.py`, einer Altdatei — dieser Zuschnitt hätte genau den Fall verfehlt, für den er gedacht war. Dazu bräuchte er eine eingefrorene Altbestandsliste, also die Bauart, vor der die vierte Bauregel warnt |
+   | nach **Herkunft**: `[]` auf Variablen aus einem Bauteil-Aufruf | **632** | **Ja** — das ist genau die Klasse, gegen die eine Mutation fährt, und sie hätte beide Verstöße gefangen |
+   | ganzer Bestand, jeder lesende `[]` mit String-Schlüssel | **1.676** | Ja, aber der Umbau ist unverhältnismäßig |
+
+   Die JS-Seite ist sauber (2 Stellen, dort wird durchgehend `?.` benutzt). **Bewusst nicht
+   in 0.51.0 und nicht in 0.51.1 gebaut**, damit ein Auslieferungs-Release nicht an einem
+   Prüfstands-Umbau hängt — der Zuschnitt nach Herkunft ist der, der gebaut gehört.
 
 **Funktional offen:**
 - Webhooks statt Polling
@@ -1650,6 +1789,23 @@ GitHub-REST von der Sandbox aus ist unauthentifiziert oft rate-limitiert (geteil
 IP) — Refs verlässlich über `git ls-remote origin` prüfen, Repo-Details über
 `ha_get_hacs_info(action="info")` (nutzt den HACS-eigenen Token).
 
+**Handgriff, der jede Sitzung trifft (0.51.1): `git push -u` schreibt die Push-URL
+SAMT TOKEN nach `.git/config`.** Wer mit `https://x-access-token:$TOKEN@…` pusht
+und dabei `-u` setzt, hinterlässt den Token dauerhaft unter
+`branch.<name>.remote` — im Klartext, in einer Datei, die jeder spätere Befehl
+ausgibt. Drei Gegenmittel, in dieser Reihenfolge:
+
+1. **`origin` gleich nach dem Klonen token-frei setzen:**
+   `git remote set-url origin https://github.com/JochenRi/ha-intervals-icu.git`
+2. **Ohne `-u` pushen** und die URL je Aufruf mitgeben — dann landet sie nirgends.
+3. **Nachsehen, nicht annehmen:** `grep -c "x-access-token" .git/config` muss `0`
+   ergeben. Falls nicht: `git branch --unset-upstream <zweig>` und die beiden
+   Schlüssel `branch.<zweig>.remote` / `.merge` entfernen.
+
+Dasselbe gilt für jede Ausgabe, in der ein Token, ein Geheimnispfad oder eine
+geheimnisartige Zeichenkette Richtung einer fremden Domain auftaucht — sie wird
+gemeldet, nicht stillschweigend behoben.
+
 
 **Update:** HACS → *Intervals.icu* → aktualisieren → HA neu starten → Browser **hart** neu
 laden. Der Service Worker des HA-Frontends bedient Module aus eigenem Speicher, an Strg+F5
@@ -1697,7 +1853,8 @@ bzw. ein Reiter je Chat.
 | **Trainer (Leistung je Block, Paket M)** | ✅ gebaut als **0.48.0**. Ein Wert je Arbeitsblock, direkt abgelesen nach dem Verwerfen der ersten zwei Minuten (Rogers 2021, am Bestand bestätigt: Anlauf endet bei 90–120 s). Verlauf je Familie mit der Leistung im ersten eingeschwungenen Block als Leitzahl; dazu ein Regelkreis, der einen Vorschlag rechnet und nichts selbst tut. Blockgrenzen aus Intervals' eigenen Abschnitten (K2). Die Vermessung lief in drei Runden und korrigierte drei Zahlen, bevor eine Zeile entstand (§7). Verifikation am System steht aus |
 | **Anzeige-Release (Paket O)** | ✅ gebaut als **0.50.0**. Reine Darstellung, kein Algorithmus-Bump: der Kopf der Durability-Kachel entfällt, die Progressionszeile steht jetzt im Wochenplan (samt ihrer Grenze), die doppelte Wertetabelle ist auf die im Rechenweg zusammengezogen, die Bandbreite ist als **Spanne** in die Ableseleiste gewandert, und die Leitzahl folgt dem Zeiger — **nur in der Ermüdungskachel**; in den Block-Karten bleibt sie stehen, weil sie dort die Steuergröße ist. Beide Verhaltensweisen sind zugesichert. Die Spezifikation wurde vor dem Bau an sechs Stellen korrigiert (docs/ausbau.md): der Kopf sitzt in `rDurability` und nicht in `rFatigue`; „aus dem Graphen ablesbar" galt nur für die Dauer, nicht für die Watt; Punkt 3 und 4 widersprachen sich über die Wertetabelle; die Bandbreite war nicht „nirgends", sondern als Breite statt als Spanne da; beim Überfahren einer Block-Kurve kam nicht „nichts", sondern ein Wert der Ermüdungskurve (§7); und „bei welchem alpha" nannte den Median statt des alpha des aufgetragenen Blocks. Die sieben eingefrorenen `chart()`-Hashes haben gehalten. Verifikation am System steht aus |
 | **Block-Kurven: Ableseleiste und Datumsachse** | ✅ Ableseleiste als **0.50.0** gebaut — Einheit, Datum, Watt, alpha des aufgetragenen Blocks und Zahl der Blöcke, je Familie eine eigene geschachtelte Zeigergruppe. **Die Datumsachse ist gestrichen**, nicht vertagt: wer beim Überfahren das volle Datum bekommt, braucht den Monat unter der Achse nicht (Entscheidung des Athleten, 14.09.2026). Verifikation am System steht aus |
-| **Stufentest (Paket N)** | ✅ gebaut als **0.51.0**. Der Durability-Test ist aus dem Katalog entfernt, der Stufentest steht dort neu — beide Schwellen aus EINER Fahrt, unter gleichen Bedingungen, statt zweier Termine und 1.000 kJ, die auf absehbare Zeit nicht gefahren würden. Neu: `ramp.py` (die Schwelle wird **gefittet, nicht abgelesen** — eine Ausgleichsgerade durch den Abfall von DFA a1, Schnittpunkt mit 0,75 bzw. 0,5; über das gemessene Segment hinaus wird **nicht** hochgerechnet), `ramp_tests.py` (Archivblock mit Migration und Messmarke, drei Regeln aus K2: keine Erkennung, keine stille Messung, rücknehmbar), `set_ramp_test` an der Stelle von `set_durability_test` (Ströme LIVE und ungedünnt, nur das Ergebnis wird gespeichert), die **Quellenkette je Familie** als eine Mechanik mit verschiedener Rangfolge, und die Stufentest-Karte mit drei Zahlen plus der 40-Watt-Frage. **Kein Algorithmus-Bump, keine Neuberechnung.** Die Spezifikation wurde beim Bau an fünf Stellen korrigiert (docs/ausbau.md): N4 ist nicht „nachzulesen", sondern in den zugänglichen Quellen **nicht beantwortbar** — Einrollen, Startleistung und Abbruchkriterium stehen dort nicht so, wie die Spec annahm; die Segmentregel ist deshalb eine **Setzung**, weil beide Arbeiten das Segment von Hand am Plot bestimmen; die personalisierte Schwelle ist eine Operationalisierung **aus zweiter Hand**; das Ausrollfenster ist eine eigene Idee ohne Protokollvorgabe; und die Erholungsgröße fließt in keine Vorgabe ein. Verifikation am System steht aus |
+| **Stufentest (Paket N)** | ✅ gebaut als **0.51.0**. Der Durability-Test ist aus dem Katalog entfernt, der Stufentest steht dort neu — beide Schwellen aus EINER Fahrt, unter gleichen Bedingungen, statt zweier Termine und 1.000 kJ, die auf absehbare Zeit nicht gefahren würden. Neu: `ramp.py` (die Schwelle wird **gefittet, nicht abgelesen** — eine Ausgleichsgerade durch den Abfall von DFA a1, Schnittpunkt mit 0,75 bzw. 0,5; über das gemessene Segment hinaus wird **nicht** hochgerechnet), `ramp_tests.py` (Archivblock mit Migration und Messmarke, drei Regeln aus K2: keine Erkennung, keine stille Messung, rücknehmbar), `set_ramp_test` an der Stelle von `set_durability_test` (Ströme LIVE und ungedünnt, nur das Ergebnis wird gespeichert), die **Quellenkette je Familie** als eine Mechanik mit verschiedener Rangfolge, und die Stufentest-Karte mit drei Zahlen plus der 40-Watt-Frage. **Kein Algorithmus-Bump, keine Neuberechnung.** Die Spezifikation wurde beim Bau an fünf Stellen korrigiert (docs/ausbau.md): N4 ist nicht „nachzulesen", sondern in den zugänglichen Quellen **nicht beantwortbar** — Einrollen, Startleistung und Abbruchkriterium stehen dort nicht so, wie die Spec annahm; die Segmentregel ist deshalb eine **Setzung**, weil beide Arbeiten das Segment von Hand am Plot bestimmen; die personalisierte Schwelle ist eine Operationalisierung **aus zweiter Hand**; das Ausrollfenster ist eine eigene Idee ohne Protokollvorgabe; und die Erholungsgröße fließt in keine Vorgabe ein. **Nachgebessert in 0.51.1**, siehe die Zeile darunter |
+| **Stufentest, Nachbesserung (Paket N1)** | ✅ gebaut als **0.51.1**, ohne Algorithmus-Bump. Der erste Live-Blick auf 0.51.0 fand vier Fehler, alle in der ausgelieferten Karte: (1) die Rampe hing komplett an der FTP (`ramp 60-115%`) und endete bei diesem Athleten **27 W UNTER** seiner eigenen Leitzahl — die zweite Schwelle war nicht erreichbar, und der Wächter darüber bewachte die Ausnahme statt der Regel; (2) Dauer, Steigung und Spanne passten nur bei genau einer FTP zusammen; (3) die zehn Beschreibungspunkte waren vorhanden, wurden aber nicht gerendert — ein Umzug zwischen zwei Payloads, verschluckt von einem `\|\| []`; (4) das Pulsfenster war die falsche **Art** von Aussage, und die Rampe wurde flach gezeichnet. Gebaut: zwei getrennte Quellenketten (Start Ermüdungskurve → HRVT1 → FTP, Ende Blockmessung-**Leitzahl** → HRVT2 → FTP, Reserve als ZEIT), **die Dauer wird gerechnet statt gesetzt**, Beschreibung an der Einheit mit einem Wächter, der belegt dass sie ankommt, Quellen schon im Leerzustand, Pulsfenster ersatzlos durch einen Satz ersetzt, Rampe als Rampe gezeichnet. Bei diesem Athleten: 138→307 W statt 120→230 W, 34 min statt behaupteter 30 (gerechnet wären es 22 gewesen). §7, Fälle 18–20. Verifikation am System steht aus |
 | **Konstanten-Dubletten (DFA/ACWR) + toter ring()/rd-Code** | ⬜ eigenes Paket, vom Wächter bei 2+2 eingefroren (docs/ausbau.md) |
 | Heute, Kalender (voller Audit), Fitness, Aktivitäten | offen |
 
