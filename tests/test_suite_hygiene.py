@@ -163,10 +163,26 @@ check(len(_names) != len(set(_names)),
 # Eine handgepflegte Regel schuetzt bis zum naechsten Mal, an dem jemand nicht
 # daran denkt - das war in diesem Projekt sechsmal dieselbe Klasse (§7).
 COLD = "import coldcache"
+# DER AUSLOESER IST DAS LADEN, NICHT DIE ERWAEHNUNG (verengt in 0.51.1).
+# Vorher genuegte die Zeichenkette "custom_components" irgendwo in der Datei.
+# test_projektstand LIEST Bauteildateien als Text (Versionsstaende), laedt aber
+# keine - und bekam dafuer einen Fehlalarm. Ein Waechter, der bei richtigem
+# Code anschlaegt, wird abgeschaltet statt befolgt (§9). Der Ausloeser trifft
+# jetzt die beiden Wege, auf denen in diesem Projekt ueberhaupt ein Bauteil
+# geladen wird - nachgezaehlt: dieselbe Dateimenge wie vorher, nur ohne den
+# Fehlalarm.
+LOADERS = ("sys.path.insert(", "spec_from_file_location")
+_erwaehnen = {p.name for p in py_files if "custom_components" in p.read_text(encoding="utf-8")}
+_laden = {p.name for p in py_files
+          if any(m in p.read_text(encoding="utf-8") for m in LOADERS)}
+check(_erwaehnen - _laden == {"test_projektstand.py"},
+      f"Verengung: der alte und der neue Ausloeser unterscheiden sich in "
+      f"{sorted(_erwaehnen - _laden)} statt nur in test_projektstand.py - "
+      f"die Verengung verliert eine Datei")
 for path in py_files:
     text = path.read_text(encoding="utf-8")
     name = path.name
-    if "custom_components" not in text:
+    if not any(marker in text for marker in LOADERS):
         # Dateien, die kein Bauteil laden, brauchen ihn nicht - test_projektstand
         # faehrt Unterprozesse, und jeder davon setzt ihn selbst.
         check(COLD not in text,

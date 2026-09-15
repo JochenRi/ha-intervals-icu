@@ -117,6 +117,40 @@ def _int(value: str) -> int:
 # abschaffen kann, ist besser als eine, die man pflegt.
 
 
+# --- Der Auslieferungsschritt, den keine Prüfung erzwungen hat (0.51.1) ------
+# §11 Schritt 3 lautet seit jeher: "Version heben: manifest.json UND const.py
+# PANEL_VERSION (beide!)". Erzwungen hat es NICHTS - kein Test im ganzen
+# Prüfstand las auch nur eine der beiden Dateien. In 0.51.1 ist der Schritt
+# ausgefallen: Tag, Release und PROJEKTSTAND standen auf 0.51.1, die
+# Integration meldete sich weiter als 0.51.0, und HACS hätte dauerhaft ein
+# offenes Update gezeigt. Gemerkt hat es der Athlet, nicht die Suite.
+#
+# Gegen den TAG kann hier nichts geprüft werden - den gibt es zur Laufzeit
+# nicht. Der Gleichstand der drei Stellen, die im Arbeitsbaum liegen, schon.
+_manifest = (ROOT / "custom_components" / "intervals_icu" / "manifest.json").read_text(encoding="utf-8")
+_const = (ROOT / "custom_components" / "intervals_icu" / "const.py").read_text(encoding="utf-8")
+_m = re.search(r'"version"\s*:\s*"([^"]+)"', _manifest)
+_c = re.search(r'^PANEL_VERSION\s*=\s*"([^"]+)"', _const, re.M)
+_k = re.search(r"\*\*Version:\*\*\s*([0-9]+\.[0-9]+\.[0-9]+)", text)
+
+check(_m is not None, "Version: manifest.json trägt gar keine Version")
+check(_c is not None, "Version: const.py trägt gar kein PANEL_VERSION")
+check(_k is not None, "Version: der PROJEKTSTAND-Kopf nennt keine Version")
+_mv = _m.group(1) if _m else None
+_cv = _c.group(1) if _c else None
+_kv = _k.group(1) if _k else None
+eq(_cv, _mv, "Version: const.py PANEL_VERSION und manifest.json stehen "
+             "auseinander — §11 Schritt 3 verlangt BEIDE")
+eq(_kv, _mv, "Version: der PROJEKTSTAND-Kopf und manifest.json stehen "
+             "auseinander — der Kopf ist nachgezogen, das Bauteil nicht "
+             "(oder umgekehrt)")
+check(_mv is not None and re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", _mv) is not None,
+      f"Version: {_mv!r} ist keine dreiteilige Versionsnummer")
+# GEGENPROBE, gezählt und benannt: der Vergleich findet einen Unterschied auch.
+check(re.search(r'"version"\s*:\s*"([^"]+)"', '{"version": "9.9.9"}').group(1) != _mv,
+      "Version Gegenprobe: der Ausdruck liest nicht, was er lesen soll — "
+      "der Wächter ist blind")
+
 # --- this file's own row, and the two totals ---------------------------------
 # See the docstring: a fixed point, not a circle. Everything that counts must
 # already have happened here EXCEPT the four checks below, which are therefore
