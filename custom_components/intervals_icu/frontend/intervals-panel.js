@@ -1960,6 +1960,8 @@ class IntervalsIcuPanel extends HTMLElement {
         this._render();
         this.scrollTop = scroll;
       }
+      else if (act === "smmeasure") this._smMeasure(id);
+      else if (act === "smconf") this._smConfirm(id);
       else if (act === "smark") {
         this._smWrite(id, el.dataset.fam, Number(el.dataset.idx),
                       el.dataset.on !== "1");
@@ -3990,6 +3992,11 @@ class IntervalsIcuPanel extends HTMLElement {
     const cur = (sm.marks || []).find((m) => String(m.activity_id) === String(a.id)) || null;
     const busy = this._smBusy === String(a.id);
     const err = this._smErr && this._smErr.id === String(a.id) ? this._smErr.msg : null;
+    const msBusy = this._msBusy === String(a.id);
+    const msErr = this._msErr && this._msErr.id === String(a.id) ? this._msErr.msg : null;
+    const msOk = this._msOk === String(a.id);
+    const cfBusy = this._cfBusy === String(a.id);
+    const cfErr = this._cfErr && this._cfErr.id === String(a.id) ? this._cfErr.msg : null;
     const sel = this._famSel || null;
 
     // ZWEI Datenzustaende, nicht drei (docs/ausbau.md, Streichung 5): ein
@@ -4092,19 +4099,61 @@ class IntervalsIcuPanel extends HTMLElement {
     const smTotal = Object.values((cur && cur.marks) || {})
       .reduce((sum, list) => sum + ((list || []).length), 0);
     const smFams = Object.keys((cur && cur.marks) || {}).length;
+    // WIE VIELE STUNDEN TRAGEN EINEN WERT - eine Zeile, keine Tabelle. Die
+    // Einzelwerte stehen ohnehin in der Trainer-Kachel; hier ist die Frage,
+    // OB gemessen wurde und worauf. Zwei Orte fuer dieselbe Tabelle waeren
+    // 0.46.0, und die kurze Zeile ist der Preis dafuer, dass der
+    // Driftzustand mit in dieselbe Auslieferung passt.
+    const gemStd = ((cur && cur.hours) || []).filter((h) => (h || {}).p075 != null).length;
+    const gemAlle = ((cur && cur.hours) || []).length;
+
+    // DIE ZWEI AUSSAGEN, und sie kommen BEIDE aus der Payload. "Noch nicht
+    // gemessen" und "Auswahl geaendert" sind verschiedene Saetze: wer schon
+    // gemessen hat, soll nach einem Umhaken nicht lesen, sein Klick sei nie
+    // angekommen. Unterschieden wird an `measured_at` - der Zustand steht in
+    // Feldern, der Satz kommt aus dem Leseweg (0.53.1).
+    const offen = !cur ? "" : (cur.reason
+      ? esc(cur.reason)
+      : esc((cur.measured_at ? sm.remeasure : sm.not_measured) || ""));
+
     const stand = !cur ? "" : `<p class="src">
         <b>Im Archiv:</b> ${smTotal} Marke${smTotal === 1 ? "" : "n"} über
         ${smFams} Familie${smFams === 1 ? "" : "n"}${cur.set_at
           ? `, zuletzt gesetzt am ${esc(cur.set_at)}` : ""}.
         ${cur.hours
-          ? `Gemessen über ${cur.hours.length} Stunde${cur.hours.length === 1 ? "" : "n"}
-             aus dem markierten Bereich.`
+          ? `Gemessen über ${gemAlle} Fahrtstunde${gemAlle === 1 ? "" : "n"},
+             ${gemStd} davon mit Wert${cur.measured_at
+               ? ` — am ${esc(cur.measured_at)}` : ""}.`
           // Ein ECHTER Grund aus dem Archiv (gescheiterte Messung,
           // Versionswechsel) gewinnt; sonst der Satz aus dem Leseweg. Er steht
           // seit 0.53.1 nicht mehr im Eintrag, weil ein gespeicherter
-          // Anzeigetext mit dem naechsten Umbau veraltet - und dann auf einen
-          // Knopf verweist, den es nicht gibt.
-          : esc(cur.reason || sm.not_measured || "")}</p>`;
+          // Anzeigetext mit dem naechsten Umbau veraltet.
+          : offen}</p>`;
+
+    // DER DRIFTZUSTAND UND SEIN AUSWEG STEHEN AN DERSELBEN STELLE. Der Befund
+    // kommt mit den Runden (nur gegen sie ist er zu haben), und der Knopf
+    // steht daneben statt in einem Menue: ein Zustand, aus dem der Weg heraus
+    // woanders liegt, ist einer, aus dem man nicht herauskommt. Genau das war
+    // `confirm_section_marks` drei Releases lang - gebaut und nie bedienbar.
+    const stale = ((this._laps[a.id] || {}).marks_stale) || null;
+    const drift = !(cur && stale) ? "" : `<div class="err pad">
+        <b>Die Zuordnung sitzt nicht mehr.</b>
+        ${esc((sm.stale_reason || {})[stale] || "")}
+        ${cfErr ? `<br>${esc(cfErr)}` : ""}
+        <br><button class="ctxremove" data-act="smconf" data-id="${esc(a.id)}"
+          ${cfBusy || busy ? "disabled" : ""}>Zuordnung auf den neuen Stand
+          setzen — die Marken bleiben, die Messung fällt</button></div>`;
+
+    // DER KNOPF MISST NUR, WAS MARKIERT IST. Er hakt nichts an, schlaegt
+    // nichts vor, ergaenzt nichts. Ohne Marke gibt es nichts zu messen, und
+    // waehrend die Fahrt driftet, waere jede Messung eine auf verschobenen
+    // Abschnitten - beides sperrt ihn, und die Sperre sagt warum.
+    const messen = !cur ? "" : `<div class="smrun">
+        <button class="ctxremove${msOk ? " done" : ""}" data-act="smmeasure"
+          data-id="${esc(a.id)}" ${msBusy || busy || stale ? "disabled" : ""}>
+          ${msBusy ? "wird gemessen …" : (msOk ? "gemessen" : "übernehmen und messen")}
+        </button>
+        ${msErr ? `<span class="err">${esc(msErr)}</span>` : ""}</div>`;
 
     return `<h3 class="secname">Zuordnung
       <span class="hint">— du ordnest zu, das System erkennt nicht. Familie wählen, dann die
@@ -4118,7 +4167,9 @@ class IntervalsIcuPanel extends HTMLElement {
         ${err ? `<div class="err pad">${esc(err)}</div>` : ""}
         ${rtBusy ? `<div class="loading"><span class="spin"></span> Ströme werden geholt und gemessen …</div>` : ""}
         ${rtErr ? `<div class="err pad">${esc(rtErr)}</div>` : ""}
+        ${drift}
         ${stand}
+        ${messen}
         ${gemessen}
       </div>`;
   }
@@ -4152,9 +4203,13 @@ class IntervalsIcuPanel extends HTMLElement {
      haeufigste Fall ist "in Intervals unterteilen", und der ist nur als
      eigener Satz brauchbar. */
   async _smWrite(id, family, index, mark) {
-    if (!id || !family || this._smBusy) return;
+    if (!id || !family || this._smBusy || this._msBusy) return;
     this._smBusy = String(id);
     this._smErr = null;
+    // Die Quittung der letzten Messung gilt nicht mehr: `hours` faellt mit
+    // jeder Aenderung, und ein gruener Knopf darueber waere schlicht falsch.
+    this._msOk = null;
+    this._msErr = null;
     this._render();
     try {
       await this._ws("set_section_mark", {
@@ -4169,6 +4224,77 @@ class IntervalsIcuPanel extends HTMLElement {
       const scroll = this.scrollTop;
       this._smBusy = null;
       this._smErr = { id: String(id), msg: String((err && err.message) || err) };
+      this._render();
+      this.scrollTop = scroll;
+    }
+  }
+
+  /* "Uebernehmen und messen".
+
+     ER MISST NUR, WAS MARKIERT IST - gehakt wird hier nichts, vorgeschlagen
+     auch nichts. GRUEN bei Erfolg, ROT mit dem Grund im KLARTEXT: das Backend
+     schickt fuer jede der fuenf Lagen einen eigenen Satz (Stroeme nicht
+     abrufbar · Stroeme da, Abschnitte nicht · keine Abschnitte mehr ·
+     Zuordnung verschoben · kein auswertbares alpha), und hier wird nichts zu
+     "Messung fehlgeschlagen" zusammengefasst. Der haeufigste Fall ist
+     "in Intervals unterteilen", und der ist nur als eigener Satz brauchbar.
+
+     Eine Messung, die ohne Zahlen zurueckkommt, ist KEIN Erfolg: das Backend
+     legt den Grund dann im Archiv ab (Sachbefund), und die Kachel zeigt ihn
+     rot - sonst faerbte sich der Knopf gruen ueber einer Fahrt, an der nichts
+     gemessen wurde (0.42.1).
+
+     Die Scroll-Lage wird VOR dem Re-Render gesichert, wie bei _smWrite. */
+  async _smMeasure(id) {
+    if (!id || this._msBusy || this._smBusy) return;
+    this._msBusy = String(id);
+    this._msErr = null;
+    this._msOk = null;
+    this._render();
+    try {
+      const res = await this._ws("measure_section_marks", { activity_id: String(id) });
+      const scroll = this.scrollTop;
+      this._smarks = await this._ws("section_marks");
+      this._msBusy = null;
+      const grund = res && res.reason;
+      if (grund) this._msErr = { id: String(id), msg: String(grund) };
+      else this._msOk = String(id);
+      this._render();
+      this.scrollTop = scroll;
+    } catch (err) {
+      const scroll = this.scrollTop;
+      this._msBusy = null;
+      this._msErr = { id: String(id), msg: String((err && err.message) || err) };
+      this._render();
+      this.scrollTop = scroll;
+    }
+  }
+
+  /* Die verschobene Zuordnung ausdruecklich bestaetigen.
+
+     Der Knopf steht dort, wo der Befund gemeldet wird, und nirgends sonst.
+     Danach werden die Runden NEU geholt: der Driftbefund haengt an ihnen, und
+     ohne den zweiten Abruf staende die alte Meldung weiter da, obwohl sie
+     erledigt ist - ein Zustand, der sich nicht aufloest, sieht aus wie einer,
+     der nicht behoben wurde. */
+  async _smConfirm(id) {
+    if (!id || this._cfBusy) return;
+    this._cfBusy = String(id);
+    this._cfErr = null;
+    this._render();
+    try {
+      await this._ws("confirm_section_marks", { activity_id: String(id) });
+      const scroll = this.scrollTop;
+      this._smarks = await this._ws("section_marks");
+      this._laps[id] = await this._ws("laps", { activity_id: String(id) });
+      this._cfBusy = null;
+      this._msOk = null;
+      this._render();
+      this.scrollTop = scroll;
+    } catch (err) {
+      const scroll = this.scrollTop;
+      this._cfBusy = null;
+      this._cfErr = { id: String(id), msg: String((err && err.message) || err) };
       this._render();
       this.scrollTop = scroll;
     }
@@ -5370,6 +5496,8 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
 .smbox{width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;
   border:2px solid ${C.line};border-radius:6px;background:none;cursor:pointer;padding:0}
 .smbox:hover{border-color:var(--fc)}
+.smrun{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:6px}
+.smrun .err{font-size:12px}
 .smbox.on{border-color:var(--fc);background:color-mix(in srgb,var(--fc) 16%,transparent)}
 /* Tagesbeschriftung (B5): fester Dialog, Kategorien-Chips, Marker */
 .tday[data-act]{cursor:pointer}

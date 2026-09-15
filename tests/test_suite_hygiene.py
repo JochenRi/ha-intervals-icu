@@ -46,10 +46,33 @@ def lines_of(path: Path) -> list[str]:
 
 
 def positions(lines: list[str], pattern: re.Pattern) -> list[int]:
-    """Line numbers (1-based) whose CODE matches - comments do not count."""
+    """Line numbers (1-based) whose CODE matches - comments do not count.
+
+    VERENGT in 0.54.0, nicht entschaerft (§9): der Waechter meldete einen
+    voellig richtigen Satz. Ein JS-Blockkommentar `/* ... */` erwaehnte
+    `report()` in Prosa, und weil nur Zeilen ausgenommen waren, die MIT `//`
+    oder `*` BEGINNEN, zaehlte die Erwaehnung als zweiter Aufruf. Die Antwort
+    ist nicht, den Satz umzuschreiben - dann faende der Waechter beim
+    naechsten Mal denselben Fehler wieder -, sondern ihm beizubringen, was ein
+    Blockkommentar ist. Seine Gegenproben beissen unveraendert: ein ECHTER
+    zweiter Aufruf im Code wird weiter gefunden.
+    """
     out = []
+    in_block = False
     for i, line in enumerate(lines, 1):
         stripped = line.strip()
+        if in_block:
+            if "*/" in line:
+                in_block = False
+                # Was HINTER dem Blockende steht, ist wieder Code.
+                line = line.split("*/", 1)[1]
+                stripped = line.strip()
+            else:
+                continue
+        elif "/*" in line and "*/" not in line:
+            in_block = True
+            line = line.split("/*", 1)[0]
+            stripped = line.strip()
         if stripped.startswith("#") or stripped.startswith("//") or stripped.startswith("*"):
             continue
         if pattern.search(line):
@@ -98,6 +121,20 @@ for path in py_files:
         "sys.exit(" in text and ("FAILURES" in text or "failures" in text),
         f"{name}: Fehler erreichen den Exit-Code nicht",
     )
+
+# GEGENPROBE zur Verengung, gezaehlt und benannt: ein Blockkommentar wird
+# uebersprungen, ein echter Aufruf dahinter NICHT - sonst waere der Waechter
+# nach dem Umbau blind, und das faellt erst auf, wenn eine Datei zwei
+# Schlussmeldungen hat.
+_probe = ["/* ein Kommentar, der report(\"x\") nennt", "   und weitergeht */",
+          'report("echt");']
+check(positions(_probe, JS_SUMMARY) == [3],
+      f"Blockkommentar-Verengung: {positions(_probe, JS_SUMMARY)} statt genau dem "
+      f"echten Aufruf in Zeile 3")
+_einzeilig = ['/* report("x") */ report("echt");']
+check(positions(_einzeilig, JS_SUMMARY) == [1],
+      "Blockkommentar-Verengung: ein Aufruf hinter einem einzeiligen "
+      "Blockkommentar wird nicht mehr gefunden")
 
 for path in js_files:
     lines = lines_of(path)

@@ -105,8 +105,12 @@ REASON_LIMIT = 256
 # Versionswechsel. Die blosse ABWESENHEIT einer Messung ist kein Grund, sie
 # ist ein Zustand - und Zustaende werden aus `hours is None` gelesen, nicht
 # aus einem Satz.
-NOT_MEASURED = ("Markiert, noch nicht gemessen — der Knopf dafür kommt mit der "
-                "Messung.")
+# Der Satz zeigt jetzt auf einen Knopf, DEN ES GIBT. Bis 0.53.1 stand hier
+# "der Knopf dafuer kommt mit der Messung", weil er noch fehlte - genau die
+# Sorte Text, die mit dem naechsten Umbau veraltet. Er reist deshalb im
+# Leseweg mit und steht nicht im Eintrag: waere er gespeichert, muesste jede
+# solche Aenderung migriert werden.
+NOT_MEASURED = "Markiert, noch nicht gemessen — auf „übernehmen und messen“."
 
 # Die ZWEITE Aussage, und sie ist eine andere als die erste. Wer schon einmal
 # gemessen hat und danach einen Haken setzt oder zuruecknimmt, soll nicht

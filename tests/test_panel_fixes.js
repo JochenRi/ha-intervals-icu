@@ -1322,7 +1322,7 @@ const acts = F.activities(), thr = F.thresholds();
   // und eine GEMESSENE Fahrt sagt das statt „noch nicht gemessen"
   q._smarks.marks[0].hours = [{ hour: 1, p075: 208 }, { hour: 2, p075: 201 }];
   const gemessen = q._marksBlock(act);
-  ok(/Gemessen über 2 Stunden/.test(gemessen),
+  ok(/Gemessen über 2 Fahrtstunden/.test(gemessen) && /2 davon mit Wert/.test(gemessen),
      "quittung: eine gemessene Fahrt sagt nicht, worüber gemessen wurde");
   ok(!/noch nicht gemessen/.test(gemessen),
      "quittung: eine gemessene Fahrt behauptet weiter, sie sei nicht gemessen");
@@ -1424,6 +1424,177 @@ const acts = F.activities(), thr = F.thresholds();
   ok(scrolls.length === 1 && scrolls[0] === 742,
      "fehlergründe Gegenprobe: die Scroll-Lage überlebt das Re-Render nicht");
 
+/* ── DER ÜBERNEHMEN-KNOPF (B1) ─────────────────────────────────────────────
+   Am SIMULIERTEN Ereignis, nicht per grep: die Frage ist nicht, ob der Knopf
+   im Quelltext steht, sondern ob ein Klick darauf das richtige Kommando
+   schickt, ob Erfolg grün und Misserfolg rot ankommt, und ob die fünf Lagen
+   ALS EIGENE SÄTZE durchkommen statt als "Messung fehlgeschlagen".
+
+   §7, zweiundzwanzigster Fall: ein Zustand, den keine Prüfung anfasst, ist
+   gebaut und nicht ausgeliefert.
+
+   KEIN eigenes `(async () => {})()` hier: die Datei läuft in EINER solchen,
+   und ein zweites, nicht abgewartetes liefe erst NACH `report()` — der ganze
+   Block zählte dann null Prüfungen und meldete keinen Fehler. Das ist
+   dieselbe Klasse wie der abgestürzte Lauf aus §7, nur leiser. */
+{
+  const q = new M.Panel();
+  const act = { id: "a1", name: "Tempo", dfa: { blocks: [{ start_index: 600 }] } };
+  const eintrag = (extra) => Object.assign(
+    { activity_id: "a1", date: "2026-09-10", marks: { tempo: [600] },
+      hours: null, reason: "", set_at: "2026-09-12", measured_at: null }, extra || {});
+  const payload = (extra) => ({
+    marks: [eintrag(extra)], families: Object.keys(M.FAM),
+    stale_reason: { section_moved: "Mindestens ein markierter Abschnitt hat eine andere Dauer." },
+    not_measured: "Markiert, noch nicht gemessen — auf „übernehmen und messen“.",
+    remeasure: "Die Auswahl hat sich seit der Messung geändert — neu zu messen." });
+  q._rtests = { tests: [] };
+  q._sel = act;
+  q._render = () => {};
+  Object.defineProperty(q, "scrollTop", { get: () => 500, set: () => {}, configurable: true });
+  q._attach();
+  const onClick = q.shadowRoot._listeners.click;
+  ok(typeof onClick === "function", "übernehmen: kein Klick-Handler registriert");
+  const fire = (dataset) => onClick({
+    target: { closest: (sel) => (sel === "[data-act]" ? { dataset } : null) } });
+
+  // ── der Klick schickt das Messkommando, und NUR für diese Fahrt ────────
+  q._smarks = payload(); q._laps = { a1: { laps: [], marks_stale: null } };
+  const sent = [];
+  q._ws = (cmd, args) => { sent.push([cmd, args]); return Promise.resolve(
+    cmd === "section_marks" ? payload({ hours: [{ hour: 1, p075: 201 }, { hour: 2, p075: null }],
+                                        measured_at: "2026-09-15" })
+                            : { reason: "" }); };
+  fire({ act: "smmeasure", id: "a1" });
+  await new Promise((r) => setTimeout(r, 0));
+  ok(sent.some(([c, a]) => c === "measure_section_marks" && a && a.activity_id === "a1"),
+     `übernehmen: der Klick schickt das Messkommando nicht (${JSON.stringify(sent)})`);
+  // ER MISST NUR - er hakt nichts an und nimmt nichts zurück.
+  ok(!sent.some(([c]) => c === "set_section_mark"),
+     "übernehmen: der Knopf setzt oder nimmt nebenbei Marken");
+
+  // ── GRÜN bei Erfolg, und die Kachel nennt, was gemessen wurde ─────────
+  const gruen = q._marksBlock(act);
+  H.clean(gruen, "übernehmen grün");
+  ok(/data-act="smmeasure"[^>]*class="[^"]*done"|class="[^"]*done"[^>]*data-act="smmeasure"/
+     .test(gruen) || /class="ctxremove done" data-act="smmeasure"/.test(gruen),
+     "übernehmen: ein Erfolg färbt den Knopf nicht");
+  ok(/2 Fahrtstunden/.test(gruen) && /1 davon mit Wert/.test(gruen),
+     "übernehmen: die Kachel sagt nicht, worüber gemessen wurde");
+  ok(/2026-09-15/.test(gruen), "übernehmen: das Messdatum fehlt");
+  // Eine Zeile, keine Tabelle: die Einzelwerte stehen in der Trainer-Kachel.
+  ok(!/Stunde 1|Stunde 2|201/.test(gruen),
+     "übernehmen: die Kachel baut eine zweite Wertetabelle auf");
+
+  // ── ROT mit dem Grund im Klartext: die fünf Lagen einzeln ─────────────
+  const lagen = [
+    // Das Stichwort muss den Satz TREFFEN und nicht die Kachel: "Ströme"
+    // allein steht auch im Hinweis für Fahrten ohne DFA-Auswertung, und die
+    // Fremdfahrt-Gegenprobe schlüge dann zu Recht an.
+    ["nicht abrufbar (502)", "Die Ströme dieser Fahrt sind nicht abrufbar (502) — ohne sie ist nichts zu messen."],
+    ["Abschnitte nicht", "Die Ströme sind da, die Abschnitte nicht (504) — es wurde nichts geändert."],
+    ["keine Abschnitte mehr", "Intervals liefert für diese Fahrt keine Abschnitte mehr."],
+    ["bestätigen oder neu zu setzen", "Zu mindestens einem markierten Abschnitt gibt es keine Grenzen mehr — die Zuordnung ist zu bestätigen oder neu zu setzen."],
+  ];
+  for (const [stichwort, satz] of lagen) {
+    q._msErr = null; q._msOk = null; q._msBusy = null;
+    q._ws = (cmd) => (cmd === "measure_section_marks"
+      ? Promise.reject(new Error(satz)) : Promise.resolve(payload()));
+    await q._smMeasure("a1");
+    const html = q._marksBlock(act);
+    ok(html.includes(stichwort), `übernehmen: „${stichwort}“ kommt in der Kachel nicht an`);
+    ok(!/Messung fehlgeschlagen|Unbekannter Fehler/.test(html),
+       `übernehmen: ${stichwort} wurde zu einer allgemeinen Meldung zusammengefasst`);
+    ok(!/class="ctxremove done" data-act="smmeasure"/.test(html),
+       `übernehmen: ${stichwort} färbt den Knopf trotzdem grün`);
+    ok(q._marksBlock({ id: "a2", dfa: null }).includes(stichwort) === false,
+       `übernehmen: ${stichwort} erscheint auch an einer fremden Fahrt`);
+  }
+
+  // Die FÜNFTE Lage ist die andere Bauart: das Backend antwortet ERFOLGREICH,
+  // legt den Sachbefund aber im Archiv ab. Grün wäre hier falsch.
+  q._msErr = null; q._msOk = null; q._msBusy = null;
+  const sach = "Diese Fahrt führt keinen auswertbaren DFA-a1-Strom.";
+  q._ws = (cmd) => Promise.resolve(cmd === "measure_section_marks"
+    ? { reason: sach } : payload({ reason: sach }));
+  await q._smMeasure("a1");
+  const sachHtml = q._marksBlock(act);
+  ok(sachHtml.includes("auswertbaren DFA-a1-Strom"),
+     "übernehmen: ein Sachbefund ohne Zahlen kommt nicht an");
+  ok(!/class="ctxremove done" data-act="smmeasure"/.test(sachHtml),
+     "übernehmen: eine Messung ohne Zahlen färbt den Knopf grün");
+
+  // ── „noch nie gemessen“ GEGEN „Auswahl geändert“ ──────────────────────
+  // Beide Sätze kommen aus der PAYLOAD. Unterschieden wird an measured_at.
+  q._msErr = null; q._msOk = null;
+  q._smarks = payload();
+  const nie = q._marksBlock(act);
+  ok(/noch nicht gemessen/.test(nie) && !/Auswahl hat sich/.test(nie),
+     "messzustand: eine nie gemessene Fahrt liest den falschen Satz");
+  q._smarks = payload({ measured_at: "2026-09-15" });
+  const neu = q._marksBlock(act);
+  ok(/Auswahl hat sich/.test(neu) && !/noch nicht gemessen/.test(neu),
+     "messzustand: wer schon gemessen hat, liest „noch nicht gemessen“");
+  // GEGENPROBE, gezählt und benannt: die Sätze stehen NICHT als Literal im
+  // Frontend - eine andere Payload muss andere Sätze ergeben.
+  q._smarks = Object.assign(payload({ measured_at: "2026-09-15" }),
+                            { remeasure: "ANDERER SATZ AUS DER PAYLOAD" });
+  ok(/ANDERER SATZ AUS DER PAYLOAD/.test(q._marksBlock(act)),
+     "messzustand: der Satz kommt aus dem Frontend, nicht aus der Payload");
+
+  // ── DER DRIFTZUSTAND UND SEIN AUSWEG, an derselben Stelle ────────────
+  // confirm_section_marks war drei Releases lang gebaut und nie bedienbar.
+  // Harmlos, SOLANGE nichts den Zustand auslöste; seit der Messweg ihn
+  // auslöst, wäre es ein Zustand ohne Ausgang.
+  q._smarks = payload({ hours: [{ hour: 1, p075: 201 }] });
+  q._laps = { a1: { laps: [], marks_stale: "section_moved" } };
+  const drift = q._marksBlock(act);
+  H.clean(drift, "drift");
+  ok(/andere Dauer/.test(drift),
+     "drift: der Befund aus der Lap-Payload wird nicht gezeigt");
+  ok(/data-act="smconf"/.test(drift),
+     "drift: es gibt keinen Weg aus dem Zustand heraus");
+  ok(/auf den neuen Stand/.test(drift),
+     "drift: der Knopf sagt nicht, was er tut");
+  // Und WÄHREND die Fahrt driftet, wird nicht gemessen - sonst säße das
+  // Ergebnis auf verschobenen Abschnitten.
+  const mbtn = /<button[^>]*data-act="smmeasure"[^>]*>/.exec(drift);
+  ok(mbtn !== null && /disabled/.test(mbtn[0]),
+     "drift: der Messknopf ist trotzdem bedienbar");
+  // Gegenprobe: ohne Drift ist er es sehr wohl, und der Ausweg fehlt.
+  q._laps = { a1: { laps: [], marks_stale: null } };
+  const ohneDrift = q._marksBlock(act);
+  const mbtn2 = /<button[^>]*data-act="smmeasure"[^>]*>/.exec(ohneDrift);
+  ok(mbtn2 !== null && !/disabled/.test(mbtn2[0]),
+     "drift Gegenprobe: der Messknopf bleibt auch ohne Drift gesperrt");
+  ok(!/data-act="smconf"/.test(ohneDrift),
+     "drift Gegenprobe: der Bestätigen-Knopf steht auch ohne Befund da");
+
+  // ── der Klick auf Bestätigen holt die Runden NEU ─────────────────────
+  // Ohne den zweiten Abruf hinge der alte Befund weiter in der Anzeige, und
+  // ein Zustand, der sich nicht auflöst, sieht aus wie einer, der nicht
+  // behoben wurde.
+  q._laps = { a1: { laps: [], marks_stale: "section_moved" } };
+  const sent2 = [];
+  q._ws = (cmd, args) => { sent2.push(cmd); return Promise.resolve(
+    cmd === "section_marks" ? payload() : { laps: [], marks_stale: null }); };
+  fire({ act: "smconf", id: "a1" });
+  await new Promise((r) => setTimeout(r, 0));
+  ok(sent2.includes("confirm_section_marks"),
+     `bestätigen: der Klick schickt das Kommando nicht (${JSON.stringify(sent2)})`);
+  ok(sent2.includes("laps"),
+     "bestätigen: die Runden werden nicht neu geholt, der Befund bliebe stehen");
+  ok(!/data-act="smconf"/.test(q._marksBlock(act)),
+     "bestätigen: der Befund steht nach dem Bestätigen weiter da");
+
+  // ── ein neuer Haken macht die Quittung hinfällig ─────────────────────
+  q._msOk = "a1"; q._msBusy = null; q._smBusy = null;
+  q._ws = () => Promise.resolve(payload());
+  await q._smWrite("a1", "tempo", 1290, true);
+  ok(q._msOk === null,
+     "quittung: nach einem neuen Haken bleibt der Knopf grün, obwohl hours fällt");
+}
+
 /* ── Die Markenspalte der Aktivitätenliste (docs/ausbau.md P5) ─────────────
    Am GERENDERTEN rAkt geprüft, nicht an der Hilfsfunktion allein: die Frage
    ist, ob die Spalte in der Liste ankommt und ob leer wirklich leer heißt. */
@@ -1512,7 +1683,7 @@ const acts = F.activities(), thr = F.thresholds();
   q._laps = { a1: { laps: [] } };
   q._rtests = { tests: [] };
   q._smarks = { marks: [], families: Object.keys(M.FAM), stale_reason: {},
-                not_measured: "Markiert, noch nicht gemessen — der Knopf dafür kommt mit der Messung.",
+                not_measured: "Markiert, noch nicht gemessen — auf „übernehmen und messen“.",
                 corridors: { vo2max: [0.2, 0.5], sweetspot: [0.5, 0.75], tempo: [0.75, 1.0] },
                 discard_s: 120, min_seconds: 150, min_for_source: 3 };
   q._render = () => {};
@@ -1610,17 +1781,17 @@ const acts = F.activities(), thr = F.thresholds();
   q._smarks.marks = [{ activity_id: "a1", date: "2026-09-10", marks: { tempo: [600] },
                        hours: null, reason: "", set_at: "2026-09-12" }];
   const satz = q._marksBlock(act);
-  ok(!/übernehmen und messen/.test(satz),
-     "der satz: er verweist weiter auf einen Knopf, den es noch nicht gibt");
-  ok(/kommt mit der Messung/.test(satz),
-     "der satz: er sagt nicht, dass der Knopf noch kommt");
+  ok(/übernehmen und messen/.test(satz),
+     "der satz: er nennt den Knopf nicht, den es seit B1 gibt");
+  ok(!/kommt mit der Messung/.test(satz),
+     "der satz: er verspricht den Knopf weiter für später");
   ok(/Im Archiv:/.test(satz), "der satz: die Quittung ist dabei verlorengegangen");
   // Gegenprobe: ein ECHTER Grund aus der Payload verdrängt ihn
   q._smarks.marks[0].reason = "Die Abschnitte waren nicht abrufbar.";
   const echt = q._marksBlock(act);
   ok(/nicht abrufbar/.test(echt),
      "der satz: ein echter Grund aus dem Archiv wird verschluckt");
-  ok(!/kommt mit der Messung/.test(echt),
+  ok(!/noch nicht gemessen/.test(echt),
      "der satz: der allgemeine Satz steht neben dem echten Grund");
 }
 

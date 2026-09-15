@@ -353,10 +353,16 @@ check("Haken: und OHNE gespeicherten Anzeigetext", frisch.get("reason"), "")
 check("Haken: die Zusicherung haelt am echten Code", haken_misst_nicht(frisch), True)
 # Der Satz reist im LESEWEG mit, statt im Eintrag zu stehen - eine Stelle,
 # kein Altbestand, der migriert werden muss.
-ok("Haken: der Satz nennt den Knopf nicht mehr, den es noch nicht gibt",
-   "übernehmen und messen" not in sm.NOT_MEASURED)
-ok("Haken: er sagt stattdessen, dass der Knopf noch kommt",
-   "kommt mit der Messung" in sm.NOT_MEASURED)
+# Seit B1 GIBT es den Knopf, also nennt der Satz ihn wieder - und er steht
+# weiter NICHT im Eintrag, sondern im Leseweg. Genau daran haengt, dass diese
+# Textaenderung keine Migration braucht: ein gespeicherter Anzeigetext haette
+# hier zum zweiten Mal in drei Releases nachgezogen werden muessen.
+ok("Haken: der Satz nennt den Knopf, den es jetzt gibt",
+   "übernehmen und messen" in sm.NOT_MEASURED)
+ok("Haken: und er verspricht ihn nicht mehr fuer spaeter",
+   "kommt mit der Messung" not in sm.NOT_MEASURED)
+ok("Haken: er ist keiner der gespeicherten Alt-Saetze, die beim Laden fallen",
+   sm.NOT_MEASURED not in sm._LEGACY_NOT_MEASURED)
 check("Haken: usable_hours gibt nichts her", sm.usable_hours(frisch, LAPS), None)
 
 gemessen = sm.set_measurement(mess, "c1", hours=[{"hour": 1, "p075": 208}], reason="")
