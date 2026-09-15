@@ -1,6 +1,6 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 15.09.2026 · **Version:** 0.51.1 · **Status:** produktiv auf HEIMDALL,
+**Stand:** 15.09.2026 · **Version:** 0.52.0 · **Status:** produktiv auf HEIMDALL,
 Auslieferung über HACS aus `github.com/JochenRi/ha-intervals-icu`
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lokal
@@ -1567,6 +1567,31 @@ den Non-Responder-Befund (Manresa-Rocamora 2021).
 | 0.30.0 | Ruhepuls-Warnlinie unsichtbar | sie lag außerhalb der Achse und wurde stillschweigend nicht gezeichnet |
 | 0.30.1 | Wochenbalken verrutscht | Flex-Zeile unten ausgerichtet; Tage mit Einheitennamen wurden höher und schoben ihren Balken hoch — **die gemeinsame Grundlinie war dahin** |
 
+**Zweiundzwanzigster Fall (0.52.0, in der eigenen Arbeit gefunden): ein
+Zustand, der gebaut ist und von nichts geprüft wird, ist am lebenden System von
+einem fehlenden nicht zu unterscheiden.** Die Kachel der Zuordnung zeigte den
+Zustand „markiert, noch nicht gemessen" von Anfang an — P2b verlangt ihn, und er
+war da. **Keine einzige Prüfung hat ihn angefasst.** Gemerkt wurde es erst, als
+der Athlet vor der Auslieferung nachfragte, ob er überhaupt sehen kann, dass
+sein Haken angekommen ist.
+
+Das ist nicht dieselbe Klasse wie ein fehlendes Feld, sondern eine eigene: der
+Code war richtig, der Prüfstand war blind, und die Lücke wäre **erst am
+lebenden System** aufgefallen — dort, wo Nachbessern am teuersten ist. Ein
+Bericht, der aufzählt, was gebaut wurde, deckt sie zu; erst die Frage „woran
+sehe ich das?" hat sie geöffnet.
+
+Beim Nachsehen fiel zugleich der zweite Mangel auf, und der gehört zur alten
+Klasse: **derselbe Satz stand doppelt da**, einmal als Text im Frontend
+(„Noch nicht gemessen.") und einmal als Grund aus der Payload („Markiert, noch
+nicht gemessen — …"). Zwei Wahrheiten für einen Text, fünfte Bauregel. Jetzt
+kommt der Satz einmal und aus der Payload, und die Kachel nennt daneben, was
+wirklich im Archiv steht: Zahl der Marken, Zahl der Familien, Setzdatum.
+
+**Die Regel daraus:** eine Zustandsanzeige, die ein Bauteil verspricht, gilt
+erst als gebaut, wenn eine Prüfung sie an einer gegenprobten Fixture SIEHT. „Es
+steht im Code" ist keine Auslieferung.
+
 ### Die drei Fehlerklassen, die sich durchziehen
 
 1. **Falsche Quelle statt falscher Anzeige.** FTP, Tageslast — beide standen in den Daten und
@@ -1907,6 +1932,7 @@ bzw. ein Reiter je Chat.
 | **Block-Kurven: Ableseleiste und Datumsachse** | ✅ Ableseleiste als **0.50.0** gebaut — Einheit, Datum, Watt, alpha des aufgetragenen Blocks und Zahl der Blöcke, je Familie eine eigene geschachtelte Zeigergruppe. **Die Datumsachse ist gestrichen**, nicht vertagt: wer beim Überfahren das volle Datum bekommt, braucht den Monat unter der Achse nicht (Entscheidung des Athleten, 14.09.2026). Verifikation am System steht aus |
 | **Stufentest (Paket N)** | ✅ gebaut als **0.51.0**. Der Durability-Test ist aus dem Katalog entfernt, der Stufentest steht dort neu — beide Schwellen aus EINER Fahrt, unter gleichen Bedingungen, statt zweier Termine und 1.000 kJ, die auf absehbare Zeit nicht gefahren würden. Neu: `ramp.py` (die Schwelle wird **gefittet, nicht abgelesen** — eine Ausgleichsgerade durch den Abfall von DFA a1, Schnittpunkt mit 0,75 bzw. 0,5; über das gemessene Segment hinaus wird **nicht** hochgerechnet), `ramp_tests.py` (Archivblock mit Migration und Messmarke, drei Regeln aus K2: keine Erkennung, keine stille Messung, rücknehmbar), `set_ramp_test` an der Stelle von `set_durability_test` (Ströme LIVE und ungedünnt, nur das Ergebnis wird gespeichert), die **Quellenkette je Familie** als eine Mechanik mit verschiedener Rangfolge, und die Stufentest-Karte mit drei Zahlen plus der 40-Watt-Frage. **Kein Algorithmus-Bump, keine Neuberechnung.** Die Spezifikation wurde beim Bau an fünf Stellen korrigiert (docs/ausbau.md): N4 ist nicht „nachzulesen", sondern in den zugänglichen Quellen **nicht beantwortbar** — Einrollen, Startleistung und Abbruchkriterium stehen dort nicht so, wie die Spec annahm; die Segmentregel ist deshalb eine **Setzung**, weil beide Arbeiten das Segment von Hand am Plot bestimmen; die personalisierte Schwelle ist eine Operationalisierung **aus zweiter Hand**; das Ausrollfenster ist eine eigene Idee ohne Protokollvorgabe; und die Erholungsgröße fließt in keine Vorgabe ein. **Nachgebessert in 0.51.1**, siehe die Zeile darunter |
 | **Stufentest, Nachbesserung (Paket N1)** | ✅ gebaut als **0.51.1**, ohne Algorithmus-Bump. Der erste Live-Blick auf 0.51.0 fand vier Fehler, alle in der ausgelieferten Karte: (1) die Rampe hing komplett an der FTP (`ramp 60-115%`) und endete bei diesem Athleten **27 W UNTER** seiner eigenen Leitzahl — die zweite Schwelle war nicht erreichbar, und der Wächter darüber bewachte die Ausnahme statt der Regel; (2) Dauer, Steigung und Spanne passten nur bei genau einer FTP zusammen; (3) die zehn Beschreibungspunkte waren vorhanden, wurden aber nicht gerendert — ein Umzug zwischen zwei Payloads, verschluckt von einem `\|\| []`; (4) das Pulsfenster war die falsche **Art** von Aussage, und die Rampe wurde flach gezeichnet. Gebaut: zwei getrennte Quellenketten (Start Ermüdungskurve → HRVT1 → FTP, Ende Blockmessung-**Leitzahl** → HRVT2 → FTP, Reserve als ZEIT), **die Dauer wird gerechnet statt gesetzt**, Beschreibung an der Einheit mit einem Wächter, der belegt dass sie ankommt, Quellen schon im Leerzustand, Pulsfenster ersatzlos durch einen Satz ersetzt, Rampe als Rampe gezeichnet. Bei diesem Athleten: 138→307 W statt 120→230 W, 34 min statt behaupteter 30 (gerechnet wären es 22 gewesen). §7, Fälle 18–20. Verifikation am System steht aus |
+| **Zuordnung durch den Athleten (Paket P, Auslieferung A)** | ✅ gebaut als **0.52.0**, **ohne Algorithmus-Bump**. Der Archivblock `section_marks` (Schlüssel `start_index`, niemals die laufende Nummer), sein Anker samt Drifterkennung, drei WebSocket-Wege und die Kachelreihe im Aktivitätsdetail: sechs Familien mit eigener Form und eigenem Kürzel plus der Stufentest, der dort aufgeht — `_rampBlock` fällt. **Es wird noch nichts gerechnet:** die Vorgaben, die Verlaufskacheln und die Ermüdungskurve lesen weiter die Namenserkennung und die WORK-Etiketten. Die Spezifikation wurde vor und während des Baus an zehn Stellen korrigiert (docs/ausbau.md): P1 entfällt mit der Vorschlags-Streichung ganz, der mittlere DFA-Zustand ist geprüft und verworfen, der Anker wird beim ERSTEN Haken gesichert, `reanchor` ist streng, der Anker taugt nicht zum Maskieren, der Messweg braucht zwei Abrufe, P8 ist nicht frontend-only, der Stufentest misst beim Klick, die Reihenfolge ist umgedreht, und die Mobilfrage bleibt offen. §7, zweiundzwanzigster Fall. Verifikation am System steht aus |
 | **Konstanten-Dubletten (DFA/ACWR) + toter ring()/rd-Code** | ⬜ eigenes Paket, vom Wächter bei 2+2 eingefroren (docs/ausbau.md) |
 | Heute, Kalender (voller Audit), Fitness, Aktivitäten | offen |
 
