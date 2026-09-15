@@ -3258,3 +3258,831 @@ gehört zur Mechanik aus 3/5.
 **Zur Hash-Warnung:** die Richtigstellung in O1 war richtig. Angefasst wurden
 ausschließlich die Aufrufer; `grp:` ist eine vorhandene Option, im eingefrorenen
 Fall „punkte" schon belegt. **Alle sieben Hashes haben gehalten.**
+
+---
+
+## Paket P — Die Zuordnung trifft der Athlet, überall (SPEZIFIKATION, 15.09.2026)
+
+**Stand bei der Niederschrift: 0.51.1, Prüfstand 19 Dateien / 5.861 Prüfungen
+grün.** Diese Spezifikation ist geschrieben, nicht gebaut. Jede Festlegung ist
+am Quelltext geprüft; wo die Auftragsfassung am Code nicht trug, steht die
+Korrektur mit ihrem Grund daneben (Abschnitt „Was die Prüfung dieser
+Spezifikation ergeben hat"). Zwei Punkte sind **bewusst gestrichen** und stehen
+samt Gegenargument in P11 — damit die nächste Sitzung sie nicht für ein
+Versehen hält und nachbaut.
+
+### P0 · Warum überhaupt
+
+Das System rät heute an drei Stellen, und jedes Mal über eine Fahrt, von der es
+nichts weiß:
+
+1. **Die Familie aus dem Namen** — `blocks.family_of` sucht „sweetspot", „vo2"
+   oder „tempo" im Titel.
+2. **Die Eignung aus dem Zonenanteil** — `derive.fatigue_curve_reason` mit
+   `FATIGUE_MAX_ABOVE_Z2 = 20.0`.
+3. **Die Blöcke aus den Lap-Etiketten** — `derive.dfa_blocks` über
+   `label == "WORK"`, nachkorrigiert von `drop_warmup_blocks`.
+
+Beim Autor trägt das halbwegs, weil er seine Einheiten diszipliniert benennt.
+Bei einem zweiten Nutzer mit anderem Fahrprofil trägt es nicht.
+
+**Drei eigene Fehler dieses Projekts belegen, dass jede der drei Vermutungen
+schon danebenlag:**
+
+- **Der Einrollblock als WORK etikettiert.** Am 02.07.2026 stand die Leitzahl
+  bei 182 statt 238 W, am 19.07. bei 197 statt 278. Die Reparatur ist
+  `drop_warmup_blocks` — eine Ausreisserregel aus den Zahlen der Einheit
+  selbst, weil weder eine Wattschwelle noch der Korridor taugten. Sie ist gut
+  gebaut und rät trotzdem.
+- **Die Tempo-Einheit vom 13.09.2026** trägt einen lockeren Abschnitt mit 164 W
+  neben einem echten vierten Block mit 165 W. Dazwischen liegen 0,6
+  Prozentpunkte. Keine Automatik trennt das; der Athlet trennt es, ohne
+  nachzudenken.
+- **Der 20-%-Filter erbt eine FTP, die selbst bestritten ist.**
+  `above_endurance_share` liest `icu_zone_times` — eine Zonenrechnung von
+  Intervals, die an der FTP hängt. Solange der Profilwert 200 W beträgt und die
+  gemessene 20-Minuten-Leistung bei 192 liegt, schneidet der Filter an der
+  falschen Stelle (P9). **Ein Ausschlusskriterium auf einer bestrittenen Zahl
+  ist eine Vermutung mit Dezimalstelle.**
+
+#### P0a · Und die Automatik kann nicht sehen, was zählt
+
+Der Ermüdungsverlauf einer Fahrt hängt an Bedingungen, die in **keinem Feld
+dieses Systems** stehen:
+
+- **Umgebungstemperatur.** Lafrenz, Wingo, Ganio und Cureton (Med Sci Sports
+  Exerc 2008;40(6):1065–71) maßen den Anstieg der Herzfrequenz und den Abfall
+  des Schlagvolumens zwischen Minute 15 und 45 bei 59,2 ± 1,9 % VO2max an zehn
+  ausdauertrainierten Männern, einmal bei 35 °C und einmal bei 22 °C. **Der
+  Befund ist ein UNTERSCHIED, kein Schalter:** das Ausmaß des kardialen Drifts
+  und der begleitende Abfall der VO2max sind in der Hitze GRÖSSER als in der
+  Kühle — nicht „dort ja, hier nichts". Die erste Fassung dieser Zeile behauptete
+  das Schärfere; das wäre der achte §7-Fall gewesen, aus einer Arbeit die
+  günstige Hälfte.
+- **Verpflegung.** Clark u. a. (J Appl Physiol 2019;127:726–736) zeigen den
+  zeitlichen Verlauf der Abnahme von CP und W′ über zwei Stunden und dass
+  Kohlenhydratzufuhr während der Belastung **CP erhält — W′ nicht**, und zwar
+  ohne den Glykogenabbau im Muskel zu verändern. **Zwei Einschränkungen gehören
+  dazu:** erhalten wurde eine Größe von zweien, und die Vorbelastung war
+  **schwer-intensiv**, nicht moderat — unsere Ermüdungskurve fragt nach der
+  moderat-zu-schwer-Grenze und liegt damit woanders.
+
+**Das Argument steht NICHT auf „es gibt kein Temperaturfeld".** Das wäre
+widerlegbar: `average_temp`, `min_temp` und `max_temp` stehen im dokumentierten
+Datenmodell von Intervals, und `temp` ist ein dokumentierter Stromtyp. Sie
+werden trotzdem nicht geholt, und das ist eine **Entscheidung des Athleten vom
+15.09.2026**, kein Versäumnis — siehe P11, Streichung 3.
+
+**Das Argument steht darauf, dass selbst mit einem Temperaturfeld niemand
+wüsste, ob verpflegt wurde, wie geschlafen wurde und ob Gegenwind stand.** Das
+ist unangreifbar — und es ist genau der Grund, warum das eine verfügbare Feld
+die Lücke nicht schließt.
+
+Künftig gilt in diesem Projekt durchgehend: **der Athlet ordnet zu, das System
+rechnet.** Dieselbe Bauart wie K2 und N — nur nicht mehr als Sonderfall zweier
+Messungen, sondern als Regel.
+
+### P1 · Einstellungen über das Archiv — und der Schalter heißt „Vorschläge"
+
+**Befund am Code: es gibt heute keinen Schaltermechanismus.**
+`grep -rn "async_get_options_flow\|OptionsFlow" custom_components/` liefert null
+Treffer; `config_flow.py` kann `user` und `reauth`, sonst nichts.
+
+**Kein Options-Flow, sondern ein Archivblock**, und der Grund ist nicht
+Bequemlichkeit: ein Options-Flow ist ein HA-Dialog **außerhalb** des Panels und
+stünde damit an einem anderen Ort als das, was er schaltet — die Trennung, die
+0.46.0 zurücknehmen musste. Das Archiv trägt das Muster bereits dreimal (`goal`,
+`day_context`, `ramp_tests`): Eintrag in `importer.empty_data()`, Migration in
+`store.async_load`, WebSocket-Schreibweg, Panel liest ohne HA-Neustart. Und
+entscheidend für §9: **ein Archivblock ist HA-frei prüfbar, ein Options-Flow
+nicht.**
+
+Zu bauen: Block `settings`, WebSocket-Paar `settings` / `set_setting`, im Panel
+ein Reiter, der jeden Schalter **mit seiner Begründung** zeigt. Ein Schalter
+ohne Satz daneben ist eine Falle für den, der ihn in drei Monaten findet.
+
+#### P1a · „Vorschläge an/aus", nicht „Automatik an/aus" — und warum
+
+Der erste Schalter heißt `suggestions`, Vorgabe `true`. **Die Automatik darf
+vorschlagen; gezählt wird nichts, bis es bestätigt ist.** Das Archiv enthält
+ausschließlich bestätigte Marken.
+
+Das ist keine Geschmacksfrage, sondern die Auflösung eines belegten Zielkonflikts:
+
+- **Vorschläge sparen sehr viel Zeit.** Eine industrielle Segmentierungsstudie
+  misst 73–84 % gesparte Beschriftungszeit (im Mittel 78 %) und eine um das 8-
+  bis 17-fache **kleinere Streuung** zwischen den Elementen — die Bearbeiter
+  konvergieren auf gleichmäßige Nachbesserungszeiten.
+- **Sie kosten aber Initiative.** Eine CHI-Studie zu vorbefüllten
+  Annotationsvorschlägen findet, dass Fachleute Modellfehler zwar abfangen,
+  **aber weniger Eigeninitiative entwickeln**; die ausdrückliche Sorge war, dass
+  Nutzer bei unvollkommenen Modellen das Interesse verlieren und Vorschläge mit
+  falschen Bereichen oder Etiketten annehmen.
+- **Zur Ankerwirkung ist die Lage uneinheitlich, und das ist selbst ein
+  Befund.** Fort/Sagot und Névéol finden keine Verzerrung durch Vorannotation;
+  andere Arbeiten weisen Ankereffekte auch bei Fachleuten nach, schwächer als
+  in den frühen Experimenten, und stärker, wenn die Entscheidungszeit knapp ist.
+  Eine Studie zur De-Identifikation klinischer Texte fand sogar, dass die
+  Bearbeiter die Maschinenvorschläge nur für einen kleinen Teil ihrer
+  Annotationen nutzten, weil sie auf dem Rohtext leichter arbeiteten.
+
+**Daraus die Bauregel: Vorschläge werden NICHT vorangehakt.** Sie stehen als
+blasse Geisterhaken da, die angeklickt werden müssen. **Der Unterschied
+zwischen „ich muss abwählen" und „ich muss auswählen" ist der ganze
+Unterschied** zwischen Unterkorrektur und Entscheidung.
+
+**Und die Parallele, die im Haus schon gilt:** ein Diarisierungswerkzeug von
+2026 füllt seine Oberfläche mit der Ausgabe einer automatischen Pipeline, damit
+der Bearbeiter eine Hypothese korrigiert statt von null zu zeichnen — und
+**bindet den Export an eine Bestätigung JE SEGMENT durch den Menschen, damit
+automatische Ausgabe nicht unbestätigt nach außen gelangt.** Das ist 0.49.2 in
+einem anderen Fach: eine Zahl, die nicht misst, was daneben steht, darf nicht in
+die Auswertung.
+
+### P2 · Die Zuordnung — sieben Kacheln, eine Reihe, ein Ort
+
+**Ort: das Aktivitätsdetail, zwischen `kvgrid` und `_lapBlock`** — also zwischen
+den Kennzahlen und der Rundenliste, direkt über dem, was gehakt wird. Die Haken
+selbst stehen in einer eigenen, beschrifteten Spalte der Rundenliste.
+
+| Kachel | Art |
+|---|---|
+| VO2max · SweetSpot · Tempo · Schwelle | Abschnitte |
+| Grundlage · lange Fahrt | Abschnitte |
+| Stufentest | ganze Fahrt |
+
+**Der bestehende `_rampBlock` fällt weg.** Er sitzt heute zwischen `_ctxBlock`
+und `_nightBlock` und trägt wörtlich die Begründung, die jetzt für alles gilt
+(„du markierst, das System erkennt nicht") — nur an einem anderen Ort als die
+neuen Kacheln. **Zwei Bedienelemente für dieselbe Frage war der Fehler aus
+0.46.0.** Eine Reihe, eine Frage, ein Ort. `set_ramp_test` bleibt unverändert;
+nur sein Bedienort wandert.
+
+**Der Stufentest ist die einzige Familie ohne Abschnitte:** eine Messfahrt ist
+als Ganzes eine Messfahrt, es gibt daran keinen Abschnitt zu markieren.
+
+`threshold` bekommt Haken, obwohl `BLOCK_CORRIDORS` heute nur drei Familien
+führt und `SOURCE_CHAIN["threshold"]` keine Blockstufe hat: Schwelle fährt
+Blöcke, und sobald der Athlet sie benennt, gibt es keinen Grund, sie
+auszuschließen. **Der Korridor für `threshold` gehört gemessen, nicht gesetzt** —
+bis er belegt ist, bleibt die Familie in der Quellenkette, wo sie ist.
+
+**Ein Abschnitt kann Marken mehrerer Familien tragen.** Der Datentyp ist eine
+Menge, keine Auswahl. Zur Mehrfachzuordnung je Element gibt es keine Studie —
+die Werkzeuge können es, gemessen hat es niemand. Deshalb bleibt die Regel
+klein: **eine Marke je Familie je Abschnitt, kein Rang, keine Gewichtung.**
+
+#### P2a · Farbe, Form, Kürzel — und warum die Farbe hier nicht allein trägt
+
+**Die Auflage bleibt: keine Urteilsfarbe.** Grün/Gelb/Orange/Rot gehören
+ausschließlich dem Urteilsregister; `test_panel_design` erzwingt die Trennung,
+und dieselbe Fehlerklasse hat 0.7.0, 0.8.0 und 0.9.0 je ein Release gekostet.
+
+**Die Farbe kann die Identität hier aber nicht allein tragen, aus zwei
+unabhängigen Gründen am Code:**
+
+1. **`ROLE` belegt das Kategorienregister in genau dieser Ansicht vollständig.**
+   Im Aktivitätsdetail gilt `pow: C.violet`, `hr: C.magenta`, `dfa: C.cyan`,
+   `cad: C.slate`, `vel: C.blue`, `alt: C.deep`. Die Rundenliste zeichnet den
+   EF-Balken in `ROLE.pow` (violett) und den DFA-Balken in `ROLE.dfa` (cyan) —
+   **direkt neben der Spalte, in der die Haken stehen.** Ein violetter
+   SweetSpot-Haken zwei Spalten neben einem violetten Leistungsbalken ist
+   dieselbe Registervermischung, nur innerhalb des Kategorienregisters.
+2. **Das Kategorienregister hat in der Praxis sieben Farben, nicht fünf, und
+   alle sind belegt.** `CTX_COLOR` führt slate/violet/blue/cyan/magenta/deep/grey
+   mit festen Bedeutungen, und `test_panel_design` erzwingt `cats.length === 7`
+   samt paarweiser Verschiedenheit. Dazu sind `C.deep` (#64748b) und `C.slate`
+   (#94a3b8) zwei Graustufen desselben Tons.
+
+**Also: Form und Kürzel tragen die Identität, die Farbe ist Zweitkodierung.**
+Belegt, nicht ausgewichen: CatPAW (CHI '26) prüft redundante Kodierung aus Farbe
+UND Form gegen jede Einzelkodierung und findet eine signifikante Verbesserung
+der Erkennung, am stärksten bei **fünf bis acht Kategorien**. Die Einzelgrenzen
+sind beziffert — Farbe allein trägt bis sieben, Form allein bis fünf. **Sechs
+Familien mit Haken liegen über der Formgrenze und unter der Farbgrenze, also
+braucht es beide**, und das ist genau der Bereich, für den die Arbeit den
+größten Gewinn misst. WCAG 1.4.1 ist damit nebenbei erfüllt und nicht der Grund.
+
+Auflagen:
+
+- Jede Familie trägt **eine eigene Form** aus `IC` (keine Variante einer
+  anderen — die Regel aus dem Urteilsregister gilt hier genauso) und ein
+  **Kürzel** von zwei bis vier Zeichen.
+- Die Haken stehen in **einer eigenen Spalte mit Kopfzeile**, nicht zwischen den
+  rollengefärbten Balken.
+- **Die aktive Kachel ist deutlich erkennbar** — Rahmen, Wort und Form, nicht
+  nur eine Sättigungsstufe. Wer die aktive Kachel nicht sieht, hakt in die
+  falsche Familie, und das ist ein Fehler ohne Fehlermeldung.
+
+#### P2b · Haken sofort, Messung nur auf „übernehmen"
+
+**Der Haken ist sofort im Archiv.** Die Messung läuft **ausschließlich** auf
+einen ausdrücklichen Knopf „übernehmen und messen".
+
+**Warum es kein „beim Verlassen" gibt — am Code geprüft:** das Aktivitätsdetail
+hat zwar `data-act="close"`, aber das ist **einer von mindestens vier
+Ausgängen**. Die anderen: eine andere Fahrt anklicken (`_openAct` überschreibt
+`_sel`), den Reiter wechseln, die Hash-Route `#activities/<id>`, den Browser
+schließen. Keiner läuft über den Close-Handler, es gibt kein `beforeunload`, und
+die HA-WebSocket-Verbindung kann fallen. **„Gehakt, weggegangen, nichts
+gemessen" wäre der stille Ausstieg aus 0.42.1.**
+
+Also steht der Eintrag nach dem Haken mit `hours: null` und
+`reason: "noch nicht gemessen"` im Archiv, und die Kachel zeigt diesen Zustand.
+Das ist die zweite Regel aus `ramp_tests` wörtlich: **keine stille Messung — die
+Markierung steht trotzdem, aber mit dem Grund daneben.**
+
+#### P2c · Drei Zustände statt zwei, wenn keine DFA-Daten da sind
+
+Die Auflage „ohne DFA-Daten ausgegraut" trifft sonst eine Gruppe mit, die man
+nicht ausgrauen darf: `async_import_dfa` schreibt bei einem fehlgeschlagenen
+Stromabruf ausdrücklich `data["dfa"][key] = {}`, damit die Fahrt nicht bei jedem
+Refresh erneut geholt wird. **Eine Fahrt, deren Abruf ein einziges Mal
+scheiterte, wäre damit für immer „ohne DFA-Daten" — ohne Grund und ohne zweiten
+Versuch.**
+
+| Zustand | Verhalten |
+|---|---|
+| Fahrt führt kein `dfa_a1` | ausgegraut, Satz dazu |
+| Abruf ist gescheitert (`{}` im Archiv) | **nicht** ausgegraut, Knopf „nochmal holen" |
+| Summary da, aber keine `blocks` | Abschnittsfamilien ausgegraut, Grundlage und lange Fahrt **nicht** — sie messen über `hours`, nicht über Blöcke |
+
+**Und der Satz, der dazugehört:** das Markieren holt die Ströme ohnehin LIVE;
+der Archivstand ist nur ein Stellvertreter. §7 erster Fall gilt hier genau —
+`stream_types` sagt, was in der Datei lag, nicht was die Schnittstelle liefert.
+Wer nach einem Stellvertreter ausgraut, sagt daneben, dass es einer ist.
+
+### P3 · Der Archivblock
+
+Ein Block `section_marks`, Schlüssel `activity_id`:
+
+```
+section_marks: {
+  "<activity_id>": {
+    "date": "YYYY-MM-DD",
+    "marks": { "<familie>": [<start_index>, ...] },
+    "anchor": { "laps": <n>,
+                "sections": [ {"i": <start_index>, "s": <moving_time>} ] },
+    "hours": [...] | null,
+    "reason": "...",
+    "set_at": "...",
+    "v": MEASURE_VERSION
+  }
+}
+```
+
+#### P3a · DER SCHLÜSSEL IST `start_index`, NIEMALS DIE LAUFENDE NUMMER
+
+**Das ist die wichtigste einzelne Festlegung dieses Pakets, und sie steht hier
+in dieser Schärfe, weil der falsche Weg naheliegt und in der ersten Fixture
+funktioniert.**
+
+Es gibt **zwei getrennte Abschnittslisten, und sie sind nicht deckungsgleich:**
+
+- Die **Rundenliste im Panel** (`_lapBlock`) kommt LIVE über `websocket_laps`
+  → `derive.normalize_laps`. Sie nummeriert mit `n` = Position in der Rohliste,
+  **jeder** Lap, auch Pausen.
+- Die **Blöcke im Archiv** (`dfa[key]["blocks"]`) entstehen beim Import über
+  `derive.dfa_blocks` und **fallen weg**, wenn `moving_time < BLOCK_MIN_SECONDS`
+  (150 s), wenn `start_index`/`end_index` fehlen, oder wenn nach dem
+  120-Sekunden-Verwerfen weniger als `BLOCK_MIN_POINTS` (20) brauchbare
+  alpha-Werte übrigbleiben.
+
+**Wer im Panel Abschnitt 7 anhakt und das als Index 7 ablegt, trifft im Archiv
+einen anderen Block.** Der einzige gemeinsame Schlüssel ist `start_index`: er
+steht in `_LAP_FIELDS`, kommt also in der Panel-Payload an, und `dfa_blocks`
+schreibt ihn gerundet mit.
+
+**Wer `[3, 5]` als laufende Nummern baut, baut einen Fehler, der bei einer Fahrt
+ohne Pausen nicht auffällt und bei jeder Intervalleinheit zuschlägt.** Die
+Fixture in „Tests P" muss deshalb **zwingend** eine Fahrt enthalten, bei der
+mindestens ein Lap durch `dfa_blocks` fällt — sonst besteht dieser Fehler die
+ganze Suite.
+
+#### P3b · Der Fingerabdruck, und warum er kein Verstoß gegen J7 ist
+
+J7 sagt: gespeichert wird nur, was nicht wieder herleitbar ist. Der Anker
+`{laps, sections[{i, s}]}` sieht nach einer Verletzung aus und ist keine.
+
+**`importer.drop_outdated_dfa()` setzt bei abweichender `DFA_ALGO_VERSION`
+schlicht `data["dfa"] = {}`.** Damit sind alle `blocks` samt ihrer `start_index`
+weg und werden beim Re-Import aus **frisch geholten Laps** neu gerechnet. Die
+Auswahl überlebt — ihre Ankerpunkte nicht. **Nach dem Bump ist der
+Vergleichsstand genau das, was gerade gelöscht wurde.**
+
+Das ist der **siebte Fall (0.49.2) in neuer Gestalt: wer einen Fix ausliefert,
+verliert damit die Belege für die Prüfung, die den Fix gefunden hat.** Die Lehre
+dort lautete, solche Fälle VOR der Neuberechnung als Fixture zu sichern statt
+danach zu suchen. Hier heißt dasselbe: **den Anker beim Markieren sichern.**
+
+Gespeichert wird das Minimum: Zahl der Laps, und je markiertem Abschnitt
+`start_index` und `moving_time`.
+
+**Die Drifterkennung:** beim Lesen wird der Anker gegen die aktuellen Blöcke
+gehalten. Weicht die Lap-Zahl ab, oder findet sich zu einem gespeicherten
+`start_index` kein Abschnitt mit passender Dauer, **MELDET das System das** —
+`marks_stale: true` samt Grund, an der Kachel **und als eigenes Zeichen in der
+Aktivitätenliste** (P5). Die Markierung bleibt stehen und wird **nicht**
+stillschweigend weiterverrechnet; die betroffene Fahrt fällt aus Messung und
+Kurve, bis der Athlet sie bestätigt oder neu hakt.
+
+**Stillschweigend weiterrechnen wäre der stille Ausstieg** (§7, vierte
+Fehlerklasse): ein Wert aus verschobenen Abschnitten sieht aus wie einer aus
+richtigen.
+
+#### P3c · Die zwei Auflagen aus J7, zum fünften Mal
+
+1. **Eintrag in `importer.empty_data()`.** `store.async_load` füllt fehlende
+   Schlüssel **nur auf der obersten Ebene** auf; ein Block, den das Grundgerüst
+   nicht kennt, entsteht auf Altbeständen nie. Das ist die Lücke aus 0.35.0 —
+   nach `goal`, `day_context` und `ramp_tests` das fünfte Mal.
+2. **Migration in `store.async_load`**, Bauart `plan.migrate_goal()` /
+   `ramp_tests.migrate()`: `None` zurück, wenn nichts zu tun ist, sonst der
+   normalisierte Block; `schedule_save()` **nur** im Änderungsfall. Die
+   eingefrorene No-op-Referenz gilt — **ein No-op darf keinen Speichervorgang
+   auslösen.**
+
+Dazu die Trennung aus `day_context` und `ramp_tests`: **das Schreiben ist
+streng** (`ValueError` mit einem Grund, den die Karte zeigen kann), **das Lesen
+ist nachsichtig.**
+
+**Eigene `MEASURE_VERSION`.** Sie deckt die Messung ab, nicht die Anzeige.
+Ändert sich die Rechnung, verliert der Eintrag seine `hours` — **die Markierung
+und der Anker bleiben.** Die Aussage des Athleten, welcher Abschnitt welcher
+Familie gehört, verfällt nicht, wenn sich die Mathematik ändert. Veraltete
+Messungen sind in der Kachel **sichtbar**, nicht still.
+
+#### P3d · Die Rücknahme sitzt auf der einzelnen Marke
+
+**Nicht auf „letzter Zustand".** Die Kritik an einem verbreiteten
+Annotationswerkzeug trifft genau diesen Punkt: seine Rücknahme entfernt nur
+Ebenen, statt die tatsächlich zuletzt ausgeführte Aktion rückgängig zu machen.
+**Eine Rücknahme, die etwas anderes zurücknimmt als das Getane, ist schlimmer
+als keine.**
+
+Also: rückgenommen wird **eine Familie an einem Abschnitt**. Ist danach keine
+Familie mehr übrig, fällt der ganze Eintrag — kein Rumpf bleibt stehen, und die
+Fahrt rechnet wieder bit-identisch wie eine nie markierte. Das ist eine
+Rücknahme, keine Aussage.
+
+#### P3e · Die Rangfolge gegen `drop_warmup_blocks`
+
+`drop_warmup_blocks` etikettiert Ausreisser auf `WARMUP_LABELLED_WORK` um. Ist
+derselbe Abschnitt von Hand markiert, stehen zwei Aussagen gegeneinander.
+
+**Die Markierung schlägt die Heuristik, und die Karte sagt, dass sie es tut** —
+ein Satz an der Einheit, nicht ein stiller Vorrang. Stillschweigend gewinnen zu
+lassen, in welcher Richtung auch immer, wäre der stille Ausstieg: **was nicht
+passiert ist, muss dastehen.**
+
+### P4 · Maskieren, nicht neu basieren — und das Markieren misst
+
+**Warum das Markieren misst:** `dfa_hours` läuft in
+`importer.async_import_dfa` auf den ungedünnten Strömen, die unmittelbar danach
+weggeworfen werden. Im Archiv liegen Summary, Stundenverlauf und Blöcke — **kein
+Sekundenstrom.** Ein bereinigter Strom ist daraus nicht zu bauen. Also dieselbe
+Mechanik wie bei `set_ramp_test`: Ströme LIVE und UNGEDÜNNT, messen, **nur das
+Ergebnis** speichern. Kein Algorithmus-Bump, keine Neuberechnung des Bestands.
+
+**MASKIEREN, NICHT NEU BASIEREN.** `dfa_hours` bildet die Stundenkübel über die
+Stromposition (`hour * per_hour`). Zwei Wege wären denkbar:
+
+- **Neu basieren:** der markierte Bereich wird zusammengeschoben, die Uhr fängt
+  bei null an.
+- **Maskieren:** die Kübelgrenzen bleiben auf der Fahrtzeit, ausgeschlossene
+  Sekunden liefern keine Punkte mehr.
+
+Bei „zwei Stunden Grundlage, SweetSpot am Ende" liefern beide dasselbe. Bei
+„30 min Tempo, danach zwei Stunden Grundlage" nicht: neu basiert wäre „Stunde 1"
+die Grundlagenminute 0 bis 60 — **und behauptet damit eine Frische, die nicht
+vorlag.** Der Athlet war 30 Minuten auf dem Rad.
+
+**L1 misst Ermüdung über die Zeit AUF DEM RAD, nicht über die Zeit in der
+Zone.** Die Tempominuten zählen für die Ermüdung; nur ihre alpha-Watt-Paare
+taugen nicht für die Ablesung. Ein ausmaskierter Berg bei 1:40 nimmt Stunde 2
+zwanzig Minuten Punkte — **und Stunde 2 bleibt Stunde 2, weil der Berg müde
+gemacht hat.** Maskieren ist nie schlechter und manchmal richtig.
+
+Fünf Auflagen an `dfa_hours`, alle aus der Maskierung:
+
+1. **Ein dritter Zähler `excluded` neben `dropped`.** `dropped_share` ist der
+   Ersatz für Andriolos Artefaktkriterium und sagt, was die MESSUNG verloren
+   hat. Zählt man bewusst ausgeschlossene Sekunden dort mit, sieht eine sauber
+   markierte Fahrt wie ein Datenschaden aus. Der Nenner bleibt auf dem
+   zugelassenen Fenster.
+2. **`occupancy_rising` darf nicht auf sauberen Daten feuern.** Das
+   Erkennungszeichen vergleicht die Zahl der Fahrten **mit** p075-Wert je
+   Stunde. Maskieren nimmt Stunde 1 überproportional Punkte (dort liegen
+   Anwärmen und Anlaufblöcke), also können weniger Fahrten in Stunde 1 einen
+   Wert liefern als in Stunde 2 — **und der Auswahleffekt-Alarm ginge los,
+   obwohl keiner vorliegt.** Der Vergleich läuft künftig auf „Fahrten, die diese
+   Stunde ANGEBOTEN haben", nicht auf „Fahrten, die einen Wert erzeugt haben".
+   Das ist die §9-Regel wörtlich: **ein Wächter, der bei richtigem Sachverhalt
+   anschlägt, wird verengt, nicht entschärft.**
+3. **Der Anker nennt seine Stunde.** `anchor = measured[0]["watts"]`, und die
+   Literaturform wird von dort auf t = 0 zurückgerechnet. Verliert Stunde 1 ihre
+   Fahrten, sitzt der Anker auf Stunde 2 — auf einem bereits ermüdeten Punkt —
+   und `anchor_base` springt nach oben. Die Payload führt `anchor_n`, aber nicht
+   `anchor_hour`. Eine Zahl dazu, und die Kachel nennt sie.
+4. **Die maskierte `hours`-Liste gewinnt, und die Karte sagt, welche galt.** Das
+   Archiv behält die Ganzfahrt-Liste aus dem Import; der Zuordnungsblock trägt
+   die maskierte. `fatigue.curve()` zieht die maskierte vor, und
+   `rides()["used"]` führt je Fahrt `hours_source` (`markiert` / `ganze Fahrt`).
+   **Zwei verschieden erhobene Größen unter einer Überschrift ist 0.49.2.**
+5. **Für markierte Fahrten fällt das VI-Tor konstruktiv weg, `short` wird neu
+   gerechnet.** `moving_time`, `icu_zone_times` und `variability_index` sind
+   alle Ganzfahrt-Felder aus dem Summary; für den markierten Bereich gibt es
+   weder Zonenverteilung noch VI. Der Athlet hat gesagt, welche Sekunden
+   gleichmäßig waren — das ist die Ersetzung, und sie ist beabsichtigt.
+   **`short` dagegen rechnet sich aus der markierten Bewegungszeit gegen
+   `FATIGUE_MIN_MINUTES`**, nicht aus der Fahrtdauer. Sonst verschwindet ein Tor
+   stillschweigend.
+
+**P4 ist der Teilungspunkt des Pakets.** Wächst es beim Bau, sind **P3**
+(Block, Anker, Schreibweg — ungemessen) und **P4** (Messung und Maskierung)
+zwei Auslieferungen.
+
+### P5 · Die Spalte in der Aktivitätenliste
+
+Dieselben Marken (Form + Kürzel, Farbe als Zweitkodierung) als kompakte Reihe je
+Zeile. **Leer heißt: noch nicht angefasst** — genau das ist die Aussage, die die
+Spalte liefern soll. Eine markierte Fahrt ohne Familie gibt es nicht, weil der
+Eintrag dann fällt (P3d).
+
+**`marks_stale` trägt ein eigenes Zeichen**, und eine veraltete Messung
+ebenfalls — beides sind eigene Zustände, nicht „unbearbeitet".
+
+**Die Liste bleibt chronologisch, neueste zuerst.** Sie bekommt die Spalte, mehr
+nicht (P11, Streichung 2).
+
+**Der Aufwand sitzt im CSS, nicht in der Logik.** `.arow`/`.ahead` sind ein Grid
+mit neun Spalten, und die mobile Regel blendet `nth-child` (4), (6), (7), (8),
+(9) aus. Eine zehnte Spalte heißt: **zwei** `grid-template-columns` ändern, die
+Kopfzeile ergänzen, **und die mobile Ausblendliste nachziehen** — sonst rutscht
+die Markierungsspalte auf dem Telefon in die vier sichtbaren und verdrängt die
+Last.
+
+### P6 · Die Herkunftsspur — und sie ist NICHT frontend-only
+
+Auf eine Zahl klicken → welche Einheiten, welche Abschnitte, welcher Wert je
+Abschnitt → klicken → die Aktivität öffnet sich.
+
+**Am Code geprüft: `blocks.series()` baut seine `points` aus `_sessions()` und
+lässt dabei `activity_id` fallen.** Drin sind `date` und `name`, nicht die ID.
+Der Sprung braucht die Hash-Route `#activities/<id>` aus A4, und die ID kommt in
+der Payload nicht an.
+
+Eine Zeile Backend — **aber sie muss hier stehen.** „Berührt nur das Frontend"
+war bei A5 falsch und bei H falsch; das dritte Mal wäre kein Zufall mehr,
+sondern eine Bauart. `fatigue.rides()` macht es richtig vor.
+
+Was die Spur zeigt: Leitzahl und Steuergröße **getrennt**, mit den Einzelwerten
+je Block (`block_alphas`, `block_watts_each` reisen bereits mit) · welche
+Abschnitte beigetragen haben, und bei markierten Fahrten, dass es die markierten
+waren · bei der Kurve die Fahrten mit ihrem `hours_source`.
+
+### P7 · Das Subjektive an EINEN Ort — Intervals' eigene Felder
+
+**Kein eigenes Notizfeld.** Der Athlet schreibt ohnehin in Intervals, und ein
+lokales Feld daneben wäre der zweite Ort für dieselbe Frage — die 0.46.0-Klasse
+in klein.
+
+Zu holen und anzuzeigen, **ohne jede Rechnung, ohne Filter, ohne Auswertung**:
+
+- **`description`** — Intervals' eigene Notiz zur Fahrt.
+- **`icu_rpe` und `feel`** stehen bereits in `ACTIVITY_FIELDS` und werden im
+  Detail angezeigt (`stat("user", "RPE / Gefühl", …)`) — **von nichts benutzt.**
+  Sie gehören neben die Notiz, damit das Subjektive an einem Ort steht statt
+  verstreut.
+
+**Das ist alles.** `description` kommt neu in `ACTIVITY_FIELDS`,
+`ACTIVITY_FIELDS_VERSION` geht von 2 auf 3 (der Nachlade-Weg über
+`needs_activity_refetch` steht bereits), und die drei Angaben stehen im
+Aktivitätsdetail beieinander. Kein weiteres Feld, keine Rechnung, kein Filter.
+
+**Leer heißt sichtbar leer.** Eine Fahrt ohne Notiz zeigt das, statt die Zeile
+wegzulassen — sonst sieht „keine Notiz geschrieben" aus wie „Feld gibt es
+nicht" (§7, vierte Fehlerklasse).
+
+### P8 · Hinweise: klein, aufklappbar, ohne Urteil
+
+Hausmuster: Zeichen oben, Erklärung darunter — im Panel ist das
+`<details class="more"><summary>…`, durchgehend nativ und mit
+Accordion-Barrierefreiheit begründet.
+
+**Zwei Hinweise, beide ZEIGEN nur:**
+
+1. **Fahrt mit nur einem Abschnitt.** `normalize_laps` liefert eine einzige
+   Runde → Satz, dass in Intervals unterteilt werden muss, damit es hier etwas
+   zu markieren gibt. Keine Sperre.
+2. **Wo der geglättete alpha-Strom 0,75 oder 0,5 kreuzt.** Eine Marke an der
+   Stelle, und der Text sagt **„hier kreuzt alpha 0,75"** — nicht „hier bist du
+   eingebrochen".
+
+**Warum es KEINE Einbruchs-Definition gibt:** die Auftragsfassung wollte eine
+Marke bei einem „Alpha-Einbruch". Das wäre eine Erkennung, und P0 verbietet
+Erkennungen. Schlimmer: eine neu erfundene Einbruchs-Statistik ist wörtlich L0
+Runde 3 — eine Größe, die eine Auswahl erzeugt und die gesuchte Eigenschaft mit
+einsammelt. **Die zwei Schwellen 0,75 und 0,5 sind dagegen im Haus belegt**
+(Rogers 2021 für beide, mit der Validierungslage 2024–2026 daneben) und werden
+von der Kurve und vom Stufentest ohnehin benutzt.
+
+**Die Zahlen kommen AUS DER PAYLOAD** (fünfte Bauregel: ein Erklärtext, der eine
+Schwelle nennt, nennt sie aus der Payload oder gar nicht), und **kein
+Urteilston** — die Marke liegt im Kategorienregister, nicht im Urteilsregister.
+
+#### P8a · Der Zuordnungshinweis, und was er nicht wissen kann
+
+Beim Anhaken erscheint ein Hinweis, wenn der Abschnitt nach Abzug der zwei
+Anlaufminuten kaum etwas trägt. **Er kann sich nur auf die DAUER stützen.** Die
+Live-Lap-Payload führt `moving_time`; die Zahl der brauchbaren alpha-Punkte
+entsteht erst in `dfa_blocks` beim Messen (`BLOCK_MIN_POINTS = 20` nach
+`BLOCK_WARMUP_DISCARD_S = 120`). Der Hinweis nennt Dauer und
+`BLOCK_MIN_SECONDS` und sonst nichts — wer mehr verspricht, baut einen Hinweis,
+der still falsch liegt. **Er hält nicht auf.**
+
+### P9 · Die Rückfallkette bleibt — und es wird erst schlechter
+
+Ohne Zuordnung rutscht jede Familie auf die FTP, **sichtbar beschriftet**:
+`SOURCE_LABEL["ftp"]` sagt schon heute „Rückfall auf die FTP — nicht gemessen".
+Kein Loch, nur ein schlechterer Rückfall.
+
+Die Belegungsstaffelung bleibt: `BLOCK_MIN_FOR_SOURCE = 3` für die Blockmessung,
+`FATIGUE_MIN_PAIRS = 6` für die Staffelung der Kurve, `_band()` für die
+Darstellungsbereiche.
+
+#### P9a · Die Kachel sagt, wie viele Einheiten noch fehlen
+
+**„Noch eine, dann misst SweetSpot wieder."** Die Zahl liegt vor — `sessions`
+gegen `min_for_source` reisen beide in der Payload —, sie muss nur genannt
+werden. Damit weiß der Athlet, worauf er zuarbeitet, **ohne dass ihn etwas
+führt** (P11, Streichung 2).
+
+#### P9b · Es sind rund ZWANZIG Fahrten, nicht achtundfünfzig
+
+Diese Rechnung ändert die ganze Bewertung des Aufwands und gehört deshalb hier
+hin, aus den eigenen Konstanten:
+
+- vier Abschnittsfamilien × `BLOCK_MIN_FOR_SOURCE` (3) = **12 Einheiten**
+- plus rund **8 lange Fahrten** für `FATIGUE_MIN_PAIRS` (6)
+
+**Etwa zwanzig Fahrten, und jede Quelle steht wieder.** Die übrigen achtunddreißig
+sind Nachlauf. `FATIGUE_SOLID_MIN_RIDES = 10` betrifft nur den vollen
+Darstellungsbereich, nicht die Messfähigkeit.
+
+#### P9c · Es wird erst schlechter, bevor es besser wird
+
+Maskieren nimmt zunächst Punkte weg: weniger Punkte je Stunde → weniger Bins →
+`FATIGUE_MIN_BINS = 3` und die Nicht-Extrapolationsregel greifen häufiger → mehr
+`p075: None`. Das wirkt weiter: `measured[].n` → `_band()` → `paired[].enough` →
+`workouts.curve_watts()` bricht die Staffelung früher ab → **Grundlage und lange
+Fahrt fallen eher auf die FTP zurück.**
+
+**Das sagt die Kachel vorher, nicht die Überraschung nach dem Update.**
+
+#### P9d · Die rollende FTP — beziffert, damit sie nicht wieder geschoben wird
+
+`websocket._latest_ftp()` läuft `for field in ("icu_ftp", "icu_rolling_ftp")` und
+nimmt den ersten Treffer. **Der rollende Wert liegt also bereits auf jeder
+Aktivität und wird nur von der Reihenfolge verdeckt.** Das ist keine
+Forschungsfrage: **eine Umsortierung plus eine Quellzeile**, die sagt, welcher
+der beiden Werte gilt und warum.
+
+Solange der Rückfall greift, hängt alles am Profilwert 200 W, während die
+gemessene 20-Minuten-Leistung bei 192 und die rollende Schätzung bei 191–194
+liegt — und der 20-%-Filter aus P0 erbt denselben Fehler. **Nicht Teil von P**,
+damit P nicht daran hängenbleibt; aber beziffert, damit die nächste Sitzung es
+nicht für ein großes Thema hält.
+
+### P10 · Der Rückbau, ZULETZT — mit einer Auflage, die keine Option ist
+
+Erst wenn P2 bis P6 tragen, und zwar **am lebenden System verifiziert**, nicht
+nur grün. Was namentlich fällt:
+
+| fällt | Verbraucher heute | was mitgeht |
+|---|---|---|
+| `blocks.family_of` | **einer**: `blocks._sessions` | die namensbasierten Fixtures in `test_blocks.py` (6 Stellen) |
+| die Namensableitung in `_sessions` | — | ersetzt durch die Marken aus `section_marks` |
+| `label == "WORK"` als Blockauswahl | `blocks._sessions` | WORK-Fixtures in `test_blocks`, `fixtures.py`, `panel_fixtures.js` |
+| `derive.drop_warmup_blocks` (die Alpha-Blockauswahl) | `importer.async_import_dfa` | die Ausreisser-Fixture und die 0.49.1-Gegenprobe |
+| `derive.above_endurance_share` **als Tor** | `fatigue_curve_reason`, `fatigue.rides` | die zugehörigen Zusicherungen |
+| die Erklärtexte, die Ausschlüsse begründen | Panel `rFatigue`, `rBlocks` | die Zusicherungen in `test_panel_views` |
+
+**DIE AUFLAGE — und sie ist keine Option:**
+
+**`derive.fatigue_curve_reason` BLEIBT stehen, als Rückfall für UNMARKIERTE
+Fahrten.**
+
+Grund: `test_fatigue` prüft heute, dass strukturierte Einheiten VOR der Messung
+ausgeschlossen werden — **mit der Gegenprobe, dass sie den Abfall von +4,0 auf
++42,0 W verfälschen, wenn man sie drinlässt.** Das ist der einzige vorhandene
+Beleg dafür, dass L0 Runde 3 nicht wiederkommt: dort wurde aus einem
+Trainingsplan „Ermüdung", weil ein Gütekriterium hinterher die Auswahl genau auf
+die strukturierten Fahrten verengte und den Störer einsammelte statt ihn
+auszuschließen.
+
+**Die manuelle Zuordnung ersetzt diesen Schutz nur für Fahrten, die der Athlet
+angefasst hat.** Für alle anderen — und das sind nach der Umstellung erst einmal
+alle — bleibt der Ausschluss die einzige Sicherung. **Wer ihn mit `family_of`
+zusammen entfernt, liefert den teuersten Fehler dieses Projekts erneut aus.**
+
+Rangfolge: **erst die Markierung, dann der Ausschluss.** Eine markierte Fahrt
+geht nicht mehr durch `fatigue_curve_reason`. (Was dabei mit dem VI-Tor und mit
+`short` geschieht, steht in P4, Auflage 5.)
+
+### P11 · Reihenfolge, Umfang, und was bewusst NICHT gebaut wird
+
+**Reihenfolge:** P1 → P3 → P4 → P2 → P5 → P6 → P7/P8 → P10.
+**Kein Algorithmus-Bump** — die maskierten Stunden leben im neuen Block mit
+eigener Messmarke, der Bestand wird nicht neu gerechnet.
+`ACTIVITY_FIELDS_VERSION` 2 → 3 in P7 — für `description` allein — ist kein
+Algorithmus-Bump, sondern ein Nachladen der Summaries.
+
+| Stufe | Umfang |
+|---|---|
+| P1 Einstellungsblock + Schalter | klein — vierte Wiederholung des Archivmusters, HA-frei prüfbar |
+| P3 Archivblock, Anker, Drift, Schreibweg | mittel |
+| P4 maskierte Stunden + fünf `dfa_hours`-Auflagen | **groß** — der einzige echte Rechenweg-Eingriff; berührt `derive`, `fatigue`, `workouts` und vier Zusicherungsgruppen |
+| P2 Kachelreihe, Haken, Formen/Kürzel, Wegfall `_rampBlock` | mittel bis groß, hoher Prüfstandsanteil |
+| P5 Spalte | klein, mit CSS-Anteil |
+| P6 Herkunftsspur | mittel |
+| P7 `description` holen, mit RPE und Gefühl anzeigen | klein |
+| P8 Hinweise | klein |
+| P10 Rückbau | mittel, fast vollständig Tests |
+
+#### Streichung 1 · KEINE TASTENKÜRZEL — bewusst, mit dem Gegenargument
+
+**Alles wird geklickt.** Das ist eine Entscheidung des Athleten vom 15.09.2026,
+und sie steht **gegen** die Recherche, damit die nächste Sitzung sie nicht für
+ein Versehen hält:
+
+> Die Tastatur ist der einzige gemessene Hebel auf den Durchsatz, den die
+> Recherche hergibt. ATLAS erreicht die niedrigste durchschnittliche Zeit je
+> Aktion und ist schneller als ROSAnnotator und ELAN; die Autoren führen das
+> ausdrücklich auf ein **tastaturzentriertes Design** zurück, das den
+> Interaktionsaufwand senkt. CVAT begründet dasselbe aus der Praxis: Annotieren
+> ist ermüdend, alles mit der Maus zu machen erschöpft schnell, deshalb nimmt
+> CVAT Tastatureingaben und ist voll von Kürzeln.
+
+**Warum trotzdem nicht:** bei rund zwanzig Fahrten (P9b) statt achtundfünfzig
+fällt der Durchsatz kaum ins Gewicht, und Klicken ist eindeutiger. **Wer das
+später nachbauen will, baut damit nichts kaputt** — aber er soll wissen, dass es
+hier abgewogen und verworfen wurde.
+
+#### Streichung 2 · KEINE WARTESCHLANGE, kein „nächste unbearbeitete"
+
+**Der Athlet wählt die Fahrten selbst aus der Liste.** Die Aktivitätenliste
+bleibt chronologisch, neueste zuerst, und bekommt nur die Markenspalte dazu
+(P5).
+
+Auch das steht gegen ein Rechercheergebnis, und auch das gehört notiert: für
+Audio wurden Segmente in einen 2D-Raum abgebildet und in großen Mengen
+beschriftet, indem Punktmengen in der Farbe eines Etiketts eingefärbt wurden —
+bei der Sprachaktivitätserkennung ergab das deutliche Beschleunigungen gegenüber
+der Annotation Stück für Stück; CVAT hat 2026 eigens Massenaktionen nachgerüstet.
+
+**Warum trotzdem nicht:** das Verfahren passt nicht — es gibt hier keinen
+sinnvollen 2D-Raum über Abschnitte —, und der wertvolle Teil des Befunds ist
+ohnehin gerettet: **P9a nennt die fehlende Zahl je Familie.** Damit weiß der
+Athlet, worauf er zuarbeitet, ohne dass ihn etwas führt. **Eine Warteschlange,
+die nach dem Vorschlag der Automatik gefüllt wäre, hätte zusätzlich genau den
+Ankerfall aus P1a erzeugt** — zwölfmal bestätigen und nichts entschieden.
+
+#### Streichung 3 · KEINE TEMPERATUR — weder holen noch anzeigen
+
+**Entscheidung des Athleten vom 15.09.2026, nachdem die Felder benannt waren.**
+`average_temp`, `min_temp` und `max_temp` stehen im dokumentierten Datenmodell
+von Intervals, `temp` ist ein dokumentierter Stromtyp, und das Markieren holt
+die Ströme ohnehin live — **der Weg wäre also billig gewesen und wird trotzdem
+nicht gegangen.** Kein Feld in `ACTIVITY_FIELDS`, kein Wert in der Kachel, kein
+Wert je Abschnitt.
+
+**Der Grund steht in P0a und ist derselbe, der das ganze Paket trägt:** ein
+Temperaturwert schließt die Lücke nicht, weil Verpflegung, Schlaf und Wind
+ohnehin fehlen. Eine Zahl, die nur einen von vier Einflüssen abbildet, lädt
+dazu ein, den Rest für erklärt zu halten — und das ist die Fehlerklasse aus §7,
+eine Größe unter einer Überschrift, die mehr verspricht als sie misst. **Wer
+Bedingungen festhalten will, schreibt sie in die Notiz** (P7), wo sie als das
+stehen, was sie sind: eine Auskunft des Athleten, keine Messung des Systems.
+
+**Nicht vergessen, sondern abgewogen und verworfen.** Wer es später bauen will,
+baut nichts kaputt — aber er soll wissen, dass es hier auf dem Tisch lag.
+
+#### Was sonst nicht zu Paket P gehört
+
+- **Die `[]`-Regel aus §10.** Der Zuschnitt nach Herkunft (632 Stellen) ist ein
+  eigener Punkt und **ausdrücklich nicht Teil von P**. Er gehört gebaut, aber
+  nicht hier — ein Auslieferungs-Release hängt nicht an einem Prüfstands-Umbau.
+- **Die rollende FTP** (P9d) — beziffert, verwiesen, nicht gebaut.
+- **Ein Korridor für `threshold`** — die Familie bekommt Haken, der Korridor
+  gehört gemessen, sobald Daten da sind. Eine gesetzte Zahl wäre die
+  Fehlerklasse, gegen die dieses ganze Paket gebaut wird.
+- **Jede Form von Temperatur** — nicht vergessen, sondern gestrichen. Siehe
+  P11, Streichung 3.
+
+### Tests P
+
+Nach der Regel aus §9: ein Test, der den alten Fehler nicht nachweislich findet,
+ist keiner. Jede Gegenprobe wird **gezählt und benannt** fallen gesehen, und vor
+jeder zurückgedrehten Zeile steht eine Zusicherung, dass die Ersetzung gegriffen
+hat (achte Bauregel).
+
+**Die Fixture muss zwei unterscheidbare Fälle tragen** (Lehre 2 aus Paket A).
+Eine Zuordnungs-Fixture, in der jeder Abschnitt dieselbe Familie trägt, besteht
+jede Prüfung und beweist nichts. Zwingend enthalten:
+
+- eine Fahrt, bei der **mindestens ein Lap durch `dfa_blocks` fällt** — sonst
+  ist der Unterschied zwischen laufender Nummer und `start_index` unsichtbar und
+  der Fehler aus P3a besteht die Suite;
+- ein Abschnitt mit **zwei** Familienmarken;
+- eine **verschobene** Fahrt (Lap-Zahl geändert, `start_index` verschoben);
+- eine Fahrt „Grundlage + SweetSpot am Ende", die heute als `structured` ganz
+  fällt und markiert ihre zwei Stunden hergibt;
+- eine Fahrt mit **einem** Lap (für den Hinweis aus P8);
+- eine Fahrt mit `dfa: {}` im Archiv (gescheiterter Abruf, P2c).
+
+Was beißen muss:
+
+1. **`start_index` gegen laufende Nummer**, an der Fahrt mit dem gefallenen Lap:
+   die Zuordnung über `n` trifft nachweislich den falschen Block.
+2. **Die zwei J7-Auflagen einzeln**: Altbestand bekommt den Block aus
+   `empty_data()`; die Migration normalisiert einen kaputten Block; **ein No-op
+   löst keinen Speichervorgang aus** (eingefrorene Referenz).
+3. **Die Rücknahme sitzt auf der einzelnen Marke** — eine von zwei Familien
+   zurückgenommen, die andere steht; die letzte zurückgenommen, der Eintrag
+   fällt ganz, und die Fahrt rechnet bit-identisch wie eine nie markierte.
+4. **Die Messmarke**: älterer `v` verliert `hours`, behält Marken und Anker, und
+   der Zustand ist in der Payload **sichtbar**.
+5. **Die Drift meldet, statt zu rechnen**: verschobene Fahrt → `marks_stale`,
+   und sie zieht **keinen** Median.
+6. **Der Haken misst nicht.** Nach `set_section_marks` steht der Eintrag mit
+   `hours: null` und einem Grund; erst „übernehmen" misst. Gegenprobe: ein
+   impliziter Messpfad wird eingebaut und muss auffallen.
+7. **Maskieren gegen neu basieren**, an „30 min Tempo, dann Grundlage": die
+   maskierte Stunde 1 ist halb belegt und heißt Stunde 1; die neu basierte
+   Fassung wird als Gegenprobe eingebaut und muss eine **andere** Zahl liefern —
+   sonst unterscheidet die Fixture die beiden Wege nicht.
+8. **`excluded` ist nicht `dropped`**: eine markierte Fahrt hat trotz großer
+   Maskierung einen kleinen `dropped_share`.
+9. **`occupancy_rising` feuert NICHT** auf einem sauberen, maskierten Bestand —
+   **mit Gegenprobe, dass es bei echtem Auswahleffekt weiter feuert** (die
+   vorhandene 8→16-Fixture bleibt).
+10. **Der Anker nennt seine Stunde**, und ein auf Stunde 2 gerutschter Anker ist
+    benannt statt still.
+11. **Die Markierung schlägt `drop_warmup_blocks`**, und der Satz dazu steht in
+    der Payload.
+12. **Die drei DFA-Zustände** aus P2c einzeln, mit dem Knopf „nochmal holen" nur
+    im mittleren Fall.
+13. **`test_panel_design`**: sechs Familien, sechs Formen, sechs Kürzel, keine
+    Urteilsfarbe, keine Form eine Variante einer anderen — mit eingebauter
+    Dublette als Gegenprobe. Und: die alpha-Marken aus P8 liegen im
+    Kategorienregister.
+14. **`test_panel_fixes`**: der Haken am simulierten Zeigerereignis, und
+    `scrollTop` überlebt das Re-Render (Lehre 3 aus Paket A; `_rtWrite` macht es
+    vor). Dazu der Quelltext-Wächter: **keine Schwelle als Zahl im Frontend** —
+    0,75 und 0,5 kommen aus der Payload.
+15. **Vorschläge sind nicht vorangehakt.** Bei `suggestions: true` steht kein
+    Haken im Archiv, bevor geklickt wurde — Gegenprobe: ein vorangehakter
+    Vorschlag muss fallen.
+16. **P10-Auflage als Zusicherung**: eine **unmarkierte** strukturierte Fahrt
+    wird weiterhin ausgeschlossen, und die +4,0/+42,0-Gegenprobe bleibt in
+    `test_fatigue` stehen.
+17. **`test_projektstand`**: die §9-Tabelle wird nachgezogen, nicht der Zähler.
+    Eine Zahl, die sich ändert, ohne dass jemand es wollte, ist ein Befund.
+
+### Was die Prüfung dieser Spezifikation ergeben hat
+
+**Sieben Korrekturen, alle VOR dem Schreiben gemeldet und einzeln freigegeben** —
+nach Lehre 1 aus Paket A: am Feld prüfen, nicht am Text.
+
+1. **„Positionsnummern im Strom" war zweideutig.** Es gibt zwei
+   Abschnittslisten, sie sind nicht deckungsgleich, und die laufende Nummer aus
+   der Panel-Rundenliste trifft im Archiv einen anderen Block. Der Schlüssel ist
+   `start_index` (P3a).
+2. **Die Farbauflage trug am Code nicht.** `ROLE` belegt das Kategorienregister
+   in genau dieser Ansicht bereits vollständig, und das Register hat sieben
+   Farben, nicht fünf (P2a).
+3. **`endurance`/`long` als Fahrt-Schalter trug nicht** — eine Grundlagenfahrt
+   mit angehängtem SweetSpot-Block braucht Abschnitts-Haken. Und die Korrektur
+   an der Korrektur: **maskieren, nicht neu basieren** (P4).
+4. **P6 war nicht frontend-only.** `blocks.series()` lässt `activity_id` fallen.
+5. **„Messung beim Verlassen" hat keinen verlässlichen Haken** — vier Ausgänge,
+   keiner über den Close-Handler (P2b).
+6. **Die Marke beim „Alpha-Einbruch" wäre selbst eine Erkennung gewesen.**
+   Ersetzt durch die zwei vorhandenen, belegten Schwellen (P8).
+7. **Ein eigenes Notizfeld wäre der zweite Ort für dieselbe Frage.** Ersetzt
+   durch Intervals' eigene Felder (P7).
+
+**Dazu sechs Befunde, die die Spezifikation nicht kannte:**
+`drop_outdated_dfa` löscht bei einem Bump die Anker mit (P3b) ·
+`occupancy_rising` würde auf sauberen Daten feuern (P4) · der 20-%-Filter erbt
+die bestrittene FTP (P0) · die rollende FTP ist eine Umsortierung, keine
+Forschungsfrage (P9d) · ein einmal gescheiterter Stromabruf bliebe für immer
+„ohne DFA-Daten" (P2c) · es sind rund zwanzig Fahrten, nicht achtundfünfzig
+(P9b).
+
+**Und zwei Quellenkorrekturen, beide der achten §7-Klasse:** die 2008er Arbeit
+zur Umgebungstemperatur ist **Lafrenz** als Erstautor, nicht Wingo, und ihr
+Befund ist ein **Unterschied** zwischen 35 °C und 22 °C, nicht „in der Kälte
+passiert nichts". Clark 2019 erhielt **CP, nicht W′**, und die Vorbelastung war
+**schwer-intensiv**, nicht moderat (P0a).
