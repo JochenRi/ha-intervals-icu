@@ -411,6 +411,101 @@ for needed in ("green", "yellow", "red"):
           f"Reiz-Gleichstand: das Gitter erzeugt keine Stufe {needed!r} "
           f"({sorted(seen_stages)})")
 
+# --- die Zuordnung (Paket P3): Leseweg, Schreibweg, Bestaetigen ---------------
+# Drei Kommandos, und der Schreibweg hat einen Fehlerpfad, den kein
+# Kommandoname zeigt: scheitert der Lap-Abruf, darf NICHTS geschrieben werden.
+# Das ist der Unterschied zu set_ramp_test, wo die Markierung auch ohne Messung
+# steht - dort faellt die MESSUNG aus, hier fiele das aus, was die Aussage
+# ueberhaupt erst bestimmt. Eine Marke ohne Anker ist eine, deren Drift nie
+# auffallen kann.
+for name, command in (("websocket_section_marks", "intervals_icu/section_marks"),
+                      ("websocket_set_section_mark", "intervals_icu/set_section_mark"),
+                      ("websocket_confirm_section_marks",
+                       "intervals_icu/confirm_section_marks")):
+    check(name in registered, f"section_marks: {name} nicht registriert")
+    check(commands.get(name) == command,
+          f"section_marks: falscher Kommandoname an {name}: {commands.get(name)!r}")
+
+_setter = functions.get("websocket_set_section_mark")
+_set_src = ast.get_source_segment(SRC, _setter) if _setter else ""
+_set_src = _set_src or ""
+check("marks_lib.set_mark(" in _set_src,
+      "section_marks: der Schreibweg validiert nicht über das Modul")
+check("marks_lib.unset_mark(" in _set_src,
+      "section_marks: die Rücknahme läuft nicht über das Modul")
+
+# Die Laps werden GEHOLT, BEVOR geschrieben wird - sonst stünde die Marke
+# ungeprüft und ohne Anker da.
+if "_laps_for(" in _set_src and "marks_lib.set_mark(" in _set_src:
+    check(_set_src.index("_laps_for(") < _set_src.index("marks_lib.set_mark("),
+          "section_marks: geschrieben wird, bevor die Abschnitte geholt sind")
+else:
+    check(False, "section_marks: der Schreibweg holt die Abschnitte nicht live")
+
+# DER FEHLERPFAD, am Syntaxbaum statt am Zeilenbild (zehnte Bauregel): in
+# keinem except-Zweig des Setzers wird geschrieben, und jeder endet mit return.
+_handlers = [node for node in ast.walk(_setter)
+             if isinstance(node, ast.ExceptHandler)] if _setter else []
+check(len(_handlers) >= 2,
+      f"section_marks: nur {len(_handlers)} Fehlerzweige im Schreibweg")
+for index, handler in enumerate(_handlers):
+    body = ast.unparse(ast.Module(body=handler.body, type_ignores=[]))
+    check("set_mark(" not in body,
+          f"section_marks: Fehlerzweig {index} schreibt trotzdem eine Marke")
+    check("async_save_now" not in body,
+          f"section_marks: Fehlerzweig {index} speichert das Archiv")
+    check(any(isinstance(sub, ast.Return) for sub in ast.walk(handler)),
+          f"section_marks: Fehlerzweig {index} läuft weiter, statt abzubrechen")
+# Gegenprobe: derselbe Ausdruck muss einen eingebauten Schreibvorgang FINDEN,
+# sonst prueft die Schleife oben nur, dass nie etwas dasteht.
+_geplant = ast.parse("try:\n    x()\nexcept ValueError:\n    marks_lib.set_mark(1)\n")
+_geplant_body = ast.unparse(ast.Module(
+    body=[h for h in ast.walk(_geplant) if isinstance(h, ast.ExceptHandler)][0].body,
+    type_ignores=[]))
+check("set_mark(" in _geplant_body,
+      "section_marks Gegenprobe: ein eingebauter Schreibvorgang im Fehlerzweig "
+      "wird NICHT gefunden — der Ausdruck ist blind")
+
+# Die RUECKNAHME braucht keine Laps und darf deshalb auch keine holen: sonst
+# waere eine falsch gesetzte Marke genau dann nicht loszuwerden, wenn die
+# Schnittstelle klemmt.
+_unset = [node for node in ast.walk(_setter)
+          if isinstance(node, ast.If) and "not msg['mark']" in ast.unparse(node.test)] \
+    if _setter else []
+check(len(_unset) == 1,
+      f"section_marks: der Rücknahme-Zweig ist nicht zu finden ({len(_unset)})")
+if _unset:
+    _unset_src = ast.unparse(ast.Module(body=_unset[0].body, type_ignores=[]))
+    check("_laps_for(" not in _unset_src,
+          "section_marks: die Rücknahme holt Abschnitte, obwohl sie keine braucht")
+    check("marks_lib.unset_mark(" in _unset_src,
+          "section_marks: der Rücknahme-Zweig nimmt nicht über das Modul zurück")
+
+_confirm = ast.get_source_segment(SRC, functions["websocket_confirm_section_marks"]) \
+    if "websocket_confirm_section_marks" in functions else ""
+check("marks_lib.reanchor(" in (_confirm or ""),
+      "section_marks: das Bestätigen verankert nicht über das Modul")
+
+# Der Leseweg liefert Familien und Driftsätze AUS DEM MODUL - eine
+# handgepflegte Kopie im Panel oder hier wäre die Listen-Klasse (§7).
+_reader = ast.get_source_segment(SRC, functions["websocket_section_marks"]) \
+    if "websocket_section_marks" in functions else ""
+check("marks_lib.FAMILIES" in (_reader or ""),
+      "section_marks: der Leseweg führt eine eigene Familienliste")
+check("marks_lib.STALE_REASON" in (_reader or ""),
+      "section_marks: die Driftsätze kommen nicht aus dem Modul")
+
+# Und die Migration ist verdrahtet - ein Block ohne sie ist unfertig (J7).
+check("section_marks.migrate(" in store_src,
+      "section_marks: das Archiv migriert den Block beim Laden nicht")
+if "section_marks.migrate(" in store_src:
+    _at = store_src.index("section_marks.migrate(")
+    check(store_src.index("base.update(stored)") < _at,
+          "section_marks: migriert wird, bevor die Altdaten übernommen sind")
+    check("schedule_save()" in store_src[_at:_at + 400],
+          "section_marks: die Reparatur wird nie gespeichert")
+
+
 print(f"test_websocket_registration: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

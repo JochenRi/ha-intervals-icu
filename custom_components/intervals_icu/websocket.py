@@ -14,7 +14,7 @@ from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.util import dt as dt_util
 
-from . import analytics, blocks as blocks_lib, coach as coach_module, day_context as day_context_lib, derive, fatigue, importer, plan as plan_lib, ramp, ramp_tests as ramp_lib, reconcile as reconcile_lib, workouts as workout_lib
+from . import analytics, blocks as blocks_lib, coach as coach_module, day_context as day_context_lib, derive, fatigue, importer, plan as plan_lib, ramp, ramp_tests as ramp_lib, reconcile as reconcile_lib, section_marks as marks_lib, workouts as workout_lib
 from .api import IntervalsError
 from .const import (
     DECOUPLING_GOOD,
@@ -99,6 +99,9 @@ def async_register(hass: HomeAssistant) -> None:
         websocket_set_day_context,
         websocket_set_ramp_test,
         websocket_ramp_tests,
+        websocket_section_marks,
+        websocket_set_section_mark,
+        websocket_confirm_section_marks,
         websocket_reconcile,
     ):
         websocket_api.async_register_command(hass, handler)
@@ -1050,6 +1053,171 @@ def websocket_today(hass, connection, msg) -> None:
     ready = analytics.readiness(data) or {}
     connection.send_result(msg["id"], coach_module.today(data, ready.get("budget")))
 
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "intervals_icu/section_marks",
+        vol.Optional("athlete_id"): str,
+    }
+)
+@callback
+def websocket_section_marks(hass, connection, msg) -> None:
+    """Die Zuordnung Abschnitt -> Familie, wie sie im Archiv steht.
+
+    ROH, UND ZWAR MIT ABSICHT: der Driftbefund steht hier NICHT dabei. Er ist
+    nur gegen die Laps zu haben, und die sind nicht archiviert - sie kommen je
+    Fahrt live ueber `intervals_icu/laps`. Ihn hier zu berechnen hiesse, fuer
+    jede Fahrt der Liste einen Abruf zu machen; ihn aus den archivierten
+    Bloecken zu SCHAETZEN hiesse, einen Stellvertreter zu zeigen, ohne zu
+    sagen, dass es einer ist (§7, erster Fall).
+
+    Geprueft wird die Drift deshalb dort, wo die Laps ohnehin vorliegen: im
+    Aktivitaetsdetail und auf dem Messweg. Was die Aktivitaetenliste damit
+    anfaengt, entscheidet P5.
+    """
+    if (coordinator := _require(hass, connection, msg)) is None:
+        return
+    data = coordinator.archive.data
+    connection.send_result(msg["id"], {
+        "marks": marks_lib.entries(data),
+        # Die Familien reisen mit, damit das Panel keine zweite Liste fuehrt -
+        # eine handgepflegte Kopie waere die Listen-Klasse aus §7.
+        "families": list(marks_lib.FAMILIES),
+        # Und die Saetze zu den Driftgruenden, aus derselben Quelle wie der
+        # Grund selbst (fuenfte Bauregel).
+        "stale_reason": marks_lib.STALE_REASON,
+        "not_measured": marks_lib.NOT_MEASURED,
+        "v": marks_lib.MEASURE_VERSION,
+    })
+
+
+async def _laps_for(coordinator: Any, activity_id: str) -> list[dict[str, Any]]:
+    """Die Abschnitte einer Fahrt, LIVE. Wirft IntervalsError weiter."""
+    payload = await coordinator.client.async_get_intervals(activity_id)
+    return derive.normalize_laps(payload).get("laps") or []
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "intervals_icu/set_section_mark",
+        vol.Required("activity_id"): str,
+        vol.Required("family"): str,
+        vol.Required("start_index"): int,
+        vol.Required("mark"): bool,
+        vol.Optional("athlete_id"): str,
+    }
+)
+@websocket_api.async_response
+async def websocket_set_section_mark(hass, connection, msg) -> None:
+    """Eine Marke setzen oder zuruecknehmen. Nur lokal, an Intervals geht nichts.
+
+    DER SCHLUESSEL IST `start_index`, und er wird gegen die LIVE geholten Laps
+    geprueft - nicht gegen die archivierten Bloecke. Die beiden Listen sind
+    nicht deckungsgleich (P3a), und die Bloecke sind es, die Luecken haben.
+
+    DER FEHLERPFAD, AUSDRUECKLICH: scheitert der Lap-Abruf beim Setzen, wird
+    NICHTS geschrieben. Das ist der Unterschied zu `set_ramp_test`, wo die
+    Markierung auch ohne Messung steht: dort faellt die MESSUNG aus, und die
+    Aussage "diese Fahrt war ein Stufentest" ist trotzdem vollstaendig. Hier
+    fiele das aus, was die Aussage ueberhaupt erst BESTIMMT - ohne Laps gibt es
+    weder einen geprueften Schluessel noch einen Anker. Eine Marke ohne Anker
+    ist eine, deren Drift nie auffallen kann; sie gaelte fuer immer als
+    sitzend. Das waere der stille Ausstieg, eine Ebene tiefer.
+
+    DIE RUECKNAHME BRAUCHT KEINE LAPS und laeuft deshalb auch dann, wenn die
+    Schnittstelle gerade nicht antwortet. Sonst waere eine falsch gesetzte
+    Marke genau dann nicht loszuwerden, wenn ohnehin etwas klemmt.
+    """
+    coordinator = _pick(hass, msg.get("athlete_id"))
+    if coordinator is None:
+        connection.send_error(msg["id"], "not_found", "no Intervals.icu athlete loaded")
+        return
+    data = coordinator.archive.data
+    activity_id = str(msg["activity_id"])
+
+    if not msg["mark"]:
+        try:
+            entry = marks_lib.unset_mark(
+                data, activity_id, str(msg["family"]), int(msg["start_index"]))
+        except ValueError as err:
+            connection.send_error(msg["id"], "invalid_format", str(err))
+            return
+        await coordinator.archive.async_save_now()
+        connection.send_result(msg["id"], {"activity_id": activity_id, "entry": entry})
+        return
+
+    activity = (data.get("activities") or {}).get(activity_id)
+    if not isinstance(activity, dict):
+        connection.send_error(msg["id"], "not_found", f"unknown activity {activity_id}")
+        return
+    day = str(activity.get("start_date_local") or "")[:10]
+    try:
+        laps = await _laps_for(coordinator, activity_id)
+    except IntervalsError as err:
+        connection.send_error(
+            msg["id"], "fetch_failed",
+            f"Die Abschnitte dieser Fahrt sind nicht abrufbar ({err}) — ohne sie "
+            f"wird nichts markiert, weil die Markierung sonst ohne Anker stünde.")
+        return
+    except Exception as err:  # noqa: BLE001 - dem Panel als Satz zeigen
+        connection.send_error(msg["id"], "fetch_failed", str(err))
+        return
+    if not laps:
+        connection.send_error(
+            msg["id"], "no_laps",
+            "Intervals liefert für diese Fahrt keine Abschnitte — sie ist dort "
+            "zu unterteilen, damit es hier etwas zu markieren gibt.")
+        return
+
+    try:
+        entry = marks_lib.set_mark(
+            data, activity_id, day, str(msg["family"]), int(msg["start_index"]),
+            laps, set_at=dt_util.now().date().isoformat())
+    except ValueError as err:
+        connection.send_error(msg["id"], "invalid_format", str(err))
+        return
+    await coordinator.archive.async_save_now()
+    connection.send_result(msg["id"], {
+        "activity_id": activity_id,
+        "entry": entry,
+        "laps": len(laps),
+    })
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "intervals_icu/confirm_section_marks",
+        vol.Required("activity_id"): str,
+        vol.Optional("athlete_id"): str,
+    }
+)
+@websocket_api.async_response
+async def websocket_confirm_section_marks(hass, connection, msg) -> None:
+    """Eine verschobene Fahrt ausdruecklich bestaetigen - ein Knopf, kein Automat.
+
+    Die Marken bleiben, der Anker wird neu genommen, die Messung faellt: sie
+    sass auf dem alten Ausschnitt. Passt eine Marke nicht mehr auf die neuen
+    Abschnitte, wird NICHT bestaetigt, sondern neu gehakt - eine Bestaetigung,
+    die auf nichts zeigt, ist schlimmer als keine.
+    """
+    coordinator = _pick(hass, msg.get("athlete_id"))
+    if coordinator is None:
+        connection.send_error(msg["id"], "not_found", "no Intervals.icu athlete loaded")
+        return
+    data = coordinator.archive.data
+    activity_id = str(msg["activity_id"])
+    try:
+        laps = await _laps_for(coordinator, activity_id)
+    except Exception as err:  # noqa: BLE001 - dem Panel als Satz zeigen
+        connection.send_error(msg["id"], "fetch_failed", str(err))
+        return
+    try:
+        entry = marks_lib.reanchor(data, activity_id, laps)
+    except ValueError as err:
+        connection.send_error(msg["id"], "invalid_format", str(err))
+        return
+    await coordinator.archive.async_save_now()
+    connection.send_result(msg["id"], {"activity_id": activity_id, "entry": entry})
 
 @websocket_api.websocket_command(
     {

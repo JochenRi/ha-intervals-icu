@@ -276,18 +276,12 @@ def usable_hours(entry: Any, laps: Any) -> list[Any] | None:
 
 
 def set_mark(data: dict[str, Any], activity_id: Any, date: str, family: str,
-             start_index: Any, laps: Any, set_at: str = "",
-             on: bool = True) -> dict[str, Any] | None:
-    """Eine Marke setzen oder zuruecknehmen. Das SCHREIBEN ist streng.
+             start_index: Any, laps: Any, set_at: str = "") -> dict[str, Any]:
+    """Eine Marke SETZEN. Das Schreiben ist streng.
 
-    Wirft ValueError mit einem Grund, den die Karte zeigen kann.
-
-    DIE RUECKNAHME SITZT AUF DER EINZELNEN MARKE, nicht auf "letztem Zustand":
-    eine Ruecknahme, die etwas anderes zuruecknimmt als das Getane, ist
-    schlimmer als keine (P3d). Ist danach keine Familie mehr uebrig, faellt der
-    GANZE Eintrag - kein Rumpf bleibt stehen, und die Fahrt rechnet wieder
-    bit-identisch wie eine nie markierte. Das ist eine Ruecknahme, keine
-    Aussage.
+    Wirft ValueError mit einem Grund, den die Karte zeigen kann. Die Laps
+    muessen LIVE geholt sein: gegen sie wird der Schluessel geprueft, und aus
+    ihnen entsteht der Anker.
 
     DER HAKEN MISST NICHT. Der Eintrag steht danach mit `hours: None` und dem
     Grund daneben; gemessen wird ausschliesslich auf "uebernehmen" (P2b).
@@ -312,6 +306,51 @@ def set_mark(data: dict[str, Any], activity_id: Any, date: str, family: str,
             f"ist der start_index des Abschnitts, nicht seine laufende Nummer"
         )
 
+    block, key, old, marks = _open(data, activity_id)
+    marks[family] = sorted(set(marks.get(family) or []) | {index})
+    return _write(block, key, old, date, marks, rows, set_at)
+
+
+def unset_mark(data: dict[str, Any], activity_id: Any, family: str,
+               start_index: Any) -> dict[str, Any] | None:
+    """Eine Marke ZURUECKNEHMEN - und zwar GENAU sie.
+
+    DIE RUECKNAHME SITZT AUF DER EINZELNEN MARKE, nicht auf "letztem Zustand".
+    Die Kritik an Label Studio trifft genau diesen Punkt: dessen Ruecknahme
+    entfernt Ebenen statt der tatsaechlich zuletzt ausgefuehrten Aktion. Eine
+    Ruecknahme, die etwas anderes zuruecknimmt als das Getane, ist schlimmer
+    als keine (P3d).
+
+    Ist danach keine Familie mehr uebrig, faellt der GANZE Eintrag - kein Rumpf
+    bleibt stehen, und die Fahrt rechnet wieder bit-identisch wie eine nie
+    markierte. Das ist eine Ruecknahme, keine Aussage.
+
+    SIE BRAUCHT WEDER LAPS NOCH DATUM: geprueft wird beim Setzen, und das
+    Datum steht im Eintrag. Sonst waere eine falsch gesetzte Marke genau dann
+    nicht loszuwerden, wenn die Schnittstelle klemmt.
+    """
+    if family not in FAMILIES:
+        raise ValueError(f"unbekannte Familie: {family!r}")
+    index = _index(start_index)
+    if index is None:
+        raise ValueError(f"kein gültiger Abschnittsschlüssel: {start_index!r}")
+    block, key, old, marks = _open(data, activity_id)
+    if old is None:
+        return None
+    rest = sorted(set(marks.get(family) or []) - {index})
+    if rest:
+        marks[family] = rest
+    else:
+        marks.pop(family, None)
+    if not marks:
+        block.pop(key, None)
+        return None
+    return _write(block, key, old, str(old.get("date") or ""), marks, None,
+                  str(old.get("set_at") or ""))
+
+
+def _open(data: dict[str, Any], activity_id: Any):
+    """Den Block, den Schluessel, den alten Eintrag und seine Marken holen."""
     block = data.setdefault(BLOCK, {})
     if not isinstance(block, dict):
         block = data[BLOCK] = {}
@@ -322,38 +361,37 @@ def set_mark(data: dict[str, Any], activity_id: Any, date: str, family: str,
         found = marked(old, name)
         if found:
             marks[name] = found
+    return block, key, old, marks
 
-    current = set(marks.get(family) or [])
-    if on:
-        current.add(index)
-    else:
-        current.discard(index)
-    if current:
-        marks[family] = sorted(current)
-    else:
-        marks.pop(family, None)
 
-    if not marks:
-        block.pop(key, None)
-        return None
+def _write(block: dict[str, Any], key: str, old: dict[str, Any] | None,
+           date: str, marks: dict[str, list[int]], laps: Any,
+           set_at: str) -> dict[str, Any]:
+    """Den Eintrag schreiben - EINE Stelle, damit es nur eine Bauart gibt."""
+    rows = laps if isinstance(laps, list) else []
 
     # DER ANKER WIRD JE ABSCHNITT BEIM ERSTEN MAL GESICHERT und danach nicht
     # mehr angefasst. Wuerde ihn jede weitere Marke auffrischen, verschwaende
     # ein Haken auf einer inzwischen veraenderten Fahrt die Drift STILL - und
     # genau davor schuetzt er.
-    fresh = anchor_of(rows, sorted({i for values in marks.values() for i in values}))
-    anchor = fresh
-    if old and isinstance(old.get("anchor"), dict):
-        kept = {
-            _index(section.get("i")): section
-            for section in (old["anchor"].get("sections") or [])
-            if isinstance(section, dict)
-        }
-        sections = []
-        for section in fresh["sections"]:
-            sections.append(kept.get(section["i"], section))
-        anchor = {"laps": _index(old["anchor"].get("laps")) or fresh["laps"],
-                  "sections": sections}
+    want = sorted({i for values in marks.values() for i in values})
+    fresh = anchor_of(rows, want)
+    kept = {
+        _index(section.get("i")): section
+        for section in ((old or {}).get("anchor") or {}).get("sections") or []
+        if isinstance(section, dict)
+    }
+    by_index = {section["i"]: section for section in fresh["sections"]}
+    # Der ALTE Stand gewinnt je Abschnitt; der frische fuellt nur, was neu
+    # dazugekommen ist. Andersherum waere der Anker nach jedem Haken wieder
+    # aktuell - und damit nutzlos.
+    sections = [kept[i] if i in kept else by_index[i]
+                for i in want if i in kept or i in by_index]
+    anchor = {
+        "laps": (_index(((old or {}).get("anchor") or {}).get("laps"))
+                 if old else None) or fresh["laps"],
+        "sections": sections,
+    }
 
     entry: dict[str, Any] = {
         "date": date,

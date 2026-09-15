@@ -4050,6 +4050,153 @@ Was beißen muss:
 17. **`test_projektstand`**: die §9-Tabelle wird nachgezogen, nicht der Zähler.
     Eine Zahl, die sich ändert, ohne dass jemand es wollte, ist ein Befund.
 
+### Was der Bau von P an dieser Spezifikation korrigiert hat
+
+**Nachgetragen ab 15.09.2026, während des Baus.** Vier Befunde am Code vor dem
+ersten Handgriff, zwei Streichungen des Athleten daraufhin, und zwei Funde, die
+erst beim Bauen entstanden sind. Alle gemeldet und einzeln freigegeben, nach
+Lehre 1 aus Paket A: am Feld prüfen, nicht am Text.
+
+#### Streichung 4 · KEINE VORSCHLÄGE — und damit entfällt P1 ganz
+
+**Entscheidung des Athleten vom 15.09.2026.** Es gibt keine Automatik, die
+vorschlägt; markiert wird alles selbst. Die Automatik wird in P10 **ersatzlos**
+zurückgebaut und nicht in einen Vorschlagsmodus überführt.
+
+**Damit fällt P1 vollständig weg, und das gehört hier hin, damit die nächste
+Sitzung keinen Schritt sucht, den es nicht mehr gibt.** P1 bestand aus drei
+Teilen: Archivblock `settings`, WebSocket-Paar `settings` / `set_setting`, und
+ein Panel-Reiter, der jeden Schalter mit seiner Begründung zeigt. Der einzige
+Schalter darin war `suggestions`. Fällt er, bleibt ein Archivblock ohne
+Schlüssel, zwei Kommandos ohne Verbraucher und ein Reiter ohne Inhalt —
+**Vorrat auf Verdacht**, und toter Code ist in diesem Projekt eine eigene
+Fehlerklasse (§12, `ring()`/`rd`). Die Reihenfolge beginnt deshalb mit P3.
+
+**Die Recherche zu Geisterhaken und Ankerwirkung bleibt in P1a stehen** — als
+Begründung, warum es keine Vorschläge gibt, nicht als verworfene Option. Wer
+sie später doch bauen will, soll den Zielkonflikt vor sich haben und nicht nur
+das Ergebnis.
+
+#### Streichung 5 · Der mittlere DFA-Zustand aus P2c — geprüft und verworfen
+
+P2c wollte drei Zustände und für den mittleren einen Knopf „nochmal holen".
+**Am Code trägt der mittlere Zustand nicht, aus zwei unabhängigen Gründen:**
+
+1. **`{}` im Archiv entsteht auf ZWEI Wegen.** `async_import_dfa` schreibt es
+   im `except` nach einem geplatzten Abruf — und ein zweites Mal am Ende über
+   `data["dfa"][key] = summary or {}`, weil `dfa_summary` `None` liefert,
+   sobald der Strom keine alpha-Werte trägt. Der zweite Weg ist nicht selten:
+   `pending_dfa` filtert über `has_dfa()`, also über `stream_types`, und das
+   ist §7 erster Fall — die Liste sagt, was in der hochgeladenen Datei lag,
+   nicht was die Schnittstelle herausgibt. **Ein Knopf „nochmal holen" holt für
+   diese Fahrten dasselbe Nichts, jedes Mal.**
+2. **Die Detail-Payload kann die Unterscheidung ohnehin nicht liefern.**
+   `websocket_activity` baut sie mit `summary = data["dfa"].get(id) or None` —
+   das leere Dict kollabiert dort auf `None`. Im Panel ist „nie abgerufen" und
+   „Abruf gescheitert" schon heute derselbe Zustand.
+
+Und für Altbestände wäre die ehrliche Antwort ohnehin „warum es leer blieb,
+steht nicht im Archiv". **Also zwei Zustände: „führt kein `dfa_a1`" und „hat
+Daten".** Nicht vergessen, sondern geprüft und verworfen.
+
+#### Der Anker wird beim ERSTEN Haken gesichert — und danach nicht mehr angefasst
+
+**Beim Bauen gefunden, und die naive Fassung liegt näher.** Wer den Anker bei
+jeder Marke neu aus den aktuellen Laps bildet, schreibt sauberen Code, der
+genau das zerstört, wofür der Anker da ist: eine spätere Marke auf einer
+inzwischen veränderten Fahrt **frischt den Vergleichsstand auf, und die Drift
+verschwindet still.** Der Athlet hakt ein zweites Mal, und das System vergisst
+dabei, dass die erste Marke nicht mehr sitzt.
+
+Das ist die Klasse aus 0.49.2 — **wer einen Fix ausliefert, verliert damit die
+Belege für die Prüfung, die den Fix gefunden hat** —, hier vor dem Bau
+gefangen. Also: je Abschnitt einmal gesichert, und `sections` wächst nur um
+neue Abschnitte. Die Lap-Zahl bleibt die des ersten Eintrags. Zugesichert in
+`test_section_marks`.
+
+#### `reanchor` ist streng — eine Bestätigung, die auf nichts zeigt, ist schlimmer als keine
+
+Der Weg aus der Drift ist ein Knopf, kein Automatismus (P3b). Beim Bauen kam
+die Frage dazu, was er tut, wenn ein markierter Abschnitt in den neuen Laps
+gar nicht mehr vorkommt. **Er bestätigt dann NICHT**, sondern wirft mit Grund:
+die Zuordnung ist neu zu setzen. Alles andere hieße, eine Marke auf einen
+Abschnitt zeigen zu lassen, den es nicht gibt — und sie sähe danach aus wie
+eine, die sitzt. Bestätigen löscht außerdem die `hours`, weil die Messung auf
+dem alten Ausschnitt saß.
+
+#### Die Rücknahme auf der einzelnen Marke ist belegt, nicht nur entschieden
+
+P3d nannte „ein verbreitetes Annotationswerkzeug" ohne Namen. **Gemeint ist
+Label Studio**, und die Kritik trifft genau diesen Punkt: seine Rücknahme
+entfernt Ebenen, statt die tatsächlich zuletzt ausgeführte Aktion rückgängig zu
+machen. Der Name steht hier, damit die Regel beim nächsten Umbau nicht zu
+„einfach den letzten Zustand zurücksetzen" vereinfacht wird — **eine Rücknahme,
+die etwas anderes zurücknimmt als das Getane, ist schlimmer als keine.**
+
+#### Der Anker taugt NICHT zum Maskieren, und der Messweg braucht ZWEI Abrufe
+
+P4 sagt „dieselbe Mechanik wie bei `set_ramp_test`: Ströme LIVE und
+UNGEDÜNNT". **Das reicht nicht.** Maskieren heißt, Stromstellen auszuschließen,
+und die Grenzen dafür sind `start_index` UND `end_index` der Laps — die stehen
+nicht im Strom. `async_import_dfa` macht deshalb den zweiten Abruf
+(`async_get_intervals`) und sagt dazu, warum; `set_ramp_test` braucht ihn nicht
+und hat ihn nicht. Der Messweg der Zuordnung braucht ihn, samt eigenem
+Fehlerpfad: Ströme da, Laps nicht.
+
+**Und der Anker schließt die Lücke nicht.** Er hält `start_index` und die
+DAUER, nicht das Ende. Wer daraus zu schneiden versucht, baut einen Ausschnitt
+aus einer Bewegungszeit auf einer Stromachse — genau der Versatz aus §7
+(114 Stellen bei der Einheit vom 01.09.2026). Der Anker ist für die
+Drifterkennung da. Das steht jetzt auch im Kopf von `section_marks.py`, damit
+es niemand aus dem Feldnamen erschließen muss.
+
+#### P8 ist nicht frontend-only — das dritte Mal
+
+Die Auflage lautet, 0,75 und 0,5 kämen aus der Payload (fünfte Bauregel).
+**Sie stehen in keiner Aktivitätsdetail-Payload:** `DFA_AEROBIC` und
+`DFA_ANAEROBIC` sind Modulkonstanten in `derive.py` und `coach.py` und reisen
+nirgends mit. Im Panel stehen sie als nackte Zahlen in `_streamPanels`, und der
+Dublettenwächter in `test_panel_fixes` friert genau diese zwei auf
+`dfa.length === 2` ein. **Wer die alpha-Marken naiv baut, hebt die Zahl und
+reißt einen Wächter, der zu Recht anschlägt.** Also eine Backend-Zeile, wie bei
+P6 — und nach A5 und H das dritte Mal, dass „berührt nur das Frontend" am Code
+nicht trägt. Beim Bau von P8 gehört das in §7.
+
+#### Der Stufentest misst beim Klick, die sechs anderen nicht
+
+P2 stellt sieben Kacheln nebeneinander und lässt `set_ramp_test` unverändert.
+Damit stehen sieben gleich aussehende Bedienelemente da, von denen **eines
+sofort Ströme holt und misst**, während die sechs anderen nur haken (P2b). Der
+Fehler aus 0.46.0 war zwei Orte für eine Frage; das hier ist ein Ort mit zwei
+Verhalten.
+
+**Entschieden am 15.09.2026: ein deutlicher Hinweis an der Stufentest-Kachel,
+kein Umbau.** Der Weg trägt seit 0.51.1 live; ihn für einen Gleichklang
+anzufassen wäre Risiko ohne Gewinn. Der Hinweis ist aber Pflicht, nicht
+Zierrat.
+
+#### Die Reihenfolge ist umgedreht: P3 → P2 → P4
+
+P11 setzte P4 vor P2. **Dagegen steht die eigene Auflage aus P10: verifiziert
+wird am lebenden System.** Eine Maskierungsrechnung ohne Bedienung ist nur
+gegen Fixtures prüfbar — es gäbe keinen einzigen echten Haken, gegen den man
+messen könnte. P2 ohne P4 ist dagegen widerspruchsfrei baubar, und zwar genau
+so, wie P2b es ohnehin verlangt: haken, Eintrag mit `hours: null` und Grund,
+Knopf „übernehmen und messen" kommt mit P4. Dazu praktisch: die rund zwanzig
+Fahrten aus P9b sind Handarbeit und brauchen Zeit, die sonst ungenutzt
+verstreicht.
+
+**Vier Auslieferungen:** A = P3 + P2 (ungemessen) · B = P4 · C = P5, P6, P7, P8 ·
+D = P10.
+
+#### Die Mobilfrage aus P5 ist OFFEN, nicht entschieden
+
+P5 sagt, die mobile Ausblendliste sei nachzuziehen. In der Konsequenz hieße das:
+die Markenspalte ist auf dem Telefon unsichtbar, und damit ist die Aussage
+„noch nicht angefasst" dort nicht zu haben. **Das ist eine Entscheidung, keine
+CSS-Kleinigkeit, und sie wird beim Bau von P5 getroffen, nicht vorweg.** P5
+baut die Spalte für den Rechner.
+
 ### Was die Prüfung dieser Spezifikation ergeben hat
 
 **Sieben Korrekturen, alle VOR dem Schreiben gemeldet und einzeln freigegeben** —

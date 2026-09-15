@@ -257,12 +257,12 @@ check("Mehrfach: ein Abschnitt traegt zwei Familien",
       sm.families_at(sm.entry_for(vorher, "b1"), 600), ["sweetspot", "tempo"])
 ok("Mehrfach: die Fixture hat wirklich zwei", len(sm.marked(sm.entry_for(vorher, "b1"))) == 1)
 
-sm.set_mark(vorher, "b1", "2026-09-11", "tempo", 600, LAPS, on=False)
+sm.unset_mark(vorher, "b1", "tempo", 600)
 check("Ruecknahme: die eine Familie ist weg",
       sm.families_at(sm.entry_for(vorher, "b1"), 600), ["sweetspot"])
 ok("Ruecknahme: der Eintrag steht noch", sm.entry_for(vorher, "b1") is not None)
 
-sm.set_mark(vorher, "b1", "2026-09-11", "sweetspot", 600, LAPS, on=False)
+sm.unset_mark(vorher, "b1", "sweetspot", 600)
 check("Ruecknahme: mit der letzten Marke faellt der ganze Eintrag",
       sm.entry_for(vorher, "b1"), None)
 check("Ruecknahme: kein Rumpf bleibt stehen - bit-identisch wie nie markiert",
@@ -273,12 +273,34 @@ check("Ruecknahme: kein Rumpf bleibt stehen - bit-identisch wie nie markiert",
 zwei = {"section_marks": {}}
 sm.set_mark(zwei, "b2", "2026-09-11", "sweetspot", 600, LAPS)
 sm.set_mark(zwei, "b2", "2026-09-11", "tempo", 1290, LAPS)
-sm.set_mark(zwei, "b2", "2026-09-11", "sweetspot", 600, LAPS, on=False)
+sm.unset_mark(zwei, "b2", "sweetspot", 600)
 check("Ruecknahme: die genannte Marke faellt, nicht die letzte",
       sm.entry_for(zwei, "b2").get("marks"), {"tempo": [1290]})
 check("Ruecknahme: und der Anker fuehrt nur noch den uebrigen Abschnitt",
       [s.get("i") for s in sm.entry_for(zwei, "b2").get("anchor", {}).get("sections", [])],
       [1290])
+
+# Die Ruecknahme braucht WEDER Laps NOCH Datum - sonst waere eine falsch
+# gesetzte Marke genau dann nicht loszuwerden, wenn die Schnittstelle klemmt.
+ohne = {"section_marks": {}}
+sm.set_mark(ohne, "b3", "2026-09-11", "long", 0, LAPS, set_at="2026-09-11")
+sm.set_mark(ohne, "b3", "2026-09-11", "long", 600, LAPS, set_at="2026-09-11")
+anker_vorher = copy.deepcopy(sm.entry_for(ohne, "b3").get("anchor"))
+check("Ruecknahme: sie laeuft ohne Laps", sm.unset_mark(ohne, "b3", "long", 0) is None, False)
+check("Ruecknahme: das Datum bleibt das des Eintrags",
+      sm.entry_for(ohne, "b3").get("date"), "2026-09-11")
+check("Ruecknahme: der Anker des UEBRIGEN Abschnitts bleibt unveraendert",
+      sm.entry_for(ohne, "b3").get("anchor", {}).get("sections"),
+      [s_ for s_ in (anker_vorher or {}).get("sections", []) if s_.get("i") == 600])
+check("Ruecknahme: und die Rundenzahl im Anker bleibt stehen",
+      sm.entry_for(ohne, "b3").get("anchor", {}).get("laps"),
+      (anker_vorher or {}).get("laps"))
+check("Ruecknahme: eine Marke, die es nicht gibt, aendert nichts",
+      sm.unset_mark(ohne, "b3", "tempo", 600).get("marks"), {"long": [600]})
+check("Ruecknahme: auf einer nie markierten Fahrt ist sie None",
+      sm.unset_mark({"section_marks": {}}, "nix", "tempo", 0), None)
+raises("Ruecknahme: unbekannte Familie faellt auch hier auf",
+       lambda: sm.unset_mark(ohne, "b3", "cyclocross", 600), "Familie")
 
 check("Ruecknahme: die ganze Fahrt auf einmal", sm.remove_entry(zwei, "b2"), True)
 check("Ruecknahme: ein zweites Mal ist kein Fehler", sm.remove_entry(zwei, "b2"), False)
@@ -317,8 +339,8 @@ check("Uebernehmen: und sie sind benutzbar",
 echt_set_mark = sm.set_mark
 
 
-def _heimlich_messend(data_, aid, date, family, index, laps, set_at="", on=True):
-    entry_ = echt_set_mark(data_, aid, date, family, index, laps, set_at=set_at, on=on)
+def _heimlich_messend(data_, aid, date, family, index, laps, set_at=""):
+    entry_ = echt_set_mark(data_, aid, date, family, index, laps, set_at=set_at)
     if entry_ is not None:
         entry_["hours"] = [{"hour": 1, "p075": 999}]
         entry_["reason"] = ""
