@@ -1289,6 +1289,45 @@ const acts = F.activities(), thr = F.thresholds();
   const lmkPos = liste2.indexOf('class="lmk"'), dfaPos = liste2.indexOf(M.ROLE.dfa);
   ok(lmkPos > dfaPos, "zuordnung: die Marken stehen vor den rollengefärbten Balken");
 
+  // ── DIE QUITTUNG: die Kachel traegt den Zustand SICHTBAR ───────────────
+  // Der Haken misst nicht - also muss etwas anderes sagen, dass er angekommen
+  // ist. Ohne diese Zusicherung ist die ganze Auslieferung nicht zu pruefen:
+  // man hakt und sieht nicht, ob es gespeichert wurde.
+  q._smarks = { marks: [{ activity_id: "a1", date: "2026-09-10",
+                          marks: { tempo: [1290], sweetspot: [600] },
+                          anchor: { laps: 4, sections: [{ i: 600, s: 600 }, { i: 1290, s: 600 }] },
+                          hours: null, set_at: "2026-09-12",
+                          reason: "Markiert, noch nicht gemessen — die Messung läuft auf „übernehmen und messen“." }],
+                families: Object.keys(M.FAM), stale_reason: {} };
+  const quittung = q._marksBlock(act);
+  H.clean(quittung, "quittung");
+  ok(/Im Archiv:/.test(quittung), "quittung: die Kachel sagt nicht, dass die Marke angekommen ist");
+  ok(/2 Marken/.test(quittung), `quittung: die Zahl der Marken fehlt oder stimmt nicht`);
+  ok(/2 Familien/.test(quittung), "quittung: über wie viele Familien fehlt");
+  ok(quittung.includes("2026-09-12"), "quittung: wann gesetzt wurde, steht nicht da");
+  ok(quittung.includes("noch nicht gemessen"),
+     "quittung: der Zustand „markiert, aber nicht gemessen“ ist nicht sichtbar");
+  // Der Grund kommt AUS DER PAYLOAD, nicht aus einem zweiten Satz im Panel -
+  // sonst stünden zwei Wahrheiten für einen Text nebeneinander.
+  ok((quittung.match(/noch nicht gemessen/g) || []).length === 1,
+     "quittung: der Satz steht doppelt — einmal aus der Payload, einmal aus dem Panel");
+  // die Kacheln zählen ihre Abschnitte einzeln
+  ok(/1 Abschnitt</.test(quittung) || /1 Abschnitt\s/.test(quittung),
+     "quittung: die Kachel nennt die Zahl ihrer Abschnitte nicht");
+  // GEGENPROBE: eine Fahrt OHNE Marke trägt keine Quittung - sonst prüft das
+  // obige nur, dass irgendein Text da ist.
+  const leer = q._marksBlock({ id: "a9", dfa: { blocks: [{ start_index: 1 }] } });
+  ok(!/Im Archiv:/.test(leer),
+     "quittung Gegenprobe: eine nie markierte Fahrt zeigt trotzdem eine Quittung");
+  // und eine GEMESSENE Fahrt sagt das statt „noch nicht gemessen"
+  q._smarks.marks[0].hours = [{ hour: 1, p075: 208 }, { hour: 2, p075: 201 }];
+  const gemessen = q._marksBlock(act);
+  ok(/Gemessen über 2 Stunden/.test(gemessen),
+     "quittung: eine gemessene Fahrt sagt nicht, worüber gemessen wurde");
+  ok(!/noch nicht gemessen/.test(gemessen),
+     "quittung: eine gemessene Fahrt behauptet weiter, sie sei nicht gemessen");
+  q._smarks.marks[0].hours = null;
+
   // ── ein Abschnitt OHNE start_index ist nicht zuzuordnen, und sagt es ────
   q._laps = { a1: { laps: laps.concat([{ n: 5, label: "ENDE", moving_time: 300, avg_watts: 90 }]) } };
   const liste3 = q._lapBlock(act);

@@ -3955,10 +3955,23 @@ class IntervalsIcuPanel extends HTMLElement {
             über Blöcke.</p>`
         : "");
 
-    const stand = !cur ? "" : (cur.hours
-      ? `<p class="src">Gemessen: ${cur.hours.length} Stunde${cur.hours.length === 1 ? "" : "n"}
-          aus dem markierten Bereich.</p>`
-      : `<p class="src"><b>Noch nicht gemessen.</b> ${esc(cur.reason || "")}</p>`);
+    // DIE QUITTUNG. Der Haken misst nicht - also muss etwas anderes sagen, dass
+    // er ANGEKOMMEN ist, sonst klickt der Athlet ins Leere und merkt es erst,
+    // wenn eine Zahl fehlt. Gezeigt wird, was WIRKLICH im Archiv steht: die
+    // Zahl der Marken, ueber wie viele Familien, und wann gesetzt. Und
+    // darunter der Grund aus der PAYLOAD - nicht noch einmal derselbe Satz aus
+    // dem Frontend daneben (fuenfte Bauregel).
+    const smTotal = Object.values((cur && cur.marks) || {})
+      .reduce((sum, list) => sum + ((list || []).length), 0);
+    const smFams = Object.keys((cur && cur.marks) || {}).length;
+    const stand = !cur ? "" : `<p class="src">
+        <b>Im Archiv:</b> ${smTotal} Marke${smTotal === 1 ? "" : "n"} über
+        ${smFams} Familie${smFams === 1 ? "" : "n"}${cur.set_at
+          ? `, zuletzt gesetzt am ${esc(cur.set_at)}` : ""}.
+        ${cur.hours
+          ? `Gemessen über ${cur.hours.length} Stunde${cur.hours.length === 1 ? "" : "n"}
+             aus dem markierten Bereich.`
+          : esc(cur.reason || "")}</p>`;
 
     return `<h3 class="secname">Zuordnung
       <span class="hint">— du ordnest zu, das System erkennt nicht. Familie wählen, dann die
