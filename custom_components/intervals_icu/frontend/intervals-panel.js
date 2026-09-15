@@ -4135,7 +4135,58 @@ class IntervalsIcuPanel extends HTMLElement {
     // OB gemessen wurde und worauf. Zwei Orte fuer dieselbe Tabelle waeren
     // 0.46.0, und die kurze Zeile ist der Preis dafuer, dass der
     // Driftzustand mit in dieselbe Auslieferung passt.
-    const alleStd = ((cur && cur.hours) || []);
+    // JE FAMILIE EINE ZEILE. Der Knopf misst alles, was markiert ist, und die
+    // Quittung sagt je Familie, was dabei herauskam — oder warum nichts.
+    // Eine Sammelmeldung („gemessen") verschwiege, dass VO2max ging und die
+    // Grundlage nicht.
+    const mess = (cur && cur.measure) || {};
+    const mitte = (v) => {
+      const a = v.slice().sort((x, y) => x - y);
+      if (!a.length) return null;
+      const h = a.length >> 1;
+      return a.length % 2 ? a[h] : (a[h - 1] + a[h]) / 2;
+    };
+    const famZeile = (key) => {
+      const got = mess[key];
+      const l = (FAM[key] || {}).l || key;
+      if (!got) return `<li><b>${esc(l)}</b> — noch nicht gemessen.</li>`;
+      let satz = "";
+      if (key === "endurance") {
+        const hs = got.hours || [];
+        // Ein Fahrtende ist keine Fahrtstunde: ausdrücklich null zugelassene
+        // Sekunden zählen nicht mit, fehlt das Feld, ist nichts bekannt.
+        const voll = hs.filter((h) => (h || {}).points !== 0);
+        const wert = hs.filter((h) => (h || {}).p075 != null).length;
+        satz = hs.length
+          ? `${voll.length} Fahrtstunde${voll.length === 1 ? "" : "n"}, ${wert} mit Wert`
+            + (hs.length > voll.length
+               ? " — die letzte angefangene Stunde war ein Fahrtende und zählt nicht mit." : ".")
+          : "";
+      } else {
+        const bl = got.blocks || [];
+        const w = mitte(bl.map((b) => (b || {}).watts).filter((v) => v != null));
+        const a = mitte(bl.map((b) => (b || {}).alpha).filter((v) => v != null));
+        // DER REST NACH DEM ANLAUF, je Block: ein Abschnitt, von dem nach den
+        // ersten zwei Minuten 35 Sekunden bleiben, zählt sonst so viel wie
+        // einer mit achtzehn Minuten — und niemand sieht es.
+        const rest = bl.map((b) => (b || {}).points).filter((v) => v != null);
+        satz = bl.length
+          ? `${bl.length} Block${bl.length === 1 ? "" : "öcke"}`
+            + (a == null ? "" : `, alpha-Median ${fmt(a, 2)}`)
+            + (w == null ? "" : `, ${fmt(w)} W`)
+            + (rest.length ? ` · nach dem Anlauf ${rest.map((v) => fmt(v)).join(" · ")} s` : "")
+          : "";
+      }
+      const grund = got.reason ? `<span class="err">${esc(got.reason)}</span>` : "";
+      return `<li><b>${esc(l)}</b>${satz ? " — " + satz : ""} ${grund}</li>`;
+    };
+    // VEREINIGUNG aus markiert UND gemessen, nicht nur markiert: ein Ergebnis,
+    // dessen Marke inzwischen weg ist, verschwände sonst lautlos aus der
+    // Quittung — und lautlos ist genau das, was hier nie passieren soll.
+    const famListe = Object.keys(FAM).filter(
+      (key) => (((cur && cur.marks) || {})[key] || []).length || mess[key]);
+
+    const alleStd = ((mess.endurance || {}).hours || []);
     const gemStd = alleStd.filter((h) => (h || {}).p075 != null).length;
     // EIN FAHRTENDE IST KEIN VERSAGEN. Die 12.08.-Fahrt ist 2h54 lang; ihre
     // vierte Stunde trägt 25 Sekunden und stand als leere Zeile da. Solche
@@ -4152,6 +4203,7 @@ class IntervalsIcuPanel extends HTMLElement {
     // gemessen hat, soll nach einem Umhaken nicht lesen, sein Klick sei nie
     // angekommen. Unterschieden wird an `measured_at` - der Zustand steht in
     // Feldern, der Satz kommt aus dem Leseweg (0.53.1).
+    const etwasGemessen = famListe.some((key) => mess[key]);
     const offen = !cur ? "" : (cur.reason
       ? esc(cur.reason)
       : esc((cur.measured_at ? sm.remeasure : sm.not_measured) || ""));
@@ -4171,12 +4223,10 @@ class IntervalsIcuPanel extends HTMLElement {
         <b>Im Archiv:</b> ${smTotal} Marke${smTotal === 1 ? "" : "n"} über
         ${smFams} Familie${smFams === 1 ? "" : "n"}${cur.set_at
           ? `, zuletzt gesetzt am ${esc(cur.set_at)}` : ""}.
-        ${cur.hours
-          ? `Gemessen über ${gemAlle} Fahrtstunde${gemAlle === 1 ? "" : "n"},
-             ${gemStd} davon mit Wert${cur.measured_at
-               ? ` — am ${esc(cur.measured_at)}` : ""}.
-             ${reste > 0 ? `Die letzte angefangene Stunde war ein Fahrtende und zählt nicht mit.` : ""}
-             ${gemStd === 0 ? esc(sm.no_value || "") : ""}`
+        ${etwasGemessen
+          ? `Gemessen${cur.measured_at ? ` am ${esc(cur.measured_at)}` : ""}:
+             <ul class="smfam">${famListe.map(famZeile).join("")}</ul>
+             ${gemStd === 0 && (mess.endurance || {}).hours ? esc(sm.no_value || "") : ""}`
           // Ein ECHTER Grund aus dem Archiv (gescheiterte Messung,
           // Versionswechsel) gewinnt; sonst der Satz aus dem Leseweg. Er steht
           // seit 0.53.1 nicht mehr im Eintrag, weil ein gespeicherter
@@ -4310,8 +4360,13 @@ class IntervalsIcuPanel extends HTMLElement {
       const scroll = this.scrollTop;
       this._smarks = await this._ws("section_marks");
       this._msBusy = null;
-      const grund = res && res.reason;
-      if (grund) this._msErr = { id: String(id), msg: String(grund) };
+      // GRÜN nur, wenn KEINE Familie einen Grund trägt. Eine Fahrt, an der
+      // VO2max gemessen hat und die Grundlage nicht, ist kein Erfolg —
+      // sonst färbte sich der Knopf über einem halben Ergebnis.
+      const fams = (res && res.families) || {};
+      const gruende = Object.keys(fams)
+        .map((k) => (fams[k] || {}).reason).filter(Boolean);
+      if (gruende.length) this._msErr = { id: String(id), msg: gruende.join(" ") };
       else this._msOk = String(id);
       this._render();
       this.scrollTop = scroll;
@@ -5550,6 +5605,8 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
 .smbox{width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;
   border:2px solid ${C.line};border-radius:6px;background:none;cursor:pointer;padding:0}
 .smbox:hover{border-color:var(--fc)}
+.smfam{margin:4px 0 0;padding-left:16px}
+.smfam li{margin:2px 0}
 .smrun{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:6px}
 .smrun .err{font-size:12px}
 /* Eigene Klasse statt ctxremove: der wuchs auf die volle Breite und blieb in

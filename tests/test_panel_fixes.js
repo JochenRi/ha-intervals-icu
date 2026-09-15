@@ -1348,13 +1348,21 @@ const acts = F.activities(), thr = F.thresholds();
   ok(!/Im Archiv:/.test(leer),
      "quittung Gegenprobe: eine nie markierte Fahrt zeigt trotzdem eine Quittung");
   // und eine GEMESSENE Fahrt sagt das statt „noch nicht gemessen"
-  q._smarks.marks[0].hours = [{ hour: 1, p075: 208 }, { hour: 2, p075: 201 }];
+  q._smarks.marks[0].measure = { endurance: { hours: [{ hour: 1, p075: 208, points: 3600 },
+                                                       { hour: 2, p075: 201, points: 3600 }] } };
   const gemessen = q._marksBlock(act);
-  ok(/Gemessen über 2 Fahrtstunden/.test(gemessen) && /2 davon mit Wert/.test(gemessen),
+  ok(/Grundlage<\/b> — 2 Fahrtstunden, 2 mit Wert/.test(gemessen),
      "quittung: eine gemessene Fahrt sagt nicht, worüber gemessen wurde");
-  ok(!/noch nicht gemessen/.test(gemessen),
+  // SEIT B2b-0 ist „gemessen" keine Eigenschaft der FAHRT mehr, sondern der
+  // FAMILIE: eine Fahrt kann für die Grundlage gemessen und für Tempo offen
+  // sein. Geprüft wird deshalb, dass der Eintrag nicht mehr im Zustand „nichts
+  // gemessen" steht — nicht, dass das Wort nirgends vorkommt.
+  ok(/Gemessen/.test(gemessen) && !/Markiert, noch nicht gemessen/.test(gemessen),
      "quittung: eine gemessene Fahrt behauptet weiter, sie sei nicht gemessen");
-  q._smarks.marks[0].hours = null;
+  // Und die OFFENE Familie sagt es an ihrer eigenen Zeile.
+  ok(/Tempo<\/b> — noch nicht gemessen/.test(gemessen),
+     "quittung: eine offene Familie verschwindet aus der Quittung");
+  q._smarks.marks[0].measure = {};
 
   // ── EIN Abschnitt ist kein Mangel ──────────────────────────────────────
   // Eine Rolleneinheit hat genau einen Abschnitt, und der IST die ganze Fahrt.
@@ -1470,7 +1478,7 @@ const acts = F.activities(), thr = F.thresholds();
   const act = { id: "a1", name: "Tempo", dfa: { blocks: [{ start_index: 600 }] } };
   const eintrag = (extra) => Object.assign(
     { activity_id: "a1", date: "2026-09-10", marks: { tempo: [600] },
-      hours: null, reason: "", set_at: "2026-09-12", measured_at: null }, extra || {});
+      measure: {}, reason: "", set_at: "2026-09-12", measured_at: null }, extra || {});
   const payload = (extra) => ({
     marks: [eintrag(extra)], families: Object.keys(M.FAM),
     stale_reason: { section_moved: "Mindestens ein markierter Abschnitt hat eine andere Dauer." },
@@ -1490,7 +1498,8 @@ const acts = F.activities(), thr = F.thresholds();
   q._smarks = payload(); q._laps = { a1: { laps: [], marks_stale: null } };
   const sent = [];
   q._ws = (cmd, args) => { sent.push([cmd, args]); return Promise.resolve(
-    cmd === "section_marks" ? payload({ hours: [{ hour: 1, p075: 201 }, { hour: 2, p075: null }],
+    cmd === "section_marks" ? payload({ measure: { endurance: { hours: [{ hour: 1, p075: 201, points: 3600 },
+                                                              { hour: 2, p075: null, points: 3600 }] } },
                                         measured_at: "2026-09-15" })
                             : { reason: "" }); };
   fire({ act: "smmeasure", id: "a1" });
@@ -1509,8 +1518,10 @@ const acts = F.activities(), thr = F.thresholds();
   const okBtn = /<button[^>]*data-act="smmeasure"[^>]*>/.exec(gruen);
   ok(okBtn !== null && /class="smrunbtn ok"/.test(okBtn[0]),
      "übernehmen: ein Erfolg färbt den Knopf nicht");
-  ok(/2 Fahrtstunden/.test(gruen) && /1 davon mit Wert/.test(gruen),
+  ok(/2 Fahrtstunden, 1 mit Wert/.test(gruen),
      "übernehmen: die Kachel sagt nicht, worüber gemessen wurde");
+  ok(/Grundlage/.test(gruen),
+     "übernehmen: die Quittung nennt die Familie nicht");
   ok(/2026-09-15/.test(gruen), "übernehmen: das Messdatum fehlt");
   // Eine Zeile, keine Tabelle: die Einzelwerte stehen in der Trainer-Kachel.
   ok(!/Stunde 1|Stunde 2|201/.test(gruen),
@@ -1546,7 +1557,7 @@ const acts = F.activities(), thr = F.thresholds();
   q._msErr = null; q._msOk = null; q._msBusy = null;
   const sach = "Diese Fahrt führt keinen auswertbaren DFA-a1-Strom.";
   q._ws = (cmd) => Promise.resolve(cmd === "measure_section_marks"
-    ? { reason: sach } : payload({ reason: sach }));
+    ? { families: { endurance: { hours: null, reason: sach } } } : payload({ measure: { endurance: { hours: null, reason: sach } } }));
   await q._smMeasure("a1");
   const sachHtml = q._marksBlock(act);
   ok(sachHtml.includes("auswertbaren DFA-a1-Strom"),
@@ -1576,7 +1587,7 @@ const acts = F.activities(), thr = F.thresholds();
   // confirm_section_marks war drei Releases lang gebaut und nie bedienbar.
   // Harmlos, SOLANGE nichts den Zustand auslöste; seit der Messweg ihn
   // auslöst, wäre es ein Zustand ohne Ausgang.
-  q._smarks = payload({ hours: [{ hour: 1, p075: 201 }] });
+  q._smarks = payload({ measure: { endurance: { hours: [{ hour: 1, p075: 201 }] } } });
   q._laps = { a1: { laps: [], marks_stale: "section_moved" } };
   const drift = q._marksBlock(act);
   H.clean(drift, "drift");
@@ -1644,16 +1655,18 @@ const acts = F.activities(), thr = F.thresholds();
 
   // ── DER SATZ NENNT DIE FOLGE, NICHT NUR DIE ZAHL ─────────────────────
   // „0 davon mit Wert" ist richtig gerechnet und für sich unverständlich.
-  q._smarks = payload({ hours: [{ hour: 1, p075: null }, { hour: 2, p075: null }],
+  q._smarks = payload({ measure: { endurance: { hours: [{ hour: 1, p075: null, points: 3600 },
+                                                       { hour: 2, p075: null, points: 3600 }] } },
                         measured_at: "2026-09-15" });
   q._smarks.no_value = "FOLGE: zu locker, zählt nicht mit.";
   const ohneWert = q._marksBlock(act);
-  ok(/0 davon mit Wert/.test(ohneWert), "folge: die Zahl fehlt");
+  ok(/2 Fahrtstunden, 0 mit Wert/.test(ohneWert), "folge: die Zahl fehlt");
   ok(/FOLGE: zu locker, zählt nicht mit\./.test(ohneWert),
      "folge: die Zahl steht ohne ihre Bedeutung da");
   // Gegenprobe: WO ein Wert herauskam, steht der Satz NICHT - sonst läse ihn
   // der Athlet an jeder gelungenen Messung.
-  q._smarks = payload({ hours: [{ hour: 1, p075: 201 }], measured_at: "2026-09-15" });
+  q._smarks = payload({ measure: { endurance: { hours: [{ hour: 1, p075: 201, points: 3600 }] } },
+                        measured_at: "2026-09-15" });
   q._smarks.no_value = "FOLGE: zu locker, zählt nicht mit.";
   ok(!/FOLGE: zu locker/.test(q._marksBlock(act)),
      "folge: der Satz steht auch an einer gelungenen Messung");
@@ -1670,22 +1683,86 @@ const acts = F.activities(), thr = F.thresholds();
   // Die 12.08.-Fahrt ist 2h54 lang; ihre vierte Stunde trägt 25 Sekunden und
   // stand als leere Zeile da, die aussah wie ein Messfehler.
   q._msOk = null; q._msErr = null;
-  q._smarks = payload({ measured_at: "2026-09-15", hours: [
+  q._smarks = payload({ measured_at: "2026-09-15", measure: { endurance: { hours: [
     { hour: 1, p075: 150.0, points: 3600 }, { hour: 2, p075: 141.0, points: 3600 },
-    { hour: 3, p075: null, points: 0 }] });
+    { hour: 3, p075: null, points: 0 }] } } });
   const rest = q._marksBlock(act);
   H.clean(rest, "stundenrest");
-  ok(/über 2 Fahrtstunden/.test(rest),
+  ok(/2 Fahrtstunden, 2 mit Wert/.test(rest),
      "stundenrest: die angefangene Stunde wird als volle mitgezählt");
   ok(/Fahrtende/.test(rest), "stundenrest: der Rest wird weggelassen statt benannt");
   // GEGENPROBE: ohne Rest steht der Satz NICHT da, sonst liest ihn der Athlet
   // an jeder Fahrt.
-  q._smarks = payload({ measured_at: "2026-09-15", hours: [
-    { hour: 1, p075: 150.0, points: 3600 }, { hour: 2, p075: 141.0, points: 3600 }] });
+  q._smarks = payload({ measured_at: "2026-09-15", measure: { endurance: { hours: [
+    { hour: 1, p075: 150.0, points: 3600 }, { hour: 2, p075: 141.0, points: 3600 }] } } });
   const ohneRest = q._marksBlock(act);
   ok(!/Fahrtende/.test(ohneRest), "stundenrest: der Satz steht auch ohne Rest da");
-  ok(/über 2 Fahrtstunden/.test(ohneRest),
+  ok(/2 Fahrtstunden, 2 mit Wert/.test(ohneRest),
      "stundenrest Gegenprobe: die Zählung ohne Rest stimmt nicht");
+
+  // ── DREI FAMILIEN AN EINER FAHRT (Vorlage: 20.08.2026) ──────────────
+  // Eine Fixture mit EINER Familie enthielte diesen Fall gar nicht — sie
+  // prüfte dann nur, dass irgendeine Zeile erscheint. Nach M28/M32/M35 gilt:
+  // erst nachweisen, dass die Fixture den Unterschied herstellt.
+  q._msOk = null; q._msErr = null;
+  const drei = payload({
+    marks: { sweetspot: [3587], tempo: [2388], endurance: [0, 4486] },
+    measured_at: "2026-09-16",
+    measure: {
+      vo2max: undefined,
+      sweetspot: { blocks: [{ start_index: 3587, alpha: 0.699, watts: 192, points: 779 }],
+                   hours: null, reason: "" },
+      tempo: { blocks: [{ start_index: 2388, alpha: 0.915, watts: 194, points: 778 }],
+               hours: null, reason: "" },
+      endurance: { hours: [{ hour: 1, p075: 182.3, points: 3599 },
+                           { hour: 2, p075: 164.6, points: 1812 }], blocks: null, reason: "" },
+    } });
+  delete drei.marks[0].measure.vo2max;
+  q._smarks = drei;
+  const dreiHtml = q._marksBlock(act);
+  H.clean(dreiHtml, "drei familien");
+  // TREFFERZUSICHERUNG: die Fixture trägt wirklich drei verschiedene Familien
+  // mit verschiedenen Instrumenten — sonst prüft alles darunter nichts.
+  ok(Object.keys(drei.marks[0].measure).length === 3
+     && drei.marks[0].measure.endurance.hours && drei.marks[0].measure.tempo.blocks,
+     "drei familien Fixture-Beweis: die Fixture stellt den Fall gar nicht her");
+  ok(/SweetSpot<\/b> — 1 Block, alpha-Median 0[.,]70, 192 W/.test(dreiHtml),
+     "drei familien: die SweetSpot-Zeile fehlt oder rechnet falsch");
+  ok(/Tempo<\/b> — 1 Block, alpha-Median 0[.,]92, 194 W/.test(dreiHtml),
+     "drei familien: die Tempo-Zeile fehlt oder rechnet falsch");
+  ok(/Grundlage<\/b> — 2 Fahrtstunden, 2 mit Wert/.test(dreiHtml),
+     "drei familien: die Grundlagen-Zeile fehlt");
+  // DER REST NACH DEM ANLAUF steht je Block da — ein Abschnitt, von dem nach
+  // zwei Minuten 35 Sekunden bleiben, zählt sonst wie einer mit 18 Minuten.
+  ok(/nach dem Anlauf 779 s/.test(dreiHtml) && /nach dem Anlauf 778 s/.test(dreiHtml),
+     "drei familien: der Rest nach dem Anlauf fehlt");
+  // Jede Familie trägt ihr eigenes Instrument: keine Fahrtstunden bei Tempo,
+  // keine Blöcke bei der Grundlage.
+  const tempoZeile = /<li><b>Tempo<\/b>([^<]*)/.exec(dreiHtml);
+  ok(tempoZeile !== null && !/Fahrtstunde/.test(tempoZeile[1]),
+     "drei familien: Tempo wird mit dem Instrument der Kurve gemessen");
+  const gaZeile = /<li><b>Grundlage<\/b>([^<]*)/.exec(dreiHtml);
+  ok(gaZeile !== null && !/Block/.test(gaZeile[1]),
+     "drei familien: die Grundlage wird über Blöcke gemessen");
+
+  // ── EIN MARKIERTER ABSCHNITT OHNE BLOCKWERT (Vorlage: 13.09.2026) ───
+  // Archiv und Live-Runden fielen dort auseinander. Der Grund steht AN DER
+  // FAMILIE, nicht als allgemeine Fehlermeldung.
+  const ohneBlock = payload({
+    marks: { tempo: [727, 2256] }, measured_at: "2026-09-16",
+    measure: { tempo: { blocks: [{ start_index: 727, alpha: 0.87, watts: 176, points: 1080 }],
+                        hours: null,
+                        reason: "Zu 1 markierten Abschnitten gibt es keinen Blockwert — "
+                                + "zu kurz oder ohne verwertbare Daten." } } });
+  q._smarks = ohneBlock;
+  const obHtml = q._marksBlock(act);
+  // TREFFERZUSICHERUNG: die Fixture hat WENIGER Blöcke als Marken.
+  ok(ohneBlock.marks[0].marks.tempo.length > ohneBlock.marks[0].measure.tempo.blocks.length,
+     "ohne Blockwert Fixture-Beweis: Marken und Blöcke sind gleich viele — der Fall fehlt");
+  ok(/keinen Blockwert/.test(obHtml),
+     "ohne Blockwert: der Grund steht nicht an der Familie");
+  ok(/Tempo<\/b> — 1 Block/.test(obHtml),
+     "ohne Blockwert: der Teil, der ging, wird verschwiegen");
 
   // ── ein neuer Haken macht die Quittung hinfällig ─────────────────────
   q._msOk = "a1"; q._msBusy = null; q._smBusy = null;

@@ -7,7 +7,7 @@ Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lok
 archiviert, auswertet und in einem eigenen Seitenleisten-Panel darstellt.
 
 **Umfang:** ~14.760 Zeilen, davon ~4.960 Frontend · 27 WebSocket-Befehle · 16 Einheiten in
-9 Familien · 20 Testdateien mit **6.409** gezählten Einzelprüfungen · 60 Releases.
+9 Familien · 20 Testdateien mit **6.426** gezählten Einzelprüfungen · 60 Releases.
 
 ---
 
@@ -1724,6 +1724,63 @@ sparte ein Paket.
 läuft.** `grep -c` im betroffenen Bauteil, und die Frage, was es heute
 stattdessen liest.
 
+**Siebenundzwanzigster Fall (B2b-0): „im Archiv nachschlagen" und „frisch
+rechnen" sehen gleich aus — bis jemand die Fahrt neu unterteilt.** Der Messweg
+sollte die Blockwerte aus dem Archiv holen: sie entstehen beim Import, tragen
+`alpha`, `watts` und `hr` als Mediane und sind sofort da. Am Bestand geprüft
+fielen Archiv und Live-Runden bei **einer von acht** Fahrten auseinander —
+13.09.2026, Archiv **sieben** Blöcke (0 · 727 · 1404 · 1927 · 2229 · 2863 ·
+3427), live **fünf** Runden (0 · 727 · 1927 · 2256 · 3427). Die Fahrt wurde
+nach dem Import in Intervals neu unterteilt.
+
+Was die Zuordnung daraus gemacht hätte: die Marke bei 2256 findet **keinen**
+Archivblock, und die Marke bei 727 trifft den Block, den `drop_warmup_blocks`
+als Ausreißer verworfen hatte (alpha 1,529 · 164 W) — weit außerhalb des
+Tempo-Korridors. Die Familie hätte entweder eine sinnlose Zahl oder gar keine
+bekommen, **ohne dass irgendetwas meldet**.
+
+**Die vorhandene Drift-Gegenprobe kann das nicht sehen: sie vergleicht Marken
+gegen Runden, nicht Archiv gegen Runden.** `marks_stale` stand auf `null`, und
+zwar zu Recht — die Marken sitzen sauber auf den heutigen Runden. Zwei
+Indexräume, die gleich aussehen und es nicht sind; dieselbe Klasse wie der
+Versatz Bewegungszeit gegen Stromachse.
+
+**Die Regel: rechne dort, wo die Marken leben.** Marken, live geholte Runden
+und Ströme liegen im selben Indexraum; die Archivblöcke liegen im Indexraum des
+Importzeitpunkts. Der Messweg rechnet die Blockzeilen deshalb frisch, und ein
+Wächter belegt, dass er nicht ins Archiv greift — sonst kommt der billigere Weg
+beim nächsten Umbau still zurück.
+
+**Achtundzwanzigster Fall (dieselbe Sitzung, drei Vorfälle): eine Fixture, die
+den Unterschied nicht herstellt, prüft ihn auch nicht.** Dreimal war die Regel
+richtig gebaut, die Prüfung davor konnte sie nur nicht sehen — und jedes Mal
+fand es allein die gefahrene Mutation, nie der grüne Lauf:
+
+| | Mutation | warum sie durchkam |
+|---|---|---|
+| **M28** | die durchgezogene Linie überspringt den Riss | die Prüfung las den Sollwert aus derselben Liste ab, die sie prüfen sollte |
+| **M32** | gerundet wird schon in der Kette | eine Toleranz, die kurz zuvor in eine ANDERE Prüfung eingebaut worden war, absorbierte genau diesen Fehler |
+| **M35** | dieselbe Riss-Regel im Panel | die Fixture hatte keine Lücke — „bis zum Riss" und „alle festen Punkte" waren dieselbe Menge |
+
+**Gemeinsamer Nenner: die Prüfung war richtig formuliert und am falschen
+Gegenstand.** Ein grüner Lauf sagt über diese Klasse nichts, weil er im sauberen
+Zustand genauso aussieht wie im blinden.
+
+**Die Gegenmaßnahme, ab hier Pflicht: jede neue Zusicherung bekommt eine
+Trefferzusicherung** — eine Prüfung, die nachweist, dass die Fixture den Fall,
+den sie prüft, tatsächlich enthält. Das Muster gab es schon einzeln
+(„Fixture-Beweis", 0.50.0, §7 elfter Fall); neu ist, dass es für jede neue
+Zusicherung gilt und nicht nur dort, wo jemand daran denkt.
+
+**Erzwingen lässt es sich nicht allgemein** — „kann dieser Test diese beiden
+Programme unterscheiden" ist das Halteproblem im Kleinen. Was ginge, ist die
+Disziplin einzuchecken: ein Mutationsläufer mit einem **Katalog benannter
+Mutationen je Bauteil**, der bei jedem Suite-Lauf jede anwendet und einen
+GEZÄHLTEN Fehler verlangt. Kosten, gemessen am heutigen Stand: eine Testdatei
+als Läufer, rund 40 von Hand gepflegte Mutationen, etwa Faktor 2 Laufzeit auf
+den betroffenen Dateien. Nicht gebaut — die Zahl steht hier, damit die
+Entscheidung beim nächsten Mal eine Grundlage hat.
+
 ### Die drei Fehlerklassen, die sich durchziehen
 
 1. **Falsche Quelle statt falscher Anzeige.** FTP, Tageslast — beide standen in den Daten und
@@ -1758,7 +1815,7 @@ stattdessen liest.
 
 ## 9. Prüfstand
 
-**20 Dateien, 6.409 gezählte Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
+**20 Dateien, 6.426 gezählte Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
 HA-Instanz oder einen Browser.
 
 | Datei | prüft | Umfang |
@@ -1778,7 +1835,7 @@ HA-Instanz oder einen Browser.
 | `test_blocks.py` | ein Wert je Block: der Anlauf wird verworfen (mit der Gegenprobe am 4-Minuten-Block, wo auch der Median kippt), der echte Median gegen die Index-Bildung, der Regelkreis nach oben wie nach unten mit familieneigener Schrittgrenze, Steuergröße Median gegen Verlaufsgröße erster Block, Belegungsgrenze für die Linie; **die Physik-Gegenprobe an den echten Lap-Grenzen (Arbeit trägt mehr als die Pause daneben) mit dem Sekunden-Fehler als Gegenfall, und die fremde Gegenprobe gegen Intervals' eigenen Abschnittswert** | 66 |
 | `test_suite_hygiene.py` | der Prüfstand prüft sich selbst: **genau eine** Summary je Datei, die etwas zählt, nichts Gezähltes dahinter, Fehler werden gedruckt; **seit 0.51.0 der kalte Bytecode-Cache — Import vorhanden, VOR dem ersten Bauteil-Import, und das Verzeichnis nicht fest, jedes mit Gegenprobe**; **der Doppelwächter über jedes Bauteil — zwei Definitionen desselben Namens sind ein zu weit gegangener Schnitt, und die letzte gewinnt**; **seit 0.54.0 kennt die Zeilensuche JS-Blockkommentare — verengt, nicht entschärft, mit Gegenprobe auf den echten Aufruf dahinter** | 155 |
 | `test_panel_views.js` | alle Ansichten gegen volle, leere, löchrige, entartete Daten; Zeitfenster, Brushing, Achsenregel; Tagesbeschriftung und Abgleich-Dialog mit Schreibweg und Scroll-Erhalt; **die Durability-Wolke: Gewicht als Größe und Deckkraft, Gerade nur bei gesicherter Steigung, Register getrennt; der Kopf: drei Zeilen, weder Urteils- noch Datenregister, Rückfall-Satz und Ausweitungshinweis je mit Gegenfall**; **der Wochenplan: Stufen nur in der laufenden Woche, Satz statt Stufe ab Woche zwei, gefahren gegen vorgesehen ohne Paarung, Legende und Quellenblock**; **der Historienbeginn: eigener DFA-Zeitraum in Kopfzeile und Reiter, mit Gegenfall und leerer Payload**; **die Ermüdungskurve: Beleg und Setzung im Bild und im Text getrennt, beide Leserichtungen, die namentliche Ausschlussliste, der Zustand „rechnet noch" mit Fortschritt**; **L1b als Setzung beschriftet, mit der eigenen Messung daneben**; **der Umzug in die Durability-Kachel: die Ehrlichkeitsregel übertragen, die Ausschlusszahl aus dem Zählfeld statt aus der gekappten Liste**; **die tauben Abschnitte klappen zu, und die Datenlage öffnet sie wieder — mit beiden Öffnungsbedingungen einzeln**; **die Einheitenkarte nennt die Herkunft je Abschnitt — gemessen, Studienform oder Rückfall auf die FTP; **die Herkunft an der Einheit samt Rolle-Grenze, und der Rückfall-Hinweis nur dort, wo gemessen werden soll**; **die Blockmessung: der Widerspruch der fremden Gegenprobe wird als Hinweis und nicht als Fehler beschriftet, Leitzahl erster Block, Steuerung auf ihren Einzelwerten sichtbar, Belegung mit Gegenfall, die Rolle-Grenze**; **0.50.0: der Kopf der Durability-Kachel ist fort und der Rechenweg sagt, wohin — die Progressionszeile in den Wochenplan, die längste Fahrt ersatzlos; die doppelte Wertetabelle aufgelöst, die Bandbreite als SPANNE in der Leiste** ; **seit B2 die zwei Sätze an der Kachel aus der Payload: der Auswahleffekt der späten Stunden nur dort, wo es eine dünne Zone gibt, der Achsen-Vorbehalt immer; und der durchgezogene Zug bricht beim ersten Riss ab, an einer Fixture MIT Lücke geprüft** | 1344 |
-| `test_panel_fixes.js` | je ein Nachweis pro behobenem Fehler, plus die Zeiger-Simulation; Quelltext-Wächter über das ganze Frontend, beidseitig (keine Zahl im Quelltext, jede Schwelle nachweislich aus der Payload), seit 0.41.0 auch über Progressionsfaktor, Risikoknick, Rundungsschritt und Bezugsfenster, **seit 0.42.0 über `rWorkouts` UND `rPlanWeeks` (keine Urteilsregel im Frontend) plus den Wortabgleich Fixture gegen `workouts.py`**, **seit 0.45.0 über `rFatigue` samt Rechenweg-Helfer — je Kachel nachzutragen, deshalb mit Existenzprüfung der Liste**; **der Zeiger über der Ermüdungskurve am simulierten Ereignis, und der eine Ladeweg für ihre Payload**; **`rBlocks` unter demselben Wächter**; **die Zuordnung Kachel → Reiter, vollständig und mit Gegenprobe**; **seit 0.50.0 die Zeigerlogik als EINE Mechanik mit ZWEI zugesicherten Verhaltensweisen: die Leitzahl folgt in der Ermüdungskachel und bleibt in den Block-Karten stehen, beides am simulierten `pointermove`; der Wächter über `rPlanWeeks`, dem die Progressionszahlen gefolgt sind**; **die Zuordnung am simulierten Klick: der Haken schickt den `start_index` und nicht die laufende Nummer, der gesetzte Haken nimmt zurück, ein zweiter Klick während des Schreibens fällt aus, die drei Fehlergründe kommen im Klartext an und die Scroll-Lage überlebt sie; **die Quittung: die Kachel nennt Zahl der Marken, Familien und Setzdatum aus dem Archiv, der Grund kommt EINMAL und aus der Payload — mit der nie markierten Fahrt als Gegenprobe**; **EIN Abschnitt ist kein Mangel: kein Unterteilen-Hinweis, kein Mangelwort, „die ganze Fahrt“ statt „1 Abschnitt“ — mit der vierrundigen Fahrt als Gegenprobe**; **die Markenspalte am gerenderten `rAkt`, Zeile für Zeile: die Kürzel in IHRER Zeile, leer heißt unberührt, der Messzustand blass UND in Worten, kein Driftzeichen — mit der leeren Payload als Gegenprobe**; **die Aufklappung je Familie: drei Fragen, je Familie verschiedene Antworten, die Zahlen aus der Payload (Gegenprobe: andere Payload, andere Zahlen) — und sie ÜBERLEBT die Familienwahl, ohne dass die Reihe springt oder die aktive Kachel ihre Kennzeichnung verliert**; **seit 0.54.0 der Übernehmen-Knopf am simulierten Klick: er schickt das Messkommando und hakt nichts an, grün nur bei Zahlen, die fünf Lagen je als EIGENER Satz, „noch nicht gemessen“ gegen „Auswahl geändert“ mit der Payload-Gegenprobe, und der Driftzustand samt Bestätigen-Knopf an derselben Stelle — mit dem gesperrten Messknopf und beiden Gegenfällen**; **seit 0.54.1 die ZWEI Sätze über die noch fehlende Wirkung, die Folge neben der Zahl „0 davon mit Wert“ und der Erfolgszustand an der KLASSE statt am Wort — jeder mit Payload-Gegenprobe**; **seit B2 liest der Zeiger die LEITZAHL für die geplante Dauer statt des Stundenmedians — Schritt und Weglassprobe stehen als Rechenweg daneben — und der Stundenrest wird benannt statt als leere Zeile gezeigt, mit der restlosen Fahrt als Gegenprobe** | 711 |
+| `test_panel_fixes.js` | je ein Nachweis pro behobenem Fehler, plus die Zeiger-Simulation; Quelltext-Wächter über das ganze Frontend, beidseitig (keine Zahl im Quelltext, jede Schwelle nachweislich aus der Payload), seit 0.41.0 auch über Progressionsfaktor, Risikoknick, Rundungsschritt und Bezugsfenster, **seit 0.42.0 über `rWorkouts` UND `rPlanWeeks` (keine Urteilsregel im Frontend) plus den Wortabgleich Fixture gegen `workouts.py`**, **seit 0.45.0 über `rFatigue` samt Rechenweg-Helfer — je Kachel nachzutragen, deshalb mit Existenzprüfung der Liste**; **der Zeiger über der Ermüdungskurve am simulierten Ereignis, und der eine Ladeweg für ihre Payload**; **`rBlocks` unter demselben Wächter**; **die Zuordnung Kachel → Reiter, vollständig und mit Gegenprobe**; **seit 0.50.0 die Zeigerlogik als EINE Mechanik mit ZWEI zugesicherten Verhaltensweisen: die Leitzahl folgt in der Ermüdungskachel und bleibt in den Block-Karten stehen, beides am simulierten `pointermove`; der Wächter über `rPlanWeeks`, dem die Progressionszahlen gefolgt sind**; **die Zuordnung am simulierten Klick: der Haken schickt den `start_index` und nicht die laufende Nummer, der gesetzte Haken nimmt zurück, ein zweiter Klick während des Schreibens fällt aus, die drei Fehlergründe kommen im Klartext an und die Scroll-Lage überlebt sie; **die Quittung: die Kachel nennt Zahl der Marken, Familien und Setzdatum aus dem Archiv, der Grund kommt EINMAL und aus der Payload — mit der nie markierten Fahrt als Gegenprobe**; **EIN Abschnitt ist kein Mangel: kein Unterteilen-Hinweis, kein Mangelwort, „die ganze Fahrt“ statt „1 Abschnitt“ — mit der vierrundigen Fahrt als Gegenprobe**; **die Markenspalte am gerenderten `rAkt`, Zeile für Zeile: die Kürzel in IHRER Zeile, leer heißt unberührt, der Messzustand blass UND in Worten, kein Driftzeichen — mit der leeren Payload als Gegenprobe**; **die Aufklappung je Familie: drei Fragen, je Familie verschiedene Antworten, die Zahlen aus der Payload (Gegenprobe: andere Payload, andere Zahlen) — und sie ÜBERLEBT die Familienwahl, ohne dass die Reihe springt oder die aktive Kachel ihre Kennzeichnung verliert**; **seit 0.54.0 der Übernehmen-Knopf am simulierten Klick: er schickt das Messkommando und hakt nichts an, grün nur bei Zahlen, die fünf Lagen je als EIGENER Satz, „noch nicht gemessen“ gegen „Auswahl geändert“ mit der Payload-Gegenprobe, und der Driftzustand samt Bestätigen-Knopf an derselben Stelle — mit dem gesperrten Messknopf und beiden Gegenfällen**; **seit 0.54.1 die ZWEI Sätze über die noch fehlende Wirkung, die Folge neben der Zahl „0 davon mit Wert“ und der Erfolgszustand an der KLASSE statt am Wort — jeder mit Payload-Gegenprobe**; **seit B2 liest der Zeiger die LEITZAHL für die geplante Dauer statt des Stundenmedians — Schritt und Weglassprobe stehen als Rechenweg daneben — und der Stundenrest wird benannt statt als leere Zeile gezeigt, mit der restlosen Fahrt als Gegenprobe**; **seit B2b-0 die Quittung JE FAMILIE — drei Familien an einer Fahrt und ein markierter Abschnitt ohne Blockwert, beide mit Trefferzusicherung, dass die Fixture den Fall überhaupt herstellt** | 728 |
 | `test_panel_design.js` | Gestaltungsregeln als Zusicherung, Auswahl als Form, Achse im Aufklappen, Etiketten im Kategorienregister; **eingefrorene `chart()`-Referenz aus dem Stand vor dem Eingriff** und der Zeiger-Unverändert-Beweis über vier Ansichten; **vier Urteilsfarben, vier Formen, der Reiz-Ton in keinem Kategorienregister, die Reiz-Form kein Last-Blitz**; **die sechs Zuordnungs-Familien: eigene Form UND eigenes Kürzel je Familie, keine Urteilsfarbe, keine Kreisgrundform des Urteilsregisters, paarweise verschieden — mit eingebauter Dublette als Gegenprobe**; **seit B1 sind es VIER Familien: 309 → 287, und die 22 fehlenden Prüfungen sind einzeln abgezählt — vier Prüfungen je Familie (8), fünf Urteilsformen je Familie (10), die Kreisgrundform je Familie (2), die `FAM_BLOCKS`-Schleife (1) und der Stundenverlauf-Gegenfall, der nur noch die Grundlage nennt (1)** | 287 |
 | `test_ramp.py` | die Stufentest-Auswertung: die Segmentregel (letzter Hochpunkt vor dem Abfall, Ende erst nach gehaltener Flachstrecke), die Gerade durch den Abfall statt einer Ablesung, die drei Zahlen, **kein Hochrechnen über das Segment hinaus — mit dem konvexen Abfall, bei dem die Gerade 0,5 schneidet und die Messung nie dort war**, die Erholung im Ausrollen; jede Setzung mit einer Fixture, die genau sie trifft | 89 |
 | `test_section_marks.py` | die Zuordnung Abschnitt → Familie: **der Schlüssel ist `start_index` und nicht die laufende Nummer — an einer Fahrt, bei der ein Lap durch `dfa_blocks` fällt, mit der naiven Zuordnung als Gegenprobe**; die zwei J7-Auflagen einzeln samt eingefrorener No-op-Referenz; ältere Messmarke verliert die Stunden und behält Marken und Anker; die Rücknahme auf der EINZELNEN Marke, und mit der letzten fällt der Eintrag bit-identisch; **der Haken misst NICHT — mit eingebautem implizitem Messpfad, an dem dieselbe Zusicherung fällt**; die Drift meldet statt zu rechnen, und Bestätigen ist ein Knopf; die Rücknahme braucht weder Laps noch Datum; **kein Anzeigetext im Eintrag — der veraltete Satz fällt beim Laden, ein ECHTER Grund bleibt stehen**; **seit B1 `mask_ranges` als zweite Hälfte des Schlüssels — Ende exklusiv, und was nicht zu maskieren ist, wird GEMELDET statt still weggelassen; `measured_at` überlebt Umhaken, Rücknahme und Bestätigen, ein Fehlschlag zählt nicht als Messung; die stillgelegten Familien samt der Migration, die den Wegfall BENENNT — mit der unberührten Fahrt als Gegenprobe und der einen Lage, in der er unsichtbar bleibt; `drop_hours` nimmt die Zahlen und lässt Marken, Anker und die Aussage, dass gemessen wurde — und ist beim zweiten Mal ein No-op; der Satz nennt jetzt den Knopf, DEN ES GIBT** | 132 |
@@ -2022,6 +2079,16 @@ Arbeitsbaum geht auf HEAD zurück, und HEAD kennt den Bauschritt noch nicht. In
 B1 ist es **zweimal in einer Sitzung** passiert (erst an `derive.py`, dann an
 `section_marks.py`); zweimal dieselbe Grube ist ein Muster, keine
 Unachtsamkeit. Zwei Gegenmittel, in dieser Reihenfolge:
+
+**Dritter Handgriff, aus B2b-0: ein Schnitt über Zeichenketten braucht einen
+Startpunkt.** `s.index(schluss)` ohne zweiten Parameter findet die ERSTE
+Fundstelle — und die lag hier vor dem gemeinten Anfang, weil dasselbe Muster
+schon im vorherigen Handler steht. Der Schnitt lief rückwärts und legte
+`websocket.py` von 1514 auf 2322 Zeilen auf, mit **19 doppelten Definitionen**.
+Gefunden hat es der Doppelwächter aus `test_suite_hygiene`, nicht ich — und
+zwar mit genau dem Satz, der dort steht: die letzte Definition gewinnt, und die
+Suite würde es nicht bemerken. Richtig ist `s.index(muster, kopf)`; und nach
+jedem solchen Schnitt wird die Zeilenzahl der Datei gegengelesen.
 
 1. **Erst committen, dann mutieren.** Der Sicherungs-Push nach jedem grünen
    Teilschritt ist ohnehin verlangt — er macht den Griff nebenbei ungefährlich.
