@@ -2219,12 +2219,32 @@ class IntervalsIcuPanel extends HTMLElement {
     const total = blocks.reduce((sum, b) => sum + b[0], 0) || 1;
     const colFor = (pct) => pct < 60 ? C.slate : pct < 76 ? C.cyan
       : pct < 90 ? C.blue : pct < 101 ? C.violet : C.magenta;
+    // EINE RAMPE WIRD ALS RAMPE GEZEICHNET (0.51.1). Vorher standen drei flach
+    // gleich hohe Bloecke da und der Text nannte EINEN Wert - einen Mittelwert
+    // fuer einen Abschnitt, dessen ganzer Sinn das Ansteigen ist. Wer das
+    // ansieht, sieht nicht, dass die Leistung waechst.
+    const rs = entry.ramp_segment;
+    const hFor = (pct) => Math.max(14, Math.min(100, pct * 0.78));
     let x = 0;
-    const segs = blocks.map(([min, pct, label]) => {
+    const segs = blocks.map(([min, pct, label], i) => {
       const w = (min / total) * 100;
-      const s = `<i class="wob" style="left:${x}%;width:${Math.max(0.6, w - 0.25)}%;
-        height:${Math.max(14, Math.min(100, pct * 0.78))}%;background:${colFor(pct)}"
-        title="${esc(label)} · ${min} min · ${ftp ? Math.round(ftp * pct / 100) + " W" : pct + " % FTP"}"></i>`;
+      let s;
+      if (rs && i === rs.index) {
+        // In Scheiben, mit linear wachsender Hoehe: keine CSS-Kunststuecke,
+        // und es bleibt lesbar, wenn eine davon nicht rendert.
+        const n = 14;
+        s = Array.from({ length: n }, (_, k) => {
+          const t = (k + 0.5) / n;
+          const pc = rs.start_pct + (rs.end_pct - rs.start_pct) * t;
+          return `<i class="wob" style="left:${x + (w * k) / n}%;width:${Math.max(0.4, w / n - 0.05)}%;
+            height:${hFor(pc)}%;background:${colFor(pc)}"
+            title="${esc(label)} · ${min} min · ${rs.start_w}\u2013${rs.end_w} W"></i>`;
+        }).join("");
+      } else {
+        s = `<i class="wob" style="left:${x}%;width:${Math.max(0.6, w - 0.25)}%;
+          height:${hFor(pct)}%;background:${colFor(pct)}"
+          title="${esc(label)} · ${min} min · ${ftp ? Math.round(ftp * pct / 100) + " W" : pct + " % FTP"}"></i>`;
+      }
       x += w;
       return s;
     }).join("");
@@ -2292,6 +2312,7 @@ class IntervalsIcuPanel extends HTMLElement {
           <div class="wotitle">${esc(entry.title)}</div>
           <div class="wometa">${esc(entry.purpose || "")} · ${dur} · ${loadTxt}${
             hrw ? ` · ${hrw[0]}–${hrw[1]} bpm` : ""}</div>
+          ${entry.hr_note ? `<div class="wometa hint">${esc(entry.hr_note)}</div>` : ""}
         </div>
         ${st.key ? badge(tone, word) : ""}
       </div>
@@ -2306,7 +2327,13 @@ class IntervalsIcuPanel extends HTMLElement {
               ? `<i class="wsrc" title="gemessen: ${fmt(cb.n)} ${cb.n === 1 ? "Fahrt" : "Fahrten"} in Stunde ${fmt(cb.hour)}">gemessen</i>`
               : `<i class="wsrc lit" title="jenseits des gemessenen Bereichs - Studienform">Studienform</i>`)
           : "";
-        return `<span><b>${min}′</b> ${esc(label)} <em>${entry.blocks_w ? val + " W" : val + " % FTP"}</em>${mark}</span>`;
+        // Bei der Rampe nennt die Beschriftung START UND ENDE. Ein einzelner
+        // Wert waere dort ein Mittelwert, und ein Mittelwert ist keine Rampe.
+        const rsg = entry.ramp_segment;
+        const zahl = rsg && rsg.label === label
+          ? `${rsg.start_w}\u2013${rsg.end_w} W`
+          : (entry.blocks_w ? val + " W" : val + " % FTP");
+        return `<span><b>${min}′</b> ${esc(label)} <em>${zahl}</em>${mark}</span>`;
       }).join("")}</div>
       ${entry.watt_source === "blocks"
         ? `<p class="fitwhy">${ico("info", C.blue, 14)} <b>Watt und Puls kommen aus deiner
@@ -2968,6 +2995,19 @@ class IntervalsIcuPanel extends HTMLElement {
         kam vorher. Das ist eine Auskunft und kein Fehlversuch; die erste Schwelle steht
         trotzdem. Über das Gemessene hinaus wird nicht hochgerechnet.</p>`}`;
 
+    // DIE QUELLEN STEHEN AUSSERHALB DES TERNAERS. Bis 0.51.0 lagen sie im
+    // `r ?`-Zweig - also erst sichtbar, NACHDEM der Test gefahren war. Genau
+    // dann nicht, wenn jemand entscheidet, ob er eine Stunde investiert. Fuenf
+    // Arbeiten, eigens herausgesucht, und niemand kam an sie heran.
+    const quellen = (rt.sources || []).length ? `<details class="card pad">
+      <summary>Worauf das beruht — ${(rt.sources || []).length} Arbeiten</summary>
+      <p class="src">Die erste Schwelle (alpha 0,75) stammt vom <b>Laufband</b>, die
+        Übertragung auf das Rad ist nicht dieselbe Messung. Die zweite (alpha 0,5) hält
+        durchgängig besser. Das steht hier, BEVOR du den Test fährst — nicht erst
+        danach.</p>
+      <p class="src">${(rt.sources || []).map((q) => `<br>· ${esc(q)}`).join("")}</p>
+    </details>` : "";
+
     return `<h3 class="secname">Stufentest
       <span class="hint">— beide Schwellen aus einer Fahrt${anz
         ? `, ${anz} ${anz === 1 ? "Test" : "Tests"} markiert` : ""}</span></h3>
@@ -2990,9 +3030,8 @@ class IntervalsIcuPanel extends HTMLElement {
             einzigen festen Zahlen des Tests; alle Leistungen kommen aus deinen eigenen
             Werten. Für das Ausrollen gibt es keine Protokollvorgabe — gesetzt ist es, weil
             sich in den ersten Minuten nach der Belastung messbar etwas erholt.</p>
-          <p class="src"><b>Was die Quellen sagen.</b>
-            ${(rt.sources || []).map((q) => `<br>· ${esc(q)}`).join("")}</p>
-        </details></div>` : leer}`;
+        </details></div>` : leer}
+      ${quellen}`;
   }
 
   /* Die 40-Watt-Frage (docs/ausbau.md N3). Zwei eigene Messungen widersprechen

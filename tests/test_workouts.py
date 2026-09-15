@@ -5,6 +5,7 @@ day is a training error. A malformed payload silently puts a broken workout
 on the calendar, which is worse than none. Both are checked below.
 """
 
+import ast as _ast
 import re
 import sys
 from pathlib import Path
@@ -654,7 +655,20 @@ for _family, _label, _keys in W.FAMILIES:
 # nicht im Katalogeintrag.
 _ramp_src = _RAMP_SRC = (Path(__file__).resolve().parents[1] / "custom_components"
                          / "intervals_icu" / "workouts.py").read_text(encoding="utf-8")
-_entry_src = _ramp_src[_ramp_src.index("RAMP_TEST = {"):_ramp_src.index("LIBRARY.append(RAMP_TEST)")]
+# NUR DAS DICT, nicht alles bis LIBRARY.append (0.51.1). Die Textsuche nahm
+# RAMP_TEST_STANDARD und die Kommentare mit - und schlug damit auf Prosa an
+# ("im Fenster 0 bis 10 Minuten", ein Kommentar, der die alte Zeichenkette
+# zitiert). Ein Waechter, der bei richtigem Text Alarm gibt, wird entschaerft
+# statt befolgt; genau davor warnt der Kommentar an JUDGEMENT_INPUTS. Der AST
+# trifft den Abschnitt, um den es geht, ohne zu raten.
+_entry_src = next(
+    _ast.get_source_segment(_ramp_src, _node.value)
+    for _node in _ast.parse(_ramp_src).body
+    if isinstance(_node, _ast.Assign)
+    and any(getattr(t, "id", None) == "RAMP_TEST" for t in _node.targets))
+check(_entry_src is not None and '"blocks"' in _entry_src and "RAMP_TEST_STANDARD = [" not in _entry_src,
+      "N: der gescannte Abschnitt ist nicht der Katalogeintrag - der Waechter "
+      "sieht woanders hin als er soll")
 for _literal, _name in ((" 15 ", "Einrolldauer"), (" 10 ", "Ausrolldauer"),
                         (" 5 W", "Rampensteigung")):
     check(_literal not in _entry_src,
@@ -807,6 +821,10 @@ _NOT_FOR_RAMP = {
     "curve_share", "detail", "elastic_sections", "fit_reason", "fuel", "hr_source",
     "label", "note", "ramp_source", "stage", "stretch_note", "stretched", "tag",
     "unit", "value", "weight", "why", "z", "family", "family_label",
+    # Seit 0.51.1 bewusst OHNE Pulsfenster: bei einer Rampe waere eine Spanne
+    # ein ZIEL, und ein Ziel gibt es in diesem Test nicht (§7, zwanzigster
+    # Fall). An seiner Stelle steht `hr_note`, und das wird oben geprueft.
+    "hr_window",
 }
 _card = W.scaled(W.BY_KEY["ramp_test"], 200.0, 160, None, _CURVE, _BLOCKS)
 for _field in sorted(_panel_fields - _NOT_FOR_RAMP):
@@ -825,6 +843,20 @@ eq(len(_card.get("standard") or []), len(W.RAMP_TEST_STANDARD),
    "4: die Beschreibung kommt nicht vollstaendig an der Einheit an")
 check(len(_card.get("derivation") or []) >= 4,
    "4: der Rechenweg der Rampe fehlt an der Karte")
+check(_card.get("hr_note") and "Ziel" in _card["hr_note"],
+      "3: der Satz, der die Pulsspanne ersetzt, kommt nicht an der Karte an")
+check("hr_note" in _PANEL_SRC, "3: die Karte liest hr_note gar nicht")
+check("ramp_segment" in _PANEL_SRC and _card.get("ramp_segment"),
+      "4: die Rampe wird nicht als Rampe gezeichnet - ramp_segment fehlt")
+# UEBER .get(), nicht ueber [] - erste Bauregel (§9). Die erste Fassung dieser
+# zwei Zeilen stand auf [] und ist bei der Gegenprobe ABGESTUERZT statt zu
+# zaehlen: genau der Fall aus §7, sechzehnter Fall, und zwar in dem Test, der
+# ihn aufgeschrieben hat. Die Regel ist nicht erzwungen; sie haelt nur, wo
+# jemand sie anwendet.
+eq((_card.get("ramp_segment") or {}).get("start_w"), _p_full.get("start_w"),
+   "4: der gezeichnete Rampenanfang weicht vom Protokoll ab")
+eq((_card.get("ramp_segment") or {}).get("end_w"), _p_full.get("end_w"),
+   "4: das gezeichnete Rampenende weicht vom Protokoll ab")
 check("standard" in _PANEL_SRC and "derivation" in _PANEL_SRC,
       "4: die Karte liest die beiden Felder gar nicht mehr")
 # EINE Quelle: der Text darf nicht zusaetzlich in einer zweiten Payload liegen.

@@ -402,7 +402,17 @@ RAMP_TEST = {
              f"- ramp {RAMP_FALLBACK_START_PCT}-{RAMP_FALLBACK_END_PCT}% "
              f"({RAMP_STEP_W_PER_MIN} W/min, nicht ERG)\n"
              f"- {RAMP_COOLDOWN_MIN}m {RAMP_FALLBACK_START_PCT}% (gleich bleiben, nicht abkürzen)"),
-    "hr_hint": (0.70, 1.00),
+    # KEIN hr_hint (seit 0.51.1). Bei jeder anderen Einheit ist das Fenster ein
+    # ZIEL, in dem man bleibt. Bei einer Rampe wandert der Puls ueber den ganzen
+    # Bereich - ein Fenster waere dort nicht bloss ungenau, es waere die falsche
+    # ART von Aussage: ein Ziel, wo es keines gibt. Wer darin bliebe, braeche den
+    # Test ab. Die alten (0,70-1,00) skalierten ausserdem die AEROBE Schwelle und
+    # endeten damit bei 160 bpm, waehrend die Rampe bis ueber die anaerobe geht
+    # (eigene Blockmessung: 172-186 bpm). Statt der Spanne steht ein Satz da.
+    "hr_note": (
+        "Ein Pulsfenster gibt es hier nicht: bei einer Rampe wandert der Puls "
+        "über den ganzen Bereich — vom ruhigen Einrollen bis an dein Maximum. "
+        "Eine Spanne wäre ein Ziel, und ein Ziel gibt es in diesem Test nicht."),
     "dfa": "der Zweck der Fahrt: von über 1,0 stetig bis stabil unter 0,5",
     "effect": ("Misst nichts am Körper und trainiert auch nichts — er liest deine "
                "beiden Schwellen ab, in EINER Fahrt unter gleichen Bedingungen. "
@@ -428,30 +438,53 @@ RAMP_TEST_STANDARD = [
     "Herzschlägen, und genau die werden hier ausgewertet.",
     "Ausgeruht. Bei gelbem oder rotem Zustand wird der Test gar nicht erst "
     "vorgeschlagen: er misst dann deine Müdigkeit und nicht deine Schwellen.",
-    f"{RAMP_WARMUP_MIN} Minuten ruhig einrollen. Das Protokoll der Studien kennt "
-    "kein Einrollen — diese Zeit ist GESETZT, und der Grund ist unsere Auswertung: "
+    f"{RAMP_WARMUP_MIN} Minuten ruhig einrollen. Weder Rogers 2021 (Laufband) noch "
+    "Olieslagers 2026 (Rad) nennt ein Einrollen — diese Zeit ist GESETZT, und der "
+    "Grund ist unsere Auswertung: "
     "der alpha-Wert braucht ein bis zwei Minuten, bis er eingeschwungen ist, und "
     "das Rechenfenster ist zwei Minuten breit.",
     f"Dann je Minute {RAMP_STEP_W_PER_MIN} Watt mehr, bis du nicht mehr kannst. "
-    "Die Steigung ist FLACH und wächst nicht mit deiner Stärke: bei steileren "
+    "Olieslagers 2026 fuhr auf dem Rad eine flache Rampe; Rogers 2021 kam vom "
+    "Laufband, wo die Steigung anders zählt. Unsere ist FLACH und wächst nicht "
+    "mit deiner Stärke: bei steileren "
     "Rampen hinkt die Sauerstoffaufnahme hinterher, und dann ist die Wattzahl "
     "nicht mehr ablesbar. Der Preis ist ein längerer Test.",
     "Während der Rampe: gleichmäßig treten, nicht aus dem Sattel, Trittfrequenz "
     "konstant halten, nicht sprechen. Alles davon verändert die Abstände zwischen "
     "den Herzschlägen — und die sind die Messung.",
-    "Abbrechen, wenn du nicht mehr kannst. Das ist VORGESEHEN und kein "
-    "Fehlversuch: wichtig ist nur, dass dein alpha vorher stabil unter 0,5 war. "
-    "Kommst du dort nicht an, fehlt die zweite Schwelle — die erste steht trotzdem.",
+    "Abbrechen, wenn du nicht mehr kannst — in Rogers 2021 (Laufband) hieß das "
+    "Abbruchkriterium ebenfalls willentliche Erschöpfung, ein Zustand und keine "
+    "Wattzahl. Das ist VORGESEHEN und kein Fehlversuch: wichtig ist nur, dass dein "
+    "alpha vorher stabil unter 0,5 war. Kommst du dort nicht an, fehlt die zweite "
+    "Schwelle — die erste steht trotzdem. Und die erste ist die schwächere: "
+    "Olieslagers 2026 fand für sie am Rad schlechte Übereinstimmung mit LT1/VT1 "
+    "(Bias −21 bis −45 W), für die zweite dagegen deutlich bessere. Die 0,75 "
+    "stammt vom LAUFBAND.",
     f"Danach {RAMP_COOLDOWN_MIN} Minuten ausrollen, bei derselben ruhigen "
     "Leistung, gleich bleibend. NICHT abkürzen: diese Zeit ist Teil der Messung. "
-    "Eine Protokollvorgabe dafür gibt es nicht — gesetzt ist sie, weil sich in den "
-    "ersten Minuten nach der Belastung messbar etwas erholt und die Literatur "
-    "genau dieses Fenster betrachtet. Gleiche Haltung und gleiche Leistung wie "
+    "Eine Protokollvorgabe dafür gibt es nicht — gesetzt ist sie, weil Michael "
+    "u. a. 2017 die parasympathische Reaktivierung im Fenster 0 bis 10 Minuten "
+    "nach Belastungsende betrachtet (die vollständige Rückkehr dauert laut "
+    "Stanley/Peake/Buchheit 2013 24 bis 72 Stunden). Eine Ausrolldauer nennt "
+    "keine der beiden Arbeiten. Gleiche Haltung und gleiche Leistung wie "
     "beim letzten Mal, sonst misst der zweite Test etwas anderes als der erste.",
     "Danach die Fahrt im Aktivitätsdetail als Stufentest MARKIEREN. Das System "
     "erkennt sie nicht von selbst — und soll es auch nicht.",
     "Was der Test NICHT kann: er sagt nicht, wie hoch deine Schwellen absolut "
     "sind. Belastbar ist, wie sie sich bei DIR über die Monate verändern.",
+    # DER ZEHNTE PUNKT, seit 0.51.1. Vorher stand auf der Karte "ramp 60-115%"
+    # und niemand konnte das fuer eine Vorgabe halten. Jetzt steht dort eine
+    # konkrete Wattzahl aus den EIGENEN Messwerten - und eine konkrete Wattzahl
+    # ohne Beschriftung wird als Vorgabe gelesen. Genau deshalb dieser Punkt.
+    "Die Wattzahlen auf dieser Karte sind eine ERWARTUNG, keine Vorgabe. Start "
+    "und Ende kommen aus deinen eigenen Messwerten — der Start aus deiner "
+    "Ermüdungskurve, das Ende aus deiner Leitzahl plus einer gesetzten Reserve; "
+    "steht beides nicht zur Verfügung, fällt beides sichtbar auf die FTP zurück. "
+    "Der Test ENDET AM ALPHA-WERT, nicht an der Zahl: erreichst du das "
+    "ausgewiesene Ende früher nicht mehr, ist das kein Fehlversuch, solange dein "
+    "alpha vorher stabil unter 0,5 lag. Fährst du darüber hinaus, ist das auch "
+    "in Ordnung — gerechnet wird, was gemessen wurde, und über das gemessene "
+    "Segment hinaus wird nichts hochgerechnet.",
 ]
 
 # Die Beschreibung haengt AN DER EINHEIT, genau wie beim abgeloesten
@@ -741,6 +774,16 @@ def scaled(entry: dict[str, Any], ftp: float | None, aerobic_hr: int | None,
             ]
             out["blocks_w"] = staged
             out["ramp_protocol"] = proto
+            # Was das Panel braucht, um eine Rampe ALS Rampe zu zeichnen: den
+            # Abschnitt, seine beiden Enden, und dieselben Prozentwerte, in
+            # denen der Balken rechnet. Ohne das stehen drei flach gleich hohe
+            # Bloecke da und der Text nennt einen Mittelwert.
+            out["ramp_segment"] = {
+                "index": 1, "label": staged[1][2],
+                "start_w": proto["start_w"], "end_w": proto["end_w"],
+                "start_pct": round(proto["start_w"] / ftp * 100),
+                "end_pct": round(proto["end_w"] / ftp * 100),
+            }
             out["minutes"] = sum(block[0] for block in staged)
             out["template_minutes"] = entry.get("minutes")
             out["watt_source"] = proto["end_source"]["kind"]
