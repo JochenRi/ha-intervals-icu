@@ -57,7 +57,12 @@ BLOCK = "section_marks"
 # mit aelterer Marke verliert seine `hours`, BEHAELT aber Marken und Anker:
 # die Aussage des Athleten, welcher Abschnitt welcher Familie gehoert, verfaellt
 # nicht, wenn sich die Mathematik aendert.
-MEASURE_VERSION = 1
+# 2 seit 0.54.1: der Messweg maskierte familienUEBERGREIFEND und mischte auf
+# einer Fahrt mit VO2max- UND Grundlagen-Marken zwei Punktwolken in EINE
+# Gerade - genau der Fit-durch-zwei-Wolken aus Paket M, der dort schon einmal
+# behoben war. Die Zahlen aus 0.54.0 sind damit falsch gemessen und fallen
+# beim Laden; die Marken bleiben.
+MEASURE_VERSION = 2
 
 # Vier Familien mit Abschnitts-Haken. Der Stufentest steht NICHT dabei - eine
 # Messfahrt ist als GANZES eine Messfahrt, es gibt daran keinen Abschnitt zu
@@ -122,6 +127,42 @@ NOT_MEASURED = "Markiert, noch nicht gemessen — auf „übernehmen und messen�
 # section_marks-Payload, damit das Frontend keine zweite Fassung fuehrt.
 REMEASURE = ("Die Auswahl hat sich seit der Messung geändert — neu zu messen "
              "auf „übernehmen und messen“.")
+
+# WAS DIE MARKIERUNGEN HEUTE BEWIRKEN: nichts. Das muss dastehen, solange es
+# so ist - wer markiert und glaubt, es passiere etwas, markiert ins Leere.
+#
+# UND ES SIND ZWEI SAETZE, KEIN EINER. Die beiden Lagen sind verschieden, und
+# der Unterschied entscheidet, welche Reparatur noetig ist:
+#   * Die BLOCKFAMILIEN messen bereits - die Blockmessung laeuft seit Paket M
+#     beim Import und waehlt ihre Bloecke SELBST, an den Marken vorbei. Nicht
+#     "nicht angeschlossen", sondern "laeuft daneben".
+#   * Die KURVE liest die Marken ebenfalls nicht, aber sie hat auch keine
+#     eigene Auswahl - sie laeuft auf der Namenserkennung.
+# Ein gemeinsamer Satz muesste beides verschweigen, um zu stimmen.
+NOT_ACTIVE_BLOCKS = ("VO2max, SweetSpot und Tempo messen über deine "
+                     "Arbeitsblöcke — und diese Messung wählt ihre Blöcke bis "
+                     "heute selbst, an deinen Marken vorbei. Was du hier "
+                     "anhakst, ändert an ihren Wattvorgaben noch nichts.")
+
+NOT_ACTIVE_CURVE = ("Die Grundlage misst über die Ermüdungskurve. Der Knopf "
+                    "misst deine markierten Abschnitte bereits — die Kurve "
+                    "liest das Ergebnis aber noch nicht, sie läuft weiter auf "
+                    "der Namenserkennung. Beides stellt B2 um.")
+
+# WARUM KEIN WERT HERAUSKAM, und vor allem: WAS DAS HEISST. Eine Zahl ohne
+# Folge laesst den Athleten raten. Die Schwelle selbst wird NICHT genannt -
+# sie steht in keiner Payload (P8 ist nicht gebaut), und eine hier
+# abgeschriebene Zahl waere die zweite Wahrheit.
+NO_VALUE = ("Kein Wert: dein alpha lag durchgehend über dem Zielbereich — die "
+            "Fahrt war zu locker für diese Messung. Sie zählt nicht mit, und "
+            "das ist kein Fehler.")
+
+# Der Messweg rechnet heute NUR die Kurve. Fuer die Blockfamilien gibt es ihn
+# noch nicht, und lieber gar keine Zahl als eine, die niemand angefordert hat.
+ONLY_CURVE = ("An dieser Fahrt ist kein Grundlagen-Abschnitt markiert. Dieser "
+              "Knopf misst die Ermüdungskurve, und die rechnet über "
+              "Grundlagen-Abschnitte. VO2max, SweetSpot und Tempo messen über "
+              "Blöcke — diesen Weg gibt es hier noch nicht, er kommt mit B2.")
 
 # Was frueher in die Eintraege geschrieben wurde. Wird beim Laden GEZIELT
 # geleert, damit kein veralteter Satz stehenbleibt; alles andere in `reason`

@@ -1476,8 +1476,10 @@ const acts = F.activities(), thr = F.thresholds();
   // ── GRÜN bei Erfolg, und die Kachel nennt, was gemessen wurde ─────────
   const gruen = q._marksBlock(act);
   H.clean(gruen, "übernehmen grün");
-  ok(/data-act="smmeasure"[^>]*class="[^"]*done"|class="[^"]*done"[^>]*data-act="smmeasure"/
-     .test(gruen) || /class="ctxremove done" data-act="smmeasure"/.test(gruen),
+  // Der Erfolgszustand steht in der KLASSE, nicht nur im Text: am Wort allein
+  // war er auf dem Gerät nicht zu sehen (0.54.1).
+  const okBtn = /<button[^>]*data-act="smmeasure"[^>]*>/.exec(gruen);
+  ok(okBtn !== null && /class="smrunbtn ok"/.test(okBtn[0]),
      "übernehmen: ein Erfolg färbt den Knopf nicht");
   ok(/2 Fahrtstunden/.test(gruen) && /1 davon mit Wert/.test(gruen),
      "übernehmen: die Kachel sagt nicht, worüber gemessen wurde");
@@ -1505,7 +1507,7 @@ const acts = F.activities(), thr = F.thresholds();
     ok(html.includes(stichwort), `übernehmen: „${stichwort}“ kommt in der Kachel nicht an`);
     ok(!/Messung fehlgeschlagen|Unbekannter Fehler/.test(html),
        `übernehmen: ${stichwort} wurde zu einer allgemeinen Meldung zusammengefasst`);
-    ok(!/class="ctxremove done" data-act="smmeasure"/.test(html),
+    ok(!/class="smrunbtn ok"/.test(html),
        `übernehmen: ${stichwort} färbt den Knopf trotzdem grün`);
     ok(q._marksBlock({ id: "a2", dfa: null }).includes(stichwort) === false,
        `übernehmen: ${stichwort} erscheint auch an einer fremden Fahrt`);
@@ -1521,7 +1523,7 @@ const acts = F.activities(), thr = F.thresholds();
   const sachHtml = q._marksBlock(act);
   ok(sachHtml.includes("auswertbaren DFA-a1-Strom"),
      "übernehmen: ein Sachbefund ohne Zahlen kommt nicht an");
-  ok(!/class="ctxremove done" data-act="smmeasure"/.test(sachHtml),
+  ok(!/class="smrunbtn ok"/.test(sachHtml),
      "übernehmen: eine Messung ohne Zahlen färbt den Knopf grün");
 
   // ── „noch nie gemessen“ GEGEN „Auswahl geändert“ ──────────────────────
@@ -1586,6 +1588,55 @@ const acts = F.activities(), thr = F.thresholds();
      "bestätigen: die Runden werden nicht neu geholt, der Befund bliebe stehen");
   ok(!/data-act="smconf"/.test(q._marksBlock(act)),
      "bestätigen: der Befund steht nach dem Bestätigen weiter da");
+
+  // ── DIE MARKIERUNGEN WIRKEN NOCH NICHT, und das steht da ─────────────
+  // Er hat weiter markiert und geglaubt, es passiere etwas. Solange nichts
+  // passiert, gehört das an die Kachel — bei JEDER Familie.
+  q._msOk = null; q._msErr = null;
+  q._smarks = payload();
+  q._smarks.not_active = { blocks: "BLOCKSATZ AUS DER PAYLOAD",
+                           curve: "KURVENSATZ AUS DER PAYLOAD" };
+  const hinweis = q._marksBlock(act);
+  H.clean(hinweis, "noch nicht wirksam");
+  ok(/wirken noch nicht/.test(hinweis),
+     "wirkung: die Kachel sagt nicht, dass die Markierungen folgenlos sind");
+  // ZWEI Sätze, nicht einer: die Blockfamilien MESSEN bereits und gehen an
+  // den Marken vorbei, die Kurve misst sie schon und liest sie noch nicht.
+  // Ein gemeinsamer Satz müsste eins von beidem verschweigen.
+  ok(/BLOCKSATZ AUS DER PAYLOAD/.test(hinweis),
+     "wirkung: der Satz für die Blockfamilien fehlt");
+  ok(/KURVENSATZ AUS DER PAYLOAD/.test(hinweis),
+     "wirkung: der Satz für die Kurve fehlt");
+  // Gegenprobe, gezählt und benannt: beide kommen aus der PAYLOAD. Ohne sie
+  // steht kein Hinweis da, statt eines im Frontend eingebauten.
+  q._smarks = payload();
+  delete q._smarks.not_active;
+  ok(!/wirken noch nicht/.test(q._marksBlock(act)),
+     "wirkung: der Hinweis ist im Frontend eingebaut statt aus der Payload");
+
+  // ── DER SATZ NENNT DIE FOLGE, NICHT NUR DIE ZAHL ─────────────────────
+  // „0 davon mit Wert" ist richtig gerechnet und für sich unverständlich.
+  q._smarks = payload({ hours: [{ hour: 1, p075: null }, { hour: 2, p075: null }],
+                        measured_at: "2026-09-15" });
+  q._smarks.no_value = "FOLGE: zu locker, zählt nicht mit.";
+  const ohneWert = q._marksBlock(act);
+  ok(/0 davon mit Wert/.test(ohneWert), "folge: die Zahl fehlt");
+  ok(/FOLGE: zu locker, zählt nicht mit\./.test(ohneWert),
+     "folge: die Zahl steht ohne ihre Bedeutung da");
+  // Gegenprobe: WO ein Wert herauskam, steht der Satz NICHT - sonst läse ihn
+  // der Athlet an jeder gelungenen Messung.
+  q._smarks = payload({ hours: [{ hour: 1, p075: 201 }], measured_at: "2026-09-15" });
+  q._smarks.no_value = "FOLGE: zu locker, zählt nicht mit.";
+  ok(!/FOLGE: zu locker/.test(q._marksBlock(act)),
+     "folge: der Satz steht auch an einer gelungenen Messung");
+
+  // ── der Knopf ist schmal und nicht mehr die volle Breite ────────────
+  q._smarks = payload();
+  const schmal = /<button[^>]*data-act="smmeasure"[^>]*>/.exec(q._marksBlock(act));
+  ok(schmal !== null && !/ctxremove/.test(schmal[0]),
+     "knopf: er trägt weiter die Klasse, die auf volle Breite wächst");
+  ok(schmal !== null && /class="smrunbtn"/.test(schmal[0]),
+     "knopf: er hat keine eigene Klasse");
 
   // ── ein neuer Haken macht die Quittung hinfällig ─────────────────────
   q._msOk = "a1"; q._msBusy = null; q._smBusy = null;

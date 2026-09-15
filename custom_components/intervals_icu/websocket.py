@@ -1122,6 +1122,11 @@ def websocket_section_marks(hass, connection, msg) -> None:
         # Grund selbst (fuenfte Bauregel).
         "stale_reason": marks_lib.STALE_REASON,
         "not_measured": marks_lib.NOT_MEASURED,
+        # Was die Markierungen heute bewirken - ZWEI Saetze, weil die beiden
+        # Lagen verschieden sind. Aus dem Modul, nicht aus dem Frontend.
+        "not_active": {"blocks": marks_lib.NOT_ACTIVE_BLOCKS,
+                       "curve": marks_lib.NOT_ACTIVE_CURVE},
+        "no_value": marks_lib.NO_VALUE,
         # Der ZWEITE Satz, fuer den, der schon einmal gemessen hat. Beide aus
         # derselben Quelle wie der Zustand selbst (fuenfte Bauregel) - eine
         # Fassung im Frontend waere die zweite Wahrheit aus 0.52.0.
@@ -1329,7 +1334,25 @@ async def websocket_measure_section_marks(hass, connection, msg) -> None:
                               marks_lib.STALE_REASON.get(stale, ""))
         return
 
-    ranges, missing = marks_lib.mask_ranges(laps, marks_lib.marked(entry))
+    # DIE MASKE IST FAMILIENREIN. Ohne den Parameter nahm sie alle Marken
+    # einer Fahrt quer ueber die Familien - auf einer Fahrt mit VO2max- UND
+    # Grundlagen-Marken legte die Gerade dann zwei getrennte Punktwolken
+    # zusammen (Einrollen: wenig Watt, hohes alpha; Intervalle: viel Watt,
+    # niedriges alpha) und las bei 0,75 einen Zustand ab, den niemand
+    # gefahren ist. Das ist der Fit-durch-zwei-Wolken aus Paket M, dort schon
+    # einmal behoben - zurueckgekommen ueber einen neuen Weg, weil die
+    # Voraussetzung des alten Fixes (die Messung sieht nur EINE Sorte
+    # Abschnitt) von der Maskierung aufgehoben wurde.
+    #
+    # Und die Familie entscheidet auch das INSTRUMENT: hier wird die Kurve
+    # gerechnet, und die Kurve ist die Quelle der GRUNDLAGE. Fuer die
+    # Blockfamilien gibt es den Messweg noch nicht; lieber keine Zahl als
+    # eine, die niemand angefordert hat.
+    ranges, missing = marks_lib.mask_ranges(
+        laps, marks_lib.marked(entry, "endurance"))
+    if not marks_lib.marked(entry, "endurance"):
+        connection.send_error(msg["id"], "only_curve", marks_lib.ONLY_CURVE)
+        return
     if missing or not ranges:
         connection.send_error(
             msg["id"], "marks_stale",

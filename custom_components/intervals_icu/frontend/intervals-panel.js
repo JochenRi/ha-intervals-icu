@@ -4116,6 +4116,17 @@ class IntervalsIcuPanel extends HTMLElement {
       ? esc(cur.reason)
       : esc((cur.measured_at ? sm.remeasure : sm.not_measured) || ""));
 
+    // DIE MARKIERUNGEN WIRKEN NOCH NICHT, und das steht da, solange es so
+    // ist - unabhaengig davon, ob an DIESER Fahrt schon etwas markiert ist,
+    // denn gelesen wird der Satz beim Markieren. Zwei Saetze, keiner:
+    // die Blockfamilien MESSEN bereits und gehen an den Marken vorbei, die
+    // Kurve misst die Marken schon und liest sie noch nicht. Beides aus der
+    // Payload.
+    const na = sm.not_active || {};
+    const nochNicht = (na.blocks || na.curve) ? `<p class="src warn">
+        <b>Die Markierungen wirken noch nicht.</b>
+        ${esc(na.blocks || "")} ${esc(na.curve || "")}</p>` : "";
+
     const stand = !cur ? "" : `<p class="src">
         <b>Im Archiv:</b> ${smTotal} Marke${smTotal === 1 ? "" : "n"} über
         ${smFams} Familie${smFams === 1 ? "" : "n"}${cur.set_at
@@ -4123,7 +4134,8 @@ class IntervalsIcuPanel extends HTMLElement {
         ${cur.hours
           ? `Gemessen über ${gemAlle} Fahrtstunde${gemAlle === 1 ? "" : "n"},
              ${gemStd} davon mit Wert${cur.measured_at
-               ? ` — am ${esc(cur.measured_at)}` : ""}.`
+               ? ` — am ${esc(cur.measured_at)}` : ""}.
+             ${gemStd === 0 ? esc(sm.no_value || "") : ""}`
           // Ein ECHTER Grund aus dem Archiv (gescheiterte Messung,
           // Versionswechsel) gewinnt; sonst der Satz aus dem Leseweg. Er steht
           // seit 0.53.1 nicht mehr im Eintrag, weil ein gespeicherter
@@ -4149,9 +4161,9 @@ class IntervalsIcuPanel extends HTMLElement {
     // waehrend die Fahrt driftet, waere jede Messung eine auf verschobenen
     // Abschnitten - beides sperrt ihn, und die Sperre sagt warum.
     const messen = !cur ? "" : `<div class="smrun">
-        <button class="ctxremove${msOk ? " done" : ""}" data-act="smmeasure"
+        <button class="smrunbtn${msOk ? " ok" : ""}" data-act="smmeasure"
           data-id="${esc(a.id)}" ${msBusy || busy || stale ? "disabled" : ""}>
-          ${msBusy ? "wird gemessen …" : (msOk ? "gemessen" : "übernehmen und messen")}
+          ${msBusy ? "misst …" : (msOk ? "✓ gemessen" : "übernehmen und messen")}
         </button>
         ${msErr ? `<span class="err">${esc(msErr)}</span>` : ""}</div>`;
 
@@ -4167,6 +4179,7 @@ class IntervalsIcuPanel extends HTMLElement {
         ${err ? `<div class="err pad">${esc(err)}</div>` : ""}
         ${rtBusy ? `<div class="loading"><span class="spin"></span> Ströme werden geholt und gemessen …</div>` : ""}
         ${rtErr ? `<div class="err pad">${esc(rtErr)}</div>` : ""}
+        ${nochNicht}
         ${drift}
         ${stand}
         ${messen}
@@ -5498,6 +5511,17 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
 .smbox:hover{border-color:var(--fc)}
 .smrun{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:6px}
 .smrun .err{font-size:12px}
+/* Eigene Klasse statt ctxremove: der wuchs auf die volle Breite und blieb in
+   jedem Zustand grau - am Erfolg war nur der Text zu erkennen. */
+.smrunbtn{display:inline-flex;align-items:center;width:auto;align-self:flex-start;
+  margin:6px 0 2px;padding:6px 13px;border-radius:8px;cursor:pointer;
+  border:1.5px solid ${C.tx3};background:none;color:${C.tx2};
+  font-family:inherit;font-size:13px;text-align:left}
+.smrunbtn:hover:not(:disabled){border-color:${C.tx2};color:${C.tx}}
+.smrunbtn:disabled{opacity:.45;cursor:default}
+/* Der Erfolg traegt den Zustandston, nicht nur ein anderes Wort. */
+.smrunbtn.ok{border-color:${C.green};color:${C.green};background:${C.green}1f}
+.src.warn{border-left:2px solid ${C.amber};padding-left:9px}
 .smbox.on{border-color:var(--fc);background:color-mix(in srgb,var(--fc) 16%,transparent)}
 /* Tagesbeschriftung (B5): fester Dialog, Kategorien-Chips, Marker */
 .tday[data-act]{cursor:pointer}

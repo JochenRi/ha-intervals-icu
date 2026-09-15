@@ -532,6 +532,48 @@ for erst, dann, label in (
 check("keep=" in _m_src,
       "Messweg: dfa_hours wird ohne Maske gerufen — dann misst er die ganze Fahrt")
 
+# DIE MASKE IST FAMILIENREIN (0.54.1). Ohne den Familienparameter legte die
+# Gerade zwei getrennte Punktwolken zusammen — Einrollen mit wenig Watt und
+# hohem alpha, Intervalle mit viel Watt und niedrigem alpha — und las bei 0,75
+# einen Zustand ab, den niemand gefahren ist. Das ist der Fit-durch-zwei-
+# Wolken aus Paket M, dort schon behoben, über einen NEUEN Weg zurückgekommen.
+check('marks_lib.marked(entry, "endurance")' in _m_src,
+      "Messweg: die Maske nimmt alle Marken quer über die Familien — "
+      "der Fit läuft dann durch zwei Wolken (Paket M)")
+check("marks_lib.mask_ranges(\n        laps, marks_lib.marked(entry" in _m_src
+      or 'mask_ranges(laps, marks_lib.marked(entry, "endurance"))' in _m_src,
+      "Messweg: mask_ranges bekommt die Marken nicht familienrein")
+# Und das INSTRUMENT gehört zur Familie: hier wird die Kurve gerechnet, also
+# wird für die Blockfamilien abgebrochen statt eine Zahl zu erfinden.
+check("marks_lib.ONLY_CURVE" in _m_src,
+      "Messweg: ohne Grundlagen-Marke rechnet er trotzdem die Kurve")
+
+# GEGENPROBE über den ganzen Produktivcode: KEINE Aufrufstelle von `marked`
+# darf die Familie weglassen — außer dem ANKER, der zu Recht alle Marken
+# umspannt. Der Fehler saß genau hier, und er sitzt beim nächsten Anschluss
+# der Blockmessung an derselben Stelle wieder.
+COMPONENT = Path(__file__).resolve().parents[1] / "custom_components" / "intervals_icu"
+# Die ERLAUBTEN familienlosen Aufrufe, einzeln benannt statt als Muster: zwei
+# gehören dem ANKER (er umspannt zu Recht alle Marken einer Fahrt), einer
+# fragt nur, OB überhaupt etwas markiert ist. Wer einen vierten hinzufügt,
+# muss ihn hier eintragen — und begründen.
+_anker_ok = ("anchor_of(rows, marked(entry))",
+             "missing = [i for i in marked(entry) if",
+             "if entry is None or not marks_lib.marked(entry):")
+for _datei in ("section_marks.py", "websocket.py", "blocks.py", "fatigue.py"):
+    _pfad = COMPONENT / _datei
+    if not _pfad.exists():
+        continue
+    for _nr, _zeile in enumerate(_pfad.read_text(encoding="utf-8").splitlines(), 1):
+        if "marked(" not in _zeile or "def marked" in _zeile or "marked_blocks(" in _zeile:
+            continue
+        _blank = re.search(r"marked\((entry|old)\)", _zeile)
+        if not _blank:
+            continue                      # Regex null-geprüft (§9)
+        check(any(erlaubt in _zeile for erlaubt in _anker_ok),
+              f"Familienreinheit: {_datei}:{_nr} ruft marked() ohne Familie — "
+              f"das mischt zwei Sorten Abschnitt in eine Messung")
+
 # ZWEI ARTEN VON FEHLSCHLAG, und der Unterschied ist die 0.53.1-Klasse: ein
 # Netzfehler darf nicht als Satz im Archiv versteinern, ein Sachbefund über die
 # Fahrt gehört hinein. Also: in KEINEM except-Zweig wird gemessen oder
