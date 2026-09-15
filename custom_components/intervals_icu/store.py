@@ -13,7 +13,7 @@ from typing import Any
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
-from . import day_context, importer, plan, ramp_tests
+from . import day_context, importer, plan, ramp_tests, section_marks
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
@@ -77,6 +77,17 @@ class IntervalsArchive:
             # maths changes. A no-op returns None and must not save.
             if (tests := ramp_tests.migrate(self.data.get(ramp_tests.BLOCK))) is not None:
                 self.data[ramp_tests.BLOCK] = tests
+                self.schedule_save()
+            # Fuenfter Block, dieselben zwei Auflagen. Die Migration traegt
+            # hier dieselbe Trennung wie bei ramp_tests, nur eine Ebene
+            # feiner: ein Eintrag mit aelterer Messmarke verliert seine
+            # STUNDEN und behaelt MARKEN UND ANKER - die Aussage des Athleten,
+            # welcher Abschnitt welcher Familie gehoert, verfaellt nicht, wenn
+            # sich die Mathematik aendert. Ein No-op gibt None und speichert
+            # nicht.
+            if (marks := section_marks.migrate(
+                    self.data.get(section_marks.BLOCK))) is not None:
+                self.data[section_marks.BLOCK] = marks
                 self.schedule_save()
         _LOGGER.debug("archive loaded: %s", importer.archive_stats(self.data))
 

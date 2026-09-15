@@ -100,6 +100,11 @@ def empty_data(athlete_id: str) -> dict[str, Any]:
         # neuer Archivblock OHNE Eintrag hier UND Migration in store.async_load
         # gilt als unfertig, nicht als Ausnahme (PROJEKTSTAND 7).
         "ramp_tests": {},
+        # die Zuordnung Abschnitt -> Familie, von Hand gesetzt (docs/ausbau.md
+        # P3). Fuenfter Block mit diesem Eintrag, nach goal, day_context und
+        # ramp_tests - und das fuenfte Mal, dass sich hier sonst dieselbe
+        # Luecke oeffnet.
+        "section_marks": {},
         "last_import": None,
         "full_import_done": False,
         "dfa_version": DFA_ALGO_VERSION,
