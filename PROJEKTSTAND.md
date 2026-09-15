@@ -1649,6 +1649,43 @@ Zwischenlösung ist nicht „daran denken", sondern: **jede neue Gegenprobe wird
 gefahren, bevor der Schritt als grün gemeldet wird.** Ein grüner Lauf ohne
 gefahrene Mutation sagt über diese Fehlerklasse nichts.
 
+**Fünfundzwanzigster Fall (0.54.0, beim Bau von B1 gefunden): eine Lücke, die
+drei Releases lang harmlos war, weil nichts sie auslöste.** `confirm_section_marks`
+ist seit 0.52.0 gebaut, registriert, getestet — und kommt im Panel **null Mal**
+vor. Es gibt keinen Knopf, kein `reanchor`, keine Anzeige von `marks_stale`.
+
+**Das war kein Fehler, solange die Drift nie gemeldet wurde.** Ein Zustand ohne
+Bedienelement ist unsichtbar, wenn ihn nichts herstellt. Schritt 3 von B1 stellt
+ihn her: beim Öffnen einer verschobenen Fahrt fällt die Messung, und der Athlet
+sieht es. Ab diesem Augenblick wäre es ein **Zustand ohne Ausgang** — eine
+Messung, die verschwindet, und kein Weg zurück außer neuem Haken.
+
+**Die Klasse ist damit eine andere als der zweiundzwanzigste Fall**, und zwar
+schärfer: dort war ein Zustand gebaut und ungeprüft. Hier war ein AUSGANG
+gebaut und unerreichbar, und **die Gefahr entstand nicht dort, wo die Lücke
+lag, sondern in einem anderen Paket, drei Releases später.** Wer nur den neuen
+Code prüft, findet so etwas nie — die Lücke ist alt und war beim Entstehen
+korrekt.
+
+**Die Regel daraus: wer einen Zustand AUSLÖSBAR macht, prüft, ob sein Ausgang
+bedienbar ist.** Nicht ob er existiert — ob man ihn erreicht.
+
+**Gezählt, wie verlangt, und nichts daran gebaut.** Von 32 WebSocket-Kommandos
+ruft das Panel 28. Die vier übrigen zerfallen in zwei Gruppen, und der
+Unterschied ist genau der oben:
+
+| Kommando | Art | Gefährlich? |
+|---|---|---|
+| `confirm_section_marks` | **Ausgang** aus einem Zustand | **Ja** — in 0.54.0 bedienbar gemacht |
+| `measure_section_marks` | Ausgang, in 0.54.0 neu gebaut | im selben Release bedient |
+| `activity` | Leseweg, Daten | Nein — das Panel baut die Detailansicht aus der Liste. Die Spezifikation hielt dieses Kommando für den Weg der Detail-Payload (docs/ausbau.md, Streichung 5); es ist keiner |
+| `athletes` | Leseweg, Daten | Nein — Mehr-Athleten-Auswahl gibt es in der Oberfläche nicht |
+
+**Zwei von vier sind Vorrat auf Verdacht** (§12, dieselbe Klasse wie `ring()`),
+**keines der beiden ist ein Ausgang**, und damit ist die Liste kein Muster,
+sondern ein einzelner Fall plus zwei tote Lesewege. Die Zahl steht hier, damit
+die nächste Sitzung sie nicht neu erheben muss: **vier, davon ein echter.**
+
 ### Die drei Fehlerklassen, die sich durchziehen
 
 1. **Falsche Quelle statt falscher Anzeige.** FTP, Tageslast — beide standen in den Daten und
@@ -2004,6 +2041,7 @@ bzw. ein Reiter je Chat.
 | **Block-Kurven: Ableseleiste und Datumsachse** | ✅ Ableseleiste als **0.50.0** gebaut — Einheit, Datum, Watt, alpha des aufgetragenen Blocks und Zahl der Blöcke, je Familie eine eigene geschachtelte Zeigergruppe. **Die Datumsachse ist gestrichen**, nicht vertagt: wer beim Überfahren das volle Datum bekommt, braucht den Monat unter der Achse nicht (Entscheidung des Athleten, 14.09.2026). Verifikation am System steht aus |
 | **Stufentest (Paket N)** | ✅ gebaut als **0.51.0**. Der Durability-Test ist aus dem Katalog entfernt, der Stufentest steht dort neu — beide Schwellen aus EINER Fahrt, unter gleichen Bedingungen, statt zweier Termine und 1.000 kJ, die auf absehbare Zeit nicht gefahren würden. Neu: `ramp.py` (die Schwelle wird **gefittet, nicht abgelesen** — eine Ausgleichsgerade durch den Abfall von DFA a1, Schnittpunkt mit 0,75 bzw. 0,5; über das gemessene Segment hinaus wird **nicht** hochgerechnet), `ramp_tests.py` (Archivblock mit Migration und Messmarke, drei Regeln aus K2: keine Erkennung, keine stille Messung, rücknehmbar), `set_ramp_test` an der Stelle von `set_durability_test` (Ströme LIVE und ungedünnt, nur das Ergebnis wird gespeichert), die **Quellenkette je Familie** als eine Mechanik mit verschiedener Rangfolge, und die Stufentest-Karte mit drei Zahlen plus der 40-Watt-Frage. **Kein Algorithmus-Bump, keine Neuberechnung.** Die Spezifikation wurde beim Bau an fünf Stellen korrigiert (docs/ausbau.md): N4 ist nicht „nachzulesen", sondern in den zugänglichen Quellen **nicht beantwortbar** — Einrollen, Startleistung und Abbruchkriterium stehen dort nicht so, wie die Spec annahm; die Segmentregel ist deshalb eine **Setzung**, weil beide Arbeiten das Segment von Hand am Plot bestimmen; die personalisierte Schwelle ist eine Operationalisierung **aus zweiter Hand**; das Ausrollfenster ist eine eigene Idee ohne Protokollvorgabe; und die Erholungsgröße fließt in keine Vorgabe ein. **Nachgebessert in 0.51.1**, siehe die Zeile darunter |
 | **Stufentest, Nachbesserung (Paket N1)** | ✅ gebaut als **0.51.1**, ohne Algorithmus-Bump. Der erste Live-Blick auf 0.51.0 fand vier Fehler, alle in der ausgelieferten Karte: (1) die Rampe hing komplett an der FTP (`ramp 60-115%`) und endete bei diesem Athleten **27 W UNTER** seiner eigenen Leitzahl — die zweite Schwelle war nicht erreichbar, und der Wächter darüber bewachte die Ausnahme statt der Regel; (2) Dauer, Steigung und Spanne passten nur bei genau einer FTP zusammen; (3) die zehn Beschreibungspunkte waren vorhanden, wurden aber nicht gerendert — ein Umzug zwischen zwei Payloads, verschluckt von einem `\|\| []`; (4) das Pulsfenster war die falsche **Art** von Aussage, und die Rampe wurde flach gezeichnet. Gebaut: zwei getrennte Quellenketten (Start Ermüdungskurve → HRVT1 → FTP, Ende Blockmessung-**Leitzahl** → HRVT2 → FTP, Reserve als ZEIT), **die Dauer wird gerechnet statt gesetzt**, Beschreibung an der Einheit mit einem Wächter, der belegt dass sie ankommt, Quellen schon im Leerzustand, Pulsfenster ersatzlos durch einen Satz ersetzt, Rampe als Rampe gezeichnet. Bei diesem Athleten: 138→307 W statt 120→230 W, 34 min statt behaupteter 30 (gerechnet wären es 22 gewesen). §7, Fälle 18–20. Verifikation am System steht aus |
+| **Zuordnung: die Messung (Paket P/B, Auslieferung B1)** | ✅ gebaut als **0.54.0**, **ohne Algorithmus-Bump** — `DFA_ALGO_VERSION` und `MEASURE_VERSION` bleiben stehen, der Bestand wird nicht neu gerechnet. `derive.dfa_hours` maskiert: die markierten Abschnitte liefern Punkte, **die Achse bleibt die Fahrtzeit** — kein Zusammenschieben, „Stunde 2" bleibt die zweite Stunde der FAHRT, weil auch der ausmaskierte Teil müde gemacht hat. Ausgeschlossene Sekunden zählen in `excluded`, nicht in `dropped`; ein leeres Fenster hat `dropped_share: null` statt 0,0 %. Der Messweg holt **zwei Mal** — Ströme aus den Kanälen des Importwegs, Abschnitte für die Grenzen — und prüft die Drift gegen die frisch geholten Laps, BEVOR gerechnet wird. Fünf Lagen, getrennt: drei Transportfehler und die Drift gehen **nicht** ins Archiv, nur der Sachbefund. `websocket_laps` wird dabei zum Schreiber (gemeldet, nicht versteckt) und löscht die Stunden einer gedrifteten Fahrt beim Öffnen — gespeichert nur im Änderungsfall. Dazu `measured_at`, das „noch nie gemessen" von „Auswahl geändert" trennt, und die Familien **Schwelle** und **lange Fahrt** fallen aus der Markierungsreihe: die eine misst nicht über Blöcke, die andere rechnet mit der Grundlage identisch. §7, vierundzwanzigster und fünfundzwanzigster Fall. Verifikation am System steht aus |
 | **Zuordnung: die Erklärung (0.53.1)** | ✅ Zwei Nachbesserungen aus dem Live-Blick, reine Anzeige, **ohne Algorithmus-Bump**. Der Satz „noch nicht gemessen“ verwies auf einen Knopf, den es noch nicht gibt — und er war GESPEICHERT, stand also auch in älteren Einträgen. Jetzt reist er im Leseweg mit, `reason` bleibt echten Gründen vorbehalten, und der veraltete Satz fällt beim Laden. Dazu die Aufklappung je Kachel: drei Fragen (womit füttern, was wird gerechnet, was ändert sich an den Vorgaben), je Familie verschieden, Zahlen aus der Payload. Der offene Zustand überlebt das Re-Render der Familienwahl — ein natives `<details>` hätte es nicht getan. §7, dreiundzwanzigster Fall |
 | **Zuordnung: der Überblick (Paket P, Auslieferung A2)** | ✅ gebaut als **0.53.0**, **ohne Algorithmus-Bump** — reine Anzeige auf der Payload aus 0.52.0. Die Markenspalte in der Aktivitätenliste: je Fahrt die Kürzel der gewerteten Familien, **leer heißt noch nicht angefasst**, blass heißt markiert und noch nicht gemessen (der Unterschied auch im Klartext am `title`, nicht nur in der Sättigung). Die Liste bleibt chronologisch, die Zeile behält ihren Klickweg. **KEIN Driftzeichen, und das ist entschieden, nicht ausgelassen:** der Befund ist nur gegen live geholte Laps zu haben, und ein gespeicherter Stand wäre systematisch in genau den Fällen falsch, für die er gebaut wäre — Drift entsteht, wenn in Intervals neu unterteilt wird, also NACH dem letzten Öffnen. Dazu die Nachbesserung aus dem ersten Live-Blick auf 0.52.0: **ein Abschnitt ist kein Mangel** — eine Rolleneinheit IST die ganze Fahrt, und die Kachel sagt das jetzt so. Zugesichert war das vorher nicht (§7, zweiundzwanzigster Fall, zum zweiten Mal). Verifikation am System steht aus |
 | **Zuordnung durch den Athleten (Paket P, Auslieferung A)** | ✅ gebaut als **0.52.0**, **ohne Algorithmus-Bump**. Der Archivblock `section_marks` (Schlüssel `start_index`, niemals die laufende Nummer), sein Anker samt Drifterkennung, drei WebSocket-Wege und die Kachelreihe im Aktivitätsdetail: sechs Familien mit eigener Form und eigenem Kürzel plus der Stufentest, der dort aufgeht — `_rampBlock` fällt. **Es wird noch nichts gerechnet:** die Vorgaben, die Verlaufskacheln und die Ermüdungskurve lesen weiter die Namenserkennung und die WORK-Etiketten. Die Spezifikation wurde vor und während des Baus an zehn Stellen korrigiert (docs/ausbau.md): P1 entfällt mit der Vorschlags-Streichung ganz, der mittlere DFA-Zustand ist geprüft und verworfen, der Anker wird beim ERSTEN Haken gesichert, `reanchor` ist streng, der Anker taugt nicht zum Maskieren, der Messweg braucht zwei Abrufe, P8 ist nicht frontend-only, der Stufentest misst beim Klick, die Reihenfolge ist umgedreht, und die Mobilfrage bleibt offen. §7, zweiundzwanzigster Fall. Verifikation am System steht aus |
