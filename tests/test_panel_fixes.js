@@ -1424,5 +1424,83 @@ const acts = F.activities(), thr = F.thresholds();
   ok(scrolls.length === 1 && scrolls[0] === 742,
      "fehlergründe Gegenprobe: die Scroll-Lage überlebt das Re-Render nicht");
 
-  report("test_panel_fixes");
+/* ── Die Markenspalte der Aktivitätenliste (docs/ausbau.md P5) ─────────────
+   Am GERENDERTEN rAkt geprüft, nicht an der Hilfsfunktion allein: die Frage
+   ist, ob die Spalte in der Liste ankommt und ob leer wirklich leer heißt. */
+{
+  const q = new M.Panel();
+  const acts = [
+    { id: "a1", name: "Tempo 3x12", type: "Ride", start_date_local: "2026-09-10T09:00:00",
+      moving_time: 5400, distance: 45000, icu_training_load: 90, average_heartrate: 148 },
+    { id: "a2", name: "Lange Fahrt", type: "Ride", start_date_local: "2026-09-08T09:00:00",
+      moving_time: 12600, distance: 110000, icu_training_load: 190, average_heartrate: 138 },
+    { id: "a3", name: "Rolle locker", type: "VirtualRide", start_date_local: "2026-09-06T18:00:00",
+      moving_time: 3600, distance: 30000, icu_training_load: 55, average_heartrate: 130 },
+  ];
+  q._smarks = { marks: [
+    { activity_id: "a1", date: "2026-09-10", marks: { tempo: [600], sweetspot: [1800] },
+      hours: null, reason: "Markiert, noch nicht gemessen" },
+    { activity_id: "a2", date: "2026-09-08", marks: { long: [0] },
+      hours: [{ hour: 1, p075: 205 }, { hour: 2, p075: 198 }], reason: "" },
+  ], families: Object.keys(M.FAM), stale_reason: {} };
+  q._laps = {}; q._streams = {}; q._night = {}; q._ctx = {};
+  q._rtests = { tests: [] };
+
+  const list = q.rAkt(acts, null);
+  H.clean(list, "markenspalte");
+  ok(/<span>Zuordnung<\/span>/.test(list), "markenspalte: die Kopfzeile fehlt");
+  ok(/class="amk"/.test(list), "markenspalte: die Zelle wird gar nicht gerendert");
+
+  // je Zeile zerlegen, damit "ist das Kürzel in der RICHTIGEN Zeile" eine
+  // echte Frage bleibt und nicht am ganzen HTML hängt
+  const zeilen = list.split('class="arow').slice(1);
+  ok(zeilen.length === 3, `markenspalte: ${zeilen.length} statt 3 Zeilen`);
+  const [z1, z2, z3] = zeilen;
+  ok(z1.includes("TMP") && z1.includes("SST"),
+     "markenspalte: die Kürzel der markierten Familien fehlen in ihrer Zeile");
+  ok(!z1.includes("LANG"), "markenspalte: eine fremde Marke steht in der Zeile");
+  ok(z2.includes("LANG"), "markenspalte: die zweite Fahrt trägt ihre Marke nicht");
+  // LEER HEISST UNBERÜHRT - und das ist die Aussage, die die Spalte liefern soll
+  const zelle3 = (/class="amk">([\s\S]*?)<\/span>/.exec(z3) || [null, "?"])[1];
+  ok(zelle3 !== null && zelle3.trim() === "",
+     `markenspalte: eine unberührte Fahrt zeigt etwas (${JSON.stringify(zelle3)})`);
+
+  // MESSZUSTAND statt Driftzeichen: blass, solange nicht gemessen
+  ok(/class="smk todo"/.test(z1),
+     "markenspalte: eine ungemessene Marke sieht aus wie eine gemessene");
+  ok(!/class="smk todo"/.test(z2),
+     "markenspalte: eine GEMESSENE Marke wird blass gezeichnet");
+  const cssP5 = (H.source().match(/_css\(\) \{[\s\S]*$/) || [""])[0];
+  ok(/\.smk\.todo\{[^}]*opacity/.test(cssP5),
+     "markenspalte: der ungemessene Zustand hat keine eigene Darstellung");
+  // und der Unterschied steht auch im Klartext am title, nicht nur in der Farbe
+  ok(/noch nicht gemessen/.test(z1) && /— gemessen/.test(z2),
+     "markenspalte: der Messzustand steht nur in der Sättigung, nicht in Worten");
+
+  // KEIN DRIFTZEICHEN - bewusst. Ein gespeicherter Stand wäre systematisch in
+  // genau den Fällen falsch, für die er gebaut wäre.
+  ok(!/stale|veraltet|verschoben/i.test(list),
+     "markenspalte: die Liste zeigt ein Driftzeichen, das sie nicht belegen kann");
+
+  // die Zeile bleibt anklickbar wie bisher - der Sprung in die Fahrt ist der
+  // vorhandene Weg, es braucht keinen zweiten
+  ok(/class="arow[^"]*" data-act="act" data-id="a1"/.test(list),
+     "markenspalte: die Zeile hat ihren Klickweg verloren");
+
+  // Die Liste bleibt chronologisch, neueste zuerst (P5, keine Warteschlange).
+  ok(z1.includes("Tempo 3x12") && z3.includes("Rolle locker"),
+     "markenspalte: die Reihenfolge der Liste hat sich geändert");
+
+  // GEGENPROBE: ohne Payload steht die Spalte leer da, statt zu brechen -
+  // sonst prüft das obige nur den gefüllten Fall.
+  q._smarks = null;
+  const ohne = q.rAkt(acts, null);
+  H.clean(ohne, "markenspalte ohne payload");
+  ok(!/class="smk/.test(ohne),
+     "markenspalte Gegenprobe: ohne Payload erscheinen trotzdem Marken");
+  ok(/<span>Zuordnung<\/span>/.test(ohne),
+     "markenspalte Gegenprobe: ohne Payload verschwindet die Kopfzeile");
+}
+
+report("test_panel_fixes");
 })();

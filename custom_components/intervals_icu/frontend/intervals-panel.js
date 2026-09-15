@@ -3790,15 +3790,51 @@ class IntervalsIcuPanel extends HTMLElement {
         <span class="tn ${decCls}">${dec != null ? fmt(dec, 1) + " %" : "–"}</span>
         <span>${zb}</span>
         <span class="tn">${thr}</span>
+        <span class="amk">${this._markCell(a.id)}</span>
       </button>`;
     }).join("");
     return `${miss}${detail}
       <div class="card pad0">
         <div class="ahead">
-          <span></span><span>Einheit</span><span>Dauer</span><span>Distanz</span><span>Last</span><span>Ø HF</span><span>Entkopplung</span><span>DFA-Verteilung</span><span>Schwelle</span>
+          <span></span><span>Einheit</span><span>Dauer</span><span>Distanz</span><span>Last</span><span>Ø HF</span><span>Entkopplung</span><span>DFA-Verteilung</span><span>Schwelle</span><span>Zuordnung</span>
         </div>
         ${rows}
       </div>`;
+  }
+
+  /* Die Markenspalte der Aktivitaetenliste (docs/ausbau.md P5).
+
+     LEER HEISST: NOCH NICHT ANGEFASST - und genau das ist die Aussage, die
+     die Spalte liefern soll. Eine markierte Fahrt ohne Familie gibt es nicht,
+     weil der Eintrag dann faellt (P3d).
+
+     KEIN DRIFTZEICHEN, und das ist eine Entscheidung, keine Auslassung. Der
+     Driftbefund ist nur gegen die LIVE geholten Laps zu haben; die sind nicht
+     archiviert, und fuer eine Liste mit dreihundert Fahrten waeren das
+     dreihundert Abrufe. Ein GESPEICHERTER Stand ("beim letzten Oeffnen sass
+     sie noch") waere nicht bloss ungenau, sondern systematisch falsch herum:
+     Drift entsteht, wenn in Intervals neu unterteilt wird - also NACH dem
+     letzten Oeffnen. Er zeigte "in Ordnung" fuer genau die Fahrten, die
+     gerade gedriftet sind. Eine leere Zelle sagt nichts, ein gruenes Zeichen
+     sagt "geprueft und in Ordnung"; das zweite ist der stille Ausstieg (§7,
+     erster Fall). Geprueft wird die Drift dort, wo die Laps ohnehin vorliegen:
+     im Aktivitaetsdetail und auf dem Messweg.
+
+     WAS DIE SPALTE STATTDESSEN TRAEGT, ist der MESSZUSTAND - der steht im
+     Archiv und ist kein Stellvertreter. Blass heisst markiert und noch nicht
+     gemessen. */
+  _markCell(id) {
+    const row = (this._smarks && (this._smarks.marks || [])
+      .find((m) => String(m.activity_id) === String(id))) || null;
+    if (!row) return "";
+    const keys = Object.keys(FAM).filter(
+      (key) => ((row.marks || {})[key] || []).length);
+    if (!keys.length) return "";
+    const gemessen = !!(row.hours && row.hours.length);
+    return keys.map((key) => `<i class="smk ${gemessen ? "" : "todo"}"
+      style="--fc:${FAM[key].c}" title="${esc(FAM[key].l)}${gemessen
+        ? " — gemessen" : " — markiert, noch nicht gemessen"}"
+      >${ico(FAM[key].ic, FAM[key].c, 10)}${FAM[key].k}</i>`).join("");
   }
 
   _dfaShares(s) {
@@ -5151,7 +5187,7 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
 .zb s{display:block;height:100%}
 .zb.w{position:static;width:74px;height:8px;border-radius:3px}
 /* Aktivitäten */
-.ahead,.arow{display:grid;grid-template-columns:36px minmax(160px,1.4fr) 76px 86px 60px 60px 96px 92px 96px;
+.ahead,.arow{display:grid;grid-template-columns:36px minmax(160px,1.4fr) 76px 86px 60px 60px 96px 92px 96px 112px;
   gap:10px;align-items:center;padding:9px 12px}
 .ahead{color:${C.tx3};font-size:12px;font-weight:600;letter-spacing:.05em;border-bottom:1px solid ${C.line}}
 .arow{width:100%;text-align:left;background:none;border:none;border-bottom:1px solid ${C.line}55;
@@ -5212,6 +5248,8 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
   font-weight:700;letter-spacing:.04em;color:var(--fc);
   border:1px solid color-mix(in srgb,var(--fc) 45%,transparent);
   border-radius:6px;padding:1px 5px 1px 3px}
+.amk{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.smk.todo{opacity:.5}
 .smbox{width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;
   border:2px solid ${C.line};border-radius:6px;background:none;cursor:pointer;padding:0}
 .smbox:hover{border-color:var(--fc)}
@@ -5685,7 +5723,7 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
   .calhead span{display:none}
   .ahead{display:none}
   .arow{grid-template-columns:36px 1fr 76px 60px;}
-  .arow>*:nth-child(4),.arow>*:nth-child(6),.arow>*:nth-child(7),.arow>*:nth-child(8),.arow>*:nth-child(9){display:none}
+  .arow>*:nth-child(4),.arow>*:nth-child(6),.arow>*:nth-child(7),.arow>*:nth-child(8),.arow>*:nth-child(9),.arow>*:nth-child(10){display:none}
 }`;
   }
 }
