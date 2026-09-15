@@ -1151,17 +1151,26 @@ class IntervalsIcuPanel extends HTMLElement {
     }
 
     const lit = f.literature || [];
-    const xs = [...f.measured.map((r) => r.t), ...lit.map((r) => r.t)];
-    const lows = [...lit.map((r) => r.lo), ...f.measured.map((r) => r.watts)].filter((v) => v != null);
-    const his = [...lit.map((r) => r.hi), ...f.measured.map((r) => r.watts)].filter((v) => v != null);
+    // DIE ACHSE IST DIE GEPLANTE DAUER. Die Leitzahl beantwortet "welche
+    // Leistung halte ich über eine Fahrt von X Stunden" — nicht "was war in
+    // Stunde X". Die ungepaarte Reihe (Median je Fahrtstunde, t = Stundenmitte)
+    // ist eine ANDERE Größe auf einer anderen Achse; sie steht als
+    // Gegenrechnung in der Tabelle und nicht mehr im Graphen. Zwei Kurven auf
+    // einer Achse wären zwei Antworten auf eine Frage.
+    const plan = f.plan || [];
+    const xs = [...plan.map((r) => r.hours), ...lit.map((r) => r.t)];
+    const lows = [...lit.map((r) => r.lo), ...plan.map((r) => r.watts)].filter((v) => v != null);
+    const his = [...lit.map((r) => r.hi), ...plan.map((r) => r.watts)].filter((v) => v != null);
     const y0 = Math.floor(Math.min(...lows) / 10) * 10 - 5;
     const y1 = Math.ceil(Math.max(...his) / 10) * 10 + 5;
-    const solid = f.solid_until_hour, thin = f.thin_until_hour;
-    // Die Trennstelle der Darstellungsbereiche kommt aus der BELEGUNG: die
-    // letzte Stunde, die noch getragen wird. Keine Stundenzahl im Quelltext.
-    const cut = f.measured.find((r) => r.hour === thin);
-    const within = lit.filter((r) => cut == null || r.t <= cut.t);
-    const beyond = lit.filter((r) => cut == null || r.t >= cut.t);
+    const solid = f.plan_solid_until_hours, thin = f.plan_thin_until_hours;
+    // WO DIE SETZUNG ANFÄNGT, STEHT IM FELD, nicht in der Zeichnung: `beyond`
+    // kommt aus der Payload. Eine gestrichelte Linie ist eine Gestaltung; wer
+    // die Grenze aus den Punkten zurückrechnet, führt eine zweite Wahrheit.
+    const within = lit.filter((r) => !r.beyond);
+    const litBeyond = lit.filter((r) => r.beyond);
+    // Der Übergabepunkt gehört BEIDEN Linien, sonst klafft eine Lücke.
+    const brueck = within.length ? [within[within.length - 1]] : [];
 
     const graph = chart({
       h: 300, n: 2, x0: Math.min(...xs), x1: Math.max(...xs), y0, y1, grp: "fat",
@@ -1170,13 +1179,18 @@ class IntervalsIcuPanel extends HTMLElement {
         // SETZUNG zuerst, damit sie hinter der Messung liegt
         { t: "xyband", p: lit.map((r) => ({ x: r.t, lo: r.lo, hi: r.hi })), c: C.slate, op: 0.13 },
         { t: "xyline", p: within.map((r) => ({ x: r.t, v: r.watts })), c: C.slate, w: 2, lop: 0.9 },
-        { t: "xyline", p: beyond.map((r) => ({ x: r.t, v: r.watts })), c: C.slate, w: 2, d: "5 4", lop: 0.9 },
-        // MESSUNG darüber, Punktgröße nach Belegung
-        { t: "dots", c: ROLE.series, p: f.measured.map((r) => ({
-            x: r.t, v: r.watts, r: r.band === "solid" ? 5.4 : r.band === "thin" ? 3.8 : 2.6,
-            op: r.band === "solid" ? 1 : r.band === "thin" ? 0.75 : 0.5 })) },
-        { t: "xyline", p: f.measured.filter((r) => r.band === "solid").map((r) => ({ x: r.t, v: r.watts })),
+        { t: "xyline", p: [...brueck, ...litBeyond].map((r) => ({ x: r.t, v: r.watts })),
+          c: C.slate, w: 2, d: "5 4", lop: 0.9 },
+        // DIE LEITZAHL darüber, Punktgröße nach der Weglassprobe
+        { t: "dots", c: ROLE.series, p: plan.map((r) => ({
+            x: r.hours, v: r.watts, r: r.band === "solid" ? 5.4 : 3.8,
+            op: r.band === "solid" ? 1 : 0.75 })) },
+        // Durchgezogen nur bis zum ERSTEN Riss — eine Linie mit einem Loch,
+        // die dahinter weitergeht, behauptet Sicherheit, die es nicht gibt.
+        { t: "xyline", p: plan.filter((r) => r.hours <= (solid || 0)).map((r) => ({ x: r.hours, v: r.watts })),
           c: ROLE.series, w: 2.6 },
+        { t: "xyline", p: plan.filter((r) => r.hours >= (solid || 0)).map((r) => ({ x: r.hours, v: r.watts })),
+          c: ROLE.series, w: 1.6, d: "3 3", lop: 0.75 },
       ],
     });
 
@@ -1187,49 +1201,56 @@ class IntervalsIcuPanel extends HTMLElement {
     // sonst null - eine Luecke im Streifen ist die ehrliche Auskunft
     // "hier gibt es keine Messung".
     const grid = lit;
-    const measuredAt = grid.map((q) => {
-      const m = f.measured.find((r) => r.hour != null && r.hour === q.hour);
-      return m ? m.watts : null;
-    });
+    // Der Zeiger liest die LEITZAHL, wo es eine gibt — sie steht auf den
+    // vollen Stunden der geplanten Dauer, nicht auf jedem Rasterpunkt.
+    const planAt = grid.map((q) => plan.find((r) => Math.abs(r.hours - q.t) < 0.01) || null);
     // Der Ruhezustand der Leitzahl ist eine EIGENE Rechnung, nicht der erste
     // Rasterpunkt: der Anker ist der Fit bei Dauer null, das Raster beginnt bei
     // der ersten Fahrtstunde. Beide bleiben deshalb beschriftet - sonst sieht
     // der Sprung zwischen ihnen wie ein Rundungsfehler aus.
     const baseNote = `gemessen: ${fmt(f.anchor_n)} Fahrten in Stunde 1, Repräsentantenmethode `
       + `nach Andriolo, auf Intervals' eigener DFA-Fensterung`;
-    const occupied = (i) => {
-      const m = f.measured.find((r) => r.hour != null && r.hour === grid[i].hour);
-      return m ? m.n : null;
-    };
     this._grp.fat = {
       xy: true, n: grid.length,
       pts: grid.map((q) => ({ x: q.t, y: q.watts })),
-      xl: (i) => fmt(grid[i].t, 2) + " h Fahrtzeit"
-        + (grid[i].hour == null || measuredAt[i] == null ? " — Studienform, keine Messung" : ""),
+      xl: (i) => fmt(grid[i].t, 2) + " h geplante Dauer"
+        + (planAt[i] == null ? " — Studienform, keine Messung" : ""),
       lead: {
         base: fmt(f.anchor_base), baseColor: ROLE.series,
         baseLabel: "Ausgeruht, bei Dauer null", baseNote,
-        label: (i) => "Schwellenleistung bei " + fmt(grid[i].t, 2) + " h Fahrtzeit",
-        val: (i) => fmt(measuredAt[i] == null ? grid[i].watts : measuredAt[i]),
-        color: (i) => (measuredAt[i] == null ? C.slate : ROLE.series),
-        note: (i) => (measuredAt[i] == null
-          ? "Studienform, keine Messung"
-          : `gemessen · ${fmt(occupied(i))} ${occupied(i) === 1 ? "Fahrt" : "Fahrten"}`
-            + ` · Studienform ${fmt(grid[i].watts)} W`),
+        // DIE FRAGE, die die große Zahl beantwortet: was kann ich über eine
+        // Fahrt dieser Länge treten, sodass es am ENDE noch trägt.
+        label: (i) => "Leistung für eine Fahrt von " + fmt(grid[i].t, 2) + " h",
+        val: (i) => fmt(planAt[i] == null ? grid[i].watts : planAt[i].watts),
+        color: (i) => (planAt[i] == null ? C.slate : ROLE.series),
+        // Der RECHENWEG steht daneben, nicht in der Zahl: der verkettete
+        // Schritt mit seiner Belegung, und die Weglassprobe als das, was die
+        // Grenze zwischen gemessen und dünn gezogen hat.
+        note: (i) => {
+          const q = planAt[i];
+          if (q == null) return "Studienform, keine Messung";
+          const schritt = q.step == null ? "Anfangswert"
+            : `Schritt ${sign(q.step)} W aus ${fmt(q.step_n)} `
+              + `${q.step_n === 1 ? "Fahrt" : "Fahrten"}`;
+          const probe = q.loo_shift == null ? ""
+            : ` · einzelne Fahrt verschiebt bis ${fmt(q.loo_shift, 1)} W`;
+          return `${q.band === "solid" ? "gemessen" : "dünn"} · ${schritt}${probe}`
+            + ` · Studienform ${fmt(grid[i].watts)} W`;
+        },
       },
       rows: [
-        { l: "gemessen", c: ROLE.series, u: "W", dec: 0, vals: measuredAt },
+        { l: "Leitzahl", c: ROLE.series, u: "W", dec: 0,
+          vals: planAt.map((q) => (q ? q.watts : null)) },
         { l: "Studienform", c: C.slate, u: "W", dec: 0, vals: grid.map((q) => q.watts) },
         // SPANNE, nicht Breite: "143-151 W" sagt, wo die Setzung liegt, "7 W"
         // nur, wie breit sie ist. Bis 0.49.2 stand die eine Zahl in der Leiste
         // und die andere in der Tabelle darunter - unter demselben Namen.
         { l: "Bandbreite", c: C.slate, u: "W",
           vals: grid.map((q) => (q.lo == null || q.hi == null ? null : fmt(q.lo) + "–" + fmt(q.hi))) },
+        { l: "Schritt", c: C.tx2, u: "W", dec: 1,
+          vals: planAt.map((q) => (q && q.step != null ? q.step : null)) },
         { l: "Belegung", c: C.tx2, u: "", dec: 0,
-          vals: grid.map((q) => {
-            const m = f.measured.find((r) => r.hour != null && r.hour === q.hour);
-            return m ? m.n : null;
-          }) },
+          vals: planAt.map((q) => (q ? (q.step_n == null ? q.n : q.step_n) : null)) },
       ],
     };
 
@@ -1290,6 +1311,16 @@ class IntervalsIcuPanel extends HTMLElement {
         <p class="src"><b>Die Zeitachse ist die Bewegungszeit</b>, nicht die angesammelte Arbeit:
           die Belegung ist praktisch dieselbe, und eine Arbeitsachse koppelt an die Intensität
           und holt damit den Bergeffekt zurück.</p>
+        ${f.plan_solid_until_hours && f.plan_thin_until_hours
+            && f.plan_thin_until_hours > f.plan_solid_until_hours && f.selection_note
+          // DER AUSWAHLEFFEKT DER SPÄTEN STUNDEN, an der Kachel und nicht nur
+          // in der Spezifikation. Er steht nur dort, wo es eine dünne Zone
+          // GIBT — sonst läse ihn der Athlet an einer Kurve, die ihn nicht
+          // hat, und er verlöre seine Schärfe.
+          ? `<p class="src warn"><b>Ab ${fmt(f.plan_solid_until_hours + 1)} Stunden wird die
+             Zahl dünn.</b> ${esc(f.selection_note)}</p>` : ""}
+        ${f.axis_note
+          ? `<p class="src"><b>Was diese Achse nicht kennt.</b> ${esc(f.axis_note)}</p>` : ""}
         <p class="src"><b>Zwei Zahlen für dieselbe Sache, und das ist bekannt.</b> Der Trainer
           verankert seine Einheiten auf der Schwellenleistung aus dem Anker-Median
           (${f.aerobic_power != null ? fmt(f.aerobic_power) + " W" : "eigene Rechnung"}), diese
@@ -4104,8 +4135,17 @@ class IntervalsIcuPanel extends HTMLElement {
     // OB gemessen wurde und worauf. Zwei Orte fuer dieselbe Tabelle waeren
     // 0.46.0, und die kurze Zeile ist der Preis dafuer, dass der
     // Driftzustand mit in dieselbe Auslieferung passt.
-    const gemStd = ((cur && cur.hours) || []).filter((h) => (h || {}).p075 != null).length;
-    const gemAlle = ((cur && cur.hours) || []).length;
+    const alleStd = ((cur && cur.hours) || []);
+    const gemStd = alleStd.filter((h) => (h || {}).p075 != null).length;
+    // EIN FAHRTENDE IST KEIN VERSAGEN. Die 12.08.-Fahrt ist 2h54 lang; ihre
+    // vierte Stunde trägt 25 Sekunden und stand als leere Zeile da. Solche
+    // Reste zählen nicht als Fahrtstunde — gezählt wird, was zugelassene
+    // Sekunden trug, und der Rest wird BENANNT statt weggelassen.
+    // Ein Rest ist eine Stunde mit AUSDRÜCKLICH null zugelassenen Sekunden.
+    // Fehlt das Feld, ist nichts bekannt — dann zählt die Stunde, statt sie
+    // auf Verdacht wegzuwerfen.
+    const gemAlle = alleStd.filter((h) => (h || {}).points !== 0).length;
+    const reste = alleStd.length - gemAlle;
 
     // DIE ZWEI AUSSAGEN, und sie kommen BEIDE aus der Payload. "Noch nicht
     // gemessen" und "Auswahl geaendert" sind verschiedene Saetze: wer schon
@@ -4135,6 +4175,7 @@ class IntervalsIcuPanel extends HTMLElement {
           ? `Gemessen über ${gemAlle} Fahrtstunde${gemAlle === 1 ? "" : "n"},
              ${gemStd} davon mit Wert${cur.measured_at
                ? ` — am ${esc(cur.measured_at)}` : ""}.
+             ${reste > 0 ? `Die letzte angefangene Stunde war ein Fahrtende und zählt nicht mit.` : ""}
              ${gemStd === 0 ? esc(sm.no_value || "") : ""}`
           // Ein ECHTER Grund aus dem Archiv (gescheiterte Messung,
           // Versionswechsel) gewinnt; sonst der Satz aus dem Leseweg. Er steht

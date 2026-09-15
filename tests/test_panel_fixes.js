@@ -657,7 +657,8 @@ const acts = F.activities(), thr = F.thresholds();
     ok(re.test(planted), `Wächter Gegenprobe: "${planted}" wird NICHT gefunden — der Wächter ist blind`);
   }
   for (const key of ["max_above_z2", "min_minutes", "t5_published", "t5_minutes",
-                     "anchor_base", "anchor_n", "solid_until_hour", "thin_until_hour"]) {
+                     "anchor_base", "anchor_n", "plan_solid_until_hours",
+                     "plan_thin_until_hours"]) {
     ok(fat.includes("f." + key), `Wächter: rFatigue liest ${key} nicht aus der Payload`);
   }
 
@@ -715,32 +716,35 @@ const acts = F.activities(), thr = F.thresholds();
     : { set innerHTML(v) { html = v; }, get innerHTML() { return html; } }) };
   q.shadowRoot.querySelector = (sel) => (/data-rdo="fat"/.test(sel) ? strip : null);
 
-  // ueber einer GEMESSENEN Stunde
-  const iMeasured = fat.literature.findIndex((r) => r.hour === 2);
+  // ueber einer geplanten DAUER, die die Leitzahl traegt (seit B2: t = Stunden)
+  const iMeasured = fat.literature.findIndex((r) => Math.abs(r.t - 2) < 0.01);
   q._fillReadout("fat", iMeasured);
-  ok(/1[.,]50 h Fahrtzeit/.test(text), `zeiger: falsche Dauer im Streifen (${text})`);
+  ok(/2[.,]00 h geplante Dauer/.test(text), `zeiger: falsche Dauer im Streifen (${text})`);
   ok(!/Studienform, keine Messung/.test(text),
      "zeiger: eine gemessene Stunde wird als Studienform ausgegeben");
   // Die Bandbreite ist die SPANNE, nicht ihre Breite: 143–151 W sagt, wo die
   // Setzung liegt. Bis 0.49.2 stand die Breite in der Leiste und die Spanne in
   // der Tabelle darunter - zwei Zahlen unter einem Namen, und die Tabelle
   // faellt in diesem Release weg.
-  const lit2 = fat.literature.find((r) => r.hour === 2);
+  const lit2 = fat.literature.find((r) => Math.abs(r.t - 2) < 0.01);
   ok(M.fmt(lit2.hi - lit2.lo) !== M.fmt(lit2.lo),
      "zeiger Fixture-Beweis: Breite und Spannenanfang sind gleich - die Verwechslung waere unsichtbar");
-  for (const [label, want] of [["gemessen", "142"], ["Studienform", "149"],
+  const pl2 = fat.plan.find((r) => r.hours === 2);
+  for (const [label, want] of [["Leitzahl", M.fmt(pl2.watts)],
+                               ["Studienform", M.fmt(lit2.watts)],
                                ["Bandbreite", M.fmt(lit2.lo) + "–" + M.fmt(lit2.hi)],
-                               ["Belegung", "23"]]) {
+                               ["Schritt", M.fmt(pl2.step, 1)],
+                               ["Belegung", String(pl2.step_n)]]) {
     ok(html.includes(label), `zeiger: der Streifen zeigt "${label}" nicht`);
     ok(html.includes(want), `zeiger: "${label}" traegt nicht den Wert ${want} (${html.slice(0, 200)})`);
   }
 
   // ueber dem GESTRICHELTEN Bereich: die Leiste sagt es ausdruecklich
-  const iBeyond = fat.literature.findIndex((r) => r.hour == null);
+  const iBeyond = fat.literature.findIndex((r) => r.beyond);
   q._fillReadout("fat", iBeyond);
   ok(/Studienform, keine Messung/.test(text),
      `zeiger: jenseits des Bestands fehlt der Hinweis (${text})`);
-  ok(/gemessen[\s\S]{0,120}–/.test(html),
+  ok(/Leitzahl[\s\S]{0,120}–/.test(html),
      "zeiger: dort steht ein gemessener Wert, wo keiner ist");
 
   // GEGENPROBE, gezaehlt und benannt: ohne die Hinweis-Logik faende der Test
@@ -748,7 +752,7 @@ const acts = F.activities(), thr = F.thresholds();
   // erzeugen.
   const q2 = new M.Panel();
   q2._nowIso = F.TODAY;
-  const nurGemessen = F.fatigue({ literature: fat.literature.filter((r) => r.hour != null) });
+  const nurGemessen = F.fatigue({ literature: fat.literature.filter((r) => !r.beyond) });
   // Trefferzusicherung (0.50.0, §7 elfter Fall): ein Gegenfall, der nichts
   // veraendert hat, ist kein Gegenfall - er prueft dann den Originalzustand
   // und sieht dabei aus wie eine bestandene Pruefung.
@@ -757,9 +761,18 @@ const acts = F.activities(), thr = F.thresholds();
      + `von ${fat.literature.length}) - der Gegenfall greift nicht`);
   q2.rFatigue(nurGemessen);
   q2.shadowRoot.querySelector = (sel) => (/data-rdo="fat"/.test(sel) ? strip : null);
-  q2._fillReadout("fat", 0);
-  ok(!/Studienform, keine Messung/.test(text),
-     "zeiger Gegenprobe: der Hinweis erscheint auch ohne gestrichelten Bereich");
+  // Auf einem Rasterpunkt MIT Leitzahl - zwischen den vollen Stunden gibt es
+  // keine, und dort ist der Hinweis richtig. Der Gegenfall fragt, ob er auch
+  // dort verschwindet, wo eine Zahl steht.
+  const iMitZahl = nurGemessen.literature.findIndex((r) => Math.abs(r.t - 2) < 0.01);
+  ok(iMitZahl >= 0, "zeiger Gegenprobe: das gekuerzte Raster trifft keine volle Stunde");
+  // Ohne diese Bedingung stuerzt der Lauf bei einem Fehlgriff ab, statt ihn
+  // zu zaehlen - und meldet am Ende "0 Fehler" (§9, vierundzwanzigster Fall).
+  if (iMitZahl >= 0) {
+    q2._fillReadout("fat", iMitZahl);
+    ok(!/Studienform, keine Messung/.test(text),
+       "zeiger Gegenprobe: der Hinweis erscheint auch ohne gestrichelten Bereich");
+  }
 
   // und der Zeiger baut die Ansicht NICHT neu (0.9.3)
   let renders = 0;
@@ -1055,16 +1068,24 @@ const acts = F.activities(), thr = F.thresholds();
   q.shadowRoot.querySelectorAll = () => q.shadowRoot._lines;
 
   // --- Punkt 3: die grosse Zahl FOLGT, in der Kurve -----------------------
+  // SEIT B2 liest der Zeiger die LEITZAHL: Leistung fuer eine Fahrt DIESER
+  // DAUER, abgelesen an t = Stundenzahl. Die Stundenmediane (t = Stundenmitte)
+  // sind eine andere Groesse und stehen nur noch in der Gegenrechnung.
   const grid = fat.literature;
-  const iMess = grid.findIndex((r) => r.hour === 2);
-  const iForm = grid.findIndex((r) => r.hour == null);
-  const mess = fat.measured.find((r) => r.hour === 2);
+  const iMess = grid.findIndex((r) => Math.abs(r.t - 2) < 0.01);
+  const iForm = grid.findIndex((r) => r.beyond);
+  const mess = fat.plan.find((r) => r.hours === 2);
   q._fillReadout("fat", iMess);
   ok(leadBox._v.v === M.fmt(mess.watts),
      `zeiger leitzahl: ${leadBox._v.v} statt ${M.fmt(mess.watts)} ueber der gemessenen Stunde`);
-  ok(/1[.,]50 h/.test(leadBox._v.l), `zeiger leitzahl: die Stelle fehlt in der Beschriftung (${leadBox._v.l})`);
-  ok(/gemessen/.test(leadBox._v.n) && leadBox._v.n.includes(M.fmt(mess.n)),
+  ok(/2[.,]00 h/.test(leadBox._v.l), `zeiger leitzahl: die Stelle fehlt in der Beschriftung (${leadBox._v.l})`);
+  ok(/Fahrt von/.test(leadBox._v.l),
+     `zeiger leitzahl: die Beschriftung nennt nicht die geplante DAUER (${leadBox._v.l})`);
+  ok(/gemessen/.test(leadBox._v.n) && leadBox._v.n.includes(M.fmt(mess.step_n)),
      `zeiger leitzahl: Herkunft oder Belegung fehlen (${leadBox._v.n})`);
+  // Der RECHENWEG steht daneben, nicht in der Zahl.
+  ok(leadBox._v.n.includes(M.fmt(mess.step)) && /verschiebt bis/.test(leadBox._v.n),
+     `zeiger leitzahl: Schritt oder Weglassprobe fehlen (${leadBox._v.n})`);
   ok(leadBox._style[".ldv"].style.color === M.ROLE.series,
      "zeiger leitzahl: eine Messung traegt nicht das Serienregister");
 
@@ -1169,12 +1190,19 @@ const acts = F.activities(), thr = F.thresholds();
   // zaehlen - und ein abgestuerzter Test meldet am Ende "0 Fehler" (§9).
   const treffer = zeilen.find((z) => +z[2] === 2);
   ok(treffer != null, "zeiger tabelle: keine ablesbare Zeile zur gemessenen Stunde");
+  // Die Tabellenzeile zeigt auf ihren Rasterpunkt; was dort in der Leitzahl
+  // steht, ist die Zahl DIESES Punktes - eine Stundenmitte hat keine Leitzahl,
+  // dort spricht die Studienform. Regex null-geprueft (§9).
+  const tabWert = treffer && grid[+treffer[1]]
+    ? ((fat.plan.find((r) => Math.abs(r.hours - grid[+treffer[1]].t) < 0.01) || {}).watts
+       ?? grid[+treffer[1]].watts)
+    : null;
   if (treffer) {
     onMove({ clientX: 0, clientY: 0,
              target: { closest: (sel) => (sel === "[data-ri]"
                ? { dataset: { rg: "fat", ri: treffer[1] } } : null) } });
-    ok(leadBox._v.v === M.fmt(mess.watts),
-       `zeiger tabelle: die Zeile schreibt ${leadBox._v.v} statt ${M.fmt(mess.watts)} in die Leitzahl`);
+    ok(leadBox._v.v === M.fmt(tabWert),
+       `zeiger tabelle: die Zeile schreibt ${leadBox._v.v} statt ${M.fmt(tabWert)} in die Leitzahl`);
     ok(stripFat._s.x.includes("1,50 h") || stripFat._s.x.includes("1.50 h"),
        `zeiger tabelle: die Leiste folgt der Zeile nicht (${stripFat._s.x})`);
   }
@@ -1637,6 +1665,27 @@ const acts = F.activities(), thr = F.thresholds();
      "knopf: er trägt weiter die Klasse, die auf volle Breite wächst");
   ok(schmal !== null && /class="smrunbtn"/.test(schmal[0]),
      "knopf: er hat keine eigene Klasse");
+
+  // ── DER STUNDENREST: ein Fahrtende ist kein Versagen ────────────────
+  // Die 12.08.-Fahrt ist 2h54 lang; ihre vierte Stunde trägt 25 Sekunden und
+  // stand als leere Zeile da, die aussah wie ein Messfehler.
+  q._msOk = null; q._msErr = null;
+  q._smarks = payload({ measured_at: "2026-09-15", hours: [
+    { hour: 1, p075: 150.0, points: 3600 }, { hour: 2, p075: 141.0, points: 3600 },
+    { hour: 3, p075: null, points: 0 }] });
+  const rest = q._marksBlock(act);
+  H.clean(rest, "stundenrest");
+  ok(/über 2 Fahrtstunden/.test(rest),
+     "stundenrest: die angefangene Stunde wird als volle mitgezählt");
+  ok(/Fahrtende/.test(rest), "stundenrest: der Rest wird weggelassen statt benannt");
+  // GEGENPROBE: ohne Rest steht der Satz NICHT da, sonst liest ihn der Athlet
+  // an jeder Fahrt.
+  q._smarks = payload({ measured_at: "2026-09-15", hours: [
+    { hour: 1, p075: 150.0, points: 3600 }, { hour: 2, p075: 141.0, points: 3600 }] });
+  const ohneRest = q._marksBlock(act);
+  ok(!/Fahrtende/.test(ohneRest), "stundenrest: der Satz steht auch ohne Rest da");
+  ok(/über 2 Fahrtstunden/.test(ohneRest),
+     "stundenrest Gegenprobe: die Zählung ohne Rest stimmt nicht");
 
   // ── ein neuer Haken macht die Quittung hinfällig ─────────────────────
   q._msOk = "a1"; q._msBusy = null; q._smBusy = null;

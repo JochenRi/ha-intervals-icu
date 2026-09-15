@@ -235,17 +235,35 @@ function fatigue(over) {
     { hour: 3, t: 2.5, watts: 131.5, n: 5, band: "thin", hr: 157.0, hr_n: 5 },
     { hour: 4, t: 3.5, watts: 133.8, n: 1, band: "dashed", hr: null, hr_n: 0 },
   ];
+  // Die LEITZAHL: Leistung fuer eine geplante Fahrtdauer, verkettet aus den
+  // gepaarten Schritten. Die Achse ist die Dauer (t = hours), nicht die
+  // Stundenmitte - `measured` oben ist die ungepaarte Gegenrechnung.
+  const plan = [
+    { hours: 1, watts: 152.5, n: 26, step: null, step_n: null,
+      loo_shift: 0.4, loo_ratio: 0.04, band: "solid" },
+    { hours: 2, watts: 142.4, n: 23, step: -10.1, step_n: 9,
+      loo_shift: 3.1, loo_ratio: 0.31, band: "solid" },
+    { hours: 3, watts: 138.8, n: 5, step: -3.6, step_n: 3,
+      loo_shift: 9.9, loo_ratio: 2.75, band: "thin" },
+  ];
+  // Die Studienform haengt am LETZTEN getragenen Punkt (3 h) und spricht erst
+  // dahinter - `beyond` sagt das im Feld, nicht die Strichelung.
   const lit = [
-    { hour: 1, t: 0.5, watts: 152.5, lo: 151.2, hi: 152.8 },
-    { hour: 2, t: 1.5, watts: 149.1, lo: 143.4, hi: 150.7 },
-    { hour: 3, t: 2.5, watts: 143.8, lo: 131.5, hi: 147.3 },
-    { hour: 4, t: 3.5, watts: 136.8, lo: 115.2, hi: 142.6 },
-    { hour: null, t: 4.0, watts: 132.6, lo: 105.9, hi: 140.1 },
-    { hour: null, t: 4.5, watts: 128.0, lo: 95.3, hi: 137.2 },
+    { hour: 1, t: 0.5, watts: 152.5, lo: 151.2, hi: 152.8, beyond: false },
+    { hour: 2, t: 1.5, watts: 149.1, lo: 143.4, hi: 150.7, beyond: false },
+    { hour: null, t: 2.0, watts: 145.2, lo: 137.0, hi: 148.8, beyond: false },
+    { hour: 3, t: 2.5, watts: 143.8, lo: 131.5, hi: 147.3, beyond: false },
+    { hour: null, t: 3.0, watts: 138.8, lo: 122.4, hi: 144.5, beyond: false },
+    { hour: 4, t: 3.5, watts: 136.8, lo: 115.2, hi: 142.6, beyond: true },
+    { hour: null, t: 4.0, watts: 132.6, lo: 105.9, hi: 140.1, beyond: true },
+    { hour: null, t: 4.5, watts: 128.0, lo: 95.3, hi: 137.2, beyond: true },
   ];
   return Object.assign({
-    measured, literature: lit, anchor_watts: 152.5, anchor_n: 26, anchor_base: 153.5,
+    measured, plan, literature: lit, anchor_watts: 152.5, anchor_n: 26, anchor_base: 153.5,
     solid_until_hour: 2, thin_until_hour: 3, rides_used: 26,
+    plan_solid_until_hours: 2, plan_thin_until_hours: 3, literature_from_hours: 3.0,
+    selection_note: "AUSWAHLSATZ AUS DER PAYLOAD.",
+    axis_note: "ACHSENSATZ AUS DER PAYLOAD.",
     dropped: {
       structured: [
         { activity_id: "a1", date: "2026-08-24", name: "SweetSpot 2x20Min", above_z2: 51.4, minutes: 78 },

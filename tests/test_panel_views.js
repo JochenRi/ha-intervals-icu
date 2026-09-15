@@ -1114,9 +1114,26 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   // durchgezogene Messlinie ueber Stunden, die sie nicht tragen.
   const dickeLinien = (html.match(/stroke-width="2\.6"/g) || []).length;
   ok(dickeLinien === 1, `L1: ${dickeLinien} durchgezogene Messlinien statt einer`);
+  // Die Regel haengt seit B2 an der LEITZAHL, nicht mehr an den Stundenmedianen:
+  // durchgezogen wird nur, was die Weglassprobe traegt.
+  // Die zwei Saetze an der Kachel, beide aus der PAYLOAD.
+  contains(html, "AUSWAHLSATZ AUS DER PAYLOAD",
+           "L1: der Auswahleffekt der spaeten Stunden steht nicht an der Kachel");
+  contains(html, "ACHSENSATZ AUS DER PAYLOAD",
+           "L1: der Achsen-Vorbehalt steht nicht an der Kachel");
+  // GEGENPROBE: ohne duenne Zone erscheint der Auswahlsatz NICHT - sonst
+  // laese ihn der Athlet an einer Kurve, die ihn nicht hat.
+  const ganzFest = String(q.rFatigue(F.fatigue({
+    plan: F.fatigue().plan.map((r) => ({ ...r, band: "solid" })),
+    plan_solid_until_hours: 3, plan_thin_until_hours: 3 })));
+  ok(!/AUSWAHLSATZ AUS DER PAYLOAD/.test(ganzFest),
+     "L1: der Auswahlsatz steht auch ohne duenne Zone da");
+  ok(/ACHSENSATZ AUS DER PAYLOAD/.test(ganzFest),
+     "L1: der Achsen-Vorbehalt faellt mit der duennen Zone weg - er gilt immer");
+
   const nurDuenn = String(q.rFatigue(F.fatigue({
-    measured: F.fatigue().measured.map((r) => ({ ...r, band: "thin", n: 3 })),
-    solid_until_hour: null })));
+    plan: F.fatigue().plan.map((r) => ({ ...r, band: "thin", loo_ratio: 2.0 })),
+    plan_solid_until_hours: null })));
   ok(!/stroke-width="2\.6"/.test(nurDuenn),
      "L1: durchgezogene Messlinie, obwohl keine Stunde sie traegt");
 
