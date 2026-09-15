@@ -542,6 +542,29 @@ def set_measurement(data: dict[str, Any], activity_id: Any,
     return entry
 
 
+def drop_hours(data: dict[str, Any], activity_id: Any, reason: str = "") -> bool:
+    """Eine Messung fallen lassen, die nicht mehr gilt - MIT Grund.
+
+    Gebraucht beim OEFFNEN einer gedrifteten Fahrt. Der Stellvertreter, den
+    der Bau von P benannt hat, lautet: ein Eintrag mit `hours` ist driftfrei
+    ZUM MESSZEITPUNKT - `fatigue.rides()` hat die Runden nicht und koennte es
+    fuer dreihundert Fahrten auch nicht pruefen, ohne dreihundert Abrufe zu
+    machen. Entschaerft wird er hier: wer die Fahrt ansieht, hat die Runden
+    ohnehin geholt, und dann faellt die Messung sofort - statt erst, wenn
+    jemand reagiert.
+
+    GIBT ZURUECK, OB SICH ETWAS GEAENDERT HAT. Der Aufrufer speichert nur
+    dann; ein No-op darf keinen Speichervorgang ausloesen (J7, zweite
+    Auflage).
+    """
+    entry = entry_for(data, activity_id)
+    if entry is None or entry.get("hours") is None:
+        return False
+    entry["hours"] = None
+    entry["reason"] = (reason or "")[:REASON_LIMIT]
+    return True
+
+
 def reanchor(data: dict[str, Any], activity_id: Any, laps: Any) -> dict[str, Any]:
     """Eine verschobene Fahrt AUSDRUECKLICH bestaetigen.
 

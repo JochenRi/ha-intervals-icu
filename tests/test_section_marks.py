@@ -609,6 +609,35 @@ check("Stillgelegt: eine Fahrt mit NUR stillgelegten Familien faellt ganz",
       sm.migrate(copy.deepcopy(nur)), {})
 
 
+# --- 11 · drop_hours: die Messung faellt beim Oeffnen -------------------------
+print("\n=== 11 · eine gedriftete Fahrt verliert ihre Messung, nicht ihre Marken ===")
+
+dh = {"section_marks": {}}
+sm.set_mark(dh, "f1", "2026-09-12", "tempo", 600, LAPS, set_at="2026-09-12")
+sm.set_measurement(dh, "f1", hours=[{"hour": 1, "p075": 200}], measured_at="2026-09-15")
+check("Oeffnen: ohne Messung gibt es nichts zu loeschen",
+      sm.drop_hours({"section_marks": {}}, "nix"), False)
+check("Oeffnen: die Messung faellt und das wird GEMELDET",
+      sm.drop_hours(dh, "f1", sm.STALE_REASON["section_moved"]), True)
+check("Oeffnen: die Zahlen sind fort", sm.entry_for(dh, "f1").get("hours"), None)
+check("Oeffnen: mit dem Grund daneben",
+      sm.entry_for(dh, "f1").get("reason"), sm.STALE_REASON["section_moved"])
+check("Oeffnen: die MARKEN bleiben stehen",
+      sm.entry_for(dh, "f1").get("marks"), {"tempo": [600]})
+check("Oeffnen: und der Anker auch",
+      [s_.get("i") for s_ in
+       sm.entry_for(dh, "f1").get("anchor", {}).get("sections", [])], [600])
+check("Oeffnen: dass gemessen WURDE, bleibt ebenfalls",
+      sm.entry_for(dh, "f1").get("measured_at"), "2026-09-15")
+
+# EIN NO-OP DARF KEINEN SPEICHERVORGANG AUSLOESEN (J7, zweite Auflage). Der
+# Aufrufer speichert nur, wenn hier True zurueckkommt - also muss ein zweites
+# Loeschen False sagen.
+check("Oeffnen: ein zweites Mal ist ein No-op", sm.drop_hours(dh, "f1"), False)
+check("Oeffnen: und es fasst den vorhandenen Grund nicht an",
+      sm.entry_for(dh, "f1").get("reason"), sm.STALE_REASON["section_moved"])
+
+
 print(f"test_section_marks: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

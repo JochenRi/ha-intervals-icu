@@ -495,6 +495,101 @@ check("marks_lib.FAMILIES" in (_reader or ""),
 check("marks_lib.STALE_REASON" in (_reader or ""),
       "section_marks: die Driftsätze kommen nicht aus dem Modul")
 
+# --- der Messweg (B1): ZWEI Abrufe, Drift davor, zwei Arten von Fehlschlag ---
+check("websocket_measure_section_marks" in registered,
+      "Messweg: der Übernehmen-Knopf hat kein Kommando")
+check(commands.get("websocket_measure_section_marks")
+      == "intervals_icu/measure_section_marks",
+      f"Messweg: falscher Kommandoname "
+      f"({commands.get('websocket_measure_section_marks')!r})")
+
+_measure = functions.get("websocket_measure_section_marks")
+_m_src = (ast.get_source_segment(SRC, _measure) if _measure else "") or ""
+
+# ZWEI ABRUFE. set_ramp_test kommt mit einem aus, weil es die ganze Fahrt
+# auswertet; maskieren braucht die Lap-GRENZEN, und die stehen nicht im Strom.
+check("async_get_streams(" in _m_src, "Messweg: er holt keine Ströme")
+check("_laps_for(" in _m_src,
+      "Messweg: er holt keine Abschnitte — ohne ihre Grenzen gibt es keine Maske")
+# Und aus DENSELBEN Kanälen wie der Import: die maskierte Stundenliste steht
+# später neben der Ganzfahrt-Liste, und zwei verschieden erhobene Größen unter
+# einer Überschrift waren 0.49.2.
+check("importer.DFA_STREAMS" in _m_src,
+      "Messweg: er führt eine eigene Kanalliste statt der des Importwegs")
+
+# DIE DRIFT WIRD GEPRÜFT, BEVOR GERECHNET WIRD. Ohne das misst der Weg auf
+# verschobenen Abschnitten, und das Ergebnis sähe sauber aus.
+for erst, dann, label in (
+        ("marks_lib.drift(", "derive.dfa_hours(", "gerechnet"),
+        ("marks_lib.drift(", "marks_lib.set_measurement(", "geschrieben"),
+        ("marks_lib.mask_ranges(", "derive.dfa_hours(", "gerechnet")):
+    if erst in _m_src and dann in _m_src:
+        check(_m_src.index(erst) < _m_src.index(dann),
+              f"Messweg: es wird {label}, bevor {erst[:-1]} gelaufen ist")
+    else:
+        check(False, f"Messweg: {erst[:-1]} oder {dann[:-1]} kommt gar nicht vor")
+
+check("keep=" in _m_src,
+      "Messweg: dfa_hours wird ohne Maske gerufen — dann misst er die ganze Fahrt")
+
+# ZWEI ARTEN VON FEHLSCHLAG, und der Unterschied ist die 0.53.1-Klasse: ein
+# Netzfehler darf nicht als Satz im Archiv versteinern, ein Sachbefund über die
+# Fahrt gehört hinein. Also: in KEINEM except-Zweig wird gemessen oder
+# gespeichert, und jeder bricht ab.
+_m_handlers = [node for node in ast.walk(_measure)
+               if isinstance(node, ast.ExceptHandler)] if _measure else []
+check(len(_m_handlers) >= 2,
+      f"Messweg: nur {len(_m_handlers)} Fehlerzweige — Ströme und Laps brauchen eigene")
+for index, handler in enumerate(_m_handlers):
+    body = ast.unparse(ast.Module(body=handler.body, type_ignores=[]))
+    check("set_measurement(" not in body,
+          f"Messweg: Fehlerzweig {index} schreibt eine Messung")
+    check("async_save_now" not in body,
+          f"Messweg: Fehlerzweig {index} speichert das Archiv")
+    check(any(isinstance(sub, ast.Return) for sub in ast.walk(handler)),
+          f"Messweg: Fehlerzweig {index} läuft weiter, statt abzubrechen")
+# GEGENPROBE zu beidem: der Sachbefund wird sehr wohl geschrieben, sonst
+# prüfte die Schleife oben nur, dass nirgends etwas steht.
+check("marks_lib.set_measurement(" in _m_src,
+      "Messweg Gegenprobe: er schreibt das Ergebnis überhaupt nicht")
+check("async_save_now" in _m_src,
+      "Messweg Gegenprobe: er speichert das Ergebnis überhaupt nicht")
+
+# --- websocket_laps SCHREIBT, und nur im Änderungsfall -----------------------
+# Gemeldet, nicht versteckt: es ist die einzige Stelle, an der Runden und
+# Archiv gleichzeitig vorliegen.
+_laps_fn = functions.get("websocket_laps")
+_laps_src = (ast.get_source_segment(SRC, _laps_fn) if _laps_fn else "") or ""
+check("marks_lib.drift(" in _laps_src,
+      "Öffnen: die Drift wird nicht geprüft, obwohl die Runden vorliegen")
+check("marks_lib.drop_hours(" in _laps_src,
+      "Öffnen: eine gedriftete Fahrt behält ihre Messung")
+check('"marks_stale"' in _laps_src or "'marks_stale'" in _laps_src,
+      "Öffnen: der Befund kommt nicht beim Panel an")
+# DER SPEICHERVORGANG HÄNGT AM ÄNDERUNGSFALL - ein No-op darf keinen auslösen
+# (J7, zweite Auflage). Am Syntaxbaum, nicht am Zeilenbild.
+_saves_in_if = 0
+_saves_total = 0
+for node in ast.walk(_laps_fn) if _laps_fn else []:
+    if isinstance(node, ast.Await) and "async_save_now" in ast.unparse(node):
+        _saves_total += 1
+for node in ast.walk(_laps_fn) if _laps_fn else []:
+    if not isinstance(node, ast.If) or "drop_hours" not in ast.unparse(node.test):
+        continue
+    body = ast.unparse(ast.Module(body=node.body, type_ignores=[]))
+    if "async_save_now" in body:
+        _saves_in_if += 1
+check((_saves_total, _saves_in_if) == (1, 1),
+      f"Öffnen: der Speichervorgang hängt nicht am Änderungsfall "
+      f"({_saves_total} gesamt, {_saves_in_if} hinter drop_hours)")
+# Gegenprobe, gezählt und benannt: derselbe Ausdruck findet ein Speichern, das
+# NICHT am Änderungsfall hängt.
+_frei = ast.parse("async def f():\n    await c.archive.async_save_now()\n")
+check(sum(1 for node in ast.walk(_frei)
+          if isinstance(node, ast.Await) and "async_save_now" in ast.unparse(node)) == 1,
+      "Öffnen Gegenprobe: ein freistehender Speichervorgang wird NICHT gefunden — "
+      "der Ausdruck ist blind")
+
 # Und die Migration ist verdrahtet - ein Block ohne sie ist unfertig (J7).
 check("section_marks.migrate(" in store_src,
       "section_marks: das Archiv migriert den Block beim Laden nicht")

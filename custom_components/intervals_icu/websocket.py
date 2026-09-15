@@ -106,6 +106,7 @@ def async_register(hass: HomeAssistant) -> None:
         websocket_section_marks,
         websocket_set_section_mark,
         websocket_confirm_section_marks,
+        websocket_measure_section_marks,
         websocket_reconcile,
     ):
         websocket_api.async_register_command(hass, handler)
@@ -660,22 +661,52 @@ def websocket_days(hass, connection, msg) -> None:
 )
 @websocket_api.async_response
 async def websocket_laps(hass, connection, msg) -> None:
-    """Fetch one activity's laps live.
+    """Fetch one activity's laps live - und dabei die Drift der Zuordnung pruefen.
 
     Laps are not archived: they belong to a single opened activity and would
     multiply the archive for no gain. The API returns them on the activity
     itself when asked with intervals=true.
+
+    DIESES LESE-KOMMANDO SCHREIBT, und das steht hier, statt sich zu
+    verstecken. Der Grund ist, dass es die EINZIGE Stelle ist, an der die
+    Runden einer Fahrt und das Archiv gleichzeitig vorliegen: `section_marks`
+    fuehrt die Drift bewusst nicht mit (sie waere nur gegen live geholte Laps
+    zu haben), und ein zweiter Abruf allein fuer die Pruefung waere derselbe
+    Abruf noch einmal.
+
+    Was geschrieben wird, ist eine LOESCHUNG mit Grund: driftet die Fahrt und
+    traegt sie noch eine Messung, faellt die Messung - sie sass auf einem
+    Ausschnitt, den es so nicht mehr gibt. Die MARKEN und der ANKER bleiben
+    stehen; zurueck kommt der Athlet ueber "bestaetigen" oder neues Haken. Die
+    Alternative waere, eine Zahl aus verschobenen Abschnitten weiterrechnen zu
+    lassen - der stille Ausstieg (§7, vierte Fehlerklasse).
+
+    GESPEICHERT WIRD NUR IM AENDERUNGSFALL. Ein Oeffnen ohne Drift, und ein
+    Oeffnen einer gedrifteten Fahrt, deren Messung schon gefallen ist, loesen
+    keinen Speichervorgang aus (J7, zweite Auflage).
     """
     coordinator = _pick(hass, msg.get("athlete_id"))
     if coordinator is None:
         connection.send_error(msg["id"], "not_found", "no Intervals.icu athlete loaded")
         return
+    activity_id = str(msg["activity_id"])
     try:
-        payload = await coordinator.client.async_get_intervals(str(msg["activity_id"]))
+        payload = await coordinator.client.async_get_intervals(activity_id)
     except Exception as err:  # noqa: BLE001 - surfaced to the panel as a message
         connection.send_error(msg["id"], "fetch_failed", str(err))
         return
-    connection.send_result(msg["id"], derive.normalize_laps(payload))
+    result = derive.normalize_laps(payload)
+
+    data = coordinator.archive.data
+    entry = marks_lib.entry_for(data, activity_id)
+    stale = marks_lib.drift(entry, result.get("laps") or []) if entry else None
+    if stale and marks_lib.drop_hours(
+            data, activity_id, marks_lib.STALE_REASON.get(stale, "")):
+        await coordinator.archive.async_save_now()
+    # Der Befund reist MIT den Runden, nicht in einer zweiten Payload: er ist
+    # genau gegen sie erhoben, und zwei Wege zu einer Aussage waren 0.46.0.
+    result["marks_stale"] = stale
+    connection.send_result(msg["id"], result)
 
 
 @websocket_api.websocket_command(
@@ -1196,6 +1227,145 @@ async def websocket_set_section_mark(hass, connection, msg) -> None:
         "activity_id": activity_id,
         "entry": entry,
         "laps": len(laps),
+    })
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "intervals_icu/measure_section_marks",
+        vol.Required("activity_id"): str,
+        vol.Optional("athlete_id"): str,
+    }
+)
+@websocket_api.async_response
+async def websocket_measure_section_marks(hass, connection, msg) -> None:
+    """"Uebernehmen und messen": der Stundenverlauf des MARKIERTEN Bereichs.
+
+    ER MISST NUR, WAS MARKIERT IST. Er hakt nichts an, schlaegt nichts vor,
+    ergaenzt nichts - die Auswahl trifft der Athlet, hier wird gerechnet.
+
+    ZWEI ABRUFE, und der zweite ist nicht optional. `set_ramp_test` kommt mit
+    den Stroemen aus, weil es die ganze Fahrt auswertet. Maskieren heisst
+    Stromstellen ausschliessen, und die Grenzen dafuer sind `start_index` UND
+    `end_index` der Laps - die stehen NICHT im Strom, und der Anker haelt sie
+    auch nicht (er fuehrt die DAUER, und Dauer ist Bewegungszeit auf einer
+    Stromachse: genau der Versatz aus §7). Also derselbe zweite Abruf wie in
+    `importer.async_import_dfa`, samt eigenem Fehlerpfad: Stroeme da, Laps
+    nicht.
+
+    DIE STROEME LIVE UND UNGEDUENNT, aus denselben Kanaelen wie der Import
+    (`importer.DFA_STREAMS`). Das ist kein Detail: die maskierte Stundenliste
+    steht spaeter neben der Ganzfahrt-Liste aus dem Archiv, und zwei
+    verschieden erhobene Groessen unter einer Ueberschrift waren 0.49.2.
+
+    DIE DRIFT WIRD GEGEN DIE FRISCH GEHOLTEN LAPS GEPRUEFT, bevor gerechnet
+    wird. Ohne das misst dieser Weg auf Abschnitten, die in Intervals
+    inzwischen verschoben wurden - dieselben `start_index` gibt es vielleicht
+    noch, der Ausschnitt ist ein anderer, und das ERGEBNIS SAEHE SAUBER AUS.
+    Hier liegen die Laps ohnehin vor; es gibt keinen Grund, nicht zu pruefen.
+
+    ZWEI ARTEN VON FEHLSCHLAG, und sie werden verschieden behandelt:
+
+      * TRANSPORT und DRIFT (Abruf gescheitert, keine Abschnitte, verschoben,
+        ein markierter Abschnitt ist fort) -> `send_error`, es wird NICHTS
+        geschrieben. Ein Netzfehler, der als Satz ins Archiv wandert, steht
+        dort beim naechsten Oeffnen noch, obwohl nie erneut versucht wurde -
+        das ist die Klasse aus 0.53.1, ein gespeicherter Anzeigetext, der
+        veraltet.
+      * SACHBEFUND ueber die Fahrt (die markierten Sekunden tragen kein
+        auswertbares alpha) -> `set_measurement` mit Grund. Der ist bei jedem
+        Versuch wieder derselbe, gehoert also ins Archiv - dieselbe Bauart wie
+        "kein auswertbarer Abfall" beim Stufentest.
+    """
+    coordinator = _pick(hass, msg.get("athlete_id"))
+    if coordinator is None:
+        connection.send_error(msg["id"], "not_found", "no Intervals.icu athlete loaded")
+        return
+    data = coordinator.archive.data
+    activity_id = str(msg["activity_id"])
+
+    entry = marks_lib.entry_for(data, activity_id)
+    if entry is None or not marks_lib.marked(entry):
+        connection.send_error(
+            msg["id"], "not_found",
+            "Für diese Fahrt ist kein Abschnitt markiert — gemessen wird nur, "
+            "was du angehakt hast.")
+        return
+
+    try:
+        streams = await coordinator.client.async_get_streams(
+            activity_id, importer.DFA_STREAMS)
+    except Exception as err:  # noqa: BLE001 - dem Panel als Satz zeigen
+        connection.send_error(
+            msg["id"], "fetch_failed",
+            f"Die Ströme dieser Fahrt sind nicht abrufbar ({err}) — ohne sie "
+            f"ist nichts zu messen. Die Markierung bleibt stehen.")
+        return
+
+    try:
+        laps = await _laps_for(coordinator, activity_id)
+    except Exception as err:  # noqa: BLE001 - EIGENER Fehlerpfad: Stroeme da, Laps nicht
+        connection.send_error(
+            msg["id"], "laps_failed",
+            f"Die Ströme sind da, die Abschnitte nicht ({err}) — ohne ihre "
+            f"Grenzen ist nicht zu bestimmen, welche Sekunden gemessen werden "
+            f"sollen. Es wurde nichts geändert.")
+        return
+    if not laps:
+        connection.send_error(
+            msg["id"], "no_laps",
+            "Intervals liefert für diese Fahrt keine Abschnitte mehr — ohne "
+            "ihre Grenzen ist der markierte Bereich nicht zu schneiden.")
+        return
+
+    stale = marks_lib.drift(entry, laps)
+    if stale:
+        # GEMESSEN WIRD NICHT AUF VERSCHOBENEN ABSCHNITTEN. Und die Messung,
+        # die noch dastand, faellt hier genauso wie beim Oeffnen.
+        if marks_lib.drop_hours(data, activity_id,
+                                marks_lib.STALE_REASON.get(stale, "")):
+            await coordinator.archive.async_save_now()
+        connection.send_error(msg["id"], "marks_stale",
+                              marks_lib.STALE_REASON.get(stale, ""))
+        return
+
+    ranges, missing = marks_lib.mask_ranges(laps, marks_lib.marked(entry))
+    if missing or not ranges:
+        connection.send_error(
+            msg["id"], "marks_stale",
+            "Zu mindestens einem markierten Abschnitt gibt es in dieser Fahrt "
+            "keine Grenzen mehr — die Zuordnung ist zu bestätigen oder neu zu "
+            "setzen. Gemessen wurde nichts.")
+        return
+
+    by_name = derive.streams_to_dict(streams)
+    hours = derive.dfa_hours(by_name.get("dfa_a1"), by_name.get("watts"),
+                             by_name.get("heartrate"), keep=ranges)
+    reason = ""
+    if not hours:
+        # Kein Vorwurf, eine Auskunft - und ein Sachbefund, der bei jedem
+        # Versuch derselbe ist.
+        hours = None
+        reason = ("Diese Fahrt führt keinen auswertbaren DFA-a1-Strom — an den "
+                  "markierten Abschnitten ist nichts abzulesen. Die Markierung "
+                  "bleibt stehen.")
+    try:
+        entry = marks_lib.set_measurement(
+            data, activity_id, hours=hours, reason=reason,
+            measured_at=dt_util.now().date().isoformat())
+    except ValueError as err:
+        connection.send_error(msg["id"], "invalid_format", str(err))
+        return
+    await coordinator.archive.async_save_now()
+    connection.send_result(msg["id"], {
+        "activity_id": activity_id,
+        "entry": entry,
+        # Der Grund reist EINMAL und aus der Payload (fuenfte Bauregel).
+        "reason": reason,
+        # Was tatsaechlich gemessen wurde, damit die Kachel es nennen kann,
+        # ohne es aus `hours` zurueckzurechnen.
+        "sections": len(ranges),
+        "seconds": sum(stop - start for start, stop in ranges),
     })
 
 
