@@ -537,16 +537,26 @@ check("keep=" in _m_src,
 # hohem alpha, Intervalle mit viel Watt und niedrigem alpha — und las bei 0,75
 # einen Zustand ab, den niemand gefahren ist. Das ist der Fit-durch-zwei-
 # Wolken aus Paket M, dort schon behoben, über einen NEUEN Weg zurückgekommen.
-check('marks_lib.marked(entry, "endurance")' in _m_src,
+# SEIT B2b-0: der Knopf misst ALLE markierten Familien, jede mit ihrem
+# Instrument. Die Maske bleibt familienrein — sie bekommt die Marken der
+# Familie, über die die Schleife gerade läuft.
+check("marks_lib.marked(entry, family)" in _m_src,
       "Messweg: die Maske nimmt alle Marken quer über die Familien — "
       "der Fit läuft dann durch zwei Wolken (Paket M)")
-check("marks_lib.mask_ranges(\n        laps, marks_lib.marked(entry" in _m_src
-      or 'mask_ranges(laps, marks_lib.marked(entry, "endurance"))' in _m_src,
-      "Messweg: mask_ranges bekommt die Marken nicht familienrein")
-# Und das INSTRUMENT gehört zur Familie: hier wird die Kurve gerechnet, also
-# wird für die Blockfamilien abgebrochen statt eine Zahl zu erfinden.
-check("marks_lib.ONLY_CURVE" in _m_src,
-      "Messweg: ohne Grundlagen-Marke rechnet er trotzdem die Kurve")
+check("for family in marks_lib.FAMILIES:" in _m_src,
+      "Messweg: er läuft nicht über die Familien — dann misst er nur eine")
+check("marks_lib.marked_blocks(" in _m_src,
+      "Messweg: die Blockfamilien werden nicht gemessen")
+# DIE BLOCKZEILEN WERDEN FRISCH GERECHNET. Im Archiv nachzuschlagen sieht
+# gleich aus, solange niemand die Fahrt in Intervals neu unterteilt — an der
+# 13.09.2026 fiel es auseinander (Archiv sieben Runden, live fünf), und die
+# Driftprobe kann das nicht sehen.
+check("derive.dfa_blocks(" in _m_src,
+      "Messweg: die Blockzeilen werden nicht frisch gerechnet")
+for verboten in ('summary.get("blocks")', '["dfa"]', 'archive.data["dfa"]'):
+    check(verboten not in _m_src,
+          f"Messweg: er greift mit {verboten} doch ins Archiv — der alte Weg "
+          f"ist still zurückgekommen")
 
 # GEGENPROBE über den ganzen Produktivcode: KEINE Aufrufstelle von `marked`
 # darf die Familie weglassen — außer dem ANKER, der zu Recht alle Marken

@@ -220,12 +220,12 @@ print("\n=== 3 · aeltere Messmarke: Zahlen weg, Zuordnung bleibt ===")
 
 alt = {"a9": {"date": "2026-09-01", "marks": {"endurance": [0, 600]},
               "anchor": {"laps": 5, "sections": [{"i": 0, "s": 600}, {"i": 600, "s": 600}]},
-              "hours": [{"hour": 1, "p075": 210}], "reason": "", "set_at": "",
-              "v": sm.MEASURE_VERSION - 1}}
+              "measure": {"endurance": {"hours": [{"hour": 1, "p075": 210}]}},
+              "reason": "", "set_at": "", "v": sm.MEASURE_VERSION - 1}}
 ok("Messmarke: die Fixture traegt ueberhaupt Zahlen",
-   alt.get("a9", {}).get("hours"))
+   alt.get("a9", {}).get("measure"))
 gealtert = sm.migrate(copy.deepcopy(alt)) or {}
-check("Messmarke: die Stunden fallen", gealtert.get("a9", {}).get("hours"), None)
+check("Messmarke: die Stunden fallen", gealtert.get("a9", {}).get("measure"), {})
 check("Messmarke: die Marken bleiben",
       gealtert.get("a9", {}).get("marks"), {"endurance": [0, 600]})
 check("Messmarke: der Anker bleibt",
@@ -243,7 +243,8 @@ ok("Messmarke Gegenprobe: die Mutation hat die Marke wirklich gehoben",
    aktuell.get("a9", {}).get("v") != alt.get("a9", {}).get("v"))
 behalten = sm.migrate(aktuell)
 check("Messmarke Gegenprobe: bei aktueller Marke bleiben die Stunden",
-      (behalten or aktuell).get("a9", {}).get("hours"), [{"hour": 1, "p075": 210}])
+      sm.measurement((behalten or aktuell).get("a9", {}), "endurance"),
+      {"hours": [{"hour": 1, "p075": 210}]})
 
 
 # Altbestaende: der frueher GESPEICHERTE Anzeigetext verwies auf einen Knopf,
@@ -365,9 +366,11 @@ ok("Haken: er ist keiner der gespeicherten Alt-Saetze, die beim Laden fallen",
    sm.NOT_MEASURED not in sm._LEGACY_NOT_MEASURED)
 check("Haken: usable_hours gibt nichts her", sm.usable_hours(frisch, LAPS), None)
 
-gemessen = sm.set_measurement(mess, "c1", hours=[{"hour": 1, "p075": 208}], reason="")
+gemessen = sm.set_measurement(mess, "c1", family="endurance",
+                              hours=[{"hour": 1, "p075": 208}], reason="")
 check("Uebernehmen: erst jetzt stehen Zahlen da",
-      gemessen.get("hours"), [{"hour": 1, "p075": 208}])
+      (sm.measurement(gemessen, "endurance") or {}).get("hours"),
+      [{"hour": 1, "p075": 208}])
 check("Uebernehmen: und sie sind benutzbar",
       sm.usable_hours(sm.entry_for(mess, "c1"), LAPS), [{"hour": 1, "p075": 208}])
 
@@ -428,9 +431,9 @@ check("Anker: eine zweite Marke frischt den alten Abschnitt NICHT auf",
       sm.drift(sm.entry_for(mess, "c1"), verschoben), "section_moved")
 
 # Bestaetigen ist ein Knopf, kein Automatismus - und die Messung faellt dabei.
-sm.set_measurement(mess, "c1", hours=[{"hour": 1, "p075": 208}])
+sm.set_measurement(mess, "c1", family="endurance", hours=[{"hour": 1, "p075": 208}])
 ok("Bestaetigen: vorher stehen wieder Zahlen da",
-   sm.entry_for(mess, "c1").get("hours") is not None)
+   sm.measurement(sm.entry_for(mess, "c1"), "endurance") is not None)
 bestaetigt = sm.reanchor(mess, "c1", verschoben)
 check("Bestaetigen: danach sitzt die Markierung wieder",
       sm.drift(bestaetigt, verschoben), None)
@@ -521,35 +524,37 @@ sm.set_mark(ma, "d1", "2026-09-12", "endurance", 0, LAPS, set_at="2026-09-12")
 check("Messzustand: vor der ersten Messung steht nichts da",
       sm.entry_for(ma, "d1").get("measured_at"), None)
 
-sm.set_measurement(ma, "d1", hours=[{"hour": 1, "p075": 200}], measured_at="2026-09-15")
+sm.set_measurement(ma, "d1", family="endurance",
+                   hours=[{"hour": 1, "p075": 200}], measured_at="2026-09-15")
 check("Messzustand: die Messung haelt fest, WANN",
       sm.entry_for(ma, "d1").get("measured_at"), "2026-09-15")
 
 sm.set_mark(ma, "d1", "2026-09-12", "endurance", 600, LAPS, set_at="2026-09-16")
 check("Messzustand: ein weiterer Haken loescht die Zahlen",
-      sm.entry_for(ma, "d1").get("hours"), None)
+      sm.measurement(sm.entry_for(ma, "d1"), "endurance"), None)
 check("Messzustand: aber NICHT die Aussage, dass gemessen wurde",
       sm.entry_for(ma, "d1").get("measured_at"), "2026-09-15")
 sm.unset_mark(ma, "d1", "endurance", 600)
 check("Messzustand: eine Ruecknahme ebensowenig",
       sm.entry_for(ma, "d1").get("measured_at"), "2026-09-15")
 check("Messzustand: bestaetigen nimmt die Zahlen, nicht die Aussage",
-      (sm.reanchor(ma, "d1", LAPS).get("hours"),
-       sm.entry_for(ma, "d1").get("measured_at")), (None, "2026-09-15"))
+      (sm.reanchor(ma, "d1", LAPS).get("measure"),
+       sm.entry_for(ma, "d1").get("measured_at")), ({}, "2026-09-15"))
 
 # EIN FEHLSCHLAG IST KEINE MESSUNG. Sonst hiesse er spaeter "die Auswahl hat
 # sich geaendert", und das waere schlicht falsch.
 fehl = {"section_marks": {}}
 sm.set_mark(fehl, "d2", "2026-09-12", "tempo", 600, LAPS, set_at="2026-09-12")
-sm.set_measurement(fehl, "d2", hours=None, reason="Kein alpha im markierten Bereich.",
-                   measured_at="2026-09-15")
+sm.set_measurement(fehl, "d2", family="tempo", hours=None,
+                   reason="Kein alpha im markierten Bereich.", measured_at="2026-09-15")
 check("Messzustand: ein gescheiterter Versuch zaehlt nicht als gemessen",
       sm.entry_for(fehl, "d2").get("measured_at"), None)
 check("Messzustand: sein Grund steht aber da",
-      sm.entry_for(fehl, "d2").get("reason"), "Kein alpha im markierten Bereich.")
+      (sm.measurement(sm.entry_for(fehl, "d2"), "tempo") or {}).get("reason"),
+      "Kein alpha im markierten Bereich.")
 check("Messzustand: eine leere Stundenliste ebenfalls nicht",
-      sm.set_measurement(fehl, "d2", hours=[], measured_at="2026-09-15").get("measured_at"),
-      None)
+      sm.set_measurement(fehl, "d2", family="tempo", hours=[],
+                         measured_at="2026-09-15").get("measured_at"), None)
 
 # Die beiden Saetze sind ZWEI, und sie kommen aus dem Modul - nicht aus dem
 # Frontend (fuenfte Bauregel, 0.52.0).
@@ -581,15 +586,15 @@ raises("Stillgelegt: und die Ruecknahme auch nicht",
 # mehrfach getroffen hat.
 alt = {"e2": {"date": "2026-08-20", "marks": {"endurance": [0], "long": [600]},
               "anchor": {"laps": 5, "sections": [{"i": 0, "s": 600}, {"i": 600, "s": 600}]},
-              "hours": [{"hour": 1, "p075": 190}], "reason": "", "set_at": "2026-08-20",
-              "v": sm.MEASURE_VERSION}}
+              "measure": {"endurance": {"hours": [{"hour": 1, "p075": 190}]}},
+              "reason": "", "set_at": "2026-08-20", "v": sm.MEASURE_VERSION}}
 nach = sm.migrate(copy.deepcopy(alt))
 check("Stillgelegt: die Alt-Marke ist fort", (nach or {}).get("e2", {}).get("marks"),
       {"endurance": [0]})
 ok("Stillgelegt: und der Wegfall STEHT DA, statt still zu geschehen",
    sm.RETIRED_REASON in ((nach or {}).get("e2", {}).get("reason") or ""))
 check("Stillgelegt: die Messung darauf gilt nicht mehr",
-      (nach or {}).get("e2", {}).get("hours"), None)
+      (nach or {}).get("e2", {}).get("measure"), {})
 check("Stillgelegt: die uebrige Familie behaelt ihren Anker",
       [s_.get("i") for s_ in
        (nach or {}).get("e2", {}).get("anchor", {}).get("sections", [])], [0])
@@ -598,8 +603,9 @@ check("Stillgelegt: die uebrige Familie behaelt ihren Anker",
 # sonst traegt ihn jede Fahrt und er sagt nichts mehr.
 sauber = {"e3": {"date": "2026-08-20", "marks": {"tempo": [600]},
                  "anchor": {"laps": 5, "sections": [{"i": 600, "s": 600}]},
-                 "hours": [{"hour": 1, "p075": 190}], "reason": "", "set_at": "2026-08-20",
-                 "measured_at": "2026-08-21", "v": sm.MEASURE_VERSION}}
+                 "measure": {"tempo": {"hours": None}}, "reason": "",
+                 "set_at": "2026-08-20", "measured_at": "2026-08-21",
+                 "v": sm.MEASURE_VERSION}}
 check("Stillgelegt Gegenprobe: eine unberuehrte Fahrt bekommt keinen Satz",
       sm.migrate(copy.deepcopy(sauber)), None)
 
@@ -609,7 +615,7 @@ check("Stillgelegt Gegenprobe: eine unberuehrte Fahrt bekommt keinen Satz",
 # Bestand vom 15.09.2026 sind das null Fahrten.
 nur = {"e4": {"date": "2026-08-20", "marks": {"threshold": [600]},
               "anchor": {"laps": 5, "sections": [{"i": 600, "s": 600}]},
-              "hours": None, "reason": "", "set_at": "2026-08-20",
+              "measure": {}, "reason": "", "set_at": "2026-08-20",
               "v": sm.MEASURE_VERSION}}
 check("Stillgelegt: eine Fahrt mit NUR stillgelegten Familien faellt ganz",
       sm.migrate(copy.deepcopy(nur)), {})
@@ -620,12 +626,14 @@ print("\n=== 11 · eine gedriftete Fahrt verliert ihre Messung, nicht ihre Marke
 
 dh = {"section_marks": {}}
 sm.set_mark(dh, "f1", "2026-09-12", "tempo", 600, LAPS, set_at="2026-09-12")
-sm.set_measurement(dh, "f1", hours=[{"hour": 1, "p075": 200}], measured_at="2026-09-15")
+sm.set_measurement(dh, "f1", family="tempo",
+                   blocks=[{"start_index": 600, "alpha": 0.9, "watts": 180}],
+                   measured_at="2026-09-15")
 check("Oeffnen: ohne Messung gibt es nichts zu loeschen",
       sm.drop_hours({"section_marks": {}}, "nix"), False)
 check("Oeffnen: die Messung faellt und das wird GEMELDET",
       sm.drop_hours(dh, "f1", sm.STALE_REASON["section_moved"]), True)
-check("Oeffnen: die Zahlen sind fort", sm.entry_for(dh, "f1").get("hours"), None)
+check("Oeffnen: die Zahlen sind fort", sm.entry_for(dh, "f1").get("measure"), {})
 check("Oeffnen: mit dem Grund daneben",
       sm.entry_for(dh, "f1").get("reason"), sm.STALE_REASON["section_moved"])
 check("Oeffnen: die MARKEN bleiben stehen",

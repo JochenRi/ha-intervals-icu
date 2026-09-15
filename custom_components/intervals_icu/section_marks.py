@@ -62,7 +62,7 @@ BLOCK = "section_marks"
 # Gerade - genau der Fit-durch-zwei-Wolken aus Paket M, der dort schon einmal
 # behoben war. Die Zahlen aus 0.54.0 sind damit falsch gemessen und fallen
 # beim Laden; die Marken bleiben.
-MEASURE_VERSION = 2
+MEASURE_VERSION = 3
 
 # Vier Familien mit Abschnitts-Haken. Der Stufentest steht NICHT dabei - eine
 # Messfahrt ist als GANZES eine Messfahrt, es gibt daran keinen Abschnitt zu
@@ -397,6 +397,24 @@ def drift(entry: Any, laps: Any) -> str | None:
     return None
 
 
+def measurement(entry: Any, family: str = "") -> dict[str, Any] | None:
+    """Das Messergebnis EINER Familie, oder nichts.
+
+    JE FAMILIE EIN EINTRAG, seit B2b-0. Vorher hing genau eine Zahlenreihe am
+    Eintrag (`hours`), und die gehoerte still der Grundlage - eine Fahrt mit
+    VO2max-Marken konnte gar nichts ablegen. Der Knopf misst jetzt ALLES, was
+    markiert ist, und jede Familie bekommt ihr eigenes Fach mit ihrem eigenen
+    Grund.
+    """
+    if not isinstance(entry, dict):
+        return None
+    box = entry.get("measure")
+    if not isinstance(box, dict):
+        return None
+    found = box.get(family)
+    return found if isinstance(found, dict) else None
+
+
 def usable_hours(entry: Any, laps: Any) -> list[Any] | None:
     """Der maskierte Stundenverlauf - oder nichts, mit Grund an der Kachel.
 
@@ -407,7 +425,8 @@ def usable_hours(entry: Any, laps: Any) -> list[Any] | None:
     """
     if not isinstance(entry, dict):
         return None
-    hours = entry.get("hours")
+    got = measurement(entry, "endurance") or {}
+    hours = got.get("hours")
     if not isinstance(hours, list) or not hours:
         return None
     if _index(entry.get("v")) != MEASURE_VERSION:
@@ -542,7 +561,8 @@ def _write(block: dict[str, Any], key: str, old: dict[str, Any] | None,
         # Eine neue oder zurueckgenommene Marke aendert den Ausschnitt, also
         # gilt eine vorhandene Messung nicht mehr. Sie faellt SICHTBAR, mit
         # Grund - nicht still.
-        "hours": None,
+        # JE FAMILIE EIN FACH. Leer heisst: noch nichts gemessen.
+        "measure": {},
         # KEIN Anzeigetext in den Eintrag - siehe NOT_MEASURED.
         "reason": "",
         # WANN zuletzt gemessen wurde, und es UEBERLEBT das Loeschen der
@@ -559,29 +579,43 @@ def _write(block: dict[str, Any], key: str, old: dict[str, Any] | None,
     return entry
 
 
-def set_measurement(data: dict[str, Any], activity_id: Any,
-                    hours: Any = None, reason: str = "",
+def set_measurement(data: dict[str, Any], activity_id: Any, family: str = "",
+                    hours: Any = None, blocks: Any = None, reason: str = "",
                     measured_at: str = "") -> dict[str, Any]:
-    """Das Ergebnis von "uebernehmen und messen" ablegen.
+    """Das Ergebnis von "uebernehmen und messen" ablegen - JE FAMILIE.
 
     Die Markierung steht auch, wenn die Messung ausfaellt - dann aber MIT
     GRUND (zweite Regel aus ramp_tests). Gespeichert wird nur das Ergebnis,
     nie ein Strom (J7).
+
+    `hours` gehoert der Grundlage (Kurve), `blocks` den Blockfamilien. Beide
+    im selben Fach, weil beide dieselbe Frage beantworten - "was hat diese
+    Familie an dieser Fahrt gemessen" - und zwei Faecher zwei Antworten
+    waeren.
     """
     entry = entry_for(data, activity_id)
     if entry is None:
         raise ValueError(f"für Fahrt {activity_id} ist nichts markiert")
+    if family not in FAMILIES:
+        raise ValueError(f"unbekannte Familie: {family!r}")
     if hours is not None and not isinstance(hours, list):
         raise ValueError("Stundenverlauf muss eine Liste sein")
+    if blocks is not None and not isinstance(blocks, list):
+        raise ValueError("Blockliste muss eine Liste sein")
     if not isinstance(reason, str):
         raise ValueError("Grund muss Text sein")
-    entry["hours"] = hours
-    entry["reason"] = (reason or "")[:REASON_LIMIT]
+    box = entry.get("measure")
+    if not isinstance(box, dict):
+        box = {}
+        entry["measure"] = box
+    box[family] = {"hours": hours, "blocks": blocks,
+                   "reason": (reason or "")[:REASON_LIMIT]}
+    entry["reason"] = ""
     # Nur eine Messung MIT Zahlen zaehlt als gemessen. Ein gescheiterter
     # Versuch traegt seinen Grund und laesst den Zustand, wie er war - sonst
     # hiesse ein Fehlschlag spaeter "die Auswahl hat sich geaendert", und das
     # waere schlicht falsch.
-    if isinstance(hours, list) and hours:
+    if (isinstance(hours, list) and hours) or (isinstance(blocks, list) and blocks):
         entry["measured_at"] = measured_at or entry.get("measured_at") or None
     entry["v"] = MEASURE_VERSION
     return entry
@@ -603,9 +637,9 @@ def drop_hours(data: dict[str, Any], activity_id: Any, reason: str = "") -> bool
     Auflage).
     """
     entry = entry_for(data, activity_id)
-    if entry is None or entry.get("hours") is None:
+    if entry is None or not isinstance(entry.get("measure"), dict) or not entry["measure"]:
         return False
-    entry["hours"] = None
+    entry["measure"] = {}
     entry["reason"] = (reason or "")[:REASON_LIMIT]
     return True
 
@@ -632,7 +666,7 @@ def reanchor(data: dict[str, Any], activity_id: Any, laps: Any) -> dict[str, Any
             + " — die Zuordnung ist neu zu setzen, nicht zu bestätigen"
         )
     entry["anchor"] = anchor_of(rows, marked(entry))
-    entry["hours"] = None
+    entry["measure"] = {}
     entry["reason"] = ""
     entry["v"] = MEASURE_VERSION
     return entry
@@ -713,14 +747,15 @@ def migrate(block: Any) -> dict[str, Any] | None:
             "date": date,
             "marks": marks,
             "anchor": {"laps": _index(anchor_raw.get("laps")), "sections": sections},
-            "hours": entry.get("hours") if isinstance(entry.get("hours"), list) else None,
+            "measure": (entry.get("measure")
+                        if isinstance(entry.get("measure"), dict) else {}),
             "reason": str(entry.get("reason") or "")[:REASON_LIMIT],
             "measured_at": str(entry.get("measured_at") or "") or None,
             "set_at": str(entry.get("set_at") or ""),
             "v": MEASURE_VERSION,
         }
-        if entry.get("v") != MEASURE_VERSION and row["hours"] is not None:
-            row["hours"] = None
+        if entry.get("v") != MEASURE_VERSION and row["measure"]:
+            row["measure"] = {}
             row["reason"] = ("Nach einer Änderung der Messung neu zu messen — "
                              "die Ströme liegen nicht im Archiv. Die Zuordnung "
                              "und ihr Anker bleiben stehen.")
@@ -728,7 +763,7 @@ def migrate(block: Any) -> dict[str, Any] | None:
         if retired:
             # Die Marken sind fort, also gilt eine Messung darauf nicht mehr -
             # sie sass auf einem Ausschnitt, den es nicht mehr gibt.
-            row["hours"] = None
+            row["measure"] = {}
             row["reason"] = RETIRED_REASON
             changed = True
         if row["reason"] in _LEGACY_NOT_MEASURED:

@@ -64,6 +64,14 @@ def _archives(hass: HomeAssistant) -> dict[str, Any]:
     return result
 
 
+def _same_index(left: Any, right: Any) -> bool:
+    """Zwei Stromstellen als GLEICH lesen, ohne float-Vergleich auf Gleichheit."""
+    try:
+        return int(left) == int(right)
+    except (TypeError, ValueError):
+        return False
+
+
 def _pick(hass: HomeAssistant, athlete_id: str | None) -> Any | None:
     """Return the requested athlete's coordinator, or the only one there is."""
     found = _archives(hass)
@@ -1348,47 +1356,64 @@ async def websocket_measure_section_marks(hass, connection, msg) -> None:
     # gerechnet, und die Kurve ist die Quelle der GRUNDLAGE. Fuer die
     # Blockfamilien gibt es den Messweg noch nicht; lieber keine Zahl als
     # eine, die niemand angefordert hat.
-    ranges, missing = marks_lib.mask_ranges(
-        laps, marks_lib.marked(entry, "endurance"))
-    if not marks_lib.marked(entry, "endurance"):
-        connection.send_error(msg["id"], "only_curve", marks_lib.ONLY_CURVE)
-        return
-    if missing or not ranges:
-        connection.send_error(
-            msg["id"], "marks_stale",
-            "Zu mindestens einem markierten Abschnitt gibt es in dieser Fahrt "
-            "keine Grenzen mehr — die Zuordnung ist zu bestätigen oder neu zu "
-            "setzen. Gemessen wurde nichts.")
-        return
-
     by_name = derive.streams_to_dict(streams)
-    hours = derive.dfa_hours(by_name.get("dfa_a1"), by_name.get("watts"),
-                             by_name.get("heartrate"), keep=ranges)
-    reason = ""
-    if not hours:
-        # Kein Vorwurf, eine Auskunft - und ein Sachbefund, der bei jedem
-        # Versuch derselbe ist.
-        hours = None
-        reason = ("Diese Fahrt führt keinen auswertbaren DFA-a1-Strom — an den "
-                  "markierten Abschnitten ist nichts abzulesen. Die Markierung "
-                  "bleibt stehen.")
-    try:
-        entry = marks_lib.set_measurement(
-            data, activity_id, hours=hours, reason=reason,
-            measured_at=dt_util.now().date().isoformat())
-    except ValueError as err:
-        connection.send_error(msg["id"], "invalid_format", str(err))
-        return
+    # DIE BLOCKZEILEN WERDEN FRISCH GERECHNET, nicht im Archiv nachgeschlagen.
+    # Die Archivbloecke haengen an der Rundenstruktur vom IMPORTzeitpunkt, die
+    # Marken an der heutigen. An der Fahrt vom 13.09.2026 fielen beide
+    # auseinander (Archiv sieben Runden, live fuenf) - OHNE Drift, denn die
+    # Driftprobe vergleicht Marken gegen Runden, nicht Archiv gegen Runden.
+    # Marken, live geholte Runden und Stroeme liegen im SELBEN Indexraum; die
+    # Archivbloecke nicht (§7).
+    block_rows = derive.dfa_blocks(by_name.get("dfa_a1"), by_name.get("watts"),
+                                   by_name.get("heartrate"), laps)
+
+    results: dict[str, Any] = {}
+    stamp = dt_util.now().date().isoformat()
+    for family in marks_lib.FAMILIES:
+        if not marks_lib.marked(entry, family):
+            continue
+        hours = blocks = None
+        reason = ""
+        if family == "endurance":
+            ranges, missing = marks_lib.mask_ranges(laps, marks_lib.marked(entry, family))
+            if missing or not ranges:
+                reason = ("Zu mindestens einem markierten Abschnitt gibt es in dieser "
+                          "Fahrt keine Grenzen mehr — die Zuordnung ist zu bestätigen "
+                          "oder neu zu setzen.")
+            else:
+                hours = derive.dfa_hours(by_name.get("dfa_a1"), by_name.get("watts"),
+                                         by_name.get("heartrate"), keep=ranges) or None
+                if hours is None:
+                    reason = ("Diese Fahrt führt keinen auswertbaren DFA-a1-Strom — an "
+                              "den markierten Abschnitten ist nichts abzulesen.")
+        else:
+            rows = marks_lib.marked_blocks(entry, block_rows, family)
+            fehlt = [i for i in marks_lib.marked(entry, family)
+                     if not any(_same_index(row.get("start_index"), i) for row in rows)]
+            usable = [row for row in rows
+                      if row.get("watts") is not None and row.get("alpha") is not None]
+            blocks = usable or None
+            if fehlt:
+                # SACHBEFUND, kein Transportfehler: der Abschnitt ist kuerzer
+                # als BLOCK_MIN_SECONDS oder traegt keine gueltigen Werte.
+                reason = (f"Zu {len(fehlt)} markierten Abschnitten gibt es keinen "
+                          f"Blockwert — zu kurz oder ohne verwertbare Daten.")
+            elif not usable:
+                reason = "In den markierten Abschnitten stehen keine Wattwerte."
+        try:
+            marks_lib.set_measurement(data, activity_id, family=family, hours=hours,
+                                      blocks=blocks, reason=reason, measured_at=stamp)
+        except ValueError as err:
+            connection.send_error(msg["id"], "invalid_format", str(err))
+            return
+        results[family] = {"hours": hours, "blocks": blocks, "reason": reason}
+
     await coordinator.archive.async_save_now()
     connection.send_result(msg["id"], {
         "activity_id": activity_id,
-        "entry": entry,
-        # Der Grund reist EINMAL und aus der Payload (fuenfte Bauregel).
-        "reason": reason,
-        # Was tatsaechlich gemessen wurde, damit die Kachel es nennen kann,
-        # ohne es aus `hours` zurueckzurechnen.
-        "sections": len(ranges),
-        "seconds": sum(stop - start for start, stop in ranges),
+        "entry": marks_lib.entry_for(data, activity_id),
+        # JE FAMILIE ein Ergebnis mit eigenem Grund - keine Sammelmeldung.
+        "families": results,
     })
 
 
