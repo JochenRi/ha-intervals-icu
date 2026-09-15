@@ -1940,6 +1940,21 @@ Dasselbe gilt für jede Ausgabe, in der ein Token, ein Geheimnispfad oder eine
 geheimnisartige Zeichenkette Richtung einer fremden Domain auftaucht — sie wird
 gemeldet, nicht stillschweigend behoben.
 
+**Zweiter Handgriff, aus B1: `git checkout -- <datei>` NIE auf eine Datei, die
+noch nicht committet ist.** Beim Zurückdrehen einer Mutation ist der Griff
+naheliegend und nimmt die ganze Arbeit mit, nicht nur die Mutation — der
+Arbeitsbaum geht auf HEAD zurück, und HEAD kennt den Bauschritt noch nicht. In
+B1 ist es **zweimal in einer Sitzung** passiert (erst an `derive.py`, dann an
+`section_marks.py`); zweimal dieselbe Grube ist ein Muster, keine
+Unachtsamkeit. Zwei Gegenmittel, in dieser Reihenfolge:
+
+1. **Erst committen, dann mutieren.** Der Sicherungs-Push nach jedem grünen
+   Teilschritt ist ohnehin verlangt — er macht den Griff nebenbei ungefährlich.
+2. **Mutationen über eine Dateikopie**, nicht über git:
+   `cp <datei> /tmp/orig` vor der Reihe, `cp /tmp/orig <datei>` nach jeder
+   einzelnen. Das trennt „Mutation zurückdrehen" von „Arbeitsstand
+   zurückdrehen" — und nur die erste Absicht liegt hier je vor.
+
 
 **Update:** HACS → *Intervals.icu* → aktualisieren → HA neu starten → Browser **hart** neu
 laden. Der Service Worker des HA-Frontends bedient Module aus eigenem Speicher, an Strg+F5
