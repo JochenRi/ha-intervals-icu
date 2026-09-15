@@ -310,6 +310,7 @@ def dfa_hours(
     heartrate: list[Any] | None = None,
     sample_secs: int = 1,
     hour_secs: int = 3600,
+    keep: Any = None,
 ) -> list[dict[str, Any]]:
     """Read P(alpha = 0.75) off EACH hour of a ride, separately.
 
@@ -322,21 +323,68 @@ def dfa_hours(
     Never extrapolated - if 0.75 lies outside the alpha range actually
     ridden in that hour, the hour carries no value and says so. An
     extrapolated threshold is an invention with a decimal point.
+
+    MASKIEREN, NICHT NEU BASIEREN (docs/ausbau.md P4)
+    `keep` ist eine Liste von Stromstellen-Bereichen [start, end), in aller
+    Regel die vom Athleten markierten Abschnitte. Was ausserhalb liegt,
+    liefert KEINE Punkte mehr - die Kuebelgrenzen aber bleiben, wo sie sind.
+    Die naheliegende Abkuerzung waere, die markierten Stellen aneinander zu
+    reihen; dann waere "Stunde 2" die zweite Stunde der MARKIERTEN TEILE statt
+    die zweite Stunde der FAHRT, und die Ermuedungsfrage - wie weit bin ich in
+    dieser Fahrt - waere falsch beantwortet. Ein ausmaskierter Berg bei 1:40
+    nimmt Stunde 2 zwanzig Minuten Punkte, und Stunde 2 BLEIBT Stunde 2, weil
+    der Berg muede gemacht hat.
+
+    DIE DREI ZUSTAENDE, und sie sind auseinanderzuhalten:
+      * keep=None   - die ganze Fahrt, unveraendert wie vor der Maskierung.
+      * keep=[...]  - nur diese Bereiche zaehlen.
+      * keep=[]     - NICHTS zaehlt. Das ist kein Synonym fuer None, sondern
+                      eine leere Auswahl, und sie liefert ehrlich lauter leere
+                      Stunden. Wer ohne Marken hier landet, hat einen Fehler
+                      weiter oben; diese Funktion verdeckt ihn nicht.
+
+    Ausgeschlossene Sekunden zaehlen in `excluded`, NICHT in `dropped`:
+    `dropped_share` ist der Ersatz fuer Andriolos Artefaktkriterium und sagt,
+    was die MESSUNG verloren hat. Wer bewusst Ausgeschlossenes dort mitzaehlt,
+    laesst eine sauber markierte Fahrt wie einen Datenschaden aussehen. Der
+    Nenner bleibt deshalb auf dem ZUGELASSENEN Fenster - und ist dieses
+    Fenster leer, ist der Anteil `None` und nicht 0,0 %: eine vollstaendig
+    ausmaskierte Stunde traegt sonst die Beschriftung perfekter Daten.
     """
     if not dfa:
         return []
     out: list[dict[str, Any]] = []
     per_hour = max(1, int(hour_secs // max(sample_secs, 1)))
     total = len(dfa)
+
+    # Einmal aufgeloest, nicht je Stunde neu: die Bereiche kommen aus den Laps
+    # und sind eine Handvoll, die Stromstellen sind Zehntausende.
+    allowed: set[int] | None = None
+    if keep is not None:
+        allowed = set()
+        for pair in keep:
+            try:
+                first, last = int(pair[0]), int(pair[1])
+            except (TypeError, ValueError, IndexError, KeyError):
+                continue
+            allowed.update(range(max(0, first), min(total, last)))
+
     hour = 0
     while hour * per_hour < total:
         start, stop = hour * per_hour, min(total, (hour + 1) * per_hour)
         points: list[tuple[float, float]] = []
         hr_points: list[tuple[float, float]] = []
         dropped = 0
+        excluded = 0
         low = 0
         low_ok = low_bad = 0
         for index in range(start, stop):
+            # ZUERST der Ausschluss, DANN die Gueltigkeit: sonst landete eine
+            # ausmaskierte Stelle mit kaputtem alpha in `dropped` und damit im
+            # Nenner von `dropped_share`.
+            if allowed is not None and index not in allowed:
+                excluded += 1
+                continue
             alpha = _number(dfa[index])
             watt = _number(watts[index]) if watts and index < len(watts) else None
             pulse = _number(heartrate[index]) if heartrate and index < len(heartrate) else None
@@ -361,10 +409,19 @@ def dfa_hours(
             "hour": hour + 1,
             "points": len(points),
             "dropped": dropped,
+            # Bewusst ausgeschlossene Sekunden, GETRENNT von `dropped`. Ohne
+            # Maske ist die Zahl 0 und die Zeile sieht aus wie vorher - das
+            # Feld reist trotzdem immer mit, damit ein Leser nicht raten muss,
+            # ob eine fehlende 0 "nicht maskiert" oder "altes Archiv" heisst.
+            "excluded": excluded,
             # Andriolo's artefact criterion (5 % of beats) is not reproducible
             # here - Intervals hands over no artefact field. This is the
             # SUBSTITUTE and is labelled as one: share of points thrown away.
-            "dropped_share": round(dropped / max(1, dropped + len(points)) * 100, 1),
+            # Bei leerem zugelassenem Fenster ist der Anteil NICHT 0,0 %,
+            # sondern nichts: 0 % hiesse "nichts verloren", und das ist die
+            # Beschriftung perfekter Daten fuer eine Stunde ohne jeden Punkt.
+            "dropped_share": (round(dropped / (dropped + len(points)) * 100, 1)
+                              if (dropped + len(points)) else None),
             # Andriolo requires at least half the points below alpha 1.0. On
             # everyday data that leaves too little to decide anything, so it
             # travels as a FIGURE per hour instead of acting as a filter.

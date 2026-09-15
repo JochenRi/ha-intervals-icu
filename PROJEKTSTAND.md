@@ -7,7 +7,7 @@ Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lok
 archiviert, auswertet und in einem eigenen Seitenleisten-Panel darstellt.
 
 **Umfang:** ~14.760 Zeilen, davon ~4.960 Frontend · 27 WebSocket-Befehle · 16 Einheiten in
-9 Familien · 20 Testdateien mit **6.206** gezählten Einzelprüfungen · 60 Releases.
+9 Familien · 20 Testdateien mit **6.227** gezählten Einzelprüfungen · 60 Releases.
 
 ---
 
@@ -1642,13 +1642,13 @@ kommentiert, weil sie sonst beim nächsten Umbau umsortiert wird.
 
 ## 9. Prüfstand
 
-**20 Dateien, 6.206 gezählte Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
+**20 Dateien, 6.227 gezählte Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
 HA-Instanz oder einen Browser.
 
 | Datei | prüft | Umfang |
 |---|---|---|
 | `test_derive.py` | Parselogik gegen echte Payloads | 44 |
-| `test_dfa.py` | DFA-Auswertung, Bandgrenzen, Artefakte, **die Plausibilitätsregel: Ausfall gegen Messung, Belegung je Wert getrennt, die alte `or`-Formel als Gegenprobe** | 44 |
+| `test_dfa.py` | DFA-Auswertung, Bandgrenzen, Artefakte, **die Plausibilitätsregel: Ausfall gegen Messung, Belegung je Wert getrennt, die alte `or`-Formel als Gegenprobe**; **seit B1 die Maskierung: die Achse bleibt die Fahrtzeit — mit dem Zusammenschieben als Gegenfall, dem Ausschluss VOR der Gültigkeitsprüfung, `dropped_share` als nichts statt 0,0 % im leeren Fenster, `keep=[]` gegen `keep=None`, und der Zeilenform des Importwegs Feld für Feld als Bump-Wächter** | 65 |
 | `test_import.py` | vollständiger Import gegen einen Nachbau des Kontos, Schwellenreihe und `since`, day_context-Migration und Schreibweg, Quellenblock-Auflagen, **der Versionsmarken-Wächter mit Gegenprobe über eine dritte Marke, der Historienbeginn getrennt vom Bestandszeitraum** | 120 |
 | `test_analytics.py` | Trainingsmetriken gegen bekannte Ergebnisse, Ebene-3-Wächter (Last kennt keine Etiketten, Quelltext und Verhalten), **die Wochenbilanz aus dem Archiv — Abgrenzung, und dass nichts gepaart wird** | 108 |
 | `test_setup_simulation.py` | Entity-Aufbau, Übersetzungen, unique_ids | 22 |

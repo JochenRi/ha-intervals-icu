@@ -147,6 +147,102 @@ allzero = derive.dfa_summary([0.72, 0.73], [0, 0], None)
 check("nur Aussetzer ergibt keinen Wert", allzero["hr_at_threshold"], None)
 check("Baender bleiben trotzdem gezaehlt", allzero["secs_transition"], 2)
 
+# --- Die Maskierung (docs/ausbau.md P4) ---------------------------------------
+# MASKIEREN, NICHT ZUSAMMENSCHIEBEN. Die Fixture ist genau darauf gebaut: zwei
+# Stunden, und die markierten Teile liegen so, dass ein Zusammenschieben ein
+# ANDERES Ergebnis liefert als eine Maskierung. Waere die Fahrt gleichfoermig,
+# bestuende der falsche Weg jede Pruefung (Lehre 2 aus Paket A).
+#
+# Der Zusammenhang ist in beiden Abschnitten exakt linear, damit die Ablesung
+# eine PINNBARE Zahl ist und keine Naeherung:
+#   Grundlage  Watt = 300 - 200*alpha  ->  bei 0,75:  150 W
+#   Tempo      Watt = 400 - 200*alpha  ->  bei 0,75:  250 W
+# Die acht alpha-Werte teilen 1800 glatt, also traegt jeder Kuebel beide
+# Abschnitte im selben Verhaeltnis - die Mischung liegt damit ebenfalls exakt
+# auf einer Geraden (350 - 200*alpha -> 200 W).
+ALPHAS = [0.60, 0.64, 0.68, 0.72, 0.76, 0.80, 0.84, 0.88]
+
+
+def _leg(n, offset):
+    a = [ALPHAS[i % len(ALPHAS)] for i in range(n)]
+    return a, [offset - 200 * v for v in a]
+
+
+_ta, _tw = _leg(1800, 400)          # Stunde 1, erste Haelfte: Tempo
+_ba, _bw = _leg(1800, 300)          # Stunde 1, zweite Haelfte: Grundlage
+_ha, _hw = _leg(3600, 300)          # Stunde 2: Grundlage
+RIDE_A = _ta + _ba + _ha
+RIDE_W = _tw + _bw + _hw
+MARKED = [(1800, 7200)]             # nur die Grundlagenteile sind angehakt
+
+ganz = derive.dfa_hours(RIDE_A, RIDE_W)
+mask = derive.dfa_hours(RIDE_A, RIDE_W, keep=MARKED)
+
+check("Maske: die Achse bleibt die Fahrtzeit, zwei Stunden", len(mask), len(ganz))
+check("Maske: unmaskiert liest Stunde 1 die MISCHUNG", ganz[0]["p075"], 200.0)
+check("Maske: maskiert liest Stunde 1 nur die Grundlage", mask[0]["p075"], 150.0)
+check("Maske: Stunde 2 war ohnehin ganz markiert und bleibt gleich",
+      mask[1]["p075"], ganz[1]["p075"])
+check("Maske: die ausgeschlossene Haelfte steht in excluded", mask[0]["excluded"], 1800)
+check("Maske: und NICHT in dropped", mask[0]["dropped"], ganz[0]["dropped"])
+check("Maske: die zugelassenen Punkte sind genau die markierten",
+      mask[0]["points"], 1800)
+
+# KEIN ZUSAMMENSCHIEBEN: nur Stunde 2 markiert. Wer die markierten Stellen
+# aneinanderreiht, liest sie als "Stunde 1" - dann steht der Wert in Zeile 0.
+# Er gehoert in Zeile 1, weil die erste Stunde stattgefunden hat und muede
+# gemacht hat.
+spaet = derive.dfa_hours(RIDE_A, RIDE_W, keep=[(3600, 7200)])
+check("Kein Zusammenschieben: Stunde 1 traegt keinen Wert", spaet[0]["p075"], None)
+check("Kein Zusammenschieben: der Wert steht in Stunde 2", spaet[1]["p075"], 150.0)
+check("Kein Zusammenschieben: Stunde 1 bleibt in der Liste stehen",
+      (len(spaet), spaet[0]["hour"], spaet[1]["hour"]), (2, 1, 2))
+check("Kein Zusammenschieben: die leere Stunde sagt, dass sie ausgeschlossen war",
+      spaet[0]["excluded"], 3600)
+
+# Eine leere Stunde hat NICHTS verloren - sie hatte nichts. 0,0 % waere die
+# Beschriftung perfekter Daten.
+check("Leeres Fenster: dropped_share ist nichts, nicht null",
+      spaet[0]["dropped_share"], None)
+check("Gegenprobe: bei zugelassenen Punkten ist es eine Zahl",
+      isinstance(spaet[1]["dropped_share"], float), True)
+
+# Ausgeschlossene Artefakte duerfen den Nenner nicht fuellen: `dropped_share`
+# sagt, was die MESSUNG verloren hat, nicht was der Athlet weggelassen hat.
+KAPUTT = [None, None] + [0.7] * 8
+kw = [150.0] * 10
+check("Ausschluss vor Gueltigkeit: kaputte Stellen ausserhalb zaehlen nicht als dropped",
+      (derive.dfa_hours(KAPUTT, kw, keep=[(5, 10)])[0]["dropped"],
+       derive.dfa_hours(KAPUTT, kw, keep=[(5, 10)])[0]["excluded"]), (0, 5))
+check("Gegenprobe ohne Maske: dieselben Stellen zaehlen sehr wohl als dropped",
+      derive.dfa_hours(KAPUTT, kw)[0]["dropped"], 2)
+
+# keep=None und keep=[] sind NICHT dasselbe, und die Verwechslung waere still.
+check("keep=[] schliesst alles aus, statt alles zuzulassen",
+      [(row.get("points"), row.get("excluded")) for row in
+       derive.dfa_hours(RIDE_A, RIDE_W, keep=[])], [(0, 3600), (0, 3600)])
+check("Eine Maske ueber die ganze Fahrt aendert nichts",
+      derive.dfa_hours(RIDE_A, RIDE_W, keep=[(0, 7200)]), ganz)
+check("Ueberhaengende Grenzen werden geklemmt, nicht gemeldet",
+      derive.dfa_hours(RIDE_A, RIDE_W, keep=[(-50, 999999)]), ganz)
+check("Unbrauchbare Bereichsangaben fallen weg, ohne den Lauf zu werfen",
+      derive.dfa_hours(RIDE_A, RIDE_W, keep=[("x", 5), (1800, 7200), None])[0]["p075"],
+      150.0)
+
+# KEIN ALGORITHMUS-BUMP: der Importweg ruft ohne `keep`, und was er schreibt,
+# muss Wert fuer Wert dasselbe sein wie vor der Maskierung. Das Feld
+# `excluded` kommt additiv dazu - die Zeilenform wird deshalb festgehalten,
+# damit ein versehentlich umbenanntes oder zusaetzliches Feld auffaellt.
+check("Kein Bump: die Zeilenform des Importwegs, Feld fuer Feld",
+      sorted(ganz[0].keys()),
+      sorted(["hour", "points", "dropped", "excluded", "dropped_share",
+              "dynamic_share", "bins", "p075", "alpha_min", "alpha_max",
+              "p050", "low_points", "low_dropped", "low_dropped_share",
+              "hr075", "slope", "r2"]))
+check("Kein Bump: excluded ist ohne Maske null und steht trotzdem da",
+      (ganz[0]["excluded"], ganz[1]["excluded"]), (0, 0))
+
+
 print()
 print(f"test_dfa: {CHECKS} Prüfungen, {len(failures)} Fehler")
 print("FEHLER:", failures if failures else "keine")
