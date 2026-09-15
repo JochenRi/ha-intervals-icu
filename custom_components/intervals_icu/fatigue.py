@@ -160,6 +160,23 @@ def _plan_chain(used: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
+def solid_until(plan: list[dict[str, Any]]) -> int:
+    """Bis wohin die Linie DURCHGEZOGEN ist - bis zum ERSTEN Riss.
+
+    Eigene Funktion, weil sie inline nicht pruefbar war: eine Fassung, die den
+    Riss ueberspringt und den letzten festen Punkt nimmt, kam durch die
+    Gegenprobe (Mutation M28, 0 Fehler). Eine Linie mit einem Loch, die
+    dahinter wieder durchgezogen ist, behauptet Sicherheit, die es in der
+    Mitte nicht gibt.
+    """
+    out = 0
+    for row in plan:
+        if row.get("band") != "solid":
+            break
+        out = int(row.get("hours") or 0)
+    return out
+
+
 def rides(data: dict[str, Any]) -> dict[str, Any]:
     """Welche Fahrten ihren Stundenverlauf hergeben - und welche warum nicht.
 
@@ -365,14 +382,11 @@ def curve(data: dict[str, Any], aerobic_hr: float | None = None,
     # Die durchgezogene Linie endet, wo die Weglassprobe zum ersten Mal reisst -
     # und sie WAECHST MIT: faehrt er fuenf Stunden oft genug, rueckt die Grenze
     # nach rechts, ohne dass jemand eine Zahl anfasst.
-    plan_solid = 0
-    for row in plan:
-        if row.get("band") != "solid":
-            break
-        plan_solid = row["hours"]
+    plan_solid = solid_until(plan)
     plan_thin = max([row["hours"] for row in plan], default=0)
 
-    solid_until = max([row["hour"] for row in measured if row["band"] == "solid"], default=None)
+    measured_solid = max([row["hour"] for row in measured if row["band"] == "solid"],
+                         default=None)
     thin_until = max([row["hour"] for row in measured if row["band"] in ("solid", "thin")],
                      default=None)
 
@@ -391,7 +405,7 @@ def curve(data: dict[str, Any], aerobic_hr: float | None = None,
         "anchor_watts": anchor,
         "anchor_n": anchor_n,
         "anchor_base": round(base, 1) if base is not None else None,
-        "solid_until_hour": solid_until,
+        "solid_until_hour": measured_solid,
         "thin_until_hour": thin_until,
         "rides_used": len(selection["used"]),
         "paired": paired,

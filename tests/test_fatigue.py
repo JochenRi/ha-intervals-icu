@@ -371,10 +371,22 @@ check("Weglassprobe: unter dem Verhaeltnis 1 ist nichts duenn",
       [r.get("hours") for r in pl
        if r.get("band") == "thin" and (r.get("loo_ratio") is not None)
        and r["loo_ratio"] < 1.0], [])
-check("Weglassprobe: die durchgezogene Grenze bricht beim ERSTEN Riss ab",
-      out.get("plan_solid_until_hours"),
-      (pl[0]["hours"] if pl and pl[0].get("band") == "solid" else None)
-      if not (len(pl) > 1 and pl[1].get("band") == "solid") else pl[1]["hours"])
+# DIE GRENZE BRICHT BEIM ERSTEN RISS AB, direkt geprueft. Die erste Fassung
+# dieser Zeile las den Zustand aus derselben Liste ab, die sie pruefen sollte -
+# die Mutation "ueberspringe den Riss" kam mit 0 Fehlern durch (M28). Eine
+# Linie mit einem Loch, die dahinter wieder durchgezogen ist, behauptet
+# Sicherheit, die es in der Mitte nicht gibt.
+B = lambda *b: [{"hours": i + 1, "band": x} for i, x in enumerate(b)]
+check("Grenze: alles fest", fatigue.solid_until(B("solid", "solid", "solid")), 3)
+check("Grenze: sie endet vor dem ersten duennen Punkt",
+      fatigue.solid_until(B("solid", "thin", "solid")), 1)
+check("Grenze: ein fester Punkt HINTER dem Riss zaehlt nicht",
+      fatigue.solid_until(B("solid", "thin", "solid", "solid")), 1)
+check("Grenze: ein duenner Anfang gibt gar keine feste Linie",
+      fatigue.solid_until(B("thin", "solid")), 0)
+check("Grenze: ohne Kette nichts", fatigue.solid_until([]), 0)
+check("Weglassprobe: die Kachelgrenze kommt aus derselben Regel",
+      out.get("plan_solid_until_hours"), fatigue.solid_until(pl) or None)
 
 # EIN STOERER, der die Kette kippt: eine Fahrt, die dem Schritt widerspricht,
 # muss das Verhaeltnis ueber 1 treiben und die Zahl aus "gemessen" nehmen.
