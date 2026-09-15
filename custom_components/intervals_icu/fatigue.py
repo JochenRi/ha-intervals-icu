@@ -97,6 +97,69 @@ def literature_factor(hours: float) -> float:
     return 1.0 - GALLO_LINEAR * hours - GALLO_QUADRATIC * hours * hours
 
 
+# Was an der duennen Zone stehen MUSS. Der Auswahleffekt schliesst sich dort
+# nicht mit mehr Fahrten: eine Fahrt, die vier Stunden ging, war eine besondere
+# Fahrt. Am Bestand vom 15.09.2026 liefern 83 % der Fahrten eine zweite Stunde,
+# aber nur 33 % eine dritte und 17 % eine vierte - fuer neun Vergleiche in
+# Stunde 4 braeuchte es rund vierundfuenfzig Fahrten, und sie waeren alle vom
+# selben seltenen Typ.
+SELECTION_NOTE = ("Ab hier stammt die Zahl aus den wenigen Fahrten, die so lang "
+                  "geworden sind — und eine Fahrt, die vier Stunden ging, war "
+                  "keine durchschnittliche Fahrt. Das ist keine Lücke, die sich "
+                  "mit mehr Fahrten schließt.")
+
+# Die bekannte Schwaeche der Achse, und sie gehoert an die Kachel, nicht nur in
+# die Spezifikation.
+AXIS_NOTE = ("Die Achse ist reine Fahrtzeit. Ein Überblicksartikel von 2025 "
+             "(Eur J Appl Physiol) zeigt, dass die INTENSITÄT der Vorbelastung "
+             "stärker wirkt als ihre Menge — Stunde 3 einer lockeren Fahrt ist "
+             "nicht Stunde 3 einer harten. Diese Kurve unterscheidet das nicht.")
+
+
+def _plan_chain(used: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Die Leitzahl: welche Leistung haelt ueber eine GEPLANTE Dauer.
+
+    ANDERE LESERICHTUNG, dieselbe Rechnung. Der Athlet plant keine einzelne
+    Fahrtstunde - er plant eine Fahrt. Gesucht ist die Leistung, die er von
+    Anfang an treten kann und die am ENDE noch im Bereich liegt, nicht die
+    Schwelle zu Beginn und auch nicht der Abstand zwischen zwei Stunden.
+
+    VERKETTET AUS DEN GEPAARTEN SCHRITTEN, nicht aus den rohen Stundenmedianen.
+    Die rohen Mediane stammen aus verschiedenen Fahrten - Stunde 1 aus zehn
+    Tagen, Stunde 4 aus zweien -, und das ist genau der Auswahleffekt, gegen
+    den die Paarung gebaut wurde. Der Unterschied ist messbar: am Bestand vom
+    15.09.2026 sagt der rohe Median fuer zwei Stunden 140,1 W, die Kette
+    141,3 W. Die Kette ist die Zahl, die die eigene Einwendung ueberlebt.
+    """
+    by_hour: dict[int, list[float]] = {}
+    for ride in used:
+        for row in ride["hours"]:
+            value = row.get("p075")
+            if value is not None:
+                by_hour.setdefault(int(row["hour"]), []).append(float(value))
+    if 1 not in by_hour:
+        return []
+    out = [{"hours": 1, "watts": round(median(by_hour[1]), 1), "n": len(by_hour[1]),
+            "step": None, "step_n": None}]
+    current = median(by_hour[1])
+    hour = 1
+    while True:
+        deltas = []
+        for ride in used:
+            rows = {int(r["hour"]): r.get("p075") for r in ride["hours"]}
+            here, nxt = rows.get(hour), rows.get(hour + 1)
+            if here is not None and nxt is not None:
+                deltas.append(float(nxt) - float(here))
+        if not deltas:
+            break
+        current += median(deltas)
+        hour += 1
+        out.append({"hours": hour, "watts": round(current, 1),
+                    "n": len(by_hour.get(hour) or []),
+                    "step": round(median(deltas), 1), "step_n": len(deltas)})
+    return out
+
+
 def rides(data: dict[str, Any]) -> dict[str, Any]:
     """Welche Fahrten ihren Stundenverlauf hergeben - und welche warum nicht.
 
@@ -218,6 +281,45 @@ def curve(data: dict[str, Any], aerobic_hr: float | None = None,
         for i in range(len(counts) - 1) if counts[i + 1] > counts[i]
     ]
 
+    # --- DIE LEITZAHL UND IHRE WEGLASSPROBE ---------------------------------
+    # Die Grenze zwischen "gemessen" und "duenn" wird hier nicht GESETZT,
+    # sondern GEMESSEN, und zwar am Bestand selbst: eine Zahl gilt als
+    # gemessen, wenn KEINE EINZELNE FAHRT sie um mehr verschiebt als der
+    # Schritt gross ist, auf dem sie sitzt. Das Verhaeltnis ist massstabsfrei -
+    # eine feste Wattgrenze saenke mit der Wurzel aus der Fahrtenzahl von
+    # allein und waere in einem halben Jahr wirkungslos.
+    #
+    # Am Bestand vom 15.09.2026 (zwoelf Fahrten) sagt die Regel:
+    #   1 h  Verschiebung 0,45 W   Verhaeltnis 0,05   gemessen
+    #   2 h  Verschiebung 3,05 W   Verhaeltnis 0,37   gemessen
+    #   3 h  Verschiebung 10,0 W   Verhaeltnis 2,94   duenn
+    #   4 h  Verschiebung 14,4 W   Verhaeltnis 10,7   duenn
+    # Das deckt sich mit der Belegung der Schritte (10 · 9 · 3 · 2) - zwei
+    # voneinander unabhaengige Kriterien setzen die Grenze an dieselbe Stelle.
+    # Die Uebereinstimmung ist der Grund, ihr zu trauen.
+    plan = _plan_chain(selection["used"])
+    if plan:
+        keys = [ride["activity_id"] for ride in selection["used"]]
+        shifts: dict[int, float] = {}
+        for key in keys:
+            ohne = _plan_chain([r for r in selection["used"] if r["activity_id"] != key])
+            for row in ohne:
+                base_row = next((b for b in plan if b["hours"] == row["hours"]), None)
+                if base_row is not None:
+                    shifts[row["hours"]] = max(shifts.get(row["hours"], 0.0),
+                                               abs(row["watts"] - base_row["watts"]))
+        for index, row in enumerate(plan):
+            shift = shifts.get(row["hours"])
+            # Die erste Stunde hat keinen eigenen Schritt - sie wird an dem
+            # gemessen, der von ihr WEGFUEHRT. Ohne Nachfolger ist sie ein
+            # einzelner Punkt und nie "gemessen".
+            scale = abs(row["step"]) if row["step"] else (
+                abs(plan[index + 1]["step"] or 0.0) if index + 1 < len(plan) else 0.0)
+            ratio = (shift / scale) if (shift is not None and scale) else None
+            row["loo_shift"] = round(shift, 2) if shift is not None else None
+            row["loo_ratio"] = round(ratio, 2) if ratio is not None else None
+            row["band"] = "solid" if (ratio is not None and ratio < 1.0) else "thin"
+
     anchor = measured[0]["watts"] if measured else None
     anchor_n = measured[0]["n"] if measured else 0
     literature = []
@@ -260,12 +362,31 @@ def curve(data: dict[str, Any], aerobic_hr: float | None = None,
     else:
         base = None
 
+    # Die durchgezogene Linie endet, wo die Weglassprobe zum ersten Mal reisst -
+    # und sie WAECHST MIT: faehrt er fuenf Stunden oft genug, rueckt die Grenze
+    # nach rechts, ohne dass jemand eine Zahl anfasst.
+    plan_solid = 0
+    for row in plan:
+        if row.get("band") != "solid":
+            break
+        plan_solid = row["hours"]
+    plan_thin = max([row["hours"] for row in plan], default=0)
+
     solid_until = max([row["hour"] for row in measured if row["band"] == "solid"], default=None)
     thin_until = max([row["hour"] for row in measured if row["band"] in ("solid", "thin")],
                      default=None)
 
     return {
         "measured": measured,
+        # Die Leitzahl, nach GEPLANTER DAUER gelesen. Die verketteten Schritte
+        # stehen als `step` daneben - sie sind der Rechenweg und gehoeren in
+        # den aufklappbaren Teil, nicht in die grosse Zahl.
+        "plan": plan,
+        "plan_solid_until_hours": plan_solid or None,
+        "plan_thin_until_hours": plan_thin or None,
+        # Die Saetze reisen aus dem Modul, nicht als Literal im Frontend.
+        "selection_note": SELECTION_NOTE,
+        "axis_note": AXIS_NOTE,
         "literature": literature,
         "anchor_watts": anchor,
         "anchor_n": anchor_n,

@@ -302,6 +302,99 @@ check("Gegenprobe: eine Leseszeile wird gefunden",
        if "p050" in line and not line.strip().startswith(("#", "//", "*"))],
       ['  const w = f.p050;', 'x = row["p050"]'])
 
+# --- Die Leitzahl: Leistung fuer eine GEPLANTE Dauer --------------------------
+# Andere Leserichtung, dieselbe Rechnung. Und sie ist VERKETTET aus den
+# gepaarten Schritten, nicht aus den rohen Stundenmedianen - die stammen aus
+# verschiedenen Fahrten und tragen genau den Auswahleffekt, gegen den die
+# Paarung gebaut ist.
+def _r(key, *paare):
+    return {"activity_id": key, "hours": [{"hour": h, "p075": p} for h, p in paare]}
+
+BESTAND = [_r("a", (1, 150.0), (2, 140.0)), _r("b", (1, 160.0), (2, 148.0)),
+           _r("c", (1, 140.0)), _r("d", (1, 130.0), (2, 126.0))]
+kette = fatigue._plan_chain(BESTAND)
+
+check("Leitzahl: je geplanter Dauer ein Eintrag", [r.get("hours") for r in kette], [1, 2])
+check("Leitzahl: eine Stunde ist der Median der ersten Stunde",
+      (kette[0].get("watts") if kette else None), 145.0)
+# Roh waere der Median der zweiten Stunde (140+148+126)/3 -> 140,0.
+# Verkettet: 145,0 + Median(-10, -12, -4) = 145,0 - 10,0 = 135,0.
+check("Leitzahl: zwei Stunden kommt aus der KETTE, nicht aus dem rohen Median",
+      (kette[1].get("watts") if len(kette) > 1 else None), 135.0)
+check("Leitzahl: der Schritt reist als Rechenweg mit",
+      [(r.get("step"), r.get("step_n")) for r in kette], [(None, None), (-10.0, 3)])
+# GEGENPROBE, gezaehlt und benannt: der rohe Stundenmedian ist eine ANDERE
+# Zahl. Ohne sie prueft der Test oben nur, dass irgendetwas herauskommt.
+roh = sorted([140.0, 148.0, 126.0])[1]
+check("Leitzahl Gegenprobe: der rohe Median saehe anders aus", roh, 140.0)
+
+# Eine Fahrt ohne zweite Stunde bricht die Kette NICHT - sie traegt zur ersten
+# bei und fehlt beim Schritt. Genau das ist die Auswahl, die gepaart wegfaellt.
+check("Leitzahl: eine kurze Fahrt zaehlt bei der ersten Stunde mit",
+      (kette[0].get("n") if kette else None), 4)
+check("Leitzahl: und fehlt beim Schritt",
+      (kette[1].get("step_n") if len(kette) > 1 else None), 3)
+check("Leitzahl: ohne erste Stunde gibt es keine Kette",
+      fatigue._plan_chain([_r("x", (2, 140.0))]), [])
+check("Leitzahl: ohne Fahrten auch nicht", fatigue._plan_chain([]), [])
+
+# --- Die Weglassprobe als Grenze, MASSSTABSFREI -------------------------------
+# Eine Zahl gilt als gemessen, wenn keine einzelne Fahrt sie um mehr verschiebt
+# als der Schritt gross ist, auf dem sie sitzt. Eine feste Wattgrenze saenke
+# mit der Wurzel aus der Fahrtenzahl von allein.
+# Die Fahrten muessen den Ausschluss in rides() PASSIEREN, sonst kommt gar
+# keine Kette heraus und der Test prueft nichts - dieselbe Zonen-Fixture wie
+# oben, nur mit von Hand gesetzten Stundenwerten.
+data = {"activities": {}, "dfa": {}}
+for i, ride in enumerate(BESTAND):
+    data["activities"][ride["activity_id"]] = {
+        "start_date_local": f"2026-09-0{i + 1}T07:00:00", "name": "GA", "type": "Ride",
+        "moving_time": 9000, "icu_zone_times": VOLUMEN,
+        "icu_average_watts": 150, "icu_weighted_avg_watts": 155}
+    data["dfa"][ride["activity_id"]] = {"hours": ride["hours"]}
+out = fatigue.curve(data)
+check("Weglassprobe: die Fixture passiert den Ausschluss ueberhaupt",
+      out.get("rides_used"), 4)
+pl = out.get("plan") or []
+check("Weglassprobe: jede Leitzahl traegt ihre groesste Verschiebung",
+      all(r.get("loo_shift") is not None for r in pl), True)
+check("Weglassprobe: und das Verhaeltnis zum Schritt",
+      all(r.get("loo_ratio") is not None for r in pl), True)
+check("Weglassprobe: die erste Stunde wird am folgenden Schritt gemessen",
+      (pl[0].get("loo_ratio") is not None) if pl else None, True)
+check("Weglassprobe: jede Leitzahl traegt einen Bereich",
+      sorted({r.get("band") for r in pl}) != [], True)
+check("Weglassprobe: ueber dem Verhaeltnis 1 ist nichts mehr gemessen",
+      [r.get("hours") for r in pl
+       if r.get("band") == "solid" and (r.get("loo_ratio") or 0) >= 1.0], [])
+check("Weglassprobe: unter dem Verhaeltnis 1 ist nichts duenn",
+      [r.get("hours") for r in pl
+       if r.get("band") == "thin" and (r.get("loo_ratio") is not None)
+       and r["loo_ratio"] < 1.0], [])
+check("Weglassprobe: die durchgezogene Grenze bricht beim ERSTEN Riss ab",
+      out.get("plan_solid_until_hours"),
+      (pl[0]["hours"] if pl and pl[0].get("band") == "solid" else None)
+      if not (len(pl) > 1 and pl[1].get("band") == "solid") else pl[1]["hours"])
+
+# EIN STOERER, der die Kette kippt: eine Fahrt, die dem Schritt widerspricht,
+# muss das Verhaeltnis ueber 1 treiben und die Zahl aus "gemessen" nehmen.
+stoerer = BESTAND + [_r("z", (1, 120.0), (2, 190.0))]
+kz = fatigue._plan_chain(stoerer)
+check("Weglassprobe: ein Stoerer verschiebt den Schritt sichtbar",
+      (kz[1].get("step") if len(kz) > 1 else None) != -10.0, True)
+
+# --- Die zwei Saetze an der Kachel --------------------------------------------
+ok("Kachel: der Auswahleffekt der spaeten Stunden steht als Satz bereit",
+   "durchschnittliche" in fatigue.SELECTION_NOTE)
+ok("Kachel: und er sagt, dass er sich NICHT mit mehr Fahrten schliesst",
+   "schließt" in fatigue.SELECTION_NOTE)
+ok("Kachel: der Achsen-Vorbehalt nennt die Intensitaet der Vorbelastung",
+   "INTENSITÄT" in fatigue.AXIS_NOTE and "Fahrtzeit" in fatigue.AXIS_NOTE)
+check("Kachel: beide reisen ueber die Payload, nicht als Literal",
+      (out.get("selection_note"), out.get("axis_note")),
+      (fatigue.SELECTION_NOTE, fatigue.AXIS_NOTE))
+
+
 print(f"\ntest_fatigue: {CHECKS} Prüfungen, {len(failures)} Fehler")
 print("FEHLER:", failures if failures else "keine")
 sys.exit(1 if failures else 0)
