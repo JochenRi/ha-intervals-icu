@@ -139,7 +139,7 @@ def _plan_chain(used: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 by_hour.setdefault(int(row["hour"]), []).append(float(value))
     if 1 not in by_hour:
         return []
-    out = [{"hours": 1, "watts": round(median(by_hour[1]), 1), "n": len(by_hour[1]),
+    out = [{"hours": 1, "watts": median(by_hour[1]), "n": len(by_hour[1]),
             "step": None, "step_n": None}]
     current = median(by_hour[1])
     hour = 1
@@ -154,9 +154,9 @@ def _plan_chain(used: list[dict[str, Any]]) -> list[dict[str, Any]]:
             break
         current += median(deltas)
         hour += 1
-        out.append({"hours": hour, "watts": round(current, 1),
+        out.append({"hours": hour, "watts": current,
                     "n": len(by_hour.get(hour) or []),
-                    "step": round(median(deltas), 1), "step_n": len(deltas)})
+                    "step": median(deltas), "step_n": len(deltas)})
     return out
 
 
@@ -336,15 +336,31 @@ def curve(data: dict[str, Any], aerobic_hr: float | None = None,
             row["loo_shift"] = round(shift, 2) if shift is not None else None
             row["loo_ratio"] = round(ratio, 2) if ratio is not None else None
             row["band"] = "solid" if (ratio is not None and ratio < 1.0) else "thin"
+        # Gerundet wird ERST HIER, nach Kette, Weglassprobe und Anker.
+
 
     anchor = measured[0]["watts"] if measured else None
     anchor_n = measured[0]["n"] if measured else 0
     literature = []
     if anchor is not None:
-        # Der Anker sitzt auf der ERSTEN gemessenen Stunde, die Form wird von
-        # dort aus auf t = 0 zurueckgerechnet. Sonst haenge die Literaturkurve
-        # an einem Punkt, den niemand gefahren ist.
-        base = anchor / literature_factor(measured[0]["t"])
+        # DER ANKER SITZT AM LETZTEN GETRAGENEN PUNKT DER KETTE, nicht mehr an
+        # der ersten Stunde. Die Studienform ist die Fortsetzung dort, wo die
+        # eigenen Daten aufhoeren - haengt sie am Anfang, laeuft sie quer durch
+        # den gemessenen Bereich und behauptet neben jeder eigenen Zahl eine
+        # zweite. Angehaengt ans Ende sagt sie genau das, was sie kann: "so
+        # ginge es weiter, wenn du weiterfaehrst".
+        #
+        # Die Zeitachse ist dabei die GEPLANTE DAUER, nicht die Stundenmitte:
+        # der Kettenwert fuer drei Stunden gilt fuer eine Fahrt von drei
+        # Stunden, also t = 3,0. Die Stundenmitte (t = hour - 0,5) gehoert zur
+        # ungepaarten Reihe darueber und bleibt dort.
+        tail = plan[-1] if plan else None
+        if tail is not None:
+            base = tail["watts"] / literature_factor(float(tail["hours"]))  # ungerundet
+            attach_t = float(tail["hours"])
+        else:
+            base = anchor / literature_factor(measured[0]["t"])
+            attach_t = measured[0]["t"]
         # Die Streuung skaliert den VERLUST, nicht die Zeitachse. Eine erste
         # Fassung streckte die Zeit (f(t * k)) - das laeuft jenseits des
         # Studienhorizonts von rund 3,4 h aus der Form heraus, und die untere
@@ -356,6 +372,10 @@ def curve(data: dict[str, Any], aerobic_hr: float | None = None,
         def _point(t: float, hour: int | None) -> dict[str, Any]:
             return {
                 "hour": hour, "t": round(t, 2),
+                # JENSEITS des eigenen Bestands ist die Zahl reine Setzung.
+                # Das Feld sagt es, statt es der Zeichnung zu ueberlassen -
+                # eine gestrichelte Linie ist eine Gestaltung, kein Befund.
+                "beyond": t > attach_t + 0.01,
                 "watts": round(base * literature_factor(t), 1),
                 # lo/hi sind die SETZUNG mit ihrer publizierten Streuung -
                 # getrennt vom Mittelwert, damit das Band nie wie eine
@@ -369,7 +389,7 @@ def curve(data: dict[str, Any], aerobic_hr: float | None = None,
         # Feineres Raster als die Messstunden: der Zeiger soll ueber der Kurve
         # gleiten, nicht auf vier Punkte einrasten. Payload-Seite, damit
         # chart() unberuehrt bleibt.
-        last = measured[-1]["t"]
+        last = max(attach_t, measured[-1]["t"])
         t = 0.25
         while t <= last + 2.0:
             if all(abs(t - row["t"]) > 0.01 for row in measured):
@@ -378,6 +398,15 @@ def curve(data: dict[str, Any], aerobic_hr: float | None = None,
         literature.sort(key=lambda row: row["t"])
     else:
         base = None
+        attach_t = None
+
+    # GERUNDET WIRD ERST HIER - nach Kette, Weglassprobe UND Anker. Eine auf
+    # 0,1 W gerundete Zwischenzahl traegt ihren Rundungsfehler sonst in jeden
+    # Punkt der Studienform weiter; die Gegenprobe "doppelter Anker verdoppelt
+    # jeden Kurvenwert" hat genau das gefunden.
+    for row in plan:
+        row["watts"] = round(row["watts"], 1)
+        row["step"] = round(row["step"], 1) if row["step"] is not None else None
 
     # Die durchgezogene Linie endet, wo die Weglassprobe zum ersten Mal reisst -
     # und sie WAECHST MIT: faehrt er fuenf Stunden oft genug, rueckt die Grenze
@@ -405,6 +434,9 @@ def curve(data: dict[str, Any], aerobic_hr: float | None = None,
         "anchor_watts": anchor,
         "anchor_n": anchor_n,
         "anchor_base": round(base, 1) if base is not None else None,
+        # Wo die Setzung ansetzt - damit die Kachel sagen kann, ab wann sie
+        # spricht, ohne es aus den Punkten zurueckzurechnen.
+        "literature_from_hours": round(attach_t, 2) if measured else None,
         "solid_until_hour": measured_solid,
         "thin_until_hour": thin_until,
         "rides_used": len(selection["used"]),

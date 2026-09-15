@@ -157,8 +157,24 @@ print("\n=== Anker gemessen, Form gesetzt - und getrennt gehalten ===")
 
 check("der Anker ist der Median der ersten Stunde", a["anchor_watts"], 160.0)
 check("und traegt seine Belegung", a["anchor_n"], 12)
-ok("die Literaturkurve sitzt auf dem Anker",
-   abs(next(r for r in a["literature"] if r["hour"] == 1)["watts"] - a["anchor_watts"]) < 0.2)
+# GEAENDERT in B2, und zwar absichtlich: die Studienform sitzt nicht mehr auf
+# der ERSTEN gemessenen Stunde, sondern am LETZTEN getragenen Punkt der Kette.
+# Am Anfang angehaengt liefe sie quer durch den gemessenen Bereich und
+# behauptete neben jeder eigenen Zahl eine zweite; ans Ende gehaengt sagt sie
+# genau das, was sie kann - wie es weiterginge.
+_tail = (a.get("plan") or [])[-1] if a.get("plan") else None
+_treff = [r for r in a["literature"] if abs(r["t"] - (a.get("literature_from_hours") or -1)) < 0.01]
+ok("die Studienform sitzt am letzten getragenen Punkt der Kette",
+   _tail is not None and _treff != []
+   and abs(_treff[0]["watts"] - _tail["watts"]) < 0.2)
+ok("und sie beginnt genau dort zu SPRECHEN, nicht frueher",
+   all(not r.get("beyond") for r in a["literature"]
+       if r["t"] <= (a.get("literature_from_hours") or 0) + 0.01)
+   and any(r.get("beyond") for r in a["literature"]))
+# GEGENPROBE: der Anker der Kette ist NICHT der Median der ersten Stunde -
+# sonst prueft das oben nur, dass zwei gleiche Zahlen gleich sind.
+ok("Gegenprobe: der Anhaengepunkt liegt hinter der ersten Stunde",
+   (a.get("literature_from_hours") or 0) > 1.0)
 ok("sie faellt monoton", all(
     a["literature"][i]["watts"] > a["literature"][i + 1]["watts"]
     for i in range(len(a["literature"]) - 1)))
@@ -178,9 +194,20 @@ check("Form: bei t = 0 exakt 1,0", fatigue.literature_factor(0.0), 1.0)
 doppelt = [(f"d{i}", f"2026-08-{i + 1:02d}", "volumen", [320, 312], VOLUMEN, 130)
            for i in range(12)]
 d = fatigue.curve(bestand(doppelt))
-check("doppelter Anker verdoppelt jeden Kurvenwert",
-      [round(row["watts"] / 2, 1) for row in d["literature"]],
-      [row["watts"] for row in a["literature"]])
+# Toleranz 0,1 W statt exakter Gleichheit, und das ist eine VERENGUNG auf die
+# Aussage, nicht eine Aufweichung: geprueft wird, dass die Form mit dem Anker
+# SKALIERT. Bei exakter Gleichheit misst der Vergleich zusaetzlich die
+# Rundungsschwelle - round(2x, 1)/2 hat 0,05 W Aufloesung, round(x, 1) nur
+# 0,1 W, und wo der Anker auf einer ...,x5-Grenze landet, weichen zwei von
+# sechzehn Punkten um genau eine Rundungsstelle ab. Ein echter
+# Skalierungsfehler faellt um Groessenordnungen groesser aus.
+ok("doppelter Anker verdoppelt jeden Kurvenwert",
+   len(d["literature"]) == len(a["literature"]) and all(
+       abs(z["watts"] / 2 - e["watts"]) <= 0.1
+       for z, e in zip(d["literature"], a["literature"])))
+ok("Gegenprobe: ein anderer Faktor faellt sofort auf", not all(
+   abs(z["watts"] / 3 - e["watts"]) <= 0.1
+   for z, e in zip(d["literature"], a["literature"])))
 ok("das Raster ist feiner als die Messstunden - der Zeiger rastet nicht ein",
    len(a["literature"]) > 3 * len(a["measured"]))
 
