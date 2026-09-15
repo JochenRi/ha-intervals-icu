@@ -365,6 +365,35 @@ check("Leitzahl: ohne erste Stunde gibt es keine Kette",
       fatigue._plan_chain([_r("x", (2, 140.0))]), [])
 check("Leitzahl: ohne Fahrten auch nicht", fatigue._plan_chain([]), [])
 
+# DIE KETTE RECHNET UNGERUNDET, gerundet wird erst bei der Ausgabe. Das ist
+# kein Schoenheitsfehler: der Anker der Studienform haengt an der letzten
+# Kettenzahl, und ein auf 0,1 W gerundeter Zwischenwert traegt seinen Fehler
+# in jeden Punkt der Form weiter. Eigener Waechter, weil die Toleranz in der
+# Verdopplungsprobe weiter unten genau diese Mutation verschluckt (M32 kam
+# dort mit 0 Fehlern durch) - die Toleranz bleibt richtig fuer IHRE Frage,
+# aber sie beantwortet diese hier nicht.
+HALB = fatigue._plan_chain([_r("p", (1, 150.0)), _r("q", (1, 141.1))])
+check("Rundung: die Kette gibt den Median ungerundet heraus",
+      (HALB[0].get("watts") if HALB else None), 145.55)
+_d = {"activities": {}, "dfa": {}}
+for i, (k, v) in enumerate((("p", 150.0), ("q", 141.1))):
+    _d["activities"][k] = {"start_date_local": f"2026-09-0{i + 1}T07:00:00", "name": "GA",
+                           "type": "Ride", "moving_time": 9000, "icu_zone_times": VOLUMEN,
+                           "icu_average_watts": 150, "icu_weighted_avg_watts": 155}
+    _d["dfa"][k] = {"hours": [{"hour": 1, "p075": v}]}
+# Und derselbe Waechter fuer die FOLGEPUNKTE - der erste allein liess die
+# Mutation "runde in der Kette" durch (M32, 0 Fehler), weil sie nur die
+# Schritte betraf. Zwei Fahrten, deren Schrittmedian zwei Stellen hat.
+KETTE2 = fatigue._plan_chain([_r("p", (1, 150.0), (2, 140.0)),
+                              _r("q", (1, 141.0), (2, 134.9))])
+check("Rundung: auch der verkettete Punkt bleibt ungerundet",
+      (round(KETTE2[1]["watts"], 4) if len(KETTE2) > 1 else None), 137.45)
+check("Rundung: und der Schritt ebenso",
+      (round(KETTE2[1]["step"], 4) if len(KETTE2) > 1 else None), -8.05)
+
+check("Rundung: die AUSGABE rundet auf eine Stelle",
+      ((fatigue.curve(_d).get("plan") or [{}])[0].get("watts")), 145.6)
+
 # --- Die Weglassprobe als Grenze, MASSSTABSFREI -------------------------------
 # Eine Zahl gilt als gemessen, wenn keine einzelne Fahrt sie um mehr verschiebt
 # als der Schritt gross ist, auf dem sie sitzt. Eine feste Wattgrenze saenke
