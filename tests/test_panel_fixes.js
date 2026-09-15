@@ -1786,10 +1786,14 @@ const acts = F.activities(), thr = F.thresholds();
       moving_time: 3600, distance: 30000, icu_training_load: 55, average_heartrate: 130 },
   ];
   q._smarks = { marks: [
+    // TEILWEISE GEMESSEN: Tempo fertig, SweetSpot offen. Genau der Fall, den
+    // ein Haken für die ganze Fahrt verschweigen würde.
     { activity_id: "a1", date: "2026-09-10", marks: { tempo: [600], sweetspot: [1800] },
-      hours: null, reason: "Markiert, noch nicht gemessen" },
+      measure: { tempo: { blocks: [{ start_index: 600, alpha: 0.9, watts: 180 }] } },
+      reason: "" },
     { activity_id: "a2", date: "2026-09-08", marks: { endurance: [0] },
-      hours: [{ hour: 1, p075: 205 }, { hour: 2, p075: 198 }], reason: "" },
+      measure: { endurance: { hours: [{ hour: 1, p075: 205 }, { hour: 2, p075: 198 }] } },
+      reason: "" },
   ], families: Object.keys(M.FAM), stale_reason: {} };
   q._laps = {}; q._streams = {}; q._night = {}; q._ctx = {};
   q._rtests = { tests: [] };
@@ -1813,11 +1817,31 @@ const acts = F.activities(), thr = F.thresholds();
   ok(zelle3 !== null && zelle3.trim() === "",
      `markenspalte: eine unberührte Fahrt zeigt etwas (${JSON.stringify(zelle3)})`);
 
-  // MESSZUSTAND statt Driftzeichen: blass, solange nicht gemessen
-  ok(/class="smk todo"/.test(z1),
-     "markenspalte: eine ungemessene Marke sieht aus wie eine gemessene");
+  // MESSZUSTAND JE FAMILIE, nicht je Fahrt. TREFFERZUSICHERUNG zuerst: die
+  // Fixture trägt in Zeile 1 wirklich eine gemessene UND eine offene Familie -
+  // ohne den Unterschied prüft alles darunter nichts.
+  const a1 = q._smarks.marks[0];
+  ok(Object.keys(a1.marks).length === 2 && Object.keys(a1.measure).length === 1,
+     "markenspalte Fixture-Beweis: die Fahrt ist nicht teilweise gemessen");
+  // Je Kürzel den eigenen Block lesen, nicht über das SVG hinweg regexen -
+  // das Symbol dazwischen ist 250 Zeichen lang und verschluckt jedes Fenster.
+  const stueck = (html, kuerzel) =>
+    html.split("<i ").find((teil) => teil.includes(">" + kuerzel)) || "";
+  ok(/class="smk todo"/.test(stueck(z1, "SST")),
+     "markenspalte: die offene Familie sieht aus wie eine gemessene");
+  ok(/class="smk done"/.test(stueck(z1, "TMP")),
+     "markenspalte: die gemessene Familie derselben Fahrt wird blass gezeichnet");
+  ok(!/smkok/.test(stueck(z1, "SST")) && /smkok/.test(stueck(z1, "TMP")),
+     "markenspalte: der Haken steht an der falschen Familie");
   ok(!/class="smk todo"/.test(z2),
      "markenspalte: eine GEMESSENE Marke wird blass gezeichnet");
+  // DAS ZEICHEN, nicht der Ton: der Haken steht da, und er trägt KEINEN
+  // Urteilston - "fertig" ist ein Zustand, keine Note.
+  ok(/smkok/.test(z1) && /smkok/.test(z2),
+     "markenspalte: der Messzustand steht nur in der Sättigung, nicht als Zeichen");
+  const cssHak = (H.source().match(/\.smkok\{[^}]*\}/) || [""])[0];
+  ok(cssHak !== "" && !/green|amber|red/i.test(cssHak),
+     `markenspalte: der Haken trägt einen Urteilston (${cssHak})`);
   const cssP5 = (H.source().match(/_css\(\) \{[\s\S]*$/) || [""])[0];
   ok(/\.smk\.todo\{[^}]*opacity/.test(cssP5),
      "markenspalte: der ungemessene Zustand hat keine eigene Darstellung");

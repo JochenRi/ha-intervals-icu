@@ -3940,11 +3940,28 @@ class IntervalsIcuPanel extends HTMLElement {
     const keys = Object.keys(FAM).filter(
       (key) => ((row.marks || {})[key] || []).length);
     if (!keys.length) return "";
-    const gemessen = !!(row.hours && row.hours.length);
-    return keys.map((key) => `<i class="smk ${gemessen ? "" : "todo"}"
-      style="--fc:${FAM[key].c}" title="${esc(FAM[key].l)}${gemessen
+    // JE FAMILIE, nicht je Fahrt. Seit B2b-0 misst der Knopf jede Familie
+    // einzeln, und an der 20.08.2026 hängen drei an einer Fahrt - ein Haken
+    // für die ganze Fahrt wäre dort in zwei von drei Fällen gelogen. Ein
+    // Sammelhaken müsste "alle fertig" heißen und stünde beim Durcharbeiten
+    // fast nie.
+    const fertig = (key) => {
+      const got = ((row.measure || {})[key]) || null;
+      if (!got) return false;
+      return !!((got.hours && got.hours.length) || (got.blocks && got.blocks.length));
+    };
+    // DAS ZEICHEN IST EINE FORM, KEINE FARBE. Grün ist das Urteilsregister
+    // (gut/mittel/schlecht); "fertig gemessen" ist ein Zustand und kein Urteil,
+    // und eine gemessene Fahrt ist weder besser noch schlechter als eine
+    // offene. Der Haken trägt deshalb die FAMILIENfarbe - dasselbe Register,
+    // in dem das Kürzel schon steht - und unterscheidet sich durch das
+    // Zeichen, nicht durch den Ton. Die Sättigung allein war beim Scrollen
+    // nicht zu sehen.
+    return keys.map((key) => `<i class="smk ${fertig(key) ? "done" : "todo"}"
+      style="--fc:${FAM[key].c}" title="${esc(FAM[key].l)}${fertig(key)
         ? " — gemessen" : " — markiert, noch nicht gemessen"}"
-      >${ico(FAM[key].ic, FAM[key].c, 10)}${FAM[key].k}</i>`).join("");
+      >${ico(FAM[key].ic, FAM[key].c, 10)}${FAM[key].k}${
+        fertig(key) ? `<b class="smkok">✓</b>` : ""}</i>`).join("");
   }
 
   _dfaShares(s) {
@@ -5602,6 +5619,8 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
   border-radius:6px;padding:1px 5px 1px 3px}
 .amk{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
 .smk.todo{opacity:.5}
+/* Familienfarbe, nicht Urteilston: der Haken sagt "fertig", nicht "gut". */
+.smkok{font-style:normal;font-weight:700;font-size:10px;margin-left:1px;color:var(--fc)}
 .smbox{width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;
   border:2px solid ${C.line};border-radius:6px;background:none;cursor:pointer;padding:0}
 .smbox:hover{border-color:var(--fc)}

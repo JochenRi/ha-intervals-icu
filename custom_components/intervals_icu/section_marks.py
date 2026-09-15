@@ -153,9 +153,20 @@ NOT_ACTIVE_CURVE = ("Die Grundlage misst über die Ermüdungskurve. Der Knopf "
 # Folge laesst den Athleten raten. Die Schwelle selbst wird NICHT genannt -
 # sie steht in keiner Payload (P8 ist nicht gebaut), und eine hier
 # abgeschriebene Zahl waere die zweite Wahrheit.
-NO_VALUE = ("Kein Wert: dein alpha lag durchgehend über dem Zielbereich — die "
-            "Fahrt war zu locker für diese Messung. Sie zählt nicht mit, und "
-            "das ist kein Fehler.")
+# KEIN WORT, DAS NACH MANGEL KLINGT. Die erste Fassung sagte "zu locker fuer
+# diese Messung" - beschrieben war damit die Fahrt aus der Sicht einer
+# Schwellenmessung, die der Athlet gar nicht gefahren hat. Eine Grundlagenfahrt
+# bei hohem alpha ist genau richtig gefahren; dass sie der Kurve keinen Punkt
+# gibt, ist eine Eigenschaft der MESSUNG, nicht der Fahrt.
+#
+# Die Schwellenzahl wird NICHT genannt: sie steht in keiner Payload (P8), und
+# eine hier abgeschriebene waere die zweite Wahrheit.
+NO_VALUE = ("Diese Fahrt gibt der Ermüdungskurve keinen Punkt: dein alpha ist "
+            "durchgehend über der Schwelle geblieben, du bist also darunter "
+            "gefahren — für eine Grundlagenfahrt genau richtig. Die Kurve liest "
+            "nur Stunden, in denen die Schwelle im Verlauf erreicht wird; das "
+            "sind meist die längeren Fahrten. Für dein Training zählt diese "
+            "Fahrt wie jede andere Grundlagenfahrt.")
 
 # Der Messweg rechnet heute NUR die Kurve. Fuer die Blockfamilien gibt es ihn
 # noch nicht, und lieber gar keine Zahl als eine, die niemand angefordert hat.

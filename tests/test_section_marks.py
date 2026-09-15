@@ -565,6 +565,21 @@ ok("Messzustand: und er sagt, dass sich die AUSWAHL geaendert hat",
 
 # Der Leseweg nimmt die alte Messung nicht an: sie sass auf einem anderen
 # Ausschnitt.
+# DER SATZ BEI EINER FAHRT OHNE KURVENPUNKT beschreibt die MESSUNG, nicht die
+# Fahrt. Eine Grundlagenfahrt bei hohem alpha ist genau richtig gefahren -
+# "zu locker" las sich wie ein Vorwurf und beschrieb sie aus der Sicht einer
+# Schwellenmessung, die der Athlet nicht gefahren hat.
+for wort in ("zu locker", "Fehler", "Mangel", "leider", "nicht ausreich"):
+    ok(f"Kein-Wert-Satz: das Wort {wort!r} klingt nach Mangel",
+       wort not in sm.NO_VALUE)
+ok("Kein-Wert-Satz: er sagt nicht, dass die Fahrt als Grundlage zaehlt",
+   "Grundlagenfahrt" in sm.NO_VALUE)
+ok("Kein-Wert-Satz: er sagt nicht, welche Fahrten die Kurve braucht",
+   "längeren" in sm.NO_VALUE and "im Verlauf erreicht" in sm.NO_VALUE)
+# Und er nennt die Schwellenzahl NICHT - sie steht in keiner Payload (P8).
+for zahl in ("0,75", "0.75"):
+    ok(f"Kein-Wert-Satz: er schreibt die Schwelle {zahl} ab", zahl not in sm.NO_VALUE)
+
 check("Messzustand: nach dem Umhaken gibt usable_hours nichts mehr her",
       sm.usable_hours(sm.entry_for(ma, "d1"), LAPS), None)
 
