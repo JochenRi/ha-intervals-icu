@@ -1131,6 +1131,27 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   ok(/ACHSENSATZ AUS DER PAYLOAD/.test(ganzFest),
      "L1: der Achsen-Vorbehalt faellt mit der duennen Zone weg - er gilt immer");
 
+  // DIE LINIE BRICHT BEIM ERSTEN RISS AB, an einer Fixture MIT Luecke geprueft.
+  // Ohne Luecke sind "bis zum Riss" und "alle festen Punkte" dieselbe Menge -
+  // die Mutation kam daran mit 0 Fehlern vorbei (M35). Dieselbe Klasse wie der
+  // Backend-Fall solid_until (§7).
+  const luecke = String(q.rFatigue(F.fatigue({
+    plan: [{ hours: 1, watts: 152.5, n: 26, step: null, step_n: null,
+             loo_shift: 0.4, loo_ratio: 0.04, band: "solid" },
+           { hours: 2, watts: 142.4, n: 23, step: -10.1, step_n: 9,
+             loo_shift: 9.9, loo_ratio: 2.75, band: "thin" },
+           { hours: 3, watts: 138.8, n: 5, step: -3.6, step_n: 8,
+             loo_shift: 0.5, loo_ratio: 0.14, band: "solid" }],
+    plan_solid_until_hours: 1, plan_thin_until_hours: 3 })));
+  // Der dicke Zug darf die Luecke NICHT ueberspannen: mit einem einzigen
+  // festen Punkt gibt es gar keinen Zug (ein Pfad braucht zwei Punkte).
+  const dick = [...luecke.matchAll(/<path d="([^"]*)"[^>]*stroke-width="2\.6"/g)];
+  ok(dick.length === 0,
+     `L1: der durchgezogene Zug ueberspannt den Riss (${dick.length} Pfade)`);
+  // Trefferzusicherung: die Fixture ERZEUGT wirklich eine Luecke.
+  ok(/stroke-width="1\.6"/.test(luecke),
+     "L1 Fixture-Beweis: die Luecken-Fixture zeichnet gar keinen duennen Zug");
+
   const nurDuenn = String(q.rFatigue(F.fatigue({
     plan: F.fatigue().plan.map((r) => ({ ...r, band: "thin", loo_ratio: 2.0 })),
     plan_solid_until_hours: null })));
