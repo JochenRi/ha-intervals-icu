@@ -1180,4 +1180,170 @@ const acts = F.activities(), thr = F.thresholds();
   }
 }
 
-report("test_panel_fixes");
+/* ── Die Zuordnung, AM SIMULIERTEN EREIGNIS (docs/ausbau.md P2) ────────────
+   Nicht per grep: geprüft wird, was der echte Klick-Handler mit den ATTRIBUTEN
+   macht, die wirklich gerendert worden sind. Die entscheidende Aussage ist,
+   dass der Haken den `start_index` schickt und nicht die laufende Nummer —
+   und die ist an einem String im Quelltext nicht zu haben (Lehre 3 aus
+   Paket A). */
+{
+  const q = new M.Panel();
+  // Eine Fahrt mit einer PAUSE: laufende Nummer und start_index laufen damit
+  // auseinander, sonst wäre der Unterschied unsichtbar (Lehre 2 aus Paket A).
+  const laps = [
+    { n: 1, label: "WARMUP", start_index: 0, moving_time: 600, avg_watts: 120, avg_hr: 120, ef: 1.0, dfa_a1: 0.95 },
+    { n: 2, label: "WORK", start_index: 600, moving_time: 600, avg_watts: 250, avg_hr: 165, ef: 1.5, dfa_a1: 0.55 },
+    { n: 3, label: "RECOVERY", start_index: 1200, moving_time: 90, avg_watts: 95, avg_hr: 130, ef: 0.7, dfa_a1: 0.9 },
+    { n: 4, label: "WORK", start_index: 1290, moving_time: 600, avg_watts: 232, avg_hr: 163, ef: 1.4, dfa_a1: 0.58 },
+  ];
+  const act = { id: "a1", name: "Tempo", dfa: { blocks: [{ start_index: 600 }, { start_index: 1290 }] } };
+  q._laps = { a1: { laps, source: "icu_intervals" } };
+  q._smarks = { marks: [], families: Object.keys(M.FAM), stale_reason: {}, not_measured: "x" };
+  q._rtests = { tests: [] };
+  q._sel = act;
+  q._famSel = null;
+
+  let renders = 0;
+  q._render = () => { renders++; };
+  q._attach();
+  const onClick = q.shadowRoot._listeners.click;
+  ok(typeof onClick === "function", "zuordnung: kein Klick-Handler registriert");
+
+  // ein Klick auf ein wirklich gerendertes Element nachstellen
+  const attrsOf = (html, needle) => {
+    const re = new RegExp("<button[^>]*" + needle + "[^>]*>");
+    const tag = re.exec(html);
+    if (!tag) return null;                      // Regex null-geprüft (§9)
+    const out = {};
+    for (const m of tag[0].matchAll(/data-([a-z]+)="([^"]*)"/g)) out[m[1]] = m[2];
+    return out;
+  };
+  const fire = (dataset) => onClick({ target: { closest: (sel) => (sel === "[data-act]" ? { dataset } : null) } });
+
+  // ── die Familienwahl ───────────────────────────────────────────────────
+  const reihe = q._marksBlock(act);
+  const tempoTile = attrsOf(reihe, 'data-id="tempo"');
+  ok(tempoTile !== null, "zuordnung: die Tempo-Kachel wird gar nicht gerendert");
+  ok(tempoTile && tempoTile.act === "famsel",
+     `zuordnung: die Kachel trägt nicht die Wahl-Aktion (${tempoTile && tempoTile.act})`);
+  fire(tempoTile || {});
+  ok(q._famSel === "tempo", `zuordnung: der Klick wählt die Familie nicht (${q._famSel})`);
+  fire(tempoTile || {});
+  ok(q._famSel === null, "zuordnung: dieselbe Kachel noch einmal hebt die Wahl nicht auf");
+  fire(tempoTile || {});
+
+  // die aktive Kachel trägt Rahmen, Form UND Wort - nicht nur eine Sättigung
+  const aktiv = q._marksBlock(act);
+  ok(/class="famtile on/.test(aktiv), "zuordnung: die aktive Kachel trägt keine eigene Klasse");
+  ok(aktiv.includes("gewählt"), "zuordnung: die aktive Kachel sagt es nicht mit einem Wort");
+  const cssSrc = (H.source().match(/_css\(\) \{[\s\S]*$/) || [""])[0];
+  ok(/\.famtile\.on\{[^}]*border-color/.test(cssSrc),
+     "zuordnung: die aktive Kachel bekommt keinen eigenen Rahmen");
+
+  // ── DER HAKEN SCHICKT DEN start_index, NICHT DIE LAUFENDE NUMMER ───────
+  const sent = [];
+  q._ws = (cmd, args) => { sent.push([cmd, args]); return Promise.resolve({}); };
+  const liste = q._lapBlock(act);
+  // der Haken am VIERTEN Abschnitt: laufende Nummer 4, start_index 1290
+  const box = attrsOf(liste, 'data-idx="1290"');
+  ok(box !== null, "zuordnung: die Haken-Spalte rendert keinen Knopf für Abschnitt 1290");
+  ok(box && box.act === "smark", `zuordnung: falsche Aktion am Haken (${box && box.act})`);
+  ok(box && box.fam === "tempo", `zuordnung: der Haken trägt die Familie nicht (${box && box.fam})`);
+  fire(box || {});
+  ok(sent.length === 1, `zuordnung: der Klick schickt nichts (${sent.length} Aufrufe)`);
+  ok(sent[0] && sent[0][0] === "set_section_mark",
+     `zuordnung: falsches Kommando (${sent[0] && sent[0][0]})`);
+  ok(sent[0] && sent[0][1] && sent[0][1].start_index === 1290,
+     `zuordnung: der Haken schickt ${sent[0] && sent[0][1] && sent[0][1].start_index} statt 1290 — ` +
+     "das ist die laufende Nummer statt des start_index (P3a)");
+  ok(sent[0] && sent[0][1] && sent[0][1].start_index !== 4,
+     "zuordnung: der Haken schickt die laufende Nummer");
+  ok(sent[0] && sent[0][1] && sent[0][1].mark === true,
+     "zuordnung: ein leerer Kasten setzt keine Marke");
+
+  // und derselbe Haken, wenn die Marke schon steht, nimmt sie ZURÜCK
+  q._smarks = { marks: [{ activity_id: "a1", date: "2026-09-10", marks: { tempo: [1290] },
+                          hours: null, reason: "Markiert, noch nicht gemessen" }],
+                families: Object.keys(M.FAM), stale_reason: {} };
+  const liste2 = q._lapBlock(act);
+  const box2 = attrsOf(liste2, 'data-idx="1290"');
+  ok(box2 !== null, "zuordnung: der gesetzte Haken verschwindet aus der Liste");
+  ok(box2 && box2.on === "1", "zuordnung: der gesetzte Haken sieht aus wie ein leerer");
+  sent.length = 0;
+  fire(box2 || {});
+  ok(sent.length === 0,
+     "zuordnung: ein zweiter Klick schickt, WÄHREND der erste noch läuft");
+  q._smBusy = null;
+  fire(box2 || {});
+  ok(sent[0] && sent[0][1] && sent[0][1].mark === false,
+     "zuordnung: ein gesetzter Haken setzt noch einmal, statt zurückzunehmen");
+  // Gegenprobe: ohne data-on wäre jeder Klick ein Setzen - der Wächter oben
+  // prüft dann nichts.
+  ok(({ on: "0" }).on !== "1" && ({ on: "1" }).on === "1",
+     "zuordnung Gegenprobe: der Zustand am Knopf wird gar nicht gelesen");
+
+  // die Marke steht als Kürzel in der eigenen Spalte, nicht zwischen den Balken
+  ok(/<span class="lmk">/.test(liste2), "zuordnung: es gibt keine eigene Marken-Spalte");
+  ok(liste2.includes("TMP"), "zuordnung: das Kürzel steht nicht in der Spalte");
+  ok(/<span>Zuordnung<\/span>/.test(liste2), "zuordnung: die Spalte hat keine Kopfzeile");
+  const lmkPos = liste2.indexOf('class="lmk"'), dfaPos = liste2.indexOf(M.ROLE.dfa);
+  ok(lmkPos > dfaPos, "zuordnung: die Marken stehen vor den rollengefärbten Balken");
+
+  // ── ein Abschnitt OHNE start_index ist nicht zuzuordnen, und sagt es ────
+  q._laps = { a1: { laps: laps.concat([{ n: 5, label: "ENDE", moving_time: 300, avg_watts: 90 }]) } };
+  const liste3 = q._lapBlock(act);
+  ok(/nicht zuzuordnen/.test(liste3),
+     "zuordnung: ein Abschnitt ohne Startpunkt fehlt still, statt es zu sagen");
+  q._laps = { a1: { laps } };
+}
+
+/* ── Die drei Fehlergründe kommen im KLARTEXT an ───────────────────────────
+   Nicht "Fehler beim Markieren": der häufigste Fall ist "in Intervals
+   unterteilen", und der ist nur als eigener Satz brauchbar. */
+(async () => {
+  const q = new M.Panel();
+  const act = { id: "a1", name: "Tempo", dfa: { blocks: [{ start_index: 600 }] } };
+  q._smarks = { marks: [], families: Object.keys(M.FAM), stale_reason: {} };
+  q._rtests = { tests: [] };
+  q._famSel = "tempo";
+  q._render = () => {};
+  const scrolls = [];
+  Object.defineProperty(q, "scrollTop", {
+    get: () => 742, set: (v) => scrolls.push(v), configurable: true });
+
+  const saetze = [
+    ["abrufbar", "Die Abschnitte dieser Fahrt sind nicht abrufbar (502) — ohne sie wird nichts markiert, weil die Markierung sonst ohne Anker stünde."],
+    ["unterteilen", "Intervals liefert für diese Fahrt keine Abschnitte — sie ist dort zu unterteilen, damit es hier etwas zu markieren gibt."],
+    ["laufende Nummer", "Abschnitt 4 kommt in dieser Fahrt nicht vor — der Schlüssel ist der start_index des Abschnitts, nicht seine laufende Nummer"],
+  ];
+  for (const [stichwort, satz] of saetze) {
+    q._smErr = null;
+    q._smBusy = null;
+    q._ws = () => Promise.reject(new Error(satz));
+    await q._smWrite("a1", "tempo", 600, true);
+    ok(q._smErr !== null && q._smErr.id === "a1",
+       `fehlergründe: ${stichwort} wird gar nicht festgehalten`);
+    const html = q._marksBlock(act);
+    ok(html.includes(stichwort),
+       `fehlergründe: „${stichwort}“ kommt in der Karte nicht an`);
+    ok(!/Fehler beim Markieren|Unbekannter Fehler/.test(html),
+       `fehlergründe: ${stichwort} wurde zu einer allgemeinen Meldung zusammengefasst`);
+    // und der Satz steht in der Karte DIESER Fahrt, nicht irgendwo
+    ok(q._marksBlock({ id: "a2", dfa: null }).includes(stichwort) === false,
+       `fehlergründe: ${stichwort} erscheint auch an einer fremden Fahrt`);
+  }
+  ok(scrolls.length >= saetze.length && scrolls[scrolls.length - 1] === 742,
+     `fehlergründe: die Scroll-Lage überlebt den Fehler nicht (${JSON.stringify(scrolls)})`);
+
+  // Gegenprobe: ein GELUNGENER Schreibvorgang hinterlässt keinen Fehler und
+  // hält die Scroll-Lage genauso.
+  q._smErr = null; q._smBusy = null;
+  scrolls.length = 0;
+  q._ws = () => Promise.resolve({ marks: [] });
+  await q._smWrite("a1", "tempo", 600, true);
+  ok(q._smErr === null, "fehlergründe Gegenprobe: ein gelungener Schreibvorgang meldet einen Fehler");
+  ok(scrolls.length === 1 && scrolls[0] === 742,
+     "fehlergründe Gegenprobe: die Scroll-Lage überlebt das Re-Render nicht");
+
+  report("test_panel_fixes");
+})();

@@ -4150,6 +4150,28 @@ aus einer Bewegungszeit auf einer Stromachse — genau der Versatz aus §7
 Drifterkennung da. Das steht jetzt auch im Kopf von `section_marks.py`, damit
 es niemand aus dem Feldnamen erschließen muss.
 
+#### Der Fehlerpfad beim Markieren: hier steht die Marke NICHT ohne Anker
+
+`ramp_tests` Regel 2 lautet: keine stille Messung — die Markierung steht
+trotzdem, aber mit dem Grund daneben. **Diese Regel ist hier NICHT übertragbar,
+und der Unterschied ist genau zu benennen:** beim Stufentest fällt die MESSUNG
+aus, und die Aussage „diese Fahrt war ein Stufentest" ist auch ohne sie
+vollständig. Beim Markieren eines Abschnitts fiele das aus, was die Aussage
+überhaupt erst BESTIMMT — ohne Laps gibt es weder einen geprüften Schlüssel
+noch einen Anker. **Eine Marke ohne Anker ist eine, deren Drift nie auffallen
+kann; sie gälte für immer als sitzend.** Der stille Ausstieg, eine Ebene tiefer.
+
+Also: scheitert der Lap-Abruf beim Setzen, wird **nichts geschrieben**, und der
+Grund steht an der Kachel. Drei Fälle, getrennt benannt: Abruf gescheitert ·
+Intervals liefert für diese Fahrt keine Abschnitte · der Schlüssel ist keine
+Abschnittsstelle.
+
+**Die RÜCKNAHME läuft in allen drei Lagen durch.** Sie braucht weder Laps noch
+Datum — geprüft wird beim Setzen, das Datum steht im Eintrag. Deshalb sind
+`set_mark` und `unset_mark` getrennt: eine falsch gesetzte Marke ausgerechnet
+dann nicht loswerden zu können, wenn die Schnittstelle klemmt, wäre der
+ärgerlichste denkbare Zustand.
+
 #### P8 ist nicht frontend-only — das dritte Mal
 
 Die Auflage lautet, 0,75 und 0,5 kämen aus der Payload (fünfte Bauregel).

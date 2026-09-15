@@ -71,6 +71,18 @@ const IC = {
   swim: '<path d="M3 17.5c2-1.6 4-1.6 6 0s4 1.6 6 0 4-1.6 6 0"/><circle cx="16.4" cy="7.6" r="1.9"/><path d="M4.5 13.5l5.5-3.4 4 2.4"/>',
   gym:  '<path d="M4 10v4M7.2 8v8M16.8 8v8M20 10v4M7.2 12h9.6"/>',
   dot:  '<circle cx="12" cy="12" r="5"/>',
+  /* Die sechs Zuordnungs-Familien (docs/ausbau.md P2a). Jede eine EIGENE
+     Form, keine Variante einer anderen - und bewusst KEINE Kreis-, Dreieck-
+     oder Rautengrundform: die gehoeren dem Urteilsregister (ok/warn/stop/na
+     und surge). Die Farbe verstaerkt hier nur; getragen wird die Identitaet
+     von Form UND Kuerzel, weil ROLE das Kategorienregister in genau dieser
+     Ansicht bereits vollstaendig belegt. */
+  famVo2:  '<path d="M12 3.5l8.2 6-3.1 9.6H6.9L3.8 9.5z"/>',
+  famSst:  '<path d="M8 4h8l4 8-4 8H8l-4-8z"/>',
+  famTmp:  '<path d="M5 5h14v14H5z"/>',
+  famThr:  '<path d="M4 18h16M4 18a8 8 0 0 1 16 0"/>',
+  famEnd:  '<path d="M8.5 7.5h7a4.5 4.5 0 0 1 0 9h-7a4.5 4.5 0 0 1 0-9z"/>',
+  famLng:  '<path d="M9 5.5h11l-5 13H4z"/>',
   moon: '<path d="M19.5 13.8A7.6 7.6 0 0 1 10.2 4.5 7.6 7.6 0 1 0 19.5 13.8z"/>',
   heart:'<path d="M12 20s-7-4.4-7-9.7A3.9 3.9 0 0 1 12 7.6a3.9 3.9 0 0 1 7 2.7C19 15.6 12 20 12 20z"/>',
   pulse:'<path d="M3 12h4l2-4.5 3.5 9L15 12h6"/>',
@@ -685,6 +697,31 @@ const CTX_COLOR = {
   normal: C.slate, nachtschicht: C.violet, spaetschicht: C.blue,
   reise: C.cyan, alkohol: C.magenta, krank: C.deep, uhr_nicht_getragen: C.grey,
 };
+
+/* Die sechs Familien mit Abschnitts-Haken (docs/ausbau.md P2).
+
+   FORM UND KUERZEL TRAGEN DIE IDENTITAET, die Farbe verstaerkt. Das ist keine
+   Vorsicht, sondern am Code begruendet: ROLE belegt in GENAU DIESER Ansicht
+   pow/hr/dfa/cad/vel/alt, also alle sechs Toene des Datenregisters, und die
+   Rundenliste zeichnet den EF-Balken in ROLE.pow und den DFA-Balken in
+   ROLE.dfa. Eine Farbe allein koennte hier nichts tragen, was nicht schon
+   vergeben waere. Deshalb stehen die Haken zusaetzlich in einer EIGENEN
+   Spalte mit Kopfzeile, nicht zwischen den rollengefaerbten Balken.
+
+   Urteilsfarben kommen hier nicht vor - eine Familie ist eine Kategorie,
+   kein Urteil. Ein Test erzwingt beides. */
+const FAM = {
+  vo2max:    { k: "VO2",  ic: "famVo2", c: C.magenta, l: "VO2max" },
+  sweetspot: { k: "SST",  ic: "famSst", c: C.violet,  l: "SweetSpot" },
+  tempo:     { k: "TMP",  ic: "famTmp", c: C.blue,    l: "Tempo" },
+  threshold: { k: "SCHW", ic: "famThr", c: C.cyan,    l: "Schwelle" },
+  endurance: { k: "GA",   ic: "famEnd", c: C.slate,   l: "Grundlage" },
+  long:      { k: "LANG", ic: "famLng", c: C.deep,    l: "lange Fahrt" },
+};
+/* Welche Familien ueber BLOECKE messen und welche ueber den Stundenverlauf.
+   Grundlage und lange Fahrt brauchen keine Bloecke - sie messen ueber
+   `hours` (P2c, dritte Zeile). */
+const FAM_BLOCKS = ["vo2max", "sweetspot", "tempo", "threshold"];
 
 const STATE_WORD = {
   slump: "Einbruch", recovering: "noch im Einbruch", rebound: "Erholung nach Einbruch",
@@ -1635,13 +1672,14 @@ class IntervalsIcuPanel extends HTMLElement {
     this._view = this.shadowRoot.getElementById("view");
     this._attach();
     try {
-      const [status, rd, days, load, coachData, dayctx, rtests] = await Promise.all([
+      const [status, rd, days, load, coachData, dayctx, rtests, smarks] = await Promise.all([
         this._ws("status"), this._ws("readiness"),
         this._ws("days", { weeks: this._weeks }), this._ws("load"), this._ws("coach"),
-        this._ws("day_context"), this._ws("ramp_tests"),
+        this._ws("day_context"), this._ws("ramp_tests"), this._ws("section_marks"),
       ]);
       this._dayctx = dayctx;
       this._rtests = rtests;
+      this._smarks = smarks;
       this._status = status; this._rd = rd; this._days = days; this._load = load;
       this._coach = coachData;
       for (const key of BOOT_KEYS) { this._asked[key] = true; delete this._failed[key]; }
@@ -1837,6 +1875,18 @@ class IntervalsIcuPanel extends HTMLElement {
       else if (act === "ctxdel") this._ctxWrite(this._ctxDlg, null);
       else if (act === "rtset") this._rtWrite(id, true);
       else if (act === "rtdel") this._rtWrite(id, false);
+      else if (act === "famsel") {
+        // Dieselbe Kachel noch einmal hebt die Wahl auf - sonst gaebe es
+        // keinen Weg zurueck in "keine Familie gewaehlt".
+        this._famSel = this._famSel === id ? null : id;
+        const scroll = this.scrollTop;
+        this._render();
+        this.scrollTop = scroll;
+      }
+      else if (act === "smark") {
+        this._smWrite(id, el.dataset.fam, Number(el.dataset.idx),
+                      el.dataset.on !== "1");
+      }
       else if (act === "dfasport") { this._dfaSport = id; this._render(); }
       else if (act === "sigdays") {
         this._sigDays = +id; this._signals = null;
@@ -3795,10 +3845,10 @@ class IntervalsIcuPanel extends HTMLElement {
         <button class="chipbtn" data-act="close">Schließen</button>
       </div>
       <div class="kvgrid">${stats}</div>
+      ${this._marksBlock(a)}
       ${this._lapBlock(a)}
       ${this._lapCompare(a)}
       ${this._ctxBlock(a)}
-      ${this._rampBlock(a)}
       ${this._nightBlock(a)}
       <h3 class="secname">Verlauf <span class="hint">— gestapelte Felder, eine Zeitachse, ein Cursor: so siehst du, wie sich HF und DFA zur Leistung verhalten.</span></h3>
       ${streamsHtml}
@@ -3806,22 +3856,64 @@ class IntervalsIcuPanel extends HTMLElement {
     </section>`;
   }
 
-  /* Stufentest-Markierung (docs/ausbau.md N). Die Zuordnung trifft der
-     Athlet, nicht die Erkennung: eine automatische Deutung ("lange
-     Rolleneinheit mit steigender Leistung, das wird der Stufentest gewesen
-     sein") wäre wieder eine Behauptung über eine Fahrt, über die das System
-     nichts weiß — dieselbe Fehlerklasse, die J1 gemessen hat.
+  /* DIE ZUORDNUNG (docs/ausbau.md P2). Sieben Kacheln, eine Reihe, ein Ort.
 
-     EIN Termin, EINE Fahrt: es gibt keine Testarten und keine Paarung, also
-     auch keine Stelle, an der etwas automatisch gepaart werden könnte. Das
-     Markieren MISST — die Ströme werden dabei live und ungedünnt geholt. */
-  _rampBlock(a) {
+     Der bisherige `_rampBlock` ist HIER AUFGEGANGEN. Er sass zwischen
+     `_ctxBlock` und `_nightBlock` und trug woertlich die Begruendung, die
+     jetzt fuer alles gilt ("du markierst, das System erkennt nicht") - nur an
+     einem anderen Ort als die neuen Kacheln. Zwei Bedienelemente fuer dieselbe
+     Frage war der Fehler aus 0.46.0. Eine Reihe, eine Frage, ein Ort.
+
+     ZWEI VERHALTEN IN EINER REIHE, und das steht AN DER KACHEL: die sechs
+     Familien HAKEN nur - gemessen wird auf "uebernehmen" (P2b, weil das
+     Aktivitaetsdetail mindestens vier Ausgaenge hat und keiner ueber den
+     Close-Handler laeuft). Der Stufentest MISST beim Klick, weil er es seit
+     0.51.1 so tut und ein Umbau dieses Weges Risiko ohne Gewinn waere.
+     Sieben gleich aussehende Bedienelemente mit zwei Verhalten sind sonst
+     genau die Klasse, gegen die diese Reihe gebaut ist. */
+  _marksBlock(a) {
+    const sm = this._smarks;
+    if (!sm) return "";
+    const cur = (sm.marks || []).find((m) => String(m.activity_id) === String(a.id)) || null;
+    const busy = this._smBusy === String(a.id);
+    const err = this._smErr && this._smErr.id === String(a.id) ? this._smErr.msg : null;
+    const sel = this._famSel || null;
+
+    // ZWEI Datenzustaende, nicht drei (docs/ausbau.md, Streichung 5): ein
+    // leeres Archiv-Dict ist von "nie abgerufen" ohnehin nicht zu
+    // unterscheiden, und ein Knopf "nochmal holen" holte fuer viele Fahrten
+    // dasselbe Nichts.
+    const dfa = a.dfa || null;
+    const hasBlocks = !!(dfa && (dfa.blocks || []).length);
+    const off = (key) => !dfa || (FAM_BLOCKS.includes(key) && !hasBlocks);
+
+    const tiles = Object.keys(FAM).map((key) => {
+      const f = FAM[key], n = ((cur && cur.marks && cur.marks[key]) || []).length;
+      const dis = off(key);
+      return `<button class="famtile ${sel === key ? "on" : ""} ${dis ? "off" : ""}"
+        data-act="famsel" data-id="${key}" style="--fc:${f.c}" ${dis ? "disabled" : ""}>
+        <span class="famic">${ico(f.ic, f.c, 18)}</span>
+        <b class="famk">${f.k}</b>
+        <span class="famn">${esc(f.l)}</span>
+        <span class="famcnt">${n ? `${n} Abschnitt${n === 1 ? "" : "e"}` : "—"}</span>
+        ${sel === key ? `<em class="famon">gewählt</em>` : ""}
+      </button>`;
+    }).join("");
+
     const rt = this._rtests;
-    if (!rt) return "";
-    const cur = (rt.tests || []).find((t) => String(t.activity_id) === String(a.id)) || null;
-    const busy = this._rtBusy === String(a.id);
-    const err = this._rtErr && this._rtErr.id === String(a.id) ? this._rtErr.msg : null;
-    const r = cur && cur.result;
+    const test = (rt && (rt.tests || []).find((t) => String(t.activity_id) === String(a.id))) || null;
+    const rtBusy = this._rtBusy === String(a.id);
+    const rtErr = this._rtErr && this._rtErr.id === String(a.id) ? this._rtErr.msg : null;
+    const r = test && test.result;
+    const rampTile = !rt ? "" : `<button class="famtile ramp ${test ? "on" : ""}"
+      data-act="rtset" data-id="${esc(a.id)}" ${rtBusy ? "disabled" : ""} style="--fc:${C.tx2}">
+      <span class="famic">${ico("gauge", C.tx2, 18)}</span>
+      <b class="famk">STUF</b>
+      <span class="famn">Stufentest</span>
+      <span class="famcnt">ganze Fahrt</span>
+      <em class="famwarn">misst beim Klick: holt die Ströme und wertet aus</em>
+      ${test ? `<em class="famon">markiert</em>` : ""}
+    </button>`;
 
     const zahl = (node, label) => !node
       ? `<span class="durband"><em>${label}</em><b class="tn">–</b>
@@ -3830,10 +3922,9 @@ class IntervalsIcuPanel extends HTMLElement {
           <b class="tn">${node.watts == null ? "–" : fmt(node.watts, 0) + " W"}</b>
           <span class="mut">alpha ${fmt(node.alpha, 2)}${node.hr == null
             ? "" : " · " + fmt(node.hr, 0) + " bpm"}</span></span>`;
-
     // Eine Markierung OHNE Messwerte ist eine Markierung, kein stiller
     // Ausstieg: der Grund steht daneben (0.42.1).
-    const gemessen = !cur ? "" : (r
+    const gemessen = !test ? "" : (r
       ? `<div class="durbands">
            ${zahl(r.hrvt1, "erste Schwelle")}
            ${zahl(r.hrvt2, "zweite Schwelle")}
@@ -3843,23 +3934,80 @@ class IntervalsIcuPanel extends HTMLElement {
            Abfall von DFA a1, die Schwelle ist ihr Schnittpunkt. Abgelesen über
            ${fmt(r.read_window_s, 0)} Sekunden.${r.reached_anaerobic
              ? "" : " Die zweite Schwelle fehlt, weil der alpha-Wert nie stabil unten war —"
-                    + " das ist eine Auskunft, kein Fehler."}</p>`
-      : `<p class="src"><b>Keine Werte.</b> ${esc(cur.reason || "")}</p>`);
+                    + " das ist eine Auskunft, kein Fehler."}</p>
+         <button class="ctxremove" data-act="rtdel" data-id="${esc(a.id)}"
+           ${rtBusy ? "disabled" : ""}>Stufentest-Markierung zurücknehmen</button>`
+      : `<p class="src"><b>Keine Werte.</b> ${esc(test.reason || "")}
+         </p><button class="ctxremove" data-act="rtdel" data-id="${esc(a.id)}"
+           ${rtBusy ? "disabled" : ""}>Stufentest-Markierung zurücknehmen</button>`);
 
-    return `<h3 class="secname">Stufentest
-      <span class="hint">— du markierst, das System erkennt nicht. Beim Markieren werden die
-      Ströme geholt und ausgewertet.</span></h3>
+    // Der Satz zum ausgegrauten Zustand sagt AUCH, dass der Archivstand nur
+    // ein Stellvertreter ist - das Markieren holt die Ströme live (§7, erster
+    // Fall: `stream_types` sagt, was in der Datei lag, nicht was die
+    // Schnittstelle liefert).
+    const lage = !dfa
+      ? `<p class="mut pad">Für diese Fahrt liegt keine DFA-Auswertung im Archiv — an ihren
+          Abschnitten ist nichts zu messen. Der Archivstand ist dabei nur ein Stellvertreter:
+          gemessen wird aus den Strömen, die beim Übernehmen live geholt werden.</p>`
+      : (!hasBlocks
+        ? `<p class="mut pad">Diese Fahrt führt keine ausgewerteten Abschnitte — Grundlage und
+            lange Fahrt bleiben trotzdem wählbar, sie messen über den Stundenverlauf und nicht
+            über Blöcke.</p>`
+        : "");
+
+    const stand = !cur ? "" : (cur.hours
+      ? `<p class="src">Gemessen: ${cur.hours.length} Stunde${cur.hours.length === 1 ? "" : "n"}
+          aus dem markierten Bereich.</p>`
+      : `<p class="src"><b>Noch nicht gemessen.</b> ${esc(cur.reason || "")}</p>`);
+
+    return `<h3 class="secname">Zuordnung
+      <span class="hint">— du ordnest zu, das System erkennt nicht. Familie wählen, dann die
+      Abschnitte in der Rundenliste anhaken.</span></h3>
       <div class="ctxbox dtbox">
-        <div class="ctxchips">
-          <button class="ctxchip ${cur ? "on" : ""}" data-act="rtset"
-            data-id="${esc(a.id)}" ${busy ? "disabled" : ""}
-            >Diese Fahrt war ein Stufentest</button>
-          ${cur ? `<button class="ctxremove" data-act="rtdel" data-id="${esc(a.id)}"
-            ${busy ? "disabled" : ""}>Markierung zurücknehmen</button>` : ""}</div>
-        ${busy ? `<div class="loading"><span class="spin"></span> Ströme werden geholt und gemessen …</div>` : ""}
+        <div class="famrow">${tiles}${rampTile}</div>
+        ${lage}
+        ${sel ? `<p class="src">Gewählt: <b>${esc(FAM[sel].l)}</b> — hake die Abschnitte in der
+          Spalte „Zuordnung“ der Rundenliste an. Der Haken misst nicht.</p>` : ""}
+        ${busy ? `<div class="loading"><span class="spin"></span> Abschnitte werden geholt …</div>` : ""}
         ${err ? `<div class="err pad">${esc(err)}</div>` : ""}
+        ${rtBusy ? `<div class="loading"><span class="spin"></span> Ströme werden geholt und gemessen …</div>` : ""}
+        ${rtErr ? `<div class="err pad">${esc(rtErr)}</div>` : ""}
+        ${stand}
         ${gemessen}
       </div>`;
+  }
+
+  /* Eine Marke setzen oder zuruecknehmen.
+
+     Die Scroll-Lage wird VOR dem Re-Render gesichert: innerHTML wirft sie
+     sonst mit den alten Knoten weg, und der Athlet haekt in der Rundenliste,
+     also weit unten (dieselbe Regel wie bei _ctxWrite und _rtWrite).
+
+     DIE DREI GRUENDE KOMMEN IM KLARTEXT AN. Das Backend schickt sie als Satz;
+     hier wird nichts zu "Fehler beim Markieren" zusammengefasst - der
+     haeufigste Fall ist "in Intervals unterteilen", und der ist nur als
+     eigener Satz brauchbar. */
+  async _smWrite(id, family, index, mark) {
+    if (!id || !family || this._smBusy) return;
+    this._smBusy = String(id);
+    this._smErr = null;
+    this._render();
+    try {
+      await this._ws("set_section_mark", {
+        activity_id: String(id), family, start_index: index, mark: !!mark,
+      });
+      const scroll = this.scrollTop;
+      this._smarks = await this._ws("section_marks");
+      this._smBusy = null;
+      this._render();
+      this.scrollTop = scroll;
+    } catch (err) {
+      const scroll = this.scrollTop;
+      this._smBusy = null;
+      this._smErr = { id: String(id), msg: String((err && err.message) || err) };
+      this._render();
+      this.scrollTop = scroll;
+    }
   }
 
   async _rtWrite(id, mark) {
@@ -3989,8 +4137,40 @@ class IntervalsIcuPanel extends HTMLElement {
           ? "die Leistung je Herzschlag fällt — bei gleicher äußerer Last ist das Ermüdung"
           : "die Leistung je Herzschlag bleibt stehen — die Serie war verkraftbar"}</span></div>`;
     }
+    // DIE ZUORDNUNGSSPALTE. Sie steht fuer sich, mit eigener Kopfzeile, und
+    // NICHT zwischen den rollengefaerbten Balken: die Rundenliste zeichnet den
+    // EF-Balken in ROLE.pow und den DFA-Balken in ROLE.dfa, und ein
+    // violetter SweetSpot-Haken zwei Spalten neben einem violetten
+    // Leistungsbalken waere dieselbe Registervermischung, nur innerhalb des
+    // Kategorienregisters (docs/ausbau.md P2a).
+    // NICHT `entry` nennen: ein Waechter in test_workouts haelt jedes
+    // `entry.<feld>` im Panel gegen die Payload der Einheitenkarte. Er hat
+    // beim ersten Lauf zu Recht angeschlagen - und die Aufloesung ist, die
+    // Kollision zu beseitigen, nicht den Waechter um eine Ausnahme zu
+    // erweitern (§9, dritte Bauregel: ein gelockerter Waechter ist keiner).
+    const smRow = (this._smarks && (this._smarks.marks || [])
+      .find((m) => String(m.activity_id) === String(a.id))) || null;
+    const famSel = this._famSel || null;
+    const marksAt = (index) => Object.keys(FAM).filter(
+      (key) => ((smRow && smRow.marks && smRow.marks[key]) || []).includes(index));
+
     const rows = laps.map((l) => {
       const rest = (l.avg_watts || 0) <= 0 || (l.moving_time || 0) < 60;
+      // Der Schluessel ist start_index, NIE die laufende Nummer (P3a). Ein
+      // Abschnitt ohne ihn ist nicht zuzuordnen, und das steht da, statt still
+      // zu fehlen.
+      const idx = l.start_index;
+      const here = idx == null ? [] : marksAt(idx);
+      const on = famSel && here.includes(famSel);
+      const zuordnung = idx == null
+        ? `<span class="mut" title="Dieser Abschnitt trägt keinen Startpunkt im Strom — er ist nicht zuzuordnen.">–</span>`
+        : `${here.map((key) => `<i class="smk" style="--fc:${FAM[key].c}"
+             title="${esc(FAM[key].l)}">${ico(FAM[key].ic, FAM[key].c, 11)}${FAM[key].k}</i>`).join("")}
+           ${famSel ? `<button class="smbox ${on ? "on" : ""}" data-act="smark"
+             data-id="${esc(a.id)}" data-fam="${famSel}" data-idx="${idx}"
+             data-on="${on ? "1" : "0"}" style="--fc:${FAM[famSel].c}"
+             title="${on ? "Marke zurücknehmen" : "Als " + esc(FAM[famSel].l) + " markieren"}"
+             >${on ? ico(FAM[famSel].ic, FAM[famSel].c, 13) : ""}</button>` : ""}`;
       const bar = (v, max, col) => v == null ? `<span class="mut">–</span>`
         : `<i class="lbar"><s style="width:${Math.max(3, Math.min(100, v / max * 100))}%;background:${col}"></s></i><b class="tn">${fmt(v, 2)}</b>`;
       return `<div class="lrow ${rest ? "rest" : ""}">
@@ -4002,13 +4182,15 @@ class IntervalsIcuPanel extends HTMLElement {
         <span class="tn">${l.avg_cadence != null ? fmt(l.avg_cadence) : "–"}</span>
         <span class="lb">${bar(l.ef, efMax, ROLE.pow)}</span>
         <span class="lb">${bar(l.dfa_a1, dfaMax, ROLE.dfa)}</span>
+        <span class="lmk">${zuordnung}</span>
       </div>`;
     }).join("");
     return `<h3 class="secname">Runden <span class="hint">— ${laps.length} Abschnitte${data.source ? `, Feld „${esc(data.source)}"` : ""}</span></h3>
       ${verdict}
       <div class="card2 pad0">
         <div class="lhead"><span>#</span><span>Abschnitt</span><span>Dauer</span><span>Ø Watt</span>
-          <span>Ø HF</span><span>Kadenz</span><span>EF (W/Schlag)</span><span>DFA a1</span></div>
+          <span>Ø HF</span><span>Kadenz</span><span>EF (W/Schlag)</span><span>DFA a1</span>
+          <span>Zuordnung</span></div>
         ${rows}
       </div>`;
   }
@@ -4973,7 +5155,7 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
   animation:sp 0.9s linear infinite;display:inline-block}
 @keyframes sp{to{transform:rotate(360deg)}}
 .lapverdict{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 4px 8px;font-size:13.5px}
-.lhead,.lrow{display:grid;grid-template-columns:34px minmax(120px,1.2fr) 74px 78px 82px 62px 1.1fr 1.1fr;
+.lhead,.lrow{display:grid;grid-template-columns:34px minmax(120px,1.2fr) 74px 78px 82px 62px 1.1fr 1.1fr 118px;
   gap:10px;align-items:center;padding:7px 12px;font-size:13.5px}
 .lhead{color:${C.tx3};font-size:12px;font-weight:600;border-bottom:1px solid ${C.line}}
 .lrow{border-bottom:1px solid ${C.line}44}
@@ -4984,6 +5166,34 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
 .lb{display:flex;align-items:center;gap:7px}
 .lbar{flex:1;height:8px;background:#0006;border-radius:4px;overflow:hidden;display:block;min-width:34px}
 .lbar s{display:block;height:100%}
+/* Zuordnung (P2): Kachelreihe, Marken, Haken-Spalte.
+   Die AKTIVE Kachel traegt Rahmen, Form UND das Wort "gewählt" - nicht nur
+   eine Saettigungsstufe. Wer die aktive Kachel nicht sieht, hakt in die
+   falsche Familie, und das ist ein Fehler ohne Fehlermeldung. */
+.famrow{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px}
+.famtile{display:grid;grid-template-columns:auto auto;grid-auto-rows:min-content;
+  gap:2px 8px;align-items:center;min-width:132px;padding:8px 10px;cursor:pointer;
+  background:${C.card2};border:2px solid ${C.line};border-radius:10px;
+  color:${C.tx};text-align:left;font:inherit}
+.famtile:hover{border-color:var(--fc)}
+.famtile.on{border-color:var(--fc);background:color-mix(in srgb,var(--fc) 14%,${C.card2});
+  box-shadow:0 0 0 2px color-mix(in srgb,var(--fc) 35%,transparent)}
+.famtile.off{opacity:.4;cursor:not-allowed}
+.famic{grid-row:span 2;display:flex}
+.famk{font-size:13px;letter-spacing:.06em;color:var(--fc)}
+.famn{font-size:13px;color:${C.tx2};grid-column:2}
+.famcnt{grid-column:2;font-size:11.5px;color:${C.tx3}}
+.famon{grid-column:1/-1;font-style:normal;font-size:11.5px;font-weight:700;color:var(--fc)}
+.famwarn{grid-column:1/-1;font-style:normal;font-size:11.5px;color:${C.tx3};max-width:190px}
+.lmk{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.smk{display:inline-flex;align-items:center;gap:3px;font-style:normal;font-size:11px;
+  font-weight:700;letter-spacing:.04em;color:var(--fc);
+  border:1px solid color-mix(in srgb,var(--fc) 45%,transparent);
+  border-radius:6px;padding:1px 5px 1px 3px}
+.smbox{width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;
+  border:2px solid ${C.line};border-radius:6px;background:none;cursor:pointer;padding:0}
+.smbox:hover{border-color:var(--fc)}
+.smbox.on{border-color:var(--fc);background:color-mix(in srgb,var(--fc) 16%,transparent)}
 /* Tagesbeschriftung (B5): fester Dialog, Kategorien-Chips, Marker */
 .tday[data-act]{cursor:pointer}
 .day[data-act]{cursor:pointer}
@@ -5021,7 +5231,12 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
 @media(max-width:980px){
   .lhead{display:none}
   .lrow{grid-template-columns:30px 1fr 70px 74px;}
-  .lrow>*:nth-child(5),.lrow>*:nth-child(6),.lrow>*:nth-child(7),.lrow>*:nth-child(8){display:none}
+  /* Die neunte Spalte gehoert ausdruecklich in die Ausblendliste - sonst
+     rutscht die Zuordnung auf dem Telefon in die vier sichtbaren und
+     verdraengt eine Kennzahl. Ob sie dort spaeter SICHTBAR werden soll, ist
+     eine eigene Entscheidung (docs/ausbau.md, offene Mobilfrage). */
+  .lrow>*:nth-child(5),.lrow>*:nth-child(6),.lrow>*:nth-child(7),.lrow>*:nth-child(8),
+  .lrow>*:nth-child(9){display:none}
 }
 /* Abgleich mit Intervals (Paket D) */
 .syncbtn{display:inline-flex;align-items:center;gap:6px;margin-left:12px;padding:5px 10px;

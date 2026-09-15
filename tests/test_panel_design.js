@@ -478,4 +478,73 @@ const CHART_FROZEN = {
      "kalender Gegenprobe: ein fehlendes title wird NICHT bemerkt — der Wächter ist blind");
 }
 
+/* ── Die sechs Zuordnungs-Familien (docs/ausbau.md P2a) ───────────────────
+   FORM UND KUERZEL tragen die Identitaet, die Farbe verstaerkt. Der Grund
+   steht am Code: ROLE belegt im Aktivitaetsdetail pow/hr/dfa/cad/vel/alt,
+   also alle sechs Toene des Datenregisters. Eine Farbe allein koennte hier
+   nichts tragen, was nicht schon vergeben waere - also muessen Form und
+   Kuerzel eindeutig sein, und das wird hier erzwungen. */
+{
+  const fams = Object.entries(M.FAM);
+  ok(fams.length === 6, `familien: ${fams.length} statt 6`);
+
+  const judgment = [M.C.green, M.C.amber, M.C.orange, M.C.red];
+  const categories = [M.C.blue, M.C.violet, M.C.cyan, M.C.magenta, M.C.slate, M.C.deep];
+  for (const [key, f] of fams) {
+    ok(!judgment.includes(f.c), `familien: ${key} trägt eine Urteilsfarbe`);
+    ok(categories.includes(f.c), `familien: ${key} trägt keine Farbe des Kategorienregisters`);
+    ok(typeof f.k === "string" && f.k.length >= 2 && f.k.length <= 4,
+       `familien: ${key} hat kein Kürzel von zwei bis vier Zeichen (${f.k})`);
+    ok(!!M.IC[f.ic], `familien: die Form von ${key} steht nicht im Katalog (${f.ic})`);
+  }
+
+  // Formen und Kuerzel PAARWEISE verschieden - und die Form keine Variante
+  // einer anderen, auch keiner aus dem Urteilsregister.
+  const shapes = fams.map(([, f]) => M.IC[f.ic]);
+  const kurz = fams.map(([, f]) => f.k);
+  ok(new Set(shapes).size === shapes.length, "familien: zwei Familien teilen sich eine Form");
+  ok(new Set(kurz).size === kurz.length, "familien: zwei Familien teilen sich ein Kürzel");
+  for (const grade of ["ok", "warn", "stop", "na", "surge"]) {
+    for (const [key, f] of fams) {
+      ok(M.IC[f.ic] !== M.IC[grade],
+         `familien: die Form von ${key} ist mit der Urteilsform ${grade} identisch`);
+    }
+  }
+  // Und sie sind keine Kreis-, Dreieck- oder Rautengrundform: die gehoeren
+  // dem Urteilsregister, und eine Kategorie, die so aussieht, ist eine
+  // Variante davon.
+  for (const [key, f] of fams) {
+    ok(!/<circle/.test(M.IC[f.ic]),
+       `familien: die Form von ${key} benutzt die Kreisgrundform des Urteilsregisters`);
+  }
+
+  // GEGENPROBE, gezaehlt und benannt: eine eingebaute Dublette muss fallen.
+  // Ohne sie prueft die Verschiedenheit oben nur, dass sechs Werte sechs
+  // Werte sind.
+  const dubForm = shapes.slice();
+  dubForm[3] = dubForm[1];
+  ok(dubForm[3] === dubForm[1], "familien Gegenprobe: die Dublette wurde gar nicht eingebaut");
+  ok(new Set(dubForm).size !== dubForm.length,
+     "familien Gegenprobe: eine doppelte Form wird NICHT gefunden — der Wächter ist blind");
+  const dubK = kurz.slice();
+  dubK[2] = dubK[0];
+  ok(new Set(dubK).size !== dubK.length,
+     "familien Gegenprobe: ein doppeltes Kürzel wird NICHT gefunden — der Wächter ist blind");
+  const dubJudge = [M.C.green];
+  ok(dubJudge.some((c) => judgment.includes(c)),
+     "familien Gegenprobe: eine eingebaute Urteilsfarbe wird NICHT gefunden");
+
+  // Welche Familien ueber Bloecke messen, steht an EINER Stelle und deckt
+  // sich mit dem Register.
+  for (const key of M.FAM_BLOCKS) {
+    ok(!!M.FAM[key], `familien: FAM_BLOCKS nennt ${key}, das Register kennt es nicht`);
+  }
+  ok(M.FAM_BLOCKS.length === 4,
+     `familien: ${M.FAM_BLOCKS.length} statt 4 Familien messen über Blöcke`);
+  for (const key of ["endurance", "long"]) {
+    ok(!M.FAM_BLOCKS.includes(key),
+       `familien: ${key} misst über den Stundenverlauf, nicht über Blöcke`);
+  }
+}
+
 report("test_panel_design");
