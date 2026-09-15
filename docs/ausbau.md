@@ -4095,6 +4095,18 @@ P2c wollte drei Zustände und für den mittleren einen Knopf „nochmal holen".
    das leere Dict kollabiert dort auf `None`. Im Panel ist „nie abgerufen" und
    „Abruf gescheitert" schon heute derselbe Zustand.
 
+   **NACHTRAG 15.09.2026, beim Kommando-Audit zu 0.54.0: dieser Punkt nannte
+   die falsche Funktion.** Das Panel ruft `intervals_icu/activity` **nie** —
+   es baut die Detailansicht aus der Aktivitätenliste, und `a.dfa` kommt von
+   dort. **Der Befund überlebt trotzdem, und zwar unverändert**, weil
+   `importer.activity_list()` in Zeile 321 exakt dieselbe Zeile fährt:
+   `merged["dfa"] = data["dfa"].get(key) or None`. Derselbe Kollaps, anderer
+   Weg. Die Streichung bleibt also richtig, ihre **Begründung** stand auf
+   einem Bauteil, das an dieser Stelle gar nicht beteiligt ist — und eine
+   Begründung, die auf das falsche Bauteil zeigt, trägt beim nächsten Umbau
+   in die falsche Richtung. Deshalb steht es hier, statt still korrigiert zu
+   werden (§7, achte Klasse).
+
 Und für Altbestände wäre die ehrliche Antwort ohnehin „warum es leer blieb,
 steht nicht im Archiv". **Also zwei Zustände: „führt kein `dfa_a1`" und „hat
 Daten".** Nicht vergessen, sondern geprüft und verworfen.
