@@ -478,7 +478,7 @@ const CHART_FROZEN = {
      "kalender Gegenprobe: ein fehlendes title wird NICHT bemerkt — der Wächter ist blind");
 }
 
-/* ── Die sechs Zuordnungs-Familien (docs/ausbau.md P2a) ───────────────────
+/* ── Die vier Zuordnungs-Familien (docs/ausbau.md P2a) ────────────────────
    FORM UND KUERZEL tragen die Identitaet, die Farbe verstaerkt. Der Grund
    steht am Code: ROLE belegt im Aktivitaetsdetail pow/hr/dfa/cad/vel/alt,
    also alle sechs Toene des Datenregisters. Eine Farbe allein koennte hier
@@ -486,7 +486,10 @@ const CHART_FROZEN = {
    Kuerzel eindeutig sein, und das wird hier erzwungen. */
 {
   const fams = Object.entries(M.FAM);
-  ok(fams.length === 6, `familien: ${fams.length} statt 6`);
+  // VIER seit 15.09.2026: "Schwelle" und "lange Fahrt" sind stillgelegt
+  // (section_marks.RETIRED). Die Zahl steht hier hart, damit eine fuenfte
+  // Kachel nicht unbemerkt dazukommt.
+  ok(fams.length === 4, `familien: ${fams.length} statt 4`);
 
   const judgment = [M.C.green, M.C.amber, M.C.orange, M.C.red];
   const categories = [M.C.blue, M.C.violet, M.C.cyan, M.C.magenta, M.C.slate, M.C.deep];
@@ -519,7 +522,7 @@ const CHART_FROZEN = {
   }
 
   // GEGENPROBE, gezaehlt und benannt: eine eingebaute Dublette muss fallen.
-  // Ohne sie prueft die Verschiedenheit oben nur, dass sechs Werte sechs
+  // Ohne sie prueft die Verschiedenheit oben nur, dass vier Werte vier
   // Werte sind.
   const dubForm = shapes.slice();
   dubForm[3] = dubForm[1];
@@ -539,9 +542,9 @@ const CHART_FROZEN = {
   for (const key of M.FAM_BLOCKS) {
     ok(!!M.FAM[key], `familien: FAM_BLOCKS nennt ${key}, das Register kennt es nicht`);
   }
-  ok(M.FAM_BLOCKS.length === 4,
-     `familien: ${M.FAM_BLOCKS.length} statt 4 Familien messen über Blöcke`);
-  for (const key of ["endurance", "long"]) {
+  ok(M.FAM_BLOCKS.length === 3,
+     `familien: ${M.FAM_BLOCKS.length} statt 3 Familien messen über Blöcke`);
+  for (const key of ["endurance"]) {
     ok(!M.FAM_BLOCKS.includes(key),
        `familien: ${key} misst über den Stundenverlauf, nicht über Blöcke`);
   }

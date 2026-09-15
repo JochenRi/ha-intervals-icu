@@ -710,13 +710,19 @@ const CTX_COLOR = {
 
    Urteilsfarben kommen hier nicht vor - eine Familie ist eine Kategorie,
    kein Urteil. Ein Test erzwingt beides. */
+/* VIER Familien, seit 15.09.2026. "Schwelle" und "lange Fahrt" sind
+   stillgelegt, der Grund steht bei section_marks.RETIRED: die Schwelle misst
+   nicht ueber Bloecke (ihr Wert kommt aus dem Stufentest), und die lange
+   Fahrt rechnet mit der Grundlage identisch. Ein Bedienelement ohne Wirkung
+   ist schlimmer als keines. Diese Liste wird NICHT gegen die Payload
+   gepflegt - sie traegt Form, Kuerzel und Farbe, und das sind
+   Gestaltungsentscheidungen; welche Familien das Backend annimmt, steht in
+   `sm.families` und entscheidet der Schreibweg. */
 const FAM = {
   vo2max:    { k: "VO2",  ic: "famVo2", c: C.magenta, l: "VO2max" },
   sweetspot: { k: "SST",  ic: "famSst", c: C.violet,  l: "SweetSpot" },
   tempo:     { k: "TMP",  ic: "famTmp", c: C.blue,    l: "Tempo" },
-  threshold: { k: "SCHW", ic: "famThr", c: C.cyan,    l: "Schwelle" },
   endurance: { k: "GA",   ic: "famEnd", c: C.slate,   l: "Grundlage" },
-  long:      { k: "LANG", ic: "famLng", c: C.deep,    l: "lange Fahrt" },
 };
 /* Was in einer Familie steckt - in kurzen Saetzen, zum ENTSCHEIDEN, nicht zum
    Lernen der Methode. Drei Fragen je Familie, immer dieselben drei:
@@ -730,21 +736,10 @@ const FAM_HELP = (key, sm) => {
   const c = ((sm && sm.corridors) || {})[key] || null;
   const discard = (sm && sm.discard_s) != null ? sm.discard_s : null;
   const min3 = (sm && sm.min_for_source) != null ? sm.min_for_source : null;
-  // ZUERST die Schwelle: sie steht in FAM_BLOCKS, weil sie ohne ausgewertete
-  // Abschnitte nichts anzeigen kann - sie MISST aber nicht darüber, ihr Wert
-  // kommt aus dem Stufentest. Stünde diese Abfrage hinter dem Blockzweig,
-  // bekäme sie dessen Erklärung. Ein Test hat genau das gefunden.
-  if (key === "threshold") {
-    return [
-      ["Womit du sie fütterst",
-       "Mit nichts. Diese Familie misst nicht selbst — ihr Wert kommt aus dem Stufentest. "
-       + "Du kannst Abschnitte anhaken, um sie wiederzufinden; gerechnet wird daraus nichts."],
-      ["Was daraus gerechnet wird",
-       "Nichts. Markiere stattdessen eine Fahrt als Stufentest — die Kachel ganz rechts."],
-      ["Was es an deinen Vorgaben ändert",
-       "Die Watt für Schwellenintervalle, sobald ein Stufentest gemessen ist."],
-    ];
-  }
+  // Die Sonderabfrage für die Schwelle ist mit der Familie gefallen. Sie stand
+  // hier VOR dem Blockzweig, weil `FAM_BLOCKS` zwei Fragen beantwortete und
+  // die zweite falsch (§7, dreiundzwanzigster Fall). Jetzt trägt die Liste
+  // wieder EINE Bedeutung: wer darin steht, misst über Blöcke.
   if (FAM_BLOCKS.includes(key)) {
     return [
       ["Womit du sie fütterst",
@@ -790,13 +785,13 @@ const RAMP_HELP = [
    + "du nicht mehr lange durchhältst. Gemessen wird aus den ungedünnten Strömen."],
   ["Was es an deinen Vorgaben ändert",
    "Die Watt für Schwellen- und Tempoeinheiten. Diese Kachel misst beim Klick, "
-   + "die sechs anderen haken nur an."],
+   + "die vier anderen haken nur an."],
 ];
 
 /* Welche Familien ueber BLOECKE messen und welche ueber den Stundenverlauf.
    Grundlage und lange Fahrt brauchen keine Bloecke - sie messen ueber
    `hours` (P2c, dritte Zeile). */
-const FAM_BLOCKS = ["vo2max", "sweetspot", "tempo", "threshold"];
+const FAM_BLOCKS = ["vo2max", "sweetspot", "tempo"];
 
 const STATE_WORD = {
   slump: "Einbruch", recovering: "noch im Einbruch", rebound: "Erholung nach Einbruch",

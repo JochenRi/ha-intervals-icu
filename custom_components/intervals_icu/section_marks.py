@@ -59,12 +59,36 @@ BLOCK = "section_marks"
 # nicht, wenn sich die Mathematik aendert.
 MEASURE_VERSION = 1
 
-# Sechs Familien mit Abschnitts-Haken. Der Stufentest steht NICHT dabei - eine
+# Vier Familien mit Abschnitts-Haken. Der Stufentest steht NICHT dabei - eine
 # Messfahrt ist als GANZES eine Messfahrt, es gibt daran keinen Abschnitt zu
 # markieren, und sie hat mit ramp_tests ihren eigenen Block.
-FAMILIES: tuple[str, ...] = (
-    "vo2max", "sweetspot", "tempo", "threshold", "endurance", "long",
-)
+FAMILIES: tuple[str, ...] = ("vo2max", "sweetspot", "tempo", "endurance")
+
+# STILLGELEGT am 15.09.2026, und der GRUND gehoert hierher, nicht nur die
+# Entscheidung - sonst baut sie jemand beim naechsten Umbau zurueck:
+#
+#   * `long` rechnet mit `endurance` IDENTISCH. Beide tragen in
+#     workouts.SOURCE_CHAIN dieselbe Kette ("curve", "ramp_hrvt1", "ftp") und
+#     stehen beide in CURVE_FAMILIES. Und die Kurve misst je FAHRTSTUNDE:
+#     eine Achtstundenfahrt liefert acht Punkte, eine Zweistundenfahrt zwei -
+#     sie ordnet sich von selbst ein und braucht kein Etikett. Eine Grenze
+#     "ab wann ist lang" waere fuer einen Anfaenger mit zwei Stunden und einen
+#     Trainierten mit acht verschieden, und niemand koennte sie pruefen. Zwei
+#     Familien mit identischer Rechnung sind zwei Namen fuer eine Sache.
+#   * `threshold` kommt in blocks.py und BLOCK_CORRIDORS ueberhaupt nicht vor:
+#     keine Blockmessung, kein Zielkorridor. Ihr Wert kommt allein aus dem
+#     Stufentest. Ein Haken dort aendert nichts - ein Bedienelement ohne
+#     Wirkung ist schlimmer als keines.
+#
+# Im TRAINER bleibt die Unterscheidung unberuehrt: dort entscheidet `long`,
+# welche Einheit vorgeschlagen und wie der Zustand bewertet wird. Stillgelegt
+# ist nur das MARKIEREN.
+RETIRED: tuple[str, ...] = ("threshold", "long")
+
+RETIRED_REASON = ("Die Familien „Schwelle“ und „lange Fahrt“ werden nicht mehr "
+                  "markiert — ihre Marken an dieser Fahrt sind gefallen. Die "
+                  "Schwelle kommt aus dem Stufentest, die lange Fahrt rechnet "
+                  "wie die Grundlage.")
 
 REASON_LIMIT = 256
 
@@ -83,6 +107,17 @@ REASON_LIMIT = 256
 # aus einem Satz.
 NOT_MEASURED = ("Markiert, noch nicht gemessen — der Knopf dafür kommt mit der "
                 "Messung.")
+
+# Die ZWEITE Aussage, und sie ist eine andere als die erste. Wer schon einmal
+# gemessen hat und danach einen Haken setzt oder zuruecknimmt, soll nicht
+# "noch nicht gemessen" lesen - das klingt, als waere sein Knopfdruck nie
+# angekommen. Er HAT gemessen; die Auswahl ist seither eine andere.
+#
+# Unterschieden wird an `measured_at`, nicht an `reason`: der Zustand steht in
+# Feldern, der SATZ kommt aus dem Leseweg (0.53.1). Beide reisen ueber die
+# section_marks-Payload, damit das Frontend keine zweite Fassung fuehrt.
+REMEASURE = ("Die Auswahl hat sich seit der Messung geändert — neu zu messen "
+             "auf „übernehmen und messen“.")
 
 # Was frueher in die Eintraege geschrieben wurde. Wird beim Laden GEZIELT
 # geleert, damit kein veralteter Satz stehenbleibt; alles andere in `reason`
@@ -237,6 +272,51 @@ def anchor_of(laps: Any, indices: list[int]) -> dict[str, Any]:
         sections.append({"i": found, "s": _seconds(lap)})
     sections.sort(key=lambda row: row["i"])
     return {"laps": len(rows), "sections": sections}
+
+
+def mask_ranges(laps: Any, indices: Any) -> tuple[list[tuple[int, int]], list[int]]:
+    """Aus markierten `start_index` die Stromstellen-Bereiche [start, end).
+
+    DIE ZWEITE HAELFTE DES SCHLUESSELS. `start_index` allein schneidet nichts:
+    ein Ausschnitt braucht auch das ENDE, und das steht weder in den Marken
+    noch im Anker (der haelt die DAUER, und Dauer ist Bewegungszeit auf einer
+    Stromachse - genau der Versatz aus §7). Es steht in den Laps, und nur
+    dort. Deshalb liegt diese Funktion hier und nicht in `derive`: sie ist die
+    einzige Stelle, an der Marken und Laps aufeinandertreffen, und der
+    Schluessel soll EINE Heimat haben.
+
+    `end_index` zeigt auf die Stelle NACH dem Abschnitt - dieselbe Konvention
+    wie in derive.dfa_blocks, und derive.dfa_hours(keep=...) erwartet sie so.
+    Bei der Einheit vom 01.09.2026 endet der letzte Lap auf 2859 bei 2856
+    Werten; mit `<=` liefe der erste Wert des Folgeabschnitts mit - bei einem
+    Intervall waere das der erste Wert der Pause.
+
+    KEIN 120-Sekunden-Verwerfen. Das gehoert zur BLOCKMESSUNG, wo ein Median
+    ueber einen kurzen harten Abschnitt sonst den Einschwingvorgang mitmisst.
+    Hier wird ueber STUNDEN gelesen; ein stiller zweiter Abzug an dieser
+    Stelle waere eine Rechnung, die niemand angeordnet hat.
+
+    Zurueck kommen ZWEI Dinge, und das zweite ist der Punkt: `missing` sind
+    die markierten Abschnitte, zu denen sich in diesen Laps kein Bereich
+    bilden laesst. Der Aufrufer macht daraus einen Abbruch mit Grund - still
+    weniger zu maskieren als markiert wurde hiesse, auf einem anderen
+    Ausschnitt zu messen als der Athlet gewaehlt hat, und das Ergebnis saehe
+    aus wie ein richtiges.
+    """
+    want = sorted({found for found in (_index(v) for v in (indices or []))
+                   if found is not None})
+    by_index: dict[int, int] = {}
+    for lap in (laps if isinstance(laps, list) else []):
+        first = lap_index(lap)
+        if first is None:
+            continue
+        last = _index(lap.get("end_index") if isinstance(lap, dict) else None)
+        if last is None or last <= first:
+            continue
+        by_index[first] = last
+    ranges = [(i, by_index[i]) for i in want if i in by_index]
+    missing = [i for i in want if i not in by_index]
+    return ranges, missing
 
 
 def drift(entry: Any, laps: Any) -> str | None:
@@ -420,6 +500,13 @@ def _write(block: dict[str, Any], key: str, old: dict[str, Any] | None,
         "hours": None,
         # KEIN Anzeigetext in den Eintrag - siehe NOT_MEASURED.
         "reason": "",
+        # WANN zuletzt gemessen wurde, und es UEBERLEBT das Loeschen der
+        # `hours`. Sonst waere "noch nie gemessen" von "seit der Messung
+        # umgehakt" nicht zu unterscheiden - und der Athlet laese nach seinem
+        # Klick, es sei nie etwas angekommen. Aus `hours` ist das nicht
+        # herleitbar, denn die sind gerade weg; deshalb ein Feld und kein
+        # J7-Verstoss.
+        "measured_at": (old or {}).get("measured_at") or None,
         "set_at": set_at,
         "v": MEASURE_VERSION,
     }
@@ -428,7 +515,8 @@ def _write(block: dict[str, Any], key: str, old: dict[str, Any] | None,
 
 
 def set_measurement(data: dict[str, Any], activity_id: Any,
-                    hours: Any = None, reason: str = "") -> dict[str, Any]:
+                    hours: Any = None, reason: str = "",
+                    measured_at: str = "") -> dict[str, Any]:
     """Das Ergebnis von "uebernehmen und messen" ablegen.
 
     Die Markierung steht auch, wenn die Messung ausfaellt - dann aber MIT
@@ -444,6 +532,12 @@ def set_measurement(data: dict[str, Any], activity_id: Any,
         raise ValueError("Grund muss Text sein")
     entry["hours"] = hours
     entry["reason"] = (reason or "")[:REASON_LIMIT]
+    # Nur eine Messung MIT Zahlen zaehlt als gemessen. Ein gescheiterter
+    # Versuch traegt seinen Grund und laesst den Zustand, wie er war - sonst
+    # hiesse ein Fehlschlag spaeter "die Auswahl hat sich geaendert", und das
+    # waere schlicht falsch.
+    if isinstance(hours, list) and hours:
+        entry["measured_at"] = measured_at or entry.get("measured_at") or None
     entry["v"] = MEASURE_VERSION
     return entry
 
@@ -513,8 +607,21 @@ def migrate(block: Any) -> dict[str, Any] | None:
             found = marked(entry, name)
             if found:
                 marks[name] = found
+        # EINE STILLGELEGTE FAMILIE FAELLT NICHT STILL. Die Schleife oben laeuft
+        # ueber FAMILIES und wuerde eine `long`- oder `threshold`-Marke einfach
+        # nicht mitnehmen - der Eintrag saehe danach aus, als haette der Athlet
+        # dort nie gehakt. Eine Migration, die etwas wegwirft, ohne es zu
+        # sagen, ist die Klasse, die dieses Projekt mehrfach getroffen hat.
+        retired = [name for name in RETIRED if marked(entry, name)]
         if not marks:
-            # Ein Rumpf ohne Familie ist kein Eintrag (P3d).
+            # Ein Rumpf ohne Familie ist kein Eintrag (P3d) - und das ist
+            # zugleich die EINE Lage, in der der Wegfall nicht sichtbar wird:
+            # trug die Fahrt NUR stillgelegte Familien, faellt sie ganz und mit
+            # ihr der Hinweis. Ein Rumpf, der nur noch eine Meldung traegt,
+            # waere schlimmer - er saehe aus wie eine Markierung. Am Bestand
+            # vom 15.09.2026 betrifft es null Fahrten (Schwelle 0, lange
+            # Fahrt 0, am System gelesen); die Grenze steht hier, damit sie
+            # niemand fuer eine Zusicherung haelt.
             changed = True
             continue
         anchor_raw = entry.get("anchor") if isinstance(entry.get("anchor"), dict) else {}
@@ -527,12 +634,20 @@ def migrate(block: Any) -> dict[str, Any] | None:
                 continue
             sections.append({"i": index, "s": _index(section.get("s"))})
         sections.sort(key=lambda row: row["i"])
+        # Der Anker fuehrt nur noch die Abschnitte, die auch markiert SIND -
+        # dieselbe Regel wie in _write. Eine Ankerstelle ohne Marke wuerde die
+        # Drift an einem Abschnitt messen, der niemanden mehr interessiert, und
+        # die Fahrt aus Messung und Kurve werfen, ohne dass etwas Markiertes
+        # verschoben waere.
+        live = {i for values in marks.values() for i in values}
+        sections = [row for row in sections if row["i"] in live]
         row: dict[str, Any] = {
             "date": date,
             "marks": marks,
             "anchor": {"laps": _index(anchor_raw.get("laps")), "sections": sections},
             "hours": entry.get("hours") if isinstance(entry.get("hours"), list) else None,
             "reason": str(entry.get("reason") or "")[:REASON_LIMIT],
+            "measured_at": str(entry.get("measured_at") or "") or None,
             "set_at": str(entry.get("set_at") or ""),
             "v": MEASURE_VERSION,
         }
@@ -541,6 +656,12 @@ def migrate(block: Any) -> dict[str, Any] | None:
             row["reason"] = ("Nach einer Änderung der Messung neu zu messen — "
                              "die Ströme liegen nicht im Archiv. Die Zuordnung "
                              "und ihr Anker bleiben stehen.")
+            changed = True
+        if retired:
+            # Die Marken sind fort, also gilt eine Messung darauf nicht mehr -
+            # sie sass auf einem Ausschnitt, den es nicht mehr gibt.
+            row["hours"] = None
+            row["reason"] = RETIRED_REASON
             changed = True
         if row["reason"] in _LEGACY_NOT_MEASURED:
             # Der veraltete Anzeigetext faellt; der Zustand steht weiter in

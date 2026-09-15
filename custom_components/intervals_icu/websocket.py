@@ -1091,6 +1091,10 @@ def websocket_section_marks(hass, connection, msg) -> None:
         # Grund selbst (fuenfte Bauregel).
         "stale_reason": marks_lib.STALE_REASON,
         "not_measured": marks_lib.NOT_MEASURED,
+        # Der ZWEITE Satz, fuer den, der schon einmal gemessen hat. Beide aus
+        # derselben Quelle wie der Zustand selbst (fuenfte Bauregel) - eine
+        # Fassung im Frontend waere die zweite Wahrheit aus 0.52.0.
+        "remeasure": marks_lib.REMEASURE,
         # Die Zahlen fuer die Erklaerung je Familie reisen MIT: eine Schwelle,
         # die das Panel als Literal fuehrt, ist eine zweite Wahrheit (fuenfte
         # Bauregel), und der Dublettenwaechter meldet sie zu Recht.

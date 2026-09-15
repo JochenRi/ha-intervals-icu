@@ -304,10 +304,11 @@ check("Ruecknahme: und der Anker fuehrt nur noch den uebrigen Abschnitt",
 # Die Ruecknahme braucht WEDER Laps NOCH Datum - sonst waere eine falsch
 # gesetzte Marke genau dann nicht loszuwerden, wenn die Schnittstelle klemmt.
 ohne = {"section_marks": {}}
-sm.set_mark(ohne, "b3", "2026-09-11", "long", 0, LAPS, set_at="2026-09-11")
-sm.set_mark(ohne, "b3", "2026-09-11", "long", 600, LAPS, set_at="2026-09-11")
+sm.set_mark(ohne, "b3", "2026-09-11", "endurance", 0, LAPS, set_at="2026-09-11")
+sm.set_mark(ohne, "b3", "2026-09-11", "endurance", 600, LAPS, set_at="2026-09-11")
 anker_vorher = copy.deepcopy(sm.entry_for(ohne, "b3").get("anchor"))
-check("Ruecknahme: sie laeuft ohne Laps", sm.unset_mark(ohne, "b3", "long", 0) is None, False)
+check("Ruecknahme: sie laeuft ohne Laps",
+      sm.unset_mark(ohne, "b3", "endurance", 0) is None, False)
 check("Ruecknahme: das Datum bleibt das des Eintrags",
       sm.entry_for(ohne, "b3").get("date"), "2026-09-11")
 check("Ruecknahme: der Anker des UEBRIGEN Abschnitts bleibt unveraendert",
@@ -317,7 +318,7 @@ check("Ruecknahme: und die Rundenzahl im Anker bleibt stehen",
       sm.entry_for(ohne, "b3").get("anchor", {}).get("laps"),
       (anker_vorher or {}).get("laps"))
 check("Ruecknahme: eine Marke, die es nicht gibt, aendert nichts",
-      sm.unset_mark(ohne, "b3", "tempo", 600).get("marks"), {"long": [600]})
+      sm.unset_mark(ohne, "b3", "tempo", 600).get("marks"), {"endurance": [600]})
 check("Ruecknahme: auf einer nie markierten Fahrt ist sie None",
       sm.unset_mark({"section_marks": {}}, "nix", "tempo", 0), None)
 raises("Ruecknahme: unbekannte Familie faellt auch hier auf",
@@ -452,8 +453,161 @@ check("Lesen: ein kaputter Eintrag auch nicht",
 check("Lesen: marked() ueber alle Familien",
       sm.marked({"marks": {"tempo": [600], "long": [0, 600]}}), [0, 600])
 check("Lesen: marked_blocks ohne Bloecke", sm.marked_blocks(eintrag, None), [])
-check("Lesen: sechs Familien, der Stufentest ist keine davon",
-      (len(sm.FAMILIES), "ramp" in sm.FAMILIES), (6, False))
+check("Lesen: vier Familien, der Stufentest ist keine davon",
+      (len(sm.FAMILIES), "ramp" in sm.FAMILIES), (4, False))
+
+# --- 8 · mask_ranges: die zweite Haelfte des Schluessels -----------------------
+print("\n=== 8 · mask_ranges: start_index allein schneidet nichts ===")
+
+bereiche, fehlt = sm.mask_ranges(LAPS, [600, 1290])
+check("Maske: je Marke ein Bereich [start, end)", bereiche, [(600, 1200), (1290, 1890)])
+check("Maske: und nichts fehlt", fehlt, [])
+
+# DIE KONVENTION, und sie ist die aus dfa_blocks: `end_index` zeigt auf die
+# Stelle NACH dem Abschnitt. Mit `<=` liefe der erste Wert des Folgeabschnitts
+# mit - bei einem Intervall waere das der erste Wert der Pause.
+check("Maske: das Ende ist exklusiv, der Folgeabschnitt bleibt draussen",
+      [stop for start, stop in sm.mask_ranges(LAPS, [600])[0]],
+      [lap.get("end_index") for lap in LAPS if lap.get("start_index") == 600])
+
+# DER PUNKT DER FUNKTION: was NICHT zu maskieren ist, wird GEMELDET. Still
+# weniger zu maskieren als markiert wurde hiesse, auf einem anderen Ausschnitt
+# zu messen als der Athlet gewaehlt hat - und das Ergebnis saehe richtig aus.
+check("Maske: ein Abschnitt, den es in diesen Laps nicht gibt, wird benannt",
+      sm.mask_ranges(LAPS, [600, 9999]), ([(600, 1200)], [9999]))
+check("Maske: ein Lap ohne end_index taugt nicht zum Schneiden und wird benannt",
+      sm.mask_ranges([{"start_index": 0, "moving_time": 600}], [0]), ([], [0]))
+check("Maske: ein Ende vor dem Anfang ebenfalls",
+      sm.mask_ranges([{"start_index": 600, "end_index": 100}], [600]), ([], [600]))
+check("Maske: ohne Laps ist ALLES gemeldet, nicht stillschweigend nichts",
+      sm.mask_ranges(None, [0, 600]), ([], [0, 600]))
+check("Maske: ohne Marken gibt es nichts zu melden", sm.mask_ranges(LAPS, []), ([], []))
+check("Maske: die Bereiche kommen sortiert und entdoppelt",
+      sm.mask_ranges(LAPS, [1290, 600, 600])[0], [(600, 1200), (1290, 1890)])
+
+# KEIN 120-Sekunden-Verwerfen: das gehoert zur BLOCKmessung. Ein stiller
+# zweiter Abzug an dieser Stelle waere eine Rechnung, die niemand angeordnet
+# hat - und sie faende sich spaeter als "die Stunden passen nicht zu den
+# Bloecken" wieder.
+check("Maske: der Bereich beginnt am Abschnitt, nicht hinter dem Anlauf",
+      sm.mask_ranges(LAPS, [600])[0][0][0] if sm.mask_ranges(LAPS, [600])[0] else None,
+      600)
+
+# Und der Durchstich: derive.dfa_hours nimmt genau diese Form entgegen.
+mask_h = derive.dfa_hours(DFA, WATTS, HR, keep=sm.mask_ranges(LAPS, [600, 1290])[0])
+voll_h = derive.dfa_hours(DFA, WATTS, HR)
+check("Maske: dfa_hours nimmt die Bereiche unveraendert an",
+      (len(mask_h), len(voll_h)), (1, 1))
+check("Maske: und schliesst genau die uebrigen Sekunden aus",
+      (mask_h[0].get("excluded") if mask_h else None), 2400 - 1200)
+
+
+# --- 9 · measured_at: 'nie gemessen' gegen 'Auswahl geaendert' -----------------
+print("\n=== 9 · die zweite Aussage: schon einmal gemessen ===")
+
+# DER HALBE MECHANISMUS STAND SCHON: set_mark und unset_mark setzen `hours` auf
+# None. Was fehlte, ist die UNTERSCHEIDUNG - wer schon gemessen hat, soll nach
+# einem Umhaken nicht "noch nicht gemessen" lesen, als waere sein Klick nie
+# angekommen (§7, zweiundzwanzigster Fall: ein Zustand ohne Pruefung ist
+# gebaut und nicht ausgeliefert).
+ma = {"section_marks": {}}
+sm.set_mark(ma, "d1", "2026-09-12", "endurance", 0, LAPS, set_at="2026-09-12")
+check("Messzustand: vor der ersten Messung steht nichts da",
+      sm.entry_for(ma, "d1").get("measured_at"), None)
+
+sm.set_measurement(ma, "d1", hours=[{"hour": 1, "p075": 200}], measured_at="2026-09-15")
+check("Messzustand: die Messung haelt fest, WANN",
+      sm.entry_for(ma, "d1").get("measured_at"), "2026-09-15")
+
+sm.set_mark(ma, "d1", "2026-09-12", "endurance", 600, LAPS, set_at="2026-09-16")
+check("Messzustand: ein weiterer Haken loescht die Zahlen",
+      sm.entry_for(ma, "d1").get("hours"), None)
+check("Messzustand: aber NICHT die Aussage, dass gemessen wurde",
+      sm.entry_for(ma, "d1").get("measured_at"), "2026-09-15")
+sm.unset_mark(ma, "d1", "endurance", 600)
+check("Messzustand: eine Ruecknahme ebensowenig",
+      sm.entry_for(ma, "d1").get("measured_at"), "2026-09-15")
+check("Messzustand: bestaetigen nimmt die Zahlen, nicht die Aussage",
+      (sm.reanchor(ma, "d1", LAPS).get("hours"),
+       sm.entry_for(ma, "d1").get("measured_at")), (None, "2026-09-15"))
+
+# EIN FEHLSCHLAG IST KEINE MESSUNG. Sonst hiesse er spaeter "die Auswahl hat
+# sich geaendert", und das waere schlicht falsch.
+fehl = {"section_marks": {}}
+sm.set_mark(fehl, "d2", "2026-09-12", "tempo", 600, LAPS, set_at="2026-09-12")
+sm.set_measurement(fehl, "d2", hours=None, reason="Kein alpha im markierten Bereich.",
+                   measured_at="2026-09-15")
+check("Messzustand: ein gescheiterter Versuch zaehlt nicht als gemessen",
+      sm.entry_for(fehl, "d2").get("measured_at"), None)
+check("Messzustand: sein Grund steht aber da",
+      sm.entry_for(fehl, "d2").get("reason"), "Kein alpha im markierten Bereich.")
+check("Messzustand: eine leere Stundenliste ebenfalls nicht",
+      sm.set_measurement(fehl, "d2", hours=[], measured_at="2026-09-15").get("measured_at"),
+      None)
+
+# Die beiden Saetze sind ZWEI, und sie kommen aus dem Modul - nicht aus dem
+# Frontend (fuenfte Bauregel, 0.52.0).
+ok("Messzustand: es gibt einen eigenen Satz fuer 'neu zu messen'",
+   isinstance(sm.REMEASURE, str) and sm.REMEASURE != sm.NOT_MEASURED)
+ok("Messzustand: und er sagt, dass sich die AUSWAHL geaendert hat",
+   "Auswahl" in sm.REMEASURE)
+
+# Der Leseweg nimmt die alte Messung nicht an: sie sass auf einem anderen
+# Ausschnitt.
+check("Messzustand: nach dem Umhaken gibt usable_hours nichts mehr her",
+      sm.usable_hours(sm.entry_for(ma, "d1"), LAPS), None)
+
+
+# --- 10 · die stillgelegten Familien ------------------------------------------
+print("\n=== 10 · Schwelle und lange Fahrt: stillgelegt, nicht verschwiegen ===")
+
+check("Stillgelegt: sie stehen nicht mehr in FAMILIES",
+      [name for name in sm.RETIRED if name in sm.FAMILIES], [])
+raises("Stillgelegt: das Schreiben nimmt sie nicht mehr an",
+       lambda: sm.set_mark({"section_marks": {}}, "e1", "2026-09-12", "long", 0, LAPS),
+       "Familie")
+raises("Stillgelegt: und die Ruecknahme auch nicht",
+       lambda: sm.unset_mark({"section_marks": {}}, "e1", "threshold", 0), "Familie")
+
+# EINE MIGRATION, DIE ETWAS WEGWIRFT, SAGT ES. Die Schleife ueber FAMILIES
+# wuerde eine Alt-Marke einfach nicht mitnehmen - der Eintrag saehe danach aus,
+# als haette dort nie jemand gehakt. Das ist die Klasse, die dieses Projekt
+# mehrfach getroffen hat.
+alt = {"e2": {"date": "2026-08-20", "marks": {"endurance": [0], "long": [600]},
+              "anchor": {"laps": 5, "sections": [{"i": 0, "s": 600}, {"i": 600, "s": 600}]},
+              "hours": [{"hour": 1, "p075": 190}], "reason": "", "set_at": "2026-08-20",
+              "v": sm.MEASURE_VERSION}}
+nach = sm.migrate(copy.deepcopy(alt))
+check("Stillgelegt: die Alt-Marke ist fort", (nach or {}).get("e2", {}).get("marks"),
+      {"endurance": [0]})
+ok("Stillgelegt: und der Wegfall STEHT DA, statt still zu geschehen",
+   sm.RETIRED_REASON in ((nach or {}).get("e2", {}).get("reason") or ""))
+check("Stillgelegt: die Messung darauf gilt nicht mehr",
+      (nach or {}).get("e2", {}).get("hours"), None)
+check("Stillgelegt: die uebrige Familie behaelt ihren Anker",
+      [s_.get("i") for s_ in
+       (nach or {}).get("e2", {}).get("anchor", {}).get("sections", [])], [0])
+
+# GEGENPROBE: ein Eintrag OHNE stillgelegte Familie bekommt den Satz nicht -
+# sonst traegt ihn jede Fahrt und er sagt nichts mehr.
+sauber = {"e3": {"date": "2026-08-20", "marks": {"tempo": [600]},
+                 "anchor": {"laps": 5, "sections": [{"i": 600, "s": 600}]},
+                 "hours": [{"hour": 1, "p075": 190}], "reason": "", "set_at": "2026-08-20",
+                 "measured_at": "2026-08-21", "v": sm.MEASURE_VERSION}}
+check("Stillgelegt Gegenprobe: eine unberuehrte Fahrt bekommt keinen Satz",
+      sm.migrate(copy.deepcopy(sauber)), None)
+
+# DIE EINE LAGE, IN DER ES NICHT SICHTBAR WIRD, und sie ist benannt statt
+# uebersehen: trug die Fahrt NUR stillgelegte Familien, faellt der ganze
+# Eintrag (P3d - ein Rumpf ist kein Eintrag) und mit ihm der Hinweis. Am
+# Bestand vom 15.09.2026 sind das null Fahrten.
+nur = {"e4": {"date": "2026-08-20", "marks": {"threshold": [600]},
+              "anchor": {"laps": 5, "sections": [{"i": 600, "s": 600}]},
+              "hours": None, "reason": "", "set_at": "2026-08-20",
+              "v": sm.MEASURE_VERSION}}
+check("Stillgelegt: eine Fahrt mit NUR stillgelegten Familien faellt ganz",
+      sm.migrate(copy.deepcopy(nur)), {})
+
 
 print(f"test_section_marks: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:

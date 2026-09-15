@@ -1440,7 +1440,7 @@ const acts = F.activities(), thr = F.thresholds();
   q._smarks = { marks: [
     { activity_id: "a1", date: "2026-09-10", marks: { tempo: [600], sweetspot: [1800] },
       hours: null, reason: "Markiert, noch nicht gemessen" },
-    { activity_id: "a2", date: "2026-09-08", marks: { long: [0] },
+    { activity_id: "a2", date: "2026-09-08", marks: { endurance: [0] },
       hours: [{ hour: 1, p075: 205 }, { hour: 2, p075: 198 }], reason: "" },
   ], families: Object.keys(M.FAM), stale_reason: {} };
   q._laps = {}; q._streams = {}; q._night = {}; q._ctx = {};
@@ -1458,8 +1458,8 @@ const acts = F.activities(), thr = F.thresholds();
   const [z1, z2, z3] = zeilen;
   ok(z1.includes("TMP") && z1.includes("SST"),
      "markenspalte: die Kürzel der markierten Familien fehlen in ihrer Zeile");
-  ok(!z1.includes("LANG"), "markenspalte: eine fremde Marke steht in der Zeile");
-  ok(z2.includes("LANG"), "markenspalte: die zweite Fahrt trägt ihre Marke nicht");
+  ok(!z1.includes(">GA"), "markenspalte: eine fremde Marke steht in der Zeile");
+  ok(z2.includes("GA"), "markenspalte: die zweite Fahrt trägt ihre Marke nicht");
   // LEER HEISST UNBERÜHRT - und das ist die Aussage, die die Spalte liefern soll
   const zelle3 = (/class="amk">([\s\S]*?)<\/span>/.exec(z3) || [null, "?"])[1];
   ok(zelle3 !== null && zelle3.trim() === "",
@@ -1556,16 +1556,21 @@ const acts = F.activities(), thr = F.thresholds();
   ok(!/undefined|NaN|null/.test(ohneZahlen),
      "aufklappung: ohne Payload steht eine Platzhalterzahl da");
 
-  // JE FAMILIE VERSCHIEDEN: Blöcke, Stundenverlauf, Schwelle, Stufentest
-  q._famOpen = { vo2max: true, endurance: true, threshold: true, ramp: true };
+  // JE FAMILIE VERSCHIEDEN: Blöcke, Stundenverlauf, Stufentest
+  q._famOpen = { vo2max: true, endurance: true, ramp: true };
   const alle = q._marksBlock(act);
   ok(/DFA-a1-Wert/.test(alle), "aufklappung: die Blockfamilie erklärt ihre Messung nicht");
   ok(/für jede Fahrtstunde/.test(alle),
      "aufklappung: Grundlage erklärt den Stundenverlauf nicht");
   ok(/Blöcke braucht es dafür nicht/.test(alle),
      "aufklappung: der Unterschied zu den Blockfamilien wird nicht gesagt");
-  ok(/misst nicht selbst/.test(alle) && /aus dem Stufentest/.test(alle),
-     "aufklappung: Schwelle behauptet eine eigene Messung");
+  // STILLGELEGT (section_marks.RETIRED): die Schwelle misst nicht über
+  // Blöcke - ihr Wert kommt aus dem Stufentest -, und die lange Fahrt rechnet
+  // mit der Grundlage identisch. Beide sind aus der Reihe verschwunden, und
+  // das wird HIER geprüft: eine Kachel ohne Wirkung ist schlimmer als keine,
+  // und sie käme beim nächsten Umbau still zurück.
+  ok(!/SCHW|LANG/.test(alle),
+     "aufklappung: eine stillgelegte Familie steht wieder in der Reihe");
   ok(/Beide Schwellen aus einer Fahrt/.test(alle),
      "aufklappung: der Stufentest erklärt sein Besonderes nicht");
   // Gegenprobe: die Blockerklärung steht NICHT bei Grundlage
