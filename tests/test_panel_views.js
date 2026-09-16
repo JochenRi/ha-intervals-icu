@@ -2254,6 +2254,23 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   const kzeile = (/Im Bereich nachgesehen:[\s\S]{0,260}/.exec(mitK) || [""])[0];
   ok(kzeile !== "" && !/fehlerhaft|ungültig|falsch/i.test(kzeile),
      `korridor: die Zeile klingt nach Mangel (${kzeile.slice(0, 120)})`);
+  // ZWEI REGISTER: die Gegenüberstellung trägt keine Urteilsfarbe. Geprüft
+  // am gerenderten Absatz UND an der Regel, auf die seine Klasse zeigt —
+  // eine umbenannte Klasse mit Amber-Rand bestünde sonst.
+  const kAbsatz = (/<p class="([^"]*)">\s*<b>Im Bereich nachgesehen:/.exec(mitK) || [])[1];
+  ok(kAbsatz !== undefined, "korridor: der Absatz ist nicht auffindbar");
+  ok(kAbsatz !== undefined && !/\bwarn\b/.test(kAbsatz),
+     `korridor: die Gegenüberstellung trägt die Urteilsklasse (${kAbsatz})`);
+  const kCss = H.source();
+  const kKlassen = String(kAbsatz || "").split(/\s+/).filter((k) => k && k !== "src");
+  const kRegeln = kKlassen.map((k) => (new RegExp(`\\.src\\.${k}\\{[^}]*\\}`).exec(kCss) || [""])[0]);
+  ok(kKlassen.length === 1 && kRegeln[0] !== "",
+     `korridor: die Hinweisklasse hat keine eigene Regel (${kKlassen.join(",")})`);
+  ok(kRegeln.every((r) => !/C\.(amber|green|red|orange)\b/.test(r)) && kRegeln.some((r) => /C\.(blue|violet|cyan|magenta|slate|deep)\b/.test(r)),
+     `korridor: die Hinweisklasse nimmt keine Kategorienfarbe (${kRegeln.join(" ")})`);
+  // Trefferzusicherung für die Farbprüfung: die Urteilsklasse FÄLLT durch sie.
+  const warnRegel = (/\.src\.warn\{[^}]*\}/.exec(kCss) || [""])[0];
+  ok(/C\.amber/.test(warnRegel), "korridor Fixture-Beweis: die Farbprüfung erkennt die Urteilsklasse nicht");
   // GEGENPROBE: ohne Block außerhalb steht die Zeile NICHT da.
   const qo = new M.Panel();
   qo._smarks = { marks: [], families: Object.keys(M.FAM), min_for_source: 3,

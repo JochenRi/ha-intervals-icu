@@ -4012,7 +4012,11 @@ class IntervalsIcuPanel extends HTMLElement {
              Blockschalter stand dann "Grundlage: VO2max: 0 von 3". Ein Wort,
              das in derselben Kachel zwei Dinge bedeutet, ist eines zu viel. */
         cfg.basis ? `<p class="src"><b>Worauf es steht:</b> ${esc(cfg.basis)}</p>` : ""}
-      ${(cfg.outside || []).length ? `<p class="src warn">
+      ${/* KATEGORIENREGISTER, nicht Urteil: die Gegenüberstellung vergleicht
+             zwei Zahlen und entscheidet nichts. `.src.warn` ist Amber, also
+             Urteilsfarbe — so stand die Zeile bis zum Merge da, während ihr
+             Text „kein Urteil" sagte (§6, zwei Register). */
+        (cfg.outside || []).length ? `<p class="src info">
         <b>Im Bereich nachgesehen:</b> ${(cfg.outside || []).map(esc).join(" · ")}.
         ${esc(cfg.outsideNote || "")}</p>` : ""}
       ${gesperrt
@@ -5817,6 +5821,7 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
 /* Der Erfolg traegt den Zustandston, nicht nur ein anderes Wort. */
 .smrunbtn.ok{border-color:${C.green};color:${C.green};background:${C.green}1f}
 .src.warn{border-left:2px solid ${C.amber};padding-left:9px}
+.src.info{border-left:2px solid ${C.slate};padding-left:9px}
 .smbox.on{border-color:var(--fc);background:color-mix(in srgb,var(--fc) 16%,transparent)}
 /* Tagesbeschriftung (B5): fester Dialog, Kategorien-Chips, Marker */
 .tday[data-act]{cursor:pointer}
