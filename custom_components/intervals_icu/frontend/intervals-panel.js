@@ -4008,7 +4008,7 @@ class IntervalsIcuPanel extends HTMLElement {
              das in derselben Kachel zwei Dinge bedeutet, ist eines zu viel. */
         cfg.basis ? `<p class="src"><b>Worauf es steht:</b> ${esc(cfg.basis)}</p>` : ""}
       ${(cfg.outside || []).length ? `<p class="src warn">
-        <b>Im Bereich nachgesehen:</b> ${cfg.outside.map(esc).join(" · ")}.
+        <b>Im Bereich nachgesehen:</b> ${(cfg.outside || []).map(esc).join(" · ")}.
         ${esc(cfg.outsideNote || "")}</p>` : ""}
       ${gesperrt
         // DIE SPERRE SAGT WARUM, nicht nur DASS. Eine gesperrte Schaltflaeche
