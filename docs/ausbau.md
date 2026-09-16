@@ -4469,6 +4469,62 @@ entsteht schon mit dem Kurvenschalter allein. **Eine Sperre, die den Zustand
 nicht verhindert, gegen den sie gebaut wäre, ist Theater.** Die Karten nennen
 stattdessen je Zahl ihre Auswahl.
 
+#### B2b-3 · Vorrechnung vor dem Bau (16.09.2026) — NICHT gebaut, Entscheidung offen
+
+**Der Anker heute:** Median der letzten fünf GANZFAHRT-Ablesungen (27.08., 30.08.,
+01.09., 04.09., 13.09.) = **160 bpm / 146 W**. Die Aussage vom 15.09. („der Umbau
+bewegt nichts") galt für einen Filter „irgendeine Marke"; gekoppelt an den
+Kurvenschalter zählen nur Grundlagen-Marken, und 01.09. (VO2max) und 13.09.
+(Tempo) fallen heraus.
+
+| Lesart | Anker | Tempo | Schwelle | Regeneration |
+|---|---|---|---|---|
+| heute, Ganzfahrt, alle | 160 / 146 | 155–163 | 166–178 | 115–131 |
+| F · Ganzfahrt, nur Grundlagen-Fahrten | 155 / 152 | 150–158 | 161–172 | 112–127 |
+| M1 · maskiert, Stunde 1 | 148 / 137 | 144–151 | 154–165 | 107–122 |
+| M2 · maskiert, Median der Stunden | 149 / 135 | 144–152 | 155–165 | 107–122 |
+
+F ist die verworfene Halbheit (nimmt Arbeitsteile markierter Fahrten mit).
+**Drei** Familien hängen am Anker, nicht zwei: Regeneration auch. Die
+Grundlagen-Watt bewegen sich nicht.
+
+**Die Gegenrechnung Methode gegen Auswahl** an den acht Fahrten mit beiden
+Ablesungen (Ganzfahrt-Regression gegen maskierten Stundenmedian):
+
+| | n | HR, Median der Differenz | Watt |
+|---|---|---|---|
+| Marke = ganze Fahrt (nur **Methode**: 03.08., 27.08., 12.08.) | 3 | **−2,5 bpm** (−3,0 … −0,5) | uneinheitlich (−17,4 … +0,8) |
+| Marke ≠ ganze Fahrt (**Methode + Auswahl**) | 5 | **−10,1 bpm** (−15,2 … +0,5) | −32,5 W (−45 … +2,5) |
+
+Zerlegt am Anker: 160 → 148 bpm sind rund **−9 bis −10 aus der Auswahl** (−5 durch
+den Wegfall der VO2max- und Tempo-Fahrt, der Rest durch ausmaskierte
+Arbeitsteile) und rund **−2,5 aus der Methode**. **Beim Puls überwiegt die
+Auswahl klar — aber der Methodenanteil steht auf drei Fahrten**, und bei der
+Leistung ist er nicht zu trennen (eine der drei weicht um 17 W ab).
+
+**Die Literatur, nachgesehen.** Rogers bestimmte die Schwelle an einer
+STUFENRAMPE: lineare Regression über den fast linearen Abfall von alpha,
+abgelesen bei 0,75; verglichen wurde mit Gasaustausch (VT1) auf dem Laufband.
+Andriolo, Rummel und Gronwald (Sensors 2024) werteten Leistung gegen DFA a1 aus
+ALLTAGSFAHRTEN aus — darauf beruht die Repräsentantenmethode dieses Projekts.
+**Beide Lesarten dieses Systems sind Übertragungen:** die Ganzfahrt-Regression
+wendet die Rampenmethode auf Fahrten ohne Rampe an, wovor Praktiker ausdrücklich
+warnen; die Stundenwerte folgen Andriolos Alltagsansatz. **Einen Vergleich
+beider Verfahren an denselben Fahrten gibt es in dem, was nachzusehen war,
+nicht** — die Wahl ist eine SETZUNG und wird so beschriftet. Für die Stunde als
+Zeitraum spricht, dass DFA a1 bei gleicher Belastung mit der Dauer driftet
+(Gronwald u. a. 2024, konstante Läufe): „ausgeruht" ist Stunde 1 näher als ein
+Median über alle Stunden.
+
+**Und ein Befund, der gegen jede der drei neuen Zahlen spricht:** die markierten
+Tempo-Blöcke liegen bei alpha 0,87–0,92 und Puls 161–167 — also OBERHALB von
+0,75 bei höherem Puls, als der maskierte Anker für alpha 0,75 angibt (148). Die
+Tempo-Blöcke sind Rolle (VirtualRide), die Grundlagen-Fahrten draußen. Dieselbe
+Grenze, die an jeder Blockkarte steht („gemessen auf der Rolle"): **ein Anker aus
+Fahrten draußen legt ein Pulsfenster für Rolleneinheiten fest.** Ein Tempo-Fenster
+von 144–151 wäre auf der Rolle nicht zu treffen, ohne unter der Tempo-Intensität
+zu bleiben. Das gehört entschieden, bevor umgestellt wird.
+
 ### Was die Prüfung dieser Spezifikation ergeben hat
 
 **Sieben Korrekturen, alle VOR dem Schreiben gemeldet und einzeln freigegeben** —

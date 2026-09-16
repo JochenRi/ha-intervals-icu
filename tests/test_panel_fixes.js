@@ -657,7 +657,7 @@ const acts = F.activities(), thr = F.thresholds();
     ok(re.test(planted), `Wächter Gegenprobe: "${planted}" wird NICHT gefunden — der Wächter ist blind`);
   }
   for (const key of ["max_above_z2", "min_minutes", "t5_published", "t5_minutes",
-                     "anchor_base", "anchor_n", "plan_solid_until_hours",
+                     "plan", "plan_solid_until_hours",
                      "plan_thin_until_hours"]) {
     ok(fat.includes("f." + key), `Wächter: rFatigue liest ${key} nicht aus der Payload`);
   }
@@ -1098,14 +1098,34 @@ const acts = F.activities(), thr = F.thresholds();
   ok(leadBox._style[".ldv"].style.color === M.C.slate,
      "zeiger leitzahl: eine Setzung traegt das Messregister");
 
-  // Ruhezustand: eigene Rechnung, eigene Beschriftung.
-  ok(M.fmt(fat.anchor_base) !== M.fmt(grid[0].watts),
-     "zeiger Fixture-Beweis: Anker und erster Rasterpunkt sind gleich - der Rueckfall waere nicht pruefbar");
+  // RUHEZUSTAND = DER ERSTE PUNKT DER LEITZAHL, mit SEINER Belegung. Bis 0.58.0
+  // stand hier `anchor_base` („Ausgeruht, bei Dauer null") — der letzte
+  // Kettenpunkt über die Studienform zurückgerechnet, beschriftet mit der
+  // Belegung der ersten Stunde (§10 Punkt 7). Diese Prüfung sicherte ihn zu.
+  const ersterPlan = (fat.plan || [])[0] || {};
+  ok(M.fmt(fat.anchor_base) !== M.fmt(ersterPlan.watts),
+     "zeiger Fixture-Beweis: anchor_base und erster Leitzahl-Punkt sind gleich - die Rückkehr wäre unsichtbar");
   q._fillReadout("fat", null);
-  ok(leadBox._v.v === M.fmt(fat.anchor_base),
-     `zeiger leitzahl: faellt nicht auf den Ausgangswert zurueck (${leadBox._v.v})`);
-  ok(/Dauer null/.test(leadBox._v.l),
-     `zeiger leitzahl: der Ruhezustand ist nicht als eigene Rechnung beschriftet (${leadBox._v.l})`);
+  ok(leadBox._v.v === M.fmt(ersterPlan.watts),
+     `zeiger leitzahl: der Ruhezustand ist nicht der erste Leitzahl-Punkt (${leadBox._v.v})`);
+  ok(leadBox._v.v !== M.fmt(fat.anchor_base),
+     "zeiger leitzahl: die zurückgerechnete Zahl bei Dauer null steht wieder als Kopfzahl");
+  ok(/Fahrt von 1 h/.test(leadBox._v.l) && !/Dauer null/.test(leadBox._v.l),
+     `zeiger leitzahl: die Beschriftung nennt nicht die Dauer des Punkts (${leadBox._v.l})`);
+  ok(leadBox._v.n.includes(`${M.fmt(ersterPlan.n)} Fahrten in Stunde 1`),
+     `zeiger leitzahl: die Belegung gehört nicht zur Kopfzahl (${leadBox._v.n})`);
+  // Die Belegung muss aus DEM Punkt kommen, nicht aus `anchor_n`. In der Fixture
+  // sind beide gleich (M36 lief mit 0 Fehlern durch) - also auseinanderziehen.
+  const fatN = { ...fat, anchor_n: (ersterPlan.n || 0) + 7 };
+  ok(M.fmt(fatN.anchor_n) !== M.fmt(ersterPlan.n),
+     "zeiger Fixture-Beweis: anchor_n und die Belegung des ersten Punkts sind gleich");
+  const kopfN = String(q.rFatigue(fatN));
+  ok(kopfN.includes(`${M.fmt(ersterPlan.n)} Fahrten in Stunde 1`)
+     && !kopfN.includes(`${M.fmt(fatN.anchor_n)} Fahrten in Stunde 1`),
+     "zeiger leitzahl: die Belegung unter der Kopfzahl kommt nicht aus dem Punkt selbst");
+  const kopf = String(q.rFatigue(fat));
+  ok(!/Dauer null/.test(kopf) && !kopf.includes(`>${M.fmt(fat.anchor_base)}<`),
+     "zeiger leitzahl: die Kachel zeigt die Zahl bei Dauer null noch im Kopf");
 
   // --- Punkt 5: der Zeiger UEBER EINER BLOCK-KURVE ------------------------
   const vo = blk.families.vo2max.points;

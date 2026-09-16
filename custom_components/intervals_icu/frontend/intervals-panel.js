@@ -1209,16 +1209,25 @@ class IntervalsIcuPanel extends HTMLElement {
     // Rasterpunkt: der Anker ist der Fit bei Dauer null, das Raster beginnt bei
     // der ersten Fahrtstunde. Beide bleiben deshalb beschriftet - sonst sieht
     // der Sprung zwischen ihnen wie ein Rundungsfehler aus.
-    const baseNote = `gemessen: ${fmt(f.anchor_n)} Fahrten in Stunde 1, Repräsentantenmethode `
-      + `nach Andriolo, auf Intervals' eigener DFA-Fensterung`;
+    // DIE RUHE-KOPFZAHL IST DER ERSTE PUNKT DER LEITZAHL, nicht `anchor_base`.
+    // Bis 0.58.0 stand hier „Ausgeruht, bei Dauer null: 173 W" - der LETZTE
+    // Kettenpunkt (5 h, eine Fahrt) über die Studienform auf Dauer null
+    // zurückgerechnet, und darunter die Belegung der ERSTEN Stunde. Zwei Zahlen,
+    // ein Etikett (§7). Bei Dauer null ist nie gefahren worden; jede Zahl dort
+    // wäre Studienform — dieselbe Streichung wie 0.57.0, nur als Kopfzahl.
+    const erster = plan[0] || null;
+    const baseNote = erster
+      ? `gemessen: ${fmt(erster.n)} Fahrten in Stunde ${fmt(erster.hours)}, Repräsentantenmethode `
+        + `nach Andriolo, auf Intervals' eigener DFA-Fensterung`
+      : "";
     this._grp.fat = {
       xy: true, n: grid.length,
       pts: grid.map((q) => ({ x: q.t, y: q.watts })),
       xl: (i) => fmt(grid[i].t, 2) + " h geplante Dauer"
         + (planAt[i] == null ? " — Studienform, keine Messung" : ""),
       lead: {
-        base: fmt(f.anchor_base), baseColor: ROLE.series,
-        baseLabel: "Ausgeruht, bei Dauer null", baseNote,
+        base: erster ? fmt(erster.watts) : "–", baseColor: ROLE.series,
+        baseLabel: erster ? `Leistung für eine Fahrt von ${fmt(erster.hours)} h` : "", baseNote,
         // DIE FRAGE, die die große Zahl beantwortet: was kann ich über eine
         // Fahrt dieser Länge treten, sodass es am ENDE noch trägt.
         label: (i) => "Leistung für eine Fahrt von " + fmt(grid[i].t, 2) + " h",
@@ -1275,8 +1284,8 @@ class IntervalsIcuPanel extends HTMLElement {
       ? f.measured.find((r) => r.hour === wann.hour) : null;
     return `<div class="card pad"><h3 class="secname">Ermüdungskurve der aeroben Schwelle</h3>
       <div class="statgrid lead"><div class="stat wide" data-lead="fat">
-        <small class="ldl">Ausgeruht, bei Dauer null</small>
-        <b class="tn lead1"><span class="ldv" style="color:${ROLE.series}">${fmt(f.anchor_base)}</span>
+        <small class="ldl">${erster ? `Leistung für eine Fahrt von ${fmt(erster.hours)} h` : ""}</small>
+        <b class="tn lead1"><span class="ldv" style="color:${ROLE.series}">${erster ? fmt(erster.watts) : "–"}</span>
           <span class="unit">W</span></b>
         <span class="mut ldn">${baseNote}</span></div></div>
       ${readout("fat")}
@@ -1325,10 +1334,10 @@ class IntervalsIcuPanel extends HTMLElement {
         <p class="src"><b>Zwei Zahlen für dieselbe Sache, und das ist bekannt.</b> Der Trainer
           verankert seine Einheiten auf der Schwellenleistung aus dem Anker-Median
           (${f.aerobic_power != null ? fmt(f.aerobic_power) + " W" : "eigene Rechnung"}), diese
-          Karte auf ${fmt(f.anchor_base)} W. Es sind verschiedene Rechnungen: dort das Mittel
+          Karte auf ${erster ? fmt(erster.watts) : "–"} W. Es sind verschiedene Rechnungen: dort das Mittel
           aller Messpunkte im Schwellenfenster über die GANZE Fahrt, über die letzten fünf
-          Fahrten; hier der Fit bei genau alpha 0,75 auf der ERSTEN Stunde, über alle
-          unstrukturierten Fahrten. Methodisch ist der Fit der sauberere Weg, und die erste
+          Fahrten; hier der Wert bei alpha 0,75 in der ERSTEN Stunde, über die Fahrten, die
+          die Kurve tragen. Methodisch ist der Fit der sauberere Weg, und die erste
           Stunde ist der unermüdete Zustand — die Zusammenführung steht an, ist aber ein
           eigener Schritt, weil der Anker heute die Einheiten steuert. <b>Bis dahin: ein
           bekannter Unterschied, kein unbemerkter.</b></p>

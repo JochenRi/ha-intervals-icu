@@ -1,11 +1,12 @@
 # ha-intervals-icu — Übergabe an den nächsten Chat
 
-**Stand dieser Übergabe: 16.09.2026, spät.** Ausgeliefert ist **0.58.0**
-(der Blockschalter, §6 Punkt 3). 0.56.1 und 0.57.0 sind am System verifiziert.
-Prüfstand: **21 Dateien, 6.792 Prüfungen**, alle grün. `main` und
-`paket-b2-wip` stehen gleich. **Als Nächstes: B2b-3, die Schwellen-Kachel
-(`coach.anchors` auf markiert → Stufentest → FTP, gekoppelt an den
-Kurvenschalter).**
+**Stand dieser Übergabe: 16.09.2026, nachts.** Ausgeliefert ist **0.58.1**
+(Kopfzahl der Ermüdungskachel: keine Zahl bei Dauer null). 0.58.0 ist am System
+verifiziert und der Blockschalter umgelegt. Prüfstand: **21 Dateien, 6.796
+Prüfungen**. **Als Nächstes: B2b-3 ist VORGERECHNET, nicht gebaut** —
+Entscheidung offen, siehe `docs/ausbau.md` „B2b-3 · Vorrechnung": Anker 160 →
+148 bpm (M1), Auswahlanteil ≈ −9…−10, Methodenanteil ≈ −2,5 (n = 3), und der
+Rolle-/Draußen-Befund gegen ein Tempo-Fenster von 144–151. B2c hängt an B2b-3.
 
 Dieses Dokument ist für einen Chat geschrieben, der nichts von diesem Projekt
 weiß. Es ersetzt keine Quelle, es sagt, **wo** die Wahrheit steht und **was
