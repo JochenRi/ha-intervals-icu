@@ -2202,6 +2202,62 @@ die Korridore von Grundlage bis VO2max ab.
    Fensters), und die Fensterpaarung aus Schritt 5 der e1-Übergabe (alpha aus (t−120, t],
    Watt/Puls um t) gehört vor jede Ablesung.
 
+*Stand 16.09.2026 (Recherche, Johannes entschieden): **Die Rampe wird KEINE Vorgabe — weder
+Tempo noch SweetSpot.*** Johannes' Vergleichszahlen (257 W @ 0,47, 198 W @ 0,87) waren
+einzelne ERSTE Blöcke. Am Bestand (`intervals_icu/blocks`, lesend): VO2max Median 250 W @
+0,43 (6 Einheiten), SweetSpot 192 W @ 0,705 (5), Tempo n = 2 (`source_ok` false). Die Rampe
+liegt beim selben alpha für SweetSpot 20–25 W DARÜBER (212–217 W), für VO2max ~10 W darunter
+(~240 W); Steigung Rampe 80 W je alpha-Einheit, zwischen den Blockmedianen 208 — Faktor 2,6.
+Die vorher gemeldete Übereinstimmung „SweetSpot trägt" beruhte auf einem ersten Block und ist
+zurückgenommen. Tempo steht in `SOURCE_CHAIN` nur auf `ftp` (misst über Blöcke, steuert nie
+daraus); eine Ableitung wäre dort die erste gemessene Quelle überhaupt gewesen. Fensterbreite
+alphaHRV: Rechenfenster aktuell NICHT nachgelesen (Store-Seite 4.26.2 nennt „2 min" nur für
+die Grafik; „200 Schläge" aus Rogers' Blog 2022); am Strom nicht entscheidbar (Autokorrelation
+null nach 45/24/25 s bei 143/166/187 bpm), aber klein: Tempo gegen SweetSpot-Block 1 3 s
+Fensterunterschied, Rampenversatz 3–6 W. Rampensteigung 5,69 W/min liegt außerhalb des
+untersuchten Bereichs 15–45 W/min (dort HRVT in VO₂ und HF reproduzierbar, ±2 bpm); ob die
+LEISTUNG an der Schwelle von der Steigung abhängt: nicht nachgelesen. Der Stufentest bleibt
+Karte. Nächster Auftrag daraus: Punkt 0b.
+
+**0a · Zwei Korridorgrenzen, nie belegt, seit Paket M in Gebrauch (gefunden 16.09.2026).**
+`BLOCK_CORRIDORS` Tempo (0,75–**1,00**) und VO2max (**0,20**–0,50): die Literatur nennt nur 0,75
+und 0,5 als Grenzen (Dreizonenmodell, Rogers & Gronwald 2022). 1,00 als Obergrenze Tempo und
+0,20 als Untergrenze VO2max stehen in keiner gefundenen Arbeit, und der Kommentar in
+`const.py` begründet nur „VO2max unter 0,5" und „SweetSpot 0,5–0,75". **Am Bestand hat keine
+der beiden Grenzen je gegriffen:** kleinstes VO2max-Block-alpha 0,309 (21 Blöcke), größtes
+Tempo-alpha 0,915 (2 Blöcke). Sie steuern `suggest_step` und damit Vorschläge — als Setzung,
+nie belegt, zu beschriften; **entfernen oder belegen ist offen.**
+
+**0b · NÄCHSTER AUFTRAG: die Blockposition — Varianten rechnen, bevor gebaut wird.**
+*Befund (16.09.2026, Bestand lesend):* alpha fällt von Block 1 auf Block 2 in **9 von 10**
+Einheiten mit mehreren Blöcken, bei gleicher oder niedrigerer Leistung, Median **−0,10**
+(Spanne −0,211 bei −4 W bis −0,027 bei −9 W); die einzige Ausnahme (SweetSpot 05.07., +0,006)
+hatte im zweiten Block 21 W weniger. Bei 190–198 W reicht alpha im Bestand von 0,65 bis 0,92.
+Die Blockmessung mischt heute erste und spätere Blöcke in einen Median — alle Familien.
+Umgerechnet sind −0,10 alpha 8 W (Rampensteigung) bis 21 W (Blocksteigung); der
+Tempo-Widerspruch (169 W vs. 198 W bei 0,87, 29 W) liegt in dieser Spanne, ist damit aber
+NICHT vollständig erklärt: ob der Tempoblock 13.09. Block 1 oder 2 war und die Tagesform drei
+Tage vor dem Stufentest sind nicht belegt.
+*Zu rechnen, je Familie und je Einheit:* (a) heute: Median über alle Blöcke; (b) nur Block 1;
+(c) ab Block 2; (d) nach Position getrennt, mit begründeter Regel. Je Variante alpha-Median,
+Watt, Streuung, was `suggest_step` vorschlägt und was sich an den heutigen Vorgaben bewegt.
+*Zu lesen:* (1) Gilt Rogers' Verwerfen der ersten zwei Minuten jeder Stufe auch für den Beginn
+jedes Blocks einer Intervalleinheit (Einschwingen von alpha; heute `BLOCK_WARMUP_DISCARD_S` =
+120 — bei 3–4-min-VO2max-Blöcken bleiben 60–120 s)? Nicht nachgelesen. (2) Drift über die
+Einheit: bisher nur Einzelfälle (Review 2022: 15 km Rad knapp unter VT1 mit fallendem alpha;
+Olympia-Triathlet nach 2 h ohne Änderung; Blogbericht Rogers 2025: Zeit bis Erschöpfung,
+alpha fällt bei stabilem VO₂/Laktat — Originalstudie nicht gelesen). Mehr Arbeiten, und eine,
+die sagt, wie man Messungen aus verschiedenen Positionen zusammenfasst: nicht nachgelesen.
+(3) Gronwald 2024 (Eur J Sport Sci, Laufen, 21 Athleten, 20 min bei vDFAa1-1/-2 aus der
+Rampe; 6 von 21 schafften vDFAa1-2 nicht): was alpha WÄHREND dieser Läufe tat — nicht
+nachgelesen, das ist die Kernfrage.
+*Einordnung:* schweigt die Literatur, ist die Wahl eine Setzung — an den eigenen Daten
+gemessen und so beschriftet (wie Ausrollen und Segmentregel), keine Regel, die wie ein Befund
+aussieht.
+*Nebenbefund Markierung, notiert, nicht geändert:* Tempo 20.08. ist „volumen + SweetSpot
+2x15Min", ein Block 194 W @ 0,915 als Tempo markiert; derselbe Tag hat SweetSpot 192 W @
+0,699. Was Johannes markiert, zählt.
+
 **Was ich selbst als Lücke sehe:**
 
 1. **Die Belastungs-Ansicht ist seit 0.6.0 unangetastet.** Die Kritik am ACWR ist seither

@@ -1,6 +1,45 @@
 # ha-intervals-icu — Übergabe an den nächsten Chat
 
-## AKTUELL — 0.60.0 ausgeliefert: Rechenweg e1, Stufentest steuert NICHTS (16.09.2026, Nacht). Zuerst lesen.
+## AKTUELL — Recherche §10 Punkt 0: Rampe wird KEINE Vorgabe; nächster Auftrag Blockposition (16.09.2026, Nacht). Zuerst lesen.
+
+**Nichts gebaut, kein Release.** `main` = 0.60.0 (7e15fe0), `paket-b2-wip` trägt nur diesen
+Doku-Commit (PROJEKTSTAND §10 Punkte 0 ergänzt, 0a, 0b; dieser Kopf). Prüfstand unverändert
+**21 Dateien, 7.048 Prüfungen, 0 Fehler**. Am System lesend bestätigt (`intervals_icu/ramp_tests`):
+HRVT1 213 W/178 bpm, HRVT2 233 W/186 bpm, HRVT1pers 183 W/167 bpm, Segment 1058–2134.
+
+**Entschieden (Johannes):** Die Rampe wird keine Vorgabe — weder Tempo noch SweetSpot.
+Johannes' Vergleichszahlen waren ERSTE Blöcke; am Bestand VO2max 250 W @ 0,43, SweetSpot
+192 W @ 0,705. Rampe beim selben alpha SweetSpot +20–25 W, VO2max ~−10 W, Steigung Faktor
+2,6. „SweetSpot trägt" aus der ersten Meldung war auf einen Einzelblock gestützt und ist
+zurückgenommen. Tempo steuert weiter nur über `ftp`. `ramp_hrvt1/2` bleiben aus `SOURCE_CHAIN`,
+der unerreichbare Zweig in `scaled()` bleibt stehen.
+
+**NÄCHSTER AUFTRAG — PROJEKTSTAND §10 Punkt 0b (vollständig dort): Blockposition.**
+alpha fällt von Block 1 auf Block 2 in 9 von 10 Einheiten bei gleicher/niedrigerer Leistung,
+Median −0,10; die Blockmessung mischt beide in einen Median, alle Familien. **Erst rechnen,
+nicht bauen:** Varianten (a) Median alle Blöcke, (b) nur Block 1, (c) ab Block 2, (d) nach
+Position getrennt mit begründeter Regel — je Familie und Einheit alpha-Median, Watt, Streuung,
+`suggest_step`, Wirkung auf die heutigen Vorgaben. **Lesen:** Einschwingen am Blockbeginn
+(gilt Rogers' 2-min-Verwerfen nur für Stufen?), Drift über die Einheit und Zusammenfassen
+über Positionen, Gronwald 2024 (Eur J Sport Sci, 6 von 21 schafften 20 min bei vDFAa1-2): was
+alpha WÄHREND der Läufe tat. Nicht Auffindbares als „nicht nachgelesen"; schweigt die
+Literatur, ist die Wahl eine an den Daten gemessene, so beschriftete Setzung.
+
+**Ebenfalls offen:** §10 Punkt 0a — Korridorgrenzen 1,00 (Tempo oben) und 0,20 (VO2max unten)
+nie belegt, seit Paket M in Gebrauch, am Bestand nie gegriffen (min VO2max-alpha 0,309 in 21
+Blöcken, max Tempo-alpha 0,915); entfernen oder belegen offen. Rampensteigung 5,69 W/min
+außerhalb des untersuchten Bereichs 15–45 W/min; Abhängigkeit der LEISTUNG an der Schwelle
+von der Steigung nicht nachgelesen. alphaHRV-Rechenfenster aktuell nicht nachgelesen (Store
+nennt „2 min" nur für die Grafik), Wirkung ≤ 6 W. Nebenbefund Markierung 20.08. (SweetSpot-
+Einheit, ein Block 194 W @ 0,915 als Tempo markiert): notiert, nicht geändert.
+
+**Lesepfad Blöcke, der funktioniert hat:** `ha_manage_custom_tool` mit
+`ws_send({"type": "intervals_icu/blocks"})`, `result.families.<fam>.points` ist die Liste
+(`sessions` ist eine ZAHL — daran ist der erste Versuch gescheitert). Freigabe einzeln.
+
+---
+
+## VORHERIG — 0.60.0 ausgeliefert: Rechenweg e1, Stufentest steuert NICHTS (16.09.2026, Nacht).
 
 **Ausgeliefert: 0.60.0** (Tag `v0.60.0`, `main` = `paket-b2-wip`). Prüfstand **21 Dateien,
 7.048 Prüfungen, 0 Fehler**. Johannes: HACS-Update, HA-Neustart, Browser hart neu laden,
