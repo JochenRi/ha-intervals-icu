@@ -143,6 +143,11 @@ const acts = F.activities();
   const heute = p.rHeute(F.today());
   contains(heute, "Zielwahl je Ampelfarbe ist eine Setzung", "belege: Budget ohne Einschränkung");
   contains(p.rDfa(thr, "all"), "Rogers", "belege: DFA ohne Quelle");
+  ok(!/Rogers und Gronwald(?! 2021a\/b)/.test(p.rDfa(thr, "all")), "belege: DFA-Quelle ohne Arbeit und Sportart");
+  // Die zweite Stelle steht im Aktivitätsdetail (_dfaBlock), nicht im Reiter.
+  const dfaBlock = p._dfaBlock({ samples: 100, secs_aerobic: 60, secs_transition: 30, secs_anaerobic: 10 });
+  contains(dfaBlock, "Rogers und Gronwald", "belege Trefferzusicherung: der DFA-Block im Aktivitätsdetail ist nicht gerendert");
+  ok(!/Rogers und Gronwald(?! 2021a\/b)/.test(dfaBlock), "belege: DFA-Block im Aktivitätsdetail ohne Arbeit und Sportart");
 }
 
 /* ── die Auswahl trägt eine FORM, nicht nur eine Farbe ─────────────────── */

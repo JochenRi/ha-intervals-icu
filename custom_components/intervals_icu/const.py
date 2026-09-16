@@ -321,8 +321,10 @@ RAMP_PROTOCOL_SLOPE_SHARE = 0.5
 # diesem Anteil des Medians kurz DAVOR. SETZUNG. Am 16.09.2026: 130 gegen 249 W.
 RAMP_COOLDOWN_MAX_SHARE = 0.8
 # Die beiden Vergleichsfenster um das Protokollende: je so breit, und so weit vom
-# Ende abgesetzt. Der Abstand ist zugleich die TOLERANZ - ein um weniger als ihn
-# verschobenes Lastende faellt der Pruefung nicht auf. SETZUNG.
+# Ende abgesetzt. SETZUNG. Ein um weniger als den Abstand verschobenes Lastende
+# faellt der Pruefung sicher nicht auf; wie weit darueber hinaus, haengt an der
+# Form von Rampe und Ausrollen. Am Test vom 16.09.2026: 90 s zu kurz faellt NICHT
+# auf, 120 s zu kurz und 90 s zu lang schon (test_ramp, Toleranz am echten Strom).
 RAMP_END_CHECK_WINDOW_S = 60
 RAMP_END_CHECK_GAP_S = 60
 # ERWARTUNG fuer die Lastschaetzung der Katalogkarte, KEINE Vorgabe: die Rampe

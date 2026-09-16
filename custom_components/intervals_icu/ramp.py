@@ -30,12 +30,15 @@ DIE SEGMENTREGEL - Rechenweg e1 (eine Bestimmung, zwei Ergebnisse)
          Lauf unter 0,5 - dort liegt die ueber den ganzen Abfall gemittelte
          Gerade fast immer noch ueber 0,5, und HRVT2 war damit strukturell
          unerreichbar.
-  Anfang der LETZTE Hochpunkt der geglaetteten Kurve AB RAMPENBEGINN
-         (RAMP_WARMUP_MIN) bis zum Ende. Bei einem Plateau ist das dessen
-         rechtes Ende - also genau die Stelle, an der der Abfall beginnt.
+  Anfang der HOECHSTE WERT der geglaetteten Kurve AB RAMPENBEGINN
+         (RAMP_WARMUP_MIN) bis zum Ende, bei Gleichstand die SPAETESTE
+         Stelle. Ein letzter LOKALER Hochpunkt wird nirgends gesucht (am
+         echten Strom folgen dem Maximum noch 129, der letzte bei 2103 s).
+         Ein Plateau aus gleichen Medianwerten endet so an seinem rechten
+         Ende - dort, wo der Abfall beginnt.
          Ohne die Grenze lag der Hochpunkt im flachen Einrollen, zwoelf
          Minuten vor der Rampe.
-  Und derselbe Hochpunkt ist `max_alpha_start` fuer die dritte Zahl.
+  Und derselbe hoechste Wert ist `max_alpha_start` fuer die dritte Zahl.
   Beide Grenzen sind SETZUNGEN aus dem Protokoll. Deshalb prueft
   protocol() zuerst, ob die Fahrt das Protokoll traegt - sonst stuenden die
   Grenzen an der falschen Stelle, und das Ergebnis saehe trotzdem aus wie
@@ -48,7 +51,8 @@ keinen Messwert.
 DIE DRITTE ZAHL - und warum sie aus zweiter Hand ist
 Rogers 2024 definiert eine personalisierte erste Schwelle als den Wert mittig
 zwischen "the maximum seen during the early ramp incremental" und 0,5. Was
-"frueh" heisst, steht dort nicht; die Arbeit ist nicht frei zugaenglich.
+"frueh" heisst, steht im Abstract nicht; der Volltext ist nicht nachgelesen
+(nicht frei zugaenglich).
 Olieslagers 2026 setzt es um und zitiert Rogers dafuer: der hoechste Wert AM
 BEGINN DES LINEAREN ABFALLS, also HRVT1pers = (max. DFAa1start + 0,5) / 2.
 
@@ -56,7 +60,10 @@ DAS SIND NICHT DIESELBEN SAETZE. Ein Maximum in einem ZEITFENSTER ist etwas
 anderes als ein Maximum an einem KURVENPUNKT. Gebaut ist hier die Fassung von
 Olieslagers, weil sie implementierbar ist und an dasselbe Segment haengt, das
 die Regression ohnehin braucht - und sie ist als Operationalisierung aus
-zweiter Hand beschriftet, nicht als Rogers' Wortlaut.
+zweiter Hand beschriftet, nicht als Rogers' Wortlaut. Zusammen fallen
+Kurvenpunkt und Maximum im Fenster [Rampenbeginn, Lastende] hier nur, weil
+der Beginn des Abfalls selbst als hoechster Wert gesetzt ist - per Setzung,
+nicht per Beleg.
 
 WAS DIESES MODUL NICHT TUT
 Es rechnet nicht ueber das Segment hinaus. Liegt ein Schnittpunkt ausserhalb
@@ -350,7 +357,9 @@ def protocol(length: int, watts: list[Any] | None,
 
 
 def _peak(smooth: list[float | None], first: int, last: int) -> tuple[int, float] | None:
-    """Der LETZTE Hochpunkt der geglaetteten Kurve in [first, last]."""
+    """Der HOECHSTE WERT der geglaetteten Kurve in [first, last], bei Gleichstand
+    die spaeteste Stelle. Kein letzter lokaler Hochpunkt - der Code darunter
+    nimmt `max` und dann den groessten Index mit diesem Wert."""
     window = [(i, smooth[i]) for i in range(max(0, first), min(len(smooth), last + 1))
               if smooth[i] is not None]
     if not window:
@@ -361,8 +370,8 @@ def _peak(smooth: list[float | None], first: int, last: int) -> tuple[int, float
 
 def segment(dfa: list[Any] | None, first_index: int, last_index: int,
             sample_secs: int = 1) -> dict[str, Any] | None:
-    """Der Abfall nach Rechenweg e1: vom letzten Hochpunkt ab `first_index`
-    (Rampenbeginn) bis `last_index` (Lastende).
+    """Der Abfall nach Rechenweg e1: vom hoechsten Wert ab `first_index`
+    (Rampenbeginn; bei Gleichstand die spaeteste Stelle) bis `last_index` (Lastende).
 
     Die Grenzen kommen aus dem Protokoll und werden hier NICHT gesucht - siehe
     protocol(). Gibt None zurueck, wenn es keinen brauchbaren Abfall gibt.

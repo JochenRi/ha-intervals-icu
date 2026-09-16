@@ -19,10 +19,11 @@ Sources, once, so the rules below can refer to them:
   PLEWS      Plews/Buchheit and Altini: 7-day rolling mean against a 60-day
              band; both a fall AND a rise can signal trouble; resting heart
              rate gives the context. "Normal is better than higher."
-  ROGERS     Rogers/Gronwald: DFA alpha-1 0.75 marks the aerobic threshold,
-             0.5 the anaerobic one. Under fatigue the same external load
+  ROGERS     Rogers/Gronwald 2021a (0.75) and 2021b (0.5), both treadmill:
+             DFA alpha-1 0.75 marks the aerobic threshold, 0.5 the anaerobic one. Under fatigue the same external load
              produces LOWER alpha-1 - the metric shifts, which makes it a
-             fatigue marker but a poor zone marker on a tired day.
+             fatigue marker but a poor zone marker on a tired day. (Source of this
+             fatigue sentence: not re-read.)
   SEILER     Three-zone model; trained endurance athletes accumulate roughly
              75-80% of sessions below the first threshold.
   FRIEL      Decoupling of 5% or less on a steady aerobic ride means the
@@ -440,8 +441,8 @@ def anchors(data: dict[str, Any]) -> dict[str, Any]:
         }
     return {"aerobic_hr": round(hr_now), "aerobic_power": round(power_now) if power_now else None,
             "n": len(rows), "trend_power": trend,
-            "source": "Median der letzten fünf belastbaren DFA-Messungen (Rogers/Gronwald: "
-                      "alpha-1 = 0,75 markiert die aerobe Schwelle) — als Trend am eigenen "
+            "source": "Median der letzten fünf belastbaren DFA-Messungen (Rogers/Gronwald 2021a, "
+                      "Laufband: alpha-1 = 0,75 markiert die aerobe Schwelle) — als Trend am eigenen "
                       "Körper brauchbar, als alleinige Verankerung nicht"}
 
 
@@ -1159,7 +1160,7 @@ LOAD_SIGNALS = {
         "label": "Tageslast", "unit": "",
         "read": "Die Balken unten. Ihre Farbe zeigt, in welchen Bereichen die Einheit "
                 "gefahren wurde — gemessen an DFA alpha-1, nicht an geplanten Zonen.",
-        "source": "Rogers/Gronwald: alpha-1 über 0,75 aerob, 0,5–0,75 Übergang, "
+        "source": "Rogers/Gronwald 2021a/b (Laufband): alpha-1 über 0,75 aerob, 0,5–0,75 Übergang, "
                   "darunter anaerob.",
     },
 }

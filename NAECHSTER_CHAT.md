@@ -6,6 +6,29 @@
 bleibt 0.59.0. Prüfstand: **21 Dateien, 6.995 Prüfungen, 0 Fehler** (test_ramp 89→206→229,
 test_handlers 69→76→77). §10 Punkt 8 ist erledigt (Verzögerung bei Intervals).
 
+### Stand Schritt 3 ABGESCHLOSSEN + Schritt 4 (16.09.2026, dritte Sitzung)
+
+Prüfstand: **21 Dateien, 7.046 Prüfungen, 0 Fehler** (ramp 229→244, workouts 1751→1758,
+import 120→127, panel_views 1417→1422, panel_design 287→290, coach 423→424; keine sank).
+Nicht ausgeliefert, 0.59.0 bleibt.
+
+- a/c: jede Rogers/Gronwald-Stelle nennt die Arbeit (0,75 = 2021a, 0,5 = 2021b, beide
+  Laufband; Anker/workouts:203/derive nur die eine). Rogers 2024 ohne Sportart,
+  FSAL 2021 unberührt (nicht nachgelesen). Scan-Wächter in test_ramp über alle Bauteile.
+- **§7 Fall 37:** `_peak` ist der HÖCHSTE WERT (spätester Index bei Gleichstand), das
+  Etikett „letzter Hochpunkt" stimmte nie (0.51.0 hatte noch die Definition dahinter,
+  e1 hat sie gestrichen). Texte angeglichen in ramp.py, Karte, ausbau.md, §9.
+- d: Einrollen „nennt kein Einrollen" → nicht nachgelesen + Grund Hochpunktsuche/flach;
+  Abbruch auf 2021a; „wichtig ist nur" raus; Ausrollen zweiter Grund (Lastende = Länge −
+  10 min, ab 2 min Abweichung abgelehnt). Ausrolldauer „keine der beiden Arbeiten" →
+  nicht nachgelesen. const.py-Toleranz korrigiert (am Strom: −90 s unbemerkt, −120/+90 abgelehnt).
+- Schritt 4: `MEASURE_VERSION` 1 → 2 (ramp_tests.py), Prüfung gegen v=1; §7 Fall 36 mit
+  korrigierter Diagnose. 17 Mutationen + 3 Nachläufe gezählt und benannt; drei eigene
+  Prüfungen waren zuerst leer und sind geschärft.
+- **Offen vor Auslieferung:** Watt-/Puls-Deltas am Livebestand (HEIMDALL lesend, einzeln
+  freigeben), dann Version 0.60.0 (manifest, PANEL_VERSION, PROJEKTSTAND-Kopf), Merge
+  nach main, Tag, Release.
+
 ### Stand Schritt 3 — Quellen gelesen, b und e gebaut (16.09.2026, zweite Sitzung)
 
 Prüfstand: **21 Dateien, 7.008 Prüfungen, 0 Fehler** (test_panel_views 1409→1417,

@@ -2152,6 +2152,13 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   contains(voll, "nicht nachgelesen", "N3 Rechenweg: die offene Handbestimmung bei Olieslagers wird behauptet statt beschriftet");
   contains(voll, "bis zum Lastende", "N3 Rechenweg: das Segment-Ende nach e1 fehlt");
   ok(!/flach unter 0,5 bleibt/.test(voll), "N3 Rechenweg: das alte Segment-Ende (vor e1) steht noch da");
+  // §7 Fall 37: die Karte beschrieb einen „letzten Hochpunkt", der Code nimmt den höchsten Wert.
+  contains(voll, "Die dritte Zahl steht daneben", "N3 Trefferzusicherung: der Absatz zur dritten Zahl ist nicht gerendert");
+  contains(voll, "mittig zwischen dem höchsten Wert ab Rampenbeginn", "N3 dritte Zahl: der Hochpunkt ist nicht als höchster Wert ab Rampenbeginn beschrieben");
+  contains(voll, "bei Gleichstand die späteste Stelle", "N3 Rechenweg: die Gleichstandsregel des Beginns fehlt");
+  ok(!/letzte\s+Hochpunkt/.test(voll) && !/Hochpunkt am Beginn deines Abfalls/.test(voll),
+     "N3: die Karte beschreibt eine Suche nach dem letzten Hochpunkt, die der Code nie gemacht hat");
+  contains(voll, "Rogers 2021a/b (Laufband)", "N3 Rechenweg: Rogers ohne Arbeit und Sportart");
   contains(voll, "HRV-Schwellen allgemein",
            "N3 Rechenweg: die Einschränkung zur Metaanalyse fehlt");
   ok(!/r = 0,85 für DFA/.test(voll),

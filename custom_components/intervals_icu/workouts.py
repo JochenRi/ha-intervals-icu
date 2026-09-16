@@ -200,7 +200,7 @@ LIBRARY: list[dict[str, Any]] = [
         "effect": "Arbeitet an der zweiten Schwelle selbst: Laktattoleranz und die "
                   "Leistung, die du eine Stunde halten kannst.",
         "evidence": "Klassische Schwellenarbeit; DFA alpha-1 0,5 markiert nach "
-                    "Rogers/Gronwald die anaerobe Schwelle.",
+                    "Rogers/Gronwald 2021b (Laufband) die anaerobe Schwelle.",
         "limit": "Hohe Last bei mäßigem VO2max-Reiz — als einzige harte Einheit der "
                  "Woche verschenkt sie Potenzial.",
         "states": ["ready"],
@@ -419,8 +419,8 @@ RAMP_TEST = {
     "effect": ("Misst nichts am Körper und trainiert auch nichts — er liest deine "
                "beiden Schwellen ab, in EINER Fahrt unter gleichen Bedingungen. "
                "Alle paar Monate."),
-    "evidence": ("Rogers u. a. (2021): DFA a1 erreicht 0,75 an der ersten und 0,5 an "
-                 "der zweiten Schwelle. Die 0,75 stammt vom LAUFBAND; für das Rad "
+    "evidence": ("Rogers u. a. (2021a/b): DFA a1 erreicht 0,75 an der ersten und 0,5 an "
+                 "der zweiten Schwelle. Beide kommen vom LAUFBAND; für das Rad "
                  "gibt es eigene Belege (Elite-Triathleten 247,0 gegen 252,3 W; "
                  "Herzpatienten 67,8 gegen 73,2 W bei r = 0,87)."),
     "limit": ("Belastbar ist die VERÄNDERUNG bei dir, nicht die absolute Höhe: die "
@@ -440,13 +440,16 @@ RAMP_TEST_STANDARD = [
     "Herzschlägen, und genau die werden hier ausgewertet.",
     "Ausgeruht. Bei gelbem oder rotem Zustand wird der Test gar nicht erst "
     "vorgeschlagen: er misst dann deine Müdigkeit und nicht deine Schwellen.",
-    f"{RAMP_WARMUP_MIN} Minuten ruhig einrollen. Weder Rogers 2021 (Laufband) noch "
-    "Olieslagers 2026 (Rad) nennt ein Einrollen — diese Zeit ist GESETZT, und der "
-    "Grund ist unsere Auswertung: "
+    f"{RAMP_WARMUP_MIN} Minuten ruhig und flach einrollen. Ob Rogers 2021a/b (Laufband) "
+    "oder Olieslagers 2026 (Rad) ein Einrollen vorgeben, ist nicht nachgelesen — diese "
+    "Zeit ist GESETZT, und die Gründe sind unsere Auswertung: "
     "der alpha-Wert braucht ein bis zwei Minuten, bis er eingeschwungen ist, und "
-    "das Rechenfenster ist zwei Minuten breit.",
+    "das Rechenfenster ist zwei Minuten breit. Und die Suche nach deinem höchsten "
+    f"alpha-Wert beginnt erst nach diesen {RAMP_WARMUP_MIN} Minuten, am Rampenbeginn — "
+    "deshalb muss das Einrollen FLACH sein: steigt die Leistung schon hier, wird die "
+    "Fahrt nicht ausgewertet.",
     f"Dann je Minute {RAMP_STEP_W_PER_MIN} Watt mehr, bis du nicht mehr kannst. "
-    "Olieslagers 2026 fuhr auf dem Rad eine flache Rampe; Rogers 2021 kam vom "
+    "Olieslagers 2026 fuhr auf dem Rad eine flache Rampe; Rogers 2021a/b kamen vom "
     "Laufband, wo die Steigung anders zählt. Unsere ist FLACH und wächst nicht "
     "mit deiner Stärke: bei steileren "
     "Rampen hinkt die Sauerstoffaufnahme hinterher, und dann ist die Wattzahl "
@@ -454,21 +457,27 @@ RAMP_TEST_STANDARD = [
     "Während der Rampe: gleichmäßig treten, nicht aus dem Sattel, Trittfrequenz "
     "konstant halten, nicht sprechen. Alles davon verändert die Abstände zwischen "
     "den Herzschlägen — und die sind die Messung.",
-    "Abbrechen, wenn du nicht mehr kannst — in Rogers 2021 (Laufband) hieß das "
+    "Abbrechen, wenn du nicht mehr kannst — in Rogers 2021a (Laufband) hieß das "
     "Abbruchkriterium ebenfalls willentliche Erschöpfung, ein Zustand und keine "
-    "Wattzahl. Das ist VORGESEHEN und kein Fehlversuch: wichtig ist nur, dass dein "
-    "alpha vorher stabil unter 0,5 war. Kommst du dort nicht an, fehlt die zweite "
+    "Wattzahl. Das ist VORGESEHEN und kein Fehlversuch. Für die zweite Schwelle muss "
+    "dein alpha vorher stabil unter 0,5 gewesen sein; ausgewertet wird die Fahrt aber "
+    "überhaupt nur, wenn Einrollen und Ausrollen wie beschrieben gefahren sind. "
+    "Kommst du nicht unter 0,5, fehlt die zweite "
     "Schwelle — die erste steht trotzdem. Und die erste ist die schwächere: "
     "Olieslagers 2026 fand für sie am Rad schlechte Übereinstimmung mit LT1/VT1 "
     "(Bias −21 bis −45 W), für die zweite dagegen deutlich bessere. Die 0,75 "
     "stammt vom LAUFBAND.",
     f"Danach {RAMP_COOLDOWN_MIN} Minuten ausrollen, bei derselben ruhigen "
-    "Leistung, gleich bleibend. NICHT abkürzen: diese Zeit ist Teil der Messung. "
-    "Eine Protokollvorgabe dafür gibt es nicht — gesetzt ist sie, weil Michael "
+    "Leistung, gleich bleibend. NICHT abkürzen und nicht verlängern: diese Zeit ist "
+    "Teil der Messung. Und das Ende deiner Belastung wird als Fahrtlänge minus "
+    f"{RAMP_COOLDOWN_MIN} Minuten gerechnet — weicht das Ausrollen um zwei Minuten "
+    "oder mehr ab, sitzt dieses Ende falsch und die Fahrt wird nicht ausgewertet; "
+    "eine kleinere Abweichung kann das Ergebnis verschieben, ohne dass es auffällt. "
+    "Ob die Arbeiten eine Ausrolldauer vorgeben, ist nicht nachgelesen — gesetzt "
+    "ist sie, weil Michael "
     "u. a. 2017 die parasympathische Reaktivierung im Fenster 0 bis 10 Minuten "
     "nach Belastungsende betrachtet (die vollständige Rückkehr dauert laut "
-    "Stanley/Peake/Buchheit 2013 24 bis 72 Stunden). Eine Ausrolldauer nennt "
-    "keine der beiden Arbeiten. Gleiche Haltung und gleiche Leistung wie "
+    "Stanley/Peake/Buchheit 2013 24 bis 72 Stunden). Gleiche Haltung und gleiche Leistung wie "
     "beim letzten Mal, sonst misst der zweite Test etwas anderes als der erste.",
     "Danach die Fahrt im Aktivitätsdetail als Stufentest MARKIEREN. Das System "
     "erkennt sie nicht von selbst — und soll es auch nicht.",
@@ -483,8 +492,8 @@ RAMP_TEST_STANDARD = [
     "Ermüdungskurve, das Ende aus deiner Leitzahl plus einer gesetzten Reserve; "
     "steht beides nicht zur Verfügung, fällt beides sichtbar auf die FTP zurück. "
     "Der Test ENDET AM ALPHA-WERT, nicht an der Zahl: erreichst du das "
-    "ausgewiesene Ende früher nicht mehr, ist das kein Fehlversuch, solange dein "
-    "alpha vorher stabil unter 0,5 lag. Fährst du darüber hinaus, ist das auch "
+    "ausgewiesene Ende früher nicht mehr, ist das kein Fehlversuch; die zweite "
+    "Schwelle steht, wenn dein alpha vorher stabil unter 0,5 lag. Fährst du darüber hinaus, ist das auch "
     "in Ordnung — gerechnet wird, was gemessen wurde, und über das gemessene "
     "Segment hinaus wird nichts hochgerechnet.",
 ]

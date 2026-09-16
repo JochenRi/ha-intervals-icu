@@ -904,6 +904,22 @@ for _pflicht, _was in (("BRUSTGURT", "der Brustgurt"),
                        ("MARKIEREN", "dass die Fahrt markiert werden muss"),
                        ("NICHT kann", "was der Test nicht kann")):
     check(_pflicht in _std, f"N Beschreibung: {_was} fehlt")
+# Seit Rechenweg e1 (Schritt 3): was nicht nachgelesen ist, steht so da; das
+# Einrollen ist Grenze der Hochpunktsuche; das Lastende haengt am Ausrollen.
+check("nicht nachgelesen" in _std,
+      "N Beschreibung e1: Ein-/Ausrollen als Quellenvorgabe behauptet statt 'nicht nachgelesen'")
+check("Weder Rogers" not in _std and "nennt ein Einrollen" not in _std,
+      "N Beschreibung e1: die unbelegte Behauptung 'nennt kein Einrollen' steht noch da")
+check("keine der beiden Arbeiten" not in _std,
+      "N Beschreibung e1: 'keine der beiden Arbeiten' (Ausrolldauer) ist nicht nachgelesen")
+check("Rampenbeginn" in _std and "FLACH" in _std,
+      "N Beschreibung e1: warum das Einrollen flach sein muss (Grenze der Hochpunktsuche), fehlt")
+check("wichtig ist nur" not in _std and "solange dein" not in _std,
+      "N Beschreibung e1: stabil unter 0,5 wird noch als einzige Bedingung dargestellt")
+check("Fahrtlänge minus" in _std and "zwei Minuten" in _std,
+      "N Beschreibung e1: der zweite Grund gegen ein veraendertes Ausrollen (Lastende) fehlt")
+check("Rogers 2021a (Laufband) hieß das" in _std,
+      "N Beschreibung e1: das Abbruchkriterium ist nicht auf Rogers 2021a praezisiert")
 # Und die Zahlen kommen aus const.py, nicht aus dem Text.
 for _zahl in (W.RAMP_WARMUP_MIN, W.RAMP_COOLDOWN_MIN, W.RAMP_STEP_W_PER_MIN):
     check(str(_zahl) in _std, f"N Beschreibung: {_zahl} wird gar nicht genannt")

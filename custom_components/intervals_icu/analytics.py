@@ -21,7 +21,7 @@ Sources, short:
   worthwhile change, mean +/- 0.5 standard deviations of the baseline period.
 * Decoupling - Joe Friel: at or below about 5 percent on steady aerobic rides
   means the aerobic base is sound.
-* DFA alpha-1 - Rogers and Gronwald: 0.75 marks the aerobic threshold (VT1),
+* DFA alpha-1 - Rogers and Gronwald 2021a/b (treadmill): 0.75 marks the aerobic threshold (VT1),
   0.5 the anaerobic threshold (VT2).
 """
 

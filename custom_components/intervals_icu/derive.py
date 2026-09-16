@@ -430,7 +430,7 @@ def dfa_hours(
             "p075": None,
             "alpha_min": None,
             "alpha_max": None,
-            # Die ZWEITE Schwelle, alpha 0,5 (ROGERS: VT2). ERHOBEN, NICHT
+            # Die ZWEITE Schwelle, alpha 0,5 (ROGERS 2021b, Laufband: VT2). ERHOBEN, NICHT
             # BENUTZT: kein Renderer liest sie, kein Trainer-Pfad haengt daran.
             # Die Literatur nennt die obere Schwelle die methodisch stabilere
             # (HRVT2 ICC 0,97 gegen HRVT1 0,87), das SIGNAL dort aber deutlich

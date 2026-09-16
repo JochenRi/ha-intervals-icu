@@ -147,12 +147,13 @@ ok("Segment: der Boden gilt nicht als erreicht", at(seg, "reached_anaerobic"))
 ok("Segment: der Hochpunkt kommt aus dem Einrollen",
    (at(seg, "start_index") or 0) >= WARMUP_S)
 
-# Der Anfang ist der LETZTE Hochpunkt, nicht der erste - jetzt am PLATEAU AM
+# Bei Gleichstand am Maximum ist der Anfang die SPAETESTE Stelle, nicht die
+# frueheste - jetzt am PLATEAU AM
 # RAMPENBEGINN (vorher im Einrollen, das e1 gar nicht mehr ansieht).
 ok("Segment Fixture-Beweis: das Plateau am Rampenbeginn ist laenger als die "
-   "Glaettung - sonst waere erster und letzter Hochpunkt dasselbe",
+   "Glaettung - sonst waeren frueheste und spaeteste Stelle des Maximums dasselbe",
    PLATEAU_S > 2 * RAMP_SMOOTH_S)
-ok("Segment: der Anfang ist der ERSTE Hochpunkt statt des letzten",
+ok("Segment: der Anfang ist die FRUEHESTE Stelle des Maximums statt der spaetesten",
    (at(seg, "start_index") or 0) > WARMUP_S + PLATEAU_S // 2)
 
 # Das Ende ist das LASTENDE, nicht der erste Lauf unter 0,5.
@@ -634,6 +635,60 @@ check("Widerspruch Gegenprobe: der Abbruch bei 0,62 meldet einen", at(abgebroche
 check("Widerspruch Gegenprobe: der konvexe Abfall (nie unter 0,5) meldet einen",
       at(res_konvex, "contradiction"), None)
 check("Widerspruch Gegenprobe: der echte Strom meldet einen", at(real, "contradiction"), None)
+
+# ==============================================================================
+# e1 Schritt 3 - der Hochpunkt ist der HOECHSTE WERT (§7, siebenunddreissigster Fall)
+# Der Docstring sagte "der LETZTE Hochpunkt" ueber einem Code, der `max` nimmt.
+# ==============================================================================
+_pk = [1.0, 1.5, 1.2, 1.4, 1.1]
+ok("Hochpunkt Fixture-Beweis: nach dem Maximum liegt ein lokaler Hochpunkt (1,4 an Stelle 3)",
+   _pk[2] < _pk[3] > _pk[4] and _pk[3] < _pk[1])
+check("Hochpunkt: _peak nimmt nicht den hoechsten Wert (etwa den letzten lokalen Hochpunkt)",
+      ramp._peak(_pk, 0, 4), (1, 1.5))
+check("Hochpunkt: bei Gleichstand am Maximum nicht die spaeteste Stelle",
+      ramp._peak([1.0, 1.5, 1.5, 1.2], 0, 3), (2, 1.5))
+_rs = ramp._smooth(ramp._clean(RA), RAMP_SMOOTH_S)
+_rp = ramp._peak(_rs, 900, 2134) if len(_rs) > 2134 else None
+_lok = [i for i in range(1089, 2104) if _rs[i] is not None
+        and _rs[i] == max(x for x in _rs[i - 30:i + 31] if x is not None)]
+ok("Hochpunkt Fixture-Beweis echter Strom: nach dem Maximum folgen lokale Hochpunkte",
+   len(_lok) > 0 and (_rp or (0,))[0] < min(_lok or [0]))
+check("Hochpunkt echter Strom: Beginn nicht am hoechsten Wert 1058 s", (_rp or (None,))[0], 1058)
+
+# Kein Text in ramp.py beschreibt mehr die Suche, die es nie gab.
+_rsrc = Path(ramp.__file__).read_text(encoding="utf-8")
+ok("Docstring Trefferzusicherung: ramp.py ist gelesen und _peak traegt 'HOECHSTE WERT'",
+   len(_rsrc) > 5000 and "HOECHSTE WERT" in (ramp._peak.__doc__ or ""))
+for _alt in ("LETZTE Hochpunkt", "letzten Hochpunkt", "letzte Hochpunkt"):
+    check(f"Docstring: ramp.py beschreibt noch den '{_alt}' - der Code nimmt den hoechsten Wert",
+          _alt in _rsrc, False)
+
+# Jede Rogers/Gronwald-Stelle nennt die Arbeit (0,75 = 2021a, 0,5 = 2021b, beide
+# Laufband). Pauschal "Rogers" liess die Regel "Rogers = Laufband" entstehen.
+import re as _re
+_cc = Path(ramp.__file__).resolve().parent
+_files = list(_cc.glob("*.py")) + [_cc / "frontend" / "intervals-panel.js"]
+_nennt = sum(f.read_text(encoding="utf-8").count("Rogers") for f in _files)
+ok("Quellen Trefferzusicherung: mindestens 20 Bauteile und 20 Rogers-Stellen gelesen",
+   len(_files) >= 20 and _nennt >= 20)
+_ohne = [f"{f.name}:{t.count(chr(10), 0, m.start()) + 1}" for f in _files
+         for t in [f.read_text(encoding="utf-8")]
+         for m in _re.finditer(r"Rogers(?:/| und | and )Gronwald(?! 2021)|\(ROGERS: VT", t)]
+check("Quellen: Rogers/Gronwald ohne Arbeit (2021a/b) an", _ohne, [])
+
+# Die Toleranz am Lastende, am echten Strom: die Beschreibung auf der Karte sagt
+# "zwei Minuten oder mehr -> nicht ausgewertet, kleiner kann unbemerkt bleiben".
+def _verschoben(sek):
+    w = RW[:len(RW) + sek] if sek < 0 else RW + (RW[-120:] * 3)[:sek]
+    return ramp.protocol(len(w), w)
+ok("Toleranz Trefferzusicherung: der echte Strom traegt das Protokoll unverschoben",
+   len(RW) == 2735 and at(_verschoben(0), "code") is None)
+check("Toleranz: 120 s zu kurz ausgerollt wird nicht abgelehnt", at(_verschoben(-120), "code"),
+      ramp.COOLDOWN_TOO_SHORT)
+check("Toleranz: 120 s zu lang ausgerollt wird nicht abgelehnt", at(_verschoben(120), "code"),
+      ramp.COOLDOWN_TOO_LONG)
+check("Toleranz Befund: 90 s zu kurz faellt jetzt auf - const.py und die Karte "
+      "('kann unbemerkt bleiben') stimmen dann nicht mehr", at(_verschoben(-90), "code"), None)
 
 print(f"\ntest_ramp: {CHECKS} Prüfungen, {len(failures)} Fehler")
 print("FEHLER:", failures if failures else "keine")

@@ -162,6 +162,8 @@ anc = coach.anchors(data)
 eq(anc["aerobic_hr"], 157, "6 anker: Herzfrequenz")
 eq(anc["aerobic_power"], 158, "6 anker: Leistung")
 check("Rogers" in anc["source"], "6 anker: Quelle fehlt")
+check("2021a" in anc["source"] and "Laufband" in anc["source"],
+      "6 anker: Quelle ohne Arbeit und Sportart (0,75 = Rogers 2021a, Laufband)")
 thin = build()
 thin["dfa"] = {k: {"hr_at_threshold": 150, "hr_windows": 2, "power_windows": 0} for k in list(thin["activities"])[:5]}
 check(coach.anchors(thin)["aerobic_hr"] is None, "6 anker: dünne Messungen zählen mit")

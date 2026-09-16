@@ -43,7 +43,9 @@ BLOCK = "ramp_tests"
 # mit aelterer Marke gelten als ueberholt und werden zum Neumessen angeboten:
 # die Stroeme liegen nicht im Archiv, eine Korrektur erreicht die gespeicherten
 # Werte sonst nie.
-MEASURE_VERSION = 1
+# 2 = Rechenweg e1 (16.09.2026): Segment ab Rampenbeginn bis Lastende statt vom
+#     Hochpunkt bis zum ersten Lauf unter 0,5; Protokollpruefung. 0.59.0 schrieb 1.
+MEASURE_VERSION = 2
 
 NOTE_LIMIT = 256
 
@@ -52,7 +54,7 @@ SOURCES = [
     "DFA a1 erreicht 0,75 an der ersten ventilatorischen Schwelle. LAUFBAND, "
     "15 Läufer, Bruce-Protokoll bis zur willentlichen Erschöpfung.",
     "Rogers, Giles, Draper, Mourot, Gronwald, JFMK 6:38 (2021): derselbe "
-    "Zusammenhang für 0,5 und die zweite Schwelle.",
+    "Zusammenhang für 0,5 und die zweite Schwelle. LAUFBAND.",
     "Rogers, Murias, Fleitas-Paniagua, IJSPP 19(12) (2024): die "
     "personalisierte erste Schwelle, mittig zwischen dem Hochpunkt der frühen "
     "Rampe und 0,5. Bessere Übereinstimmung als der feste Wert, aber "

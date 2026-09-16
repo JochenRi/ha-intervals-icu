@@ -443,6 +443,19 @@ async def main():
           (stale or {}).get("111", {}).get("result"), None)
     check("und sagt, warum dort nichts steht",
           "neu zu messen" in (stale or {}).get("111", {}).get("reason", ""), True)
+    # Rechenweg e1: die Marke, die 0.59.0 geschrieben hat, muss als ueberholt
+    # gelten - sonst behaelt die produktive Messung (hrvt2 null) ihre alten Zahlen.
+    # v=0 oben traefe auch eine nie erhoehte Konstante.
+    check("e1: MEASURE_VERSION ist nicht hochgesetzt", rts.MEASURE_VERSION, 2)
+    _v1_alt = {"187258578": {**ok_row, "v": 1}}
+    _v1 = rts.migrate(_v1_alt)
+    # Ohne Migration (None) bleibt der gespeicherte Satz stehen - DER wird geprueft.
+    _v1_neu = (_v1 if _v1 is not None else _v1_alt).get("187258578", {})
+    check("e1 Trefferzusicherung: der Satz von 0.59.0 traegt Zahlen",
+          _v1_alt["187258578"].get("result") is not None, True)
+    check("e1: ein Satz mit der Marke von 0.59.0 (v=1) behaelt seine alten Zahlen",
+          _v1_neu.get("result"), None)
+    check("e1: der Satz von 0.59.0 verliert die Markierung", _v1_neu.get("date"), "2026-09-01")
     check("Schrott fliegt raus", rts.migrate({"111": "kaputt", "222": {"date": "x"}}), {})
     check("kein dict ergibt einen leeren Block", rts.migrate(None), {})
 
@@ -497,6 +510,14 @@ async def main():
           "r = 0,85" in _q and "allgemein" not in _q, False)
     check("Rogers 2021a: die Sportart des Laufband-Belegs fehlt", "LAUFBAND" in _q, True)
     check("Rogers 2024: die Korrelationen werden genannt", "0,67" in _q, True)
+    _s = list(rts.SOURCES)
+    check("Quellen Trefferzusicherung: Eintrag 2 ist JFMK 2021b, Eintrag 3 IJSPP 2024",
+          len(_s) > 2 and "JFMK" in _s[1] and "IJSPP" in _s[2], True)
+    check("Rogers 2021b: die Sportart (Laufband, Volltext gelesen) fehlt",
+          len(_s) > 1 and "LAUFBAND" in _s[1], True)
+    import re as _re
+    check("Rogers 2024: traegt eine Sportart, obwohl nur der Abstract gelesen ist",
+          len(_s) > 2 and bool(_re.search(r"\b(LAUFBAND|Laufband|RAD|Rad)\b", _s[2])), False)
     # Der Bias steht OHNE Zahl da: die 21-45 W aus der Vorlage liessen sich am
     # Volltext nicht belegen, und eine Zahl, die niemand nachlesen kann, gehoert
     # nicht in die Karte.

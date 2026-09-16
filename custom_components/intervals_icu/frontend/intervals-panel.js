@@ -3233,7 +3233,7 @@ class IntervalsIcuPanel extends HTMLElement {
       </div>
       ${r.contradiction ? `<p class="src">${esc(r.contradiction.reason || "")}</p>` : ""}
       <p class="src"><b>Die dritte Zahl steht daneben, nicht anstelle der ersten.</b>
-        Sie liegt mittig zwischen dem Hochpunkt am Beginn deines Abfalls
+        Sie liegt mittig zwischen dem höchsten Wert ab Rampenbeginn
         (alpha ${fmt(r.max_alpha_start, 2)}) und 0,5, hier also alpha
         ${fmt(r.pers_alpha, 2)}. <b>Ihr Nutzen ist umstritten:</b> eine Arbeit berichtet
         bessere Übereinstimmung als der feste Wert, aber nur Korrelationen zwischen 0,67
@@ -3242,7 +3242,8 @@ class IntervalsIcuPanel extends HTMLElement {
         die Urarbeit spricht vom „Maximum während der frühen Rampe“, die Umsetzung vom
         „höchsten Wert am Beginn des linearen Abfalls“ — ein Maximum in einem Zeitfenster
         ist etwas anderes als eines an einem Kurvenpunkt. Gebaut ist die zweite Fassung,
-        weil nur sie sich rechnen lässt.</p>
+        weil nur sie sich rechnen lässt — und hier fallen beide nur zusammen, weil wir den
+        Beginn des Abfalls selbst als höchsten Wert ab Rampenbeginn setzen.</p>
       ${r.reached_anaerobic ? "" : `<p class="hint">${ico("info", C.amber, 13)}
         <b>Die zweite Schwelle fehlt.</b> Dein alpha war nie stabil unter 0,5 — der Abbruch
         kam vorher. Das ist eine Auskunft und kein Fehlversuch; die erste Schwelle steht
@@ -3273,10 +3274,10 @@ class IntervalsIcuPanel extends HTMLElement {
             Schwelle ist deren Schnittpunkt mit 0,75 beziehungsweise 0,5. Ein einzelner
             Ausreißer entscheidet damit nichts — dafür entscheidet die Wahl des Abschnitts
             alles.</p>
-          <p class="src"><b>Diese Wahl ist unsere Setzung.</b> Rogers (Laufband) bestimmt den
+          <p class="src"><b>Diese Wahl ist unsere Setzung.</b> Rogers 2021a/b (Laufband) bestimmen den
             Abschnitt nach Augenschein am Diagramm; ob Olieslagers (Rad) den Beginn von Hand
-            setzt, ist nicht nachgelesen. Hier sucht eine Regel: ab Rampenbeginn der letzte
-            Hochpunkt, von dort bis zum Lastende — angelehnt an Olieslagers, der die Gerade
+            setzt, ist nicht nachgelesen. Hier setzt eine Regel den Beginn: der höchste Wert ab
+            Rampenbeginn, bei Gleichstand die späteste Stelle, von dort bis zum Lastende — angelehnt an Olieslagers, der die Gerade
             bis zum letzten Zeitpunkt legt. Gesucht wird auf der geglätteten Kurve, gerechnet
             auf den ungeglätteten Werten.
             ${r.segment ? `Für diesen Test: ${fmt(r.segment.points, 0)} Punkte,
@@ -5292,7 +5293,7 @@ class IntervalsIcuPanel extends HTMLElement {
             thr.failure ? `Ausfall — keine Messung`
               : `${thr.hr_windows} Messpunkte${weak ? " — dünn" : ""}`)}
         </div>` : ""}
-        <p class="src">Rogers und Gronwald: DFA alpha-1 0,75 ≈ aerobe Schwelle (VT1), 0,5 ≈ anaerobe (VT2). Die Validierungslage ist gemischt: gegen Spiroergometrie stimmt VT1 nur schwach überein (weite Übereinstimmungsgrenzen, bei Fitteren wird die Schwelle eher unterschätzt); VT2 ist robuster. Als Trend am eigenen Körper brauchbar, als alleinige Verankerung nicht — dazu empfindlich für Artefakte und Aufzeichnungsgerät.</p>
+        <p class="src">Rogers und Gronwald 2021a/b (Laufband): DFA alpha-1 0,75 ≈ aerobe Schwelle (VT1), 0,5 ≈ anaerobe (VT2). Die Validierungslage ist gemischt: gegen Spiroergometrie stimmt VT1 nur schwach überein (weite Übereinstimmungsgrenzen, bei Fitteren wird die Schwelle eher unterschätzt); VT2 ist robuster. Als Trend am eigenen Körper brauchbar, als alleinige Verankerung nicht — dazu empfindlich für Artefakte und Aufzeichnungsgerät.</p>
       </div>`;
   }
 
@@ -5670,7 +5671,7 @@ class IntervalsIcuPanel extends HTMLElement {
         <p><b>DFA alpha-1</b> beschreibt, wie geordnet dein Herzschlagmuster ist. Der Wert sinkt mit der Intensität:
         bei <b style="color:${C.green}">0,75</b> liegt die aerobe Schwelle, bei <b style="color:${C.red}">0,5</b> die anaerobe.
         Unten steht, bei welcher Herzfrequenz deine Kurve in jeder Einheit durch 0,75 fällt — deine aerobe Schwelle, aus dem Training selbst gemessen, ohne Labortest.</p>
-        <details class="more"><summary>Quelle und Grenzen</summary><p class="src">Rogers und Gronwald, gegen Spiroergometrie geprüft: die Übereinstimmung an der aeroben Schwelle ist schwach (weite Grenzen, fitnessabhängiger Bias), an der anaeroben robuster — als Trend brauchbar, als alleinige Verankerung nicht. Empfindlich für Artefakte und Aufzeichnungsgerät — deshalb zählen nur Messungen mit genügend Punkten im Schwellenfenster voll (ausgefüllte Punkte); dünne Messungen sind hohl und grau.</p></details>
+        <details class="more"><summary>Quelle und Grenzen</summary><p class="src">Rogers und Gronwald 2021a/b (Laufband), gegen Spiroergometrie geprüft: die Übereinstimmung an der aeroben Schwelle ist schwach (weite Grenzen, fitnessabhängiger Bias), an der anaeroben robuster — als Trend brauchbar, als alleinige Verankerung nicht. Empfindlich für Artefakte und Aufzeichnungsgerät — deshalb zählen nur Messungen mit genügend Punkten im Schwellenfenster voll (ausgefüllte Punkte); dünne Messungen sind hohl und grau.</p></details>
       </div>`;
   }
 

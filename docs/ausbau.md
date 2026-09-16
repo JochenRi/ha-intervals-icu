@@ -2998,15 +2998,22 @@ als sei sie der Ausnahmefall. Sie war der Regelfall.
 
 **2 · Die Segmentregel ist eine SETZUNG, und zwar eine unvermeidliche.** Die
 Spec sprach vom „Rampenende an einem Zustand" und las sich, als sei das
-Segment damit bestimmt. Ist es nicht: **in beiden Arbeiten wird der lineare
-Abfall VON HAND am Plot abgegrenzt** — visuell, vom Autor. Es gibt dort keine
-Vorschrift, die man nachbauen könnte, nur ein Bild und ein Ergebnis.
+Segment damit bestimmt. Ist es nicht: **bei Rogers 2021a/b (Laufband) wird der
+lineare Abfall nach Augenschein am Plot abgegrenzt** — visuell, vom Autor; es gibt
+dort keine Vorschrift, die man nachbauen könnte, nur ein Bild und ein Ergebnis.
+**KORRIGIERT (16.09.2026, Rechenweg e1):** Hier stand „in beiden Arbeiten … VON
+HAND". Für Olieslagers 2026 (Rad) ist das nicht belegt: der gelesene Ausschnitt des
+Methodenteils nennt die Grenze des Beginns nicht, der Volltext ist nicht nachgelesen.
 
 Damit hängt an der Segmentwahl alles: ein einzelner Ausreißer entscheidet
 nichts mehr (das ist der Gewinn der Gerade gegenüber dem Ablesen), dafür
-entscheidet die Wahl der Grenzen das ganze Ergebnis. Gebaut ist: **Ende** = der
-erste Punkt, ab dem die geglättete Kurve `RAMP_FLAT_S` unter 0,5 bleibt;
-**Anfang** = der letzte Hochpunkt davor. Geglättet wird nur für die Suche,
+entscheidet die Wahl der Grenzen das ganze Ergebnis. Gebaut war bis Rechenweg e1:
+**Ende** = der erste Punkt, ab dem die geglättete Kurve `RAMP_FLAT_S` unter 0,5
+bleibt; **Anfang** = der höchste Wert davor, bei Gleichstand die späteste Stelle
+(hier stand „der letzte Hochpunkt davor" — ein Etikett, das der Code nie umgesetzt
+hat, §7 Fall 37). **Seit e1:** Anfang = höchster Wert ab Rampenbeginn
+(`RAMP_WARMUP_MIN`), Ende = Lastende (Fahrtlänge − `RAMP_COOLDOWN_MIN`), beide
+Grenzen SETZUNGEN aus dem Protokoll. Geglättet wird nur für die Suche,
 gerechnet auf den ungeglätteten Werten. **Die Karte sagt ausdrücklich, dass
 diese Wahl unsere ist** — und das ist keine Bescheidenheitsfloskel, sondern die
 einzige ehrliche Beschriftung für eine Zahl, deren Bezugsgröße wir selbst
@@ -3021,7 +3028,9 @@ Abfalls**. **Ein Maximum in einem ZEITFENSTER ist etwas anderes als eines an
 einem KURVENPUNKT.** Gebaut ist die Fassung von Olieslagers, weil nur sie
 implementierbar ist und an dasselbe Segment hängt, das die Regression ohnehin
 braucht — **beschriftet als Operationalisierung aus zweiter Hand, nicht als
-Rogers' Wortlaut.** Das ist dieselbe Klasse wie der achte und neunte Fall in
+Rogers' Wortlaut.** Seit e1 fallen Zeitfenster und Kurvenpunkt hier zusammen, aber
+nur per Setzung: der Beginn des Abfalls ist selbst als höchster Wert ab Rampenbeginn
+definiert. Das ist dieselbe Klasse wie der achte und neunte Fall in
 §7: zwei verschieden erhobene Größen unter einer Überschrift.
 
 **4 · Die Erholungsmessung hat kein Fenster in der Literatur.** N4 Punkt 5
@@ -3784,7 +3793,7 @@ Marke bei einem „Alpha-Einbruch". Das wäre eine Erkennung, und P0 verbietet
 Erkennungen. Schlimmer: eine neu erfundene Einbruchs-Statistik ist wörtlich L0
 Runde 3 — eine Größe, die eine Auswahl erzeugt und die gesuchte Eigenschaft mit
 einsammelt. **Die zwei Schwellen 0,75 und 0,5 sind dagegen im Haus belegt**
-(Rogers 2021 für beide, mit der Validierungslage 2024–2026 daneben) und werden
+(Rogers 2021a für 0,75, 2021b für 0,5, beide Laufband, mit der Validierungslage 2024–2026 daneben) und werden
 von der Kurve und vom Stufentest ohnehin benutzt.
 
 **Die Zahlen kommen AUS DER PAYLOAD** (fünfte Bauregel: ein Erklärtext, der eine
@@ -4502,7 +4511,7 @@ Arbeitsteile) und rund **−2,5 aus der Methode**. **Beim Puls überwiegt die
 Auswahl klar — aber der Methodenanteil steht auf drei Fahrten**, und bei der
 Leistung ist er nicht zu trennen (eine der drei weicht um 17 W ab).
 
-**Die Literatur, nachgesehen.** Rogers bestimmte die Schwelle an einer
+**Die Literatur, nachgesehen.** Rogers 2021a (Laufband) bestimmte die Schwelle an einer
 STUFENRAMPE: lineare Regression über den fast linearen Abfall von alpha,
 abgelesen bei 0,75; verglichen wurde mit Gasaustausch (VT1) auf dem Laufband.
 Andriolo, Rummel und Gronwald (Sensors 2024) werteten Leistung gegen DFA a1 aus
