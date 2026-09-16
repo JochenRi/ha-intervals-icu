@@ -1,10 +1,11 @@
 # ha-intervals-icu — Übergabe an den nächsten Chat
 
-**Stand dieser Übergabe: 16.09.2026, abends.** Ausgeliefert ist **0.57.0**
-(die Fahrtenliste, §6 Punkt 2); 0.56.1 ist am System verifiziert, der
-Kalenderweg am echten Eintrag. Prüfstand: **21 Dateien, 6.726 Prüfungen**, alle
-grün. `main` und `paket-b2-wip` stehen gleich. **Als Nächstes: B2b-2, der
-Blockschalter — erster Schritt die Simulation je Familie.**
+**Stand dieser Übergabe: 16.09.2026, spät.** Ausgeliefert ist **0.58.0**
+(der Blockschalter, §6 Punkt 3). 0.56.1 und 0.57.0 sind am System verifiziert.
+Prüfstand: **21 Dateien, 6.792 Prüfungen**, alle grün. `main` und
+`paket-b2-wip` stehen gleich. **Als Nächstes: B2b-3, die Schwellen-Kachel
+(`coach.anchors` auf markiert → Stufentest → FTP, gekoppelt an den
+Kurvenschalter).**
 
 Dieses Dokument ist für einen Chat geschrieben, der nichts von diesem Projekt
 weiß. Es ersetzt keine Quelle, es sagt, **wo** die Wahrheit steht und **was
@@ -126,7 +127,8 @@ Die Reihe von Paket P bis heute:
 | 0.55.1 | Messzustand je Familie in der Aktivitätenliste |
 | 0.56.0 | B2b-1: der Kurvenschalter im Reiter „Quellen", `settings.curve_from_marks` im Archiv |
 | 0.56.1 | Fix-Release, am System verifiziert: Schreibweg nach Intervals mit absoluten Watt (A4), Wattliste ohne Prozentzeichen (A3), Kurvensatz nach Schalterstellung (A1), Wort für `not_measured` (A2), Sperre des Blockschalters mit wahrem Grund, kein Knopf ohne Handler |
-| **0.57.0** | **Die Fahrtenliste** im Reiter „Quellen": tragende Fahrten (mindestens ein Wert) klickbar mit Abschnitten und Stunden; die übrigen markierten unter sieben Gründen; `rides_used` zählt nur Fahrten mit Wert; Feld `lost` für den Verwerfungsgrund; Weglassprobe nur über Fahrten mit Wert; aus dem WIP-Stand die Studienform-Grenze nach unten und die Korridorzeile im Kategorienregister |
+| 0.57.0 | Die Fahrtenliste (am System verifiziert) im Reiter „Quellen": tragende Fahrten (mindestens ein Wert) klickbar mit Abschnitten und Stunden; die übrigen markierten unter sieben Gründen; `rides_used` zählt nur Fahrten mit Wert; Feld `lost` für den Verwerfungsgrund; Weglassprobe nur über Fahrten mit Wert; aus dem WIP-Stand die Studienform-Grenze nach unten und die Korridorzeile im Kategorienregister |
+| **0.58.0** | **Der Blockschalter:** `settings.blocks_from_marks`, Blockreihe aus markierten Blöcken, Gegenstellung gerechnet, Satz beim Umlegen; **Sperre gefallen**; Stufentest und 40-Watt-Frage nennen je Zahl ihre Auswahl |
 
 ### Was Johannes umgelegt hat und was es bewirkt
 
@@ -568,7 +570,18 @@ gibt.
   Kategorienregister.
 - **Beide Schalterstellungen** prüfen.
 
-### 3 · B2b-2, der Blockschalter
+### 3 · B2b-2, der Blockschalter — GEBAUT als 0.58.0, Verifikation am System offen
+
+Simulation, Klarstellung zur Auflage und Begründung für den Wegfall der Sperre
+stehen in `docs/ausbau.md`, Abschnitt „B2b-2". Erwartung nach dem Umlegen:
+Vorgaben unverändert (VO2max 250, SweetSpot 196, Tempo 160 W); Pulsfenster
+VO2max 176–186, SweetSpot 159–173; SweetSpot-Trendbalken fort, VO2max-Trend
+auf der Grenze; die Stufentest-Karte nennt an Start und Ende „aus deinen
+Markierungen".
+
+**Ursprünglicher Auftrag (Referenz):**
+
+
 
 `settings.blocks_from_marks`; `blocks.py` liest bei „an" die markierten Blöcke
 statt `family_of`; Kommando; Entsperrung im Reiter.

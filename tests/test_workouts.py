@@ -1199,6 +1199,38 @@ eq(W.watts_text([(10, 120, "a"), (5, None, "b")]), None,
    "A3: watts_text liefert eine Liste mit fehlender Zahl")
 eq(W.watts_text([(10, 120, "a")]), "- 10m 120w  (a)", "A3: watts_text Form")
 
+# --- B2b-2 · DER STUFENTEST NENNT JE ZAHL SEINE AUSWAHL ------------------------
+# Start und Ende kommen von Natur aus aus zwei Ketten - entworfen, kein
+# Widerspruch. Seit zwei Schaltern koennen die Ketten aus zwei AUSWAHLEN kommen
+# („Marken / Namenserkennung"); dann steht es an der Zahl.
+_mk = {"from_marks": True, "key": "marks", "label": "AUS DEN MARKEN"}
+_nm = {"from_marks": False, "key": "names", "label": "AUS DEN NAMEN"}
+_blk_lead = {"families": {"vo2max": {**_BLOCKS["families"]["vo2max"],
+                                     "latest": {**_BLOCKS["families"]["vo2max"]["latest"],
+                                                "first_watts": 257, "first_alpha": 0.47}}},
+             "selection": _nm}
+_rt_mix = W.scaled(W.BY_KEY["ramp_test"], 215, 146, curve={**_CURVE, "selection": _mk},
+                   blocks=_blk_lead)
+# TREFFERZUSICHERUNG: beide Enden laufen WIRKLICH ueber Kurve und Bloecke.
+eq([((_rt_mix.get("ramp_protocol") or {}).get(k) or {}).get("kind") for k in ("start_source", "end_source")],
+   ["curve", "blocks"], "B2b-2 Fixture: Start und Ende laufen nicht ueber Kurve und Bloecke")
+_herl = " ".join(_rt_mix.get("derivation") or [])
+eq(((_rt_mix.get("ramp_protocol") or {}).get("start_source") or {}).get("selection"), _mk,
+   "B2b-2: der Start traegt die Auswahl der Kurve")
+eq(((_rt_mix.get("ramp_protocol") or {}).get("end_source") or {}).get("selection"), _nm,
+   "B2b-2: das Ende traegt die Auswahl der Bloecke")
+check("Start" in _herl and "AUS DEN MARKEN" in _herl.split("Ende")[0],
+      f"B2b-2: die Herleitung nennt beim Start nicht seine Auswahl ({_herl[:120]})")
+check("AUS DEN NAMEN" in _herl.split("Ende", 1)[-1],
+      "B2b-2: die Herleitung nennt beim Ende nicht seine Auswahl")
+# SOURCE_LABEL bleibt der MESSWEG: die Auswahl steht daneben, nicht darin.
+check(all("Markierung" not in v and "Namenserkennung" not in v for v in W.SOURCE_LABEL.values()),
+      "B2b-2: die Auswahl ist in SOURCE_LABEL gewandert")
+# Faellt eine Seite auf die FTP, traegt sie keine Auswahl - die FTP hat keine.
+_rt_ftp = W.scaled(W.BY_KEY["ramp_test"], 215, 146)
+eq([((_rt_ftp.get("ramp_protocol") or {}).get(k) or {}).get("selection") for k in ("start_source", "end_source")],
+   [None, None], "B2b-2: der FTP-Rueckfall behauptet eine Auswahl")
+
 print(f"test_workouts: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

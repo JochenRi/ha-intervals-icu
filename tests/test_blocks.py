@@ -348,6 +348,141 @@ check("eine Einheit ohne Bloecke zaehlt nicht",
       blocks.series({"activities": {"x": {"name": "SweetSpot", "start_date_local": "2026-08-01"}},
                      "dfa": {"x": {}}})["families"], {})
 
+# --- DER BLOCKSCHALTER, beide Stellungen (B2b-2) -----------------------------
+# Umgelegt liest die Blockreihe NUR markierte, gemessene Bloecke je Familie.
+# Die Fixture traegt, was die Stellungen unterscheidet (§7, 28. Fall): eine
+# Einheit, die nur in einer Auswahl vorkommt, und einen Block, der die Familie
+# wechselt (wie am 20.08.2026 - die Namenserkennung las ihn als SweetSpot).
+print("\n=== Blockschalter: beide Stellungen ===")
+import copy  # noqa: E402
+import section_marks as SM  # noqa: E402
+
+
+def _blk(start, alpha, watts, hr, label="WORK"):
+    return {"label": label, "start_index": start, "alpha": alpha, "watts": watts, "hr": hr,
+            "lap_alpha": alpha + 0.2}
+
+
+def _mark(day, fams):
+    """fams: {familie: [bloecke]} - markiert UND gemessen."""
+    return {"date": day, "marks": {f: [b["start_index"] for b in bl] for f, bl in fams.items()},
+            "anchor": {"laps": 9, "sections": []},
+            "measure": {f: {"hours": None, "blocks": bl, "reason": ""} for f, bl in fams.items()},
+            "reason": "", "measured_at": day, "set_at": day, "v": SM.MEASURE_VERSION}
+
+
+SW = {"activities": {}, "dfa": {}, "section_marks": {}}
+_vo_hr = [170, 176, 178, 180, 182, 184, 190]
+for _k in range(7):   # sieben namenserkannte VO2max-Einheiten
+    _key, _tag = f"vo{_k}", f"2026-07-{_k + 1:02d}"
+    SW["activities"][_key] = {"name": f"VO2max-Intervalle {_k}", "start_date_local": _tag + "T09:00:00"}
+    _b = [_blk(600, 0.45, 240 + _k, _vo_hr[_k]), _blk(1000, 0.42, 238 + _k, _vo_hr[_k])]
+    SW["dfa"][_key] = {"blocks": _b}
+    if 1 <= _k <= 5:   # fuenf davon markiert
+        SW["section_marks"][_key] = _mark(_tag, {"vo2max": _b})
+# NUR IN DEN MARKEN: eine Rollenfahrt ohne Familiennamen, als VO2max markiert.
+SW["activities"]["rolle"] = {"name": "Rolle", "start_date_local": "2026-07-20T09:00:00"}
+SW["dfa"]["rolle"] = {"blocks": [_blk(600, 0.40, 255, 180)]}
+SW["section_marks"]["rolle"] = _mark("2026-07-20", {"vo2max": [_blk(600, 0.40, 255, 180)]})
+_ss_hr = [150, 160, 162, 164, 175]
+for _k in range(5):   # fuenf namenserkannte SweetSpot-Einheiten, drei markiert
+    _key, _tag = f"ss{_k}", f"2026-08-{_k + 1:02d}"
+    SW["activities"][_key] = {"name": f"SweetSpot 2x20 {_k}", "start_date_local": _tag + "T09:00:00"}
+    _b = [_blk(700, 0.70, 190 + _k, _ss_hr[_k])]
+    SW["dfa"][_key] = {"blocks": _b}
+    if _k <= 2:
+        SW["section_marks"][_key] = _mark(_tag, {"sweetspot": _b})
+# DER FAMILIENWECHSEL: der Name sagt SweetSpot, der Athlet sagt Tempo + SweetSpot.
+SW["activities"]["mix"] = {"name": "volumen + SweetSpot 2x15", "start_date_local": "2026-08-20T09:00:00"}
+_t, _s = _blk(2388, 0.915, 194, 167), _blk(3587, 0.699, 192, 168)
+SW["dfa"]["mix"] = {"blocks": [_t, _s]}
+SW["section_marks"]["mix"] = _mark("2026-08-20", {"tempo": [_t], "sweetspot": [_s]})
+# Markiert, aber NICHT gemessen: darf in keiner Stellung als Einheit zaehlen.
+SW["activities"]["offen"] = {"name": "Rolle 2", "start_date_local": "2026-08-25T09:00:00"}
+SW["section_marks"]["offen"] = {**_mark("2026-08-25", {"vo2max": []}), "measure": {}}
+SW["section_marks"]["offen"]["marks"] = {"vo2max": [600]}
+
+_vorher_marks = copy.deepcopy(SW["section_marks"])
+_aus = blocks.series(SW)
+SW["settings"] = {blocks.BLOCK_SWITCH: True}
+_an = blocks.series(SW)
+_ids = lambda r, f: [p.get("date") for p in ((r.get("families") or {}).get(f) or {}).get("points", [])]
+
+# TREFFERZUSICHERUNG, doppelt: eine Einheit nur in EINER Auswahl, und ein Block,
+# der die FAMILIE wechselt. Ohne beides prueft die Fixture keinen Schalter.
+ok("Blockschalter Fixture: vo0 steht nur in der Namenserkennung",
+   "2026-07-01" in _ids(_aus, "vo2max") and "2026-07-01" not in _ids(_an, "vo2max"))
+ok("Blockschalter Fixture: die Rolle steht nur in den Marken",
+   "2026-07-20" in _ids(_an, "vo2max") and "2026-07-20" not in _ids(_aus, "vo2max"))
+ok("Blockschalter Fixture: der Block 2388 wechselt von SweetSpot zu Tempo",
+   "tempo" not in (_aus.get("families") or {}) and "2026-08-20" in _ids(_an, "tempo")
+   and "2026-08-20" in _ids(_aus, "sweetspot"))
+check("Blockschalter AUS: Stellung in der Payload", (_aus.get("from_marks"), _aus.get("selection", {}).get("key")), (False, "names"))
+check("Blockschalter AN: Stellung in der Payload", (_an.get("from_marks"), _an.get("selection", {}).get("key")), (True, "marks"))
+check("Blockschalter AN: VO2max zaehlt die markierten, gemessenen Einheiten",
+      (_an.get("families") or {}).get("vo2max", {}).get("sessions"), 6)
+check("Blockschalter AUS: VO2max zaehlt die namenserkannten", (_aus.get("families") or {}).get("vo2max", {}).get("sessions"), 7)
+check("Blockschalter: SweetSpot 6 -> 4", ((_aus["families"].get("sweetspot") or {}).get("sessions"),
+                                          (_an["families"].get("sweetspot") or {}).get("sessions")), (6, 4))
+check("Blockschalter AN: SweetSpot am 20.08. nur mit SEINEM Block",
+      [p.get("block_alphas") for p in _an["families"]["sweetspot"]["points"] if p["date"] == "2026-08-20"], [[0.699]])
+check("Blockschalter AUS: SweetSpot am 20.08. mit beiden Bloecken (Namenserkennung)",
+      [p.get("block_alphas") for p in _aus["families"]["sweetspot"]["points"] if p["date"] == "2026-08-20"], [[0.915, 0.699]])
+ok("Blockschalter AN: markiert und ungemessen zaehlt nicht",
+   "2026-08-25" not in _ids(_an, "vo2max"))
+check("Blockschalter: die Trendbalken folgen der Stellung",
+      [(_aus["families"][f]["trend"], _an["families"][f]["trend"]) for f in ("vo2max", "sweetspot")],
+      [(True, True), (True, False)])
+
+# DIE GEGENSTELLUNG WIRD GERECHNET, und sie ENTSPRICHT der anderen Stellung.
+check("Blockschalter: other (aus) == Zusammenfassung von an",
+      _aus.get("other"), {f: blocks.summary(b) for f, b in _an["families"].items()})
+check("Blockschalter: other (an) == Zusammenfassung von aus",
+      _an.get("other"), {f: blocks.summary(b) for f, b in _aus["families"].items()})
+check("Blockschalter: die Gegenrechnung laesst den Schalter stehen", blocks.blocks_from_marks(SW), True)
+
+# DER SATZ BEIM UMLEGEN - Lesart, nicht nur Zahlen, und die Zahlen aus der Reihe.
+_n = _aus.get("switch_note") or ""
+_va, _vb = blocks.summary(_aus["families"]["vo2max"]), blocks.summary(_an["families"]["vo2max"])
+_sa, _sb = blocks.summary(_aus["families"]["sweetspot"]), blocks.summary(_an["families"]["sweetspot"])
+ok("Satz Fixture: beide Pulsfenster werden in der Fixture enger",
+   (_vb["hr_high"] - _vb["hr_low"]) < (_va["hr_high"] - _va["hr_low"])
+   and (_sb["hr_high"] - _sb["hr_low"]) < (_sa["hr_high"] - _sa["hr_low"]))
+ok(f"Satz: weniger Einheiten ({_n[:80]})", "VO2max 7 → 6" in _n and "SweetSpot 6 → 4" in _n)
+ok("Satz: der SweetSpot-Trendbalken verschwindet, mit Mindestzahl", "SweetSpot-Trendbalken verschwindet (er braucht 6" in _n)
+ok("Satz: der VO2max-Trend steht auf der Grenze", "VO2max-Trend steht genau auf der Grenze von 6" in _n
+   and "zurückgenommene Marke" in _n)
+ok("Satz: die Pulsfenster mit ihren Zahlen aus der Reihe",
+   f"VO2max {_va['hr_low']}–{_va['hr_high']} → {_vb['hr_low']}–{_vb['hr_high']}" in _n
+   and f"SweetSpot {_sa['hr_low']}–{_sa['hr_high']} → {_sb['hr_low']}–{_sb['hr_high']}" in _n)
+ok("Satz: das engere Fenster ist als FOLGE benannt, nicht als Korrektur",
+   "keine Korrektur" in _n and "Folge der kleineren Zahl" in _n)
+ok("Satz zurueck: sagt, dass wieder die Namenserkennung waehlt",
+   "Namenserkennung" in (_an.get("switch_note") or "") and "SweetSpot 4 → 6" in (_an.get("switch_note") or ""))
+_z = _an.get("switch_note") or ""
+ok("Satz zurueck: keine Marke, die etwas wegnimmt - in der Namenserkennung zaehlen keine Marken",
+   "Marke" not in _z)
+ok("Satz zurueck: breitere Fenster heissen breiter, mit Grund", "werden breiter" in _z and "keine Korrektur" in _z)
+ok("Satz Fixture: zurueck gibt es einen Trend auf der Grenze (der Fall ist hergestellt)",
+   _sa["trend"] and _sa["sessions"] == _sa["min_for_trend"])
+for _wort in ("zu locker", "Fehler", "Mangel", "leider", "nicht ausreich"):
+    ok(f"Satz: kein gesperrtes Wort ({_wort})", _wort not in _n and _wort not in (_an.get("switch_note") or ""))
+
+# DER RUECKWEG, BELEGT - drei Pruefungen wie beim Kurvenschalter.
+SW["settings"] = {blocks.BLOCK_SWITCH: False}
+_zurueck = blocks.series(SW)
+check("Rueckweg 1: zurueckgestellt ist die Blockreihe bit-identisch", _zurueck, _aus)
+import workouts as WK  # noqa: E402
+_vo = WK.BY_KEY["vo2_4x4"]
+check("Rueckweg 2: dieselben Watt und dasselbe Pulsfenster",
+      (WK.scaled(_vo, 200, 146, blocks=_zurueck).get("blocks_w"), WK.scaled(_vo, 200, 146, blocks=_zurueck).get("hr_window")),
+      (WK.scaled(_vo, 200, 146, blocks=_aus).get("blocks_w"), WK.scaled(_vo, 200, 146, blocks=_aus).get("hr_window")))
+check("Rueckweg 3: Marken und Messungen unberuehrt", SW["section_marks"], _vorher_marks)
+# Und die Pruefung 2 unterscheidet ueberhaupt etwas: umgelegt sind die Watt andere.
+ok("Rueckweg Fixture: umgelegt aendert sich die VO2max-Vorgabe",
+   WK.scaled(_vo, 200, 146, blocks=_an).get("blocks_w") != WK.scaled(_vo, 200, 146, blocks=_aus).get("blocks_w"))
+
+
 print(f"\ntest_blocks: {CHECKS} Prüfungen, {len(failures)} Fehler")
 print("FEHLER:", failures if failures else "keine")
 sys.exit(1 if failures else 0)

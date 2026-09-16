@@ -265,6 +265,40 @@ for wort in ("zu locker", "Fehler", "Mangel", "leider", "nicht ausreich"):
 fat_src = (COMP / "fatigue.py").read_text(encoding="utf-8")
 check("A2: die Kurven-Payload traegt die Woerter", '"dropped_words":' in fat_src)
 
+# --- B2b-2 · der Blockschalter: speichert nur im Aenderungsfall -------------
+class SaveArchive(FakeArchive):
+    def __init__(self, data):
+        super().__init__(data)
+        self.saves = 0
+
+    async def async_save_now(self):
+        self.saves += 1
+
+
+_bs = FakeCoordinator(importer.empty_data("i1"))
+_bs.archive = SaveArchive(_bs.archive.data)
+ws._pick = lambda hass, athlete_id: _bs
+for _want, _saves in ((True, 1), (True, 1), (False, 2)):
+    _c = FakeConn()
+    asyncio.run(ws.websocket_set_block_source(None, _c, {"id": 1, "from_marks": _want}))
+    eq(f"B2b-2: umgelegt auf {_want} meldet die Stellung",
+       ((_c.results or [{}])[0]).get("from_marks"), _want)
+    eq(f"B2b-2: nach {_want} {_saves} Speichervorgang/-vorgaenge (nur im Aenderungsfall)",
+       _bs.archive.saves, _saves)
+check("B2b-2: der Schalter steht im Archiv, nicht in den Integrationsoptionen",
+      "blocks_from_marks" in (_bs.archive.data.get("settings") or {}))
+
+# WELCHE Familien ihre Watt aus den Bloecken beziehen - aus der Quellenkette.
+_bl = FakeConn()
+ws.blocks_lib.series = lambda data: {"families": {}}
+ws._pick = lambda hass, athlete_id: FakeCoordinator(importer.empty_data("i1"))
+ws.websocket_blocks(None, _bl, {"id": 1})
+eq("B2b-2: feeds_watts kommt aus SOURCE_CHAIN",
+   ((_bl.results or [{}])[0]).get("feeds_watts"),
+   sorted(f for f, c in W.SOURCE_CHAIN.items() if "blocks" in c))
+check("B2b-2: Tempo speist seine Watt nicht aus Bloecken",
+      "tempo" not in (((_bl.results or [{}])[0]).get("feeds_watts") or ["tempo"]))
+
 print(f"test_handlers: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

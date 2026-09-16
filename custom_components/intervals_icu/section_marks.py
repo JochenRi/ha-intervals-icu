@@ -237,6 +237,25 @@ def marked_sections(entry: Any, family: str) -> list[dict[str, Any]]:
     return sorted(out, key=lambda row: row["start_index"])
 
 
+# WELCHE AUSWAHL eine Zahl traegt - die zweite Achse neben dem Messweg. Sie
+# gehoert NICHT in `workouts.SOURCE_LABEL`: das ist nach dem Messweg
+# verschluesselt (Bloecke, Kurve, Stufentest, FTP), und dieselbe Kurve kann aus
+# beiden Auswahlen kommen. Dort hineingeschrieben braeuchte es je Messweg zwei
+# Schluessel mit doppeltem Text. Seit B2b-2 steht die Stufentest-Karte bei
+# gemischten Schaltern auf „Marken / Namenserkennung", und eine Zahl ohne
+# Auswahl liest sich dann wie die andere (docs/ausbau.md, B2b-2).
+SELECTION_LABEL = {
+    "marks": "aus deinen Markierungen",
+    "names": "aus der Namenserkennung",
+}
+
+
+def selection(from_marks: bool) -> dict[str, Any]:
+    """Die Auswahl als Payload-Feld: Stellung und Etikett aus EINER Stelle."""
+    key = "marks" if from_marks else "names"
+    return {"from_marks": bool(from_marks), "key": key, "label": SELECTION_LABEL[key]}
+
+
 # Warum eine vorhandene Messung nicht mehr gilt.
 STALE_REASON = {
     "laps_missing": "Die Runden dieser Fahrt sind nicht geladen — ohne sie ist "

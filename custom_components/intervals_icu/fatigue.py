@@ -591,6 +591,7 @@ def curve(data: dict[str, Any], aerobic_hr: float | None = None,
         # Welche Quelle gerade zaehlt, und was das Umlegen aendert - beides aus
         # dem Modul, damit die Kachel es nennen kann, ohne es zu kennen.
         "from_marks": curve_from_marks(data),
+        "selection": marks_lib.selection(curve_from_marks(data)),
         "switch_note": SWITCH_NOTE,
         # DIE ANDERE SCHALTERSTELLUNG, gerechnet statt behauptet. Der Reiter
         # soll beide Zahlenreihen nebeneinander zeigen, und die Gegenseite kann

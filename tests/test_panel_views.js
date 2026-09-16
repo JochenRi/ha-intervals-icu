@@ -2282,22 +2282,18 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
 
   ok(/Ermüdungskurve/.test(aus) && /Arbeitsblöcke/.test(aus),
      "quellen: die beiden Schalter stehen nicht nebeneinander");
-  // DIE SPERRE SAGT WARUM — und zwar den Grund, der AM CODE trägt. Bis 0.56.0
-  // stand dort, die Kurve liefere die Schwellenzahl für das Pulsfenster der
-  // Blockfamilien (falsch: aerobic_hr kommt aus coach.anchors), und bei
-  // umgelegter Kurve fiel die Sperre und hinterließ einen Knopf ohne Handler.
-  // Diese Prüfung sicherte damals genau diesen Knopf zu (§7).
-  ok(/Noch gesperrt/.test(aus) && /Noch gesperrt/.test(an),
-     "quellen: der Blockschalter ist in einer Stellung nicht gesperrt, obwohl er nicht gebaut ist");
-  ok(/noch nicht gebaut/.test(aus) && /noch nicht gebaut/.test(an),
-     "quellen: die Sperre nennt nicht den Grund, der am Code trägt");
-  // Der FALSCHE Grund wird namentlich ausgeschlossen (§7, achtzehnter Fall).
-  ok(!/Pulsfenster|Schwellenzahl/.test(aus + an),
-     "quellen: die widerlegte Begründung (Kurve → Pulsfenster) steht wieder da");
+  // KEINE SPERRE MEHR (B2b-2). Sie hing an einer widerlegten Begründung (die
+  // Kurve steuere das Pulsfenster), danach an „noch nicht gebaut". Gebaut ist er,
+  // und eine Sperre hätte die Mischung „Marken / Namenserkennung" ohnehin nicht
+  // verhindert: sie entsteht schon mit dem Kurvenschalter allein.
+  ok(!/Noch gesperrt/.test(aus) && !/Noch gesperrt/.test(an),
+     "quellen: der Blockschalter ist gesperrt, obwohl er gebaut ist");
+  ok(!/Pulsfenster, an dem|noch nicht gebaut/.test(aus + an),
+     "quellen: eine widerlegte Sperrbegründung steht wieder da");
   const knoepfeAus = (aus.match(/data-act="swblocks"/g) || []).length;
   const knoepfeAn = (an.match(/data-act="swblocks"/g) || []).length;
-  ok(knoepfeAus === 0 && knoepfeAn === 0,
-     `quellen: der nicht gebaute Schalter ist bedienbar (${knoepfeAus} / ${knoepfeAn})`);
+  ok(knoepfeAus === 1 && knoepfeAn === 1,
+     `quellen: der Blockschalter ist nicht in beiden Stellungen bedienbar (${knoepfeAus} / ${knoepfeAn})`);
 
   // KEIN KNOPF OHNE HANDLER (§7, fünfundzwanzigster Fall, andersherum): jedes
   // data-act, das der Reiter in einer der beiden Stellungen rendert, hat einen
@@ -2358,6 +2354,51 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   ok(/Welche Fahrten die Kurve tragen:\s*<b class="tn">7<\/b>/.test(flZahl),
      "fahrtenliste: die Zahl kommt aus der Liste statt aus dem Zählfeld");
   ok(q._curveRides(null) === "", "fahrtenliste: ohne Payload wird eine Liste gebaut");
+
+  // ── DER BLOCKSCHALTER: Zahlen beider Stellungen, Satz, Tempo ohne Vorgabe ──
+  const blk = (from_marks) => ({ from_marks, feeds_watts: ["sweetspot", "vo2max"],
+    selection: { label: from_marks ? "AUSWAHL MARKEN" : "AUSWAHL NAMEN" },
+    switch_note: from_marks ? "RUECKSATZ AUS DER PAYLOAD" : "UMLEGESATZ AUS DER PAYLOAD",
+    families: { vo2max: { sessions: from_marks ? 6 : 15, source_ok: true,
+                          latest: { median_watts: from_marks ? 251 : 250, first_watts: 257, first_alpha: 0.47 },
+                          hr_window: from_marks ? { low: 176, high: 186 } : { low: 172, high: 186 } },
+                tempo: { sessions: from_marks ? 2 : 1, source_ok: false, latest: { median_watts: 169 } } },
+    other: { vo2max: { sessions: from_marks ? 15 : 6, watts: from_marks ? 250 : 251,
+                       hr_low: from_marks ? 172 : 176, hr_high: 186 },
+             tempo: { sessions: from_marks ? 1 : 2, watts: null } } });
+  const bAus = String(q.rQuellen(F.fatigue({ from_marks: true, plan_other: gegen }), blk(false)));
+  const bAn = String(q.rQuellen(F.fatigue({ from_marks: true, plan_other: gegen }), blk(true)));
+  const bZeile = (html, label) => {
+    const t = new RegExp(`<td>${label}<\\/td>\\s*<td class="tn">([^<]*)<\\/td>\\s*<td class="tn">([^<]*)<`)
+      .exec(html.replace(/\s+/g, " "));
+    return t ? [t[1].trim(), t[2].trim()] : null;   // Regex null-geprüft (§9)
+  };
+  const vAus = bZeile(bAus, "VO2max: Pulsfenster"), vAn = bZeile(bAn, "VO2max: Pulsfenster");
+  ok(vAus !== null && vAn !== null, "blockschalter: die Pulsfenster-Zeile ist nicht ablesbar");
+  // TREFFERZUSICHERUNG: die Fixture unterscheidet beide Stellungen an dieser Zeile.
+  ok(vAus && vAus[0] !== vAus[1], "blockschalter Fixture-Beweis: beide Stellungen tragen dasselbe Fenster");
+  ok(vAus && vAn && vAus[0] === vAn[0] && vAus[1] === vAn[1] && vAus[0] === "172–186" && vAus[1] === "176–186",
+     `blockschalter: die Spalten folgen nicht der Stellung (${JSON.stringify([vAus, vAn])})`);
+  ok(/UMLEGESATZ AUS DER PAYLOAD/.test(bAus) && /RUECKSATZ AUS DER PAYLOAD/.test(bAn),
+     "blockschalter: der Satz beim Umlegen kommt nicht aus der Payload");
+  ok(/VO2max: Vorgabe/.test(bAus) && !/Tempo: Vorgabe/.test(bAus),
+     "blockschalter: Tempo zeigt eine Blockzahl als Vorgabe, oder VO2max keine");
+  ok(/Tempo: Einheiten/.test(bAus), "blockschalter Fixture-Beweis: Tempo steht gar nicht in der Tabelle");
+  const bohneQuelle = String(q.rQuellen(F.fatigue({ from_marks: true, plan_other: gegen }),
+    { ...blk(false), feeds_watts: [] }));
+  ok(!/VO2max: Vorgabe/.test(bohneQuelle), "blockschalter: die Vorgabe-Zeile hängt nicht an feeds_watts");
+  ok(/data-act="swblocks"[^>]*data-on="1"/.test(bAus) && /data-act="swblocks"[^>]*data-on="0"/.test(bAn),
+     "blockschalter: der Knopf schaltet nicht in die andere Stellung");
+
+  // ── DIE 40-WATT-FRAGE nennt je Zahl ihre Auswahl ─────────────────────────
+  const gap = String(q.rRampGap(blk(false), F.fatigue({ selection: { label: "KURVE AUS MARKEN" } }), null));
+  const gapLeer = String(q.rRampGap({ ...blk(false), selection: null }, F.fatigue({ selection: null }), null));
+  ok(gap !== "" && /AUSWAHL NAMEN/.test(gap) && /KURVE AUS MARKEN/.test(gap),
+     "40-Watt-Frage: eine der beiden Zahlen nennt ihre Auswahl nicht");
+  ok(gap.indexOf("AUSWAHL NAMEN") < gap.indexOf("KURVE AUS MARKEN"),
+     "40-Watt-Frage: die Auswahl steht nicht an ihrer Zahl");
+  ok(gapLeer !== "" && !/AUSWAHL|KURVE AUS/.test(gapLeer),
+     "40-Watt-Frage: die Auswahl kommt aus dem Frontend statt aus der Payload");
 
   // DIE ZAHLEN BEIDER STELLUNGEN, nebeneinander.
   // BEIDE Reihen stehen da, und die Fixture macht sie unterscheidbar.

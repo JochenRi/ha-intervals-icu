@@ -729,11 +729,19 @@ def ramp_protocol(ftp: float | None, curve: dict[str, Any] | None = None,
     minutes = max(1, round((end - start) / step))
     return {
         "start_w": start, "end_w": end, "minutes": minutes,
+        # DIE AUSWAHL NEBEN DEM MESSWEG. Start und Ende kommen von Natur aus aus
+        # zwei Ketten - das ist entworfen und kein Widerspruch. Seit es zwei
+        # Schalter gibt, koennen die beiden Ketten aber aus verschiedenen
+        # AUSWAHLEN kommen, und eine Zahl ohne Auswahl liest sich dann wie die
+        # andere. Sie steht deshalb daneben, nicht in SOURCE_LABEL (dort ist
+        # nach dem Messweg verschluesselt).
         "start_source": {"kind": start_from, "label": SOURCE_LABEL[start_from],
-                         "share": CURVE_TARGET_SHARE if start_from != "ftp" else None},
+                         "share": CURVE_TARGET_SHARE if start_from != "ftp" else None,
+                         "selection": (curve or {}).get("selection") if start_from == "curve" else None},
         "end_source": {"kind": end_from, "label": SOURCE_LABEL[end_from],
                        "lead": lead, "reserve_min": RAMP_END_RESERVE_MIN,
-                       "reserve_w": round(reserve)},
+                       "reserve_w": round(reserve),
+                       "selection": (blocks or {}).get("selection") if end_from == "blocks" else None},
         "step_w_per_min": RAMP_STEP_W_PER_MIN,
     }
 
@@ -802,9 +810,13 @@ def scaled(entry: dict[str, Any], ftp: float | None, aerobic_hr: int | None,
             # hat - es stand seit 0.51.0 leer, weil niemand es mehr fuellte.
             out["derivation"] = [
                 f"Start {proto['start_w']} W — {proto['start_source']['label']}"
+                + (f", {proto['start_source']['selection']['label']}"
+                   if (proto["start_source"].get("selection") or {}).get("label") else "")
                 + (f" (Anteil {proto['start_source']['share']:.2f} der Schwelle)"
                    if proto["start_source"]["share"] else ""),
                 f"Ende {proto['end_w']} W — {proto['end_source']['label']}"
+                + (f", {proto['end_source']['selection']['label']}"
+                   if (proto["end_source"].get("selection") or {}).get("label") else "")
                 + (f": Leitzahl {proto['end_source']['lead']['watts']} W"
                    + (f" bei alpha {proto['end_source']['lead']['alpha']:.2f}"
                       if proto["end_source"]["lead"].get("alpha") else "")

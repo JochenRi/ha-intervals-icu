@@ -4414,6 +4414,61 @@ ist die VO2max-Einheit vom 02.08. mit 168,1 W — läge sie unter den letzten
 fünf, zöge sie den Leistungsanker nach oben. Genau dagegen ist der Filter
 gebaut.
 
+#### B2b-2 · Der Blockschalter — Simulation, Klarstellung, Sperre (16.09.2026)
+
+**Die Simulation, am Bestand vor dem Bau gemeldet** (live `blocks` gegen die
+markierten, gemessenen Blöcke aus `section_marks`, mit den Funktionen des Repos):
+
+| | heute (Namenserkennung) | umgelegt (Markierungen) |
+|---|---|---|
+| VO2max Vorgabe · Einheiten · Pulsfenster | 250 W · 15 · 172–186 | 250 W · **6** · **176–186** |
+| SweetSpot Vorgabe · Einheiten · Pulsfenster | 196 W · 10 · 155–174 | 196 W · **4** · **159–173** |
+| Tempo Vorgabe | 160 W aus der FTP | unverändert — `SOURCE_CHAIN` hat für Tempo keine Blockstufe |
+| Trendbalken (braucht 6) | VO2max ja, SweetSpot ja | VO2max **genau auf der Grenze**, SweetSpot **fort** |
+| Einheiten außerhalb ihres Korridors | VO2max **7 von 15**, SweetSpot **7 von 10** | VO2max **0 von 6**, SweetSpot **2 von 4** |
+| Streuung der Einheitsmediane (Regelkreis) | VO2max 0,086 · SweetSpot 0,194 | VO2max **0,039** · SweetSpot **0,028** |
+
+**Das ist der beste Beleg für das ganze Paket:** die Handauswahl räumt auf. Von
+fünfzehn namenserkannten VO2max-Einheiten lagen sieben über ihrem Korridor,
+von den sechs markierten keine; der Regelkreis rechnet danach auf einer
+Streuung, die halb bis ein Siebtel so groß ist. Die Vorgaben bewegen sich
+nicht, weil sie an der jeweils letzten Einheit hängen, und die ist in beiden
+Auswahlen dieselbe. **Die engeren Pulsfenster sind keine Korrektur, sondern
+die Folge der kleineren Zahl** — die Breite kommt aus der Streuung zwischen
+den Einheiten. Der Satz beim Umlegen sagt das.
+
+Die zwei SweetSpot-Blöcke außerhalb (05.08. 0,809 · 24.08. 0,869) heben ihre
+Einheit knapp über den Korridor, und der 24.08. ist die letzte: **der
++5-%-Vorschlag hängt allein am ersten 20-Minuten-Block** — in beiden
+Stellungen. Nicht Teil des Schalters, aber festgehalten.
+
+**KLARSTELLUNG ZUR AUFLAGE „keine Kachel mit zwei Zahlen aus zwei Quellen"
+(Johannes, 16.09.2026).** Gemeint war: keine EINE Zahl aus zwei Quellen, und
+keine Zwischenstufe, in der dieselbe Größe zweimal verschieden dasteht. Der
+Stufentest hat von Natur aus zwei Zahlen aus zwei Ketten — der Start aus der
+Grundlage, das Ende aus der Blockmessung, so entworfen. **Zwei Zahlen mit zwei
+Quellen sind kein Widerspruch, solange beide beschriftet sind.** Seit zwei
+Schaltern gehört zur Beschriftung auch die AUSWAHL: in gemischten Stellungen
+(bei Johannes seit dem Kurvenschalter „Marken / Namenserkennung") steht an
+jeder Zahl, ob sie aus seinen Markierungen oder aus der Namenserkennung kommt.
+Dasselbe in der 40-Watt-Frage, die zwei Zahlen aus zwei Ketten gegeneinander
+hält. Die Auflage ist damit nicht weiter zu dehnen.
+
+**Die Auswahl steht NEBEN `SOURCE_LABEL`, nicht darin.** `SOURCE_LABEL` ist
+nach dem Messweg verschlüsselt; dieselbe Kurve kann aus beiden Auswahlen kommen.
+Dort hineingeschrieben bräuchte es je Messweg zwei Schlüssel mit doppeltem Text.
+`section_marks.selection()` liefert Stellung und Etikett an einer Stelle; Kurve
+und Blockreihe tragen sie in ihrer Payload, `ramp_protocol` hängt sie an
+`start_source`/`end_source`.
+
+**DIE SPERRE FÄLLT.** Ihr erster Grund (die Kurve steuere das Pulsfenster der
+Blockfamilien) war am Code widerlegt, ihr zweiter („noch nicht gebaut") ist mit
+dem Bau erledigt. Einen dritten gibt es nicht: die einzige Kopplung beider
+Schalter sind Karten mit je einer Zahl aus beiden Ketten, und deren Mischung
+entsteht schon mit dem Kurvenschalter allein. **Eine Sperre, die den Zustand
+nicht verhindert, gegen den sie gebaut wäre, ist Theater.** Die Karten nennen
+stattdessen je Zahl ihre Auswahl.
+
 ### Was die Prüfung dieser Spezifikation ergeben hat
 
 **Sieben Korrekturen, alle VOR dem Schreiben gemeldet und einzeln freigegeben** —

@@ -116,6 +116,7 @@ def async_register(hass: HomeAssistant) -> None:
         websocket_confirm_section_marks,
         websocket_measure_section_marks,
         websocket_set_curve_source,
+        websocket_set_block_source,
         websocket_reconcile,
     ):
         websocket_api.async_register_command(hass, handler)
@@ -316,6 +317,12 @@ def websocket_blocks(hass, connection, msg) -> None:
         return
     data = coordinator.archive.data
     result = blocks_lib.series(data)
+    # WELCHE Familien ihre WATTVORGABE aus den Bloecken beziehen - aus der
+    # Quellenkette, nicht aus einer Liste im Panel. Tempo misst ueber Bloecke,
+    # seine Vorgabe kommt aber nie aus ihnen; eine Vergleichszeile „Vorgabe"
+    # waere dort eine Blockzahl, die sich als Vorgabe ausgibt.
+    result["feeds_watts"] = sorted(fam for fam, chain in workout_lib.SOURCE_CHAIN.items()
+                                   if "blocks" in chain)
     stats = importer.archive_stats(data)
     result["progress"] = {
         "done": stats["dfa_done"], "pending": stats["dfa_pending"],
@@ -489,6 +496,44 @@ async def websocket_set_curve_source(hass, connection, msg) -> None:
         box[fatigue.CURVE_SWITCH] = want
         await coordinator.archive.async_save_now()
     connection.send_result(msg["id"], {"from_marks": fatigue.curve_from_marks(data)})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "intervals_icu/set_block_source",
+        vol.Required("from_marks"): bool,
+        vol.Optional("athlete_id"): str,
+    }
+)
+@websocket_api.async_response
+async def websocket_set_block_source(hass, connection, msg) -> None:
+    """Den Blockschalter umlegen - und zurueck.
+
+    Dieselbe Bauart wie der Kurvenschalter: umgelegt wird die QUELLE der
+    Auswahl, nicht der Bestand. Marken und Messungen werden nicht angefasst,
+    gespeichert wird nur im Aenderungsfall (J7, zweite Auflage).
+
+    KEINE SPERRE. Bis 0.56.0 hing er an der Kurve (widerlegt: das Pulsfenster
+    kommt nicht aus ihr), bis 0.57.0 an „noch nicht gebaut". Die einzige
+    Kopplung beider Schalter sind Karten, die je eine Zahl aus beiden Ketten
+    zeigen - und die Mischung entsteht schon mit dem Kurvenschalter allein.
+    Eine Sperre haette sie nicht verhindert; die Karten nennen stattdessen je
+    Zahl ihre Auswahl.
+    """
+    coordinator = _pick(hass, msg.get("athlete_id"))
+    if coordinator is None:
+        connection.send_error(msg["id"], "not_found", "no Intervals.icu athlete loaded")
+        return
+    data = coordinator.archive.data
+    box = data.get("settings")
+    if not isinstance(box, dict):
+        box = {}
+        data["settings"] = box
+    want = bool(msg["from_marks"])
+    if bool(box.get(blocks_lib.BLOCK_SWITCH)) != want:
+        box[blocks_lib.BLOCK_SWITCH] = want
+        await coordinator.archive.async_save_now()
+    connection.send_result(msg["id"], {"from_marks": blocks_lib.blocks_from_marks(data)})
 
 
 @websocket_api.websocket_command(

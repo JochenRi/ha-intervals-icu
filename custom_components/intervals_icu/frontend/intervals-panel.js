@@ -2037,6 +2037,7 @@ class IntervalsIcuPanel extends HTMLElement {
         this.scrollTop = scroll;
       }
       else if (act === "swcurve") this._setCurveSource(el.dataset.on === "1");
+      else if (act === "swblocks") this._setBlockSource(el.dataset.on === "1");
       else if (act === "smmeasure") this._smMeasure(id);
       else if (act === "smconf") this._smConfirm(id);
       else if (act === "smark") {
@@ -3244,6 +3245,14 @@ class IntervalsIcuPanel extends HTMLElement {
      sich, und bisher gab es nichts, was zwischen ihnen entscheidet. Das steht
      sichtbar in der Karte und nicht nur in der Spezifikation - eine offene
      Frage, die nur im Dokument steht, ist für den, der fährt, keine. */
+  /* Die AUSWAHL einer Zahl, aus der Payload. Zwei Zahlen aus zwei Ketten sind
+     kein Widerspruch, solange beide sagen, woher sie kommen — seit es zwei
+     Schalter gibt, gehört dazu auch, AUS WELCHER AUSWAHL. */
+  _auswahl(payload) {
+    const label = ((payload || {}).selection || {}).label;
+    return label ? ` (${esc(label)})` : "";
+  }
+
   rRampGap(blocks, curve, rt) {
     const fam = ((blocks || {}).families || {}).sweetspot
       || ((blocks || {}).families || {}).vo2max;
@@ -3257,8 +3266,8 @@ class IntervalsIcuPanel extends HTMLElement {
       <h4 class="subsec">Die offene Frage: ${fmt(Math.abs(diff), 0)} Watt</h4>
       <p>Deine beiden eigenen Messungen sagen etwas Verschiedenes. In deinen Blöcken liegt
         alpha bei <b>${fmt(l.first_alpha, 2)}</b> und die Leistung bei
-        <b>${fmt(l.first_watts, 0)} W</b>. Deine Ermüdungskurve setzt alpha 0,75 bei
-        <b>${fmt(p.watts, 0)} W</b> an. Das sind
+        <b>${fmt(l.first_watts, 0)} W</b>${this._auswahl(blocks)}. Deine Ermüdungskurve setzt
+        alpha 0,75 bei <b>${fmt(p.watts, 0)} W</b> an${this._auswahl(curve)}. Das sind
         <b>${fmt(Math.abs(diff), 0)} Watt</b> Unterschied bei fast demselben alpha-Wert.</p>
       <p>Beide Zahlen sind gemessen, keine ist falsch — sie kommen nur aus
         <b>verschiedenen Situationen</b>: die eine aus kurzen Blöcken in harten Einheiten,
@@ -4095,6 +4104,31 @@ class IntervalsIcuPanel extends HTMLElement {
         + `(alpha ${werte}, Bereich ${fmt(g[0], 2)}–${fmt(g[1], 2)})`;
     }).filter(Boolean);
 
+    // DIE ZAHLEN BEIDER STELLUNGEN am Blockschalter, aus der Payload: die
+    // aktuelle Reihe und die gerechnete andere (`other`). Welche Spalte links
+    // steht, entscheidet die Stellung, nicht eine feste Spalte.
+    const blockAn = !!(b || {}).from_marks;
+    const jetzt = ((b || {}).families) || {};
+    const anders = ((b || {}).other) || {};
+    const blockZahlen = [];
+    for (const fam of ["vo2max", "sweetspot", "tempo"]) {
+      const x = jetzt[fam] || {}, y = anders[fam] || {};
+      if (!Object.keys(x).length && !Object.keys(y).length) continue;
+      const nx = x.sessions, ny = y.sessions;
+      const wx = x.source_ok && x.latest ? x.latest.median_watts : null;
+      const hx = x.hr_window ? `${fmt(x.hr_window.low)}–${fmt(x.hr_window.high)}` : "–";
+      const hy = y.hr_low != null ? `${fmt(y.hr_low)}–${fmt(y.hr_high)}` : "–";
+      const l = (FAM[fam] || {}).l || fam;
+      const zeile = (label, a, c) => ({ l: `${l}: ${label}`,
+        off: blockAn ? c : a, on: blockAn ? a : c });
+      blockZahlen.push(zeile("Einheiten", fmt(nx || 0), fmt(ny || 0)));
+      if (((b || {}).feeds_watts || []).includes(fam)) {
+        blockZahlen.push(zeile("Vorgabe", wx != null ? `${fmt(wx)} W` : "–",
+                               y.watts != null ? `${fmt(y.watts)} W` : "–"));
+      }
+      blockZahlen.push(zeile("Pulsfenster", hx, hy));
+    }
+
     const plan = (f || {}).plan || [];
     const other = (f || {}).plan_other || [];
     const kurveAn = !!(f || {}).from_marks;
@@ -4134,25 +4168,35 @@ class IntervalsIcuPanel extends HTMLElement {
       ${this._curveRides(f)}
 
       ${this._switchRow({
-        title: "Arbeitsblöcke", act: "swblocks", on: false,
+        title: "Arbeitsblöcke", act: "swblocks", on: blockAn,
         offLabel: "Namenserkennung", onLabel: "meine Markierungen",
         goLabel: "auf meine Markierungen umstellen",
         backLabel: "zurück auf Namenserkennung",
-        what: "VO2max, SweetSpot und Tempo messen über deine Arbeitsblöcke. Heute "
-          + "wählt diese Messung ihre Blöcke selbst, an deinen Marken vorbei.",
+        what: blockAn
+          ? "VO2max, SweetSpot und Tempo lesen deine markierten und gemessenen Blöcke. "
+            + "Einheiten ohne Marke kommen nicht vor."
+          : "VO2max, SweetSpot und Tempo messen über deine Arbeitsblöcke. Heute "
+            + "wählt die Namenserkennung die Blöcke, an deinen Marken vorbei.",
+        numbers: blockZahlen, note: (b || {}).switch_note,
         basis: famStand,
         outside: draussen, outsideNote: sm.outside_note,
-        // DIE SPERRE MIT DEM GRUND, DER AM CODE TRÄGT. Bis 0.56.0 hieß es, die
-        // Kurve liefere die Schwellenzahl für das Pulsfenster der Blockfamilien
-        // — falsch: aerobic_hr kommt aus coach.anchors, VO2max und SweetSpot
-        // nehmen ihr Fenster aus den eigenen Blöcken. Und bei umgelegter Kurve
-        // fiel die Sperre und hinterließ einen Knopf ohne Handler (§7). Der
-        // wahre Grund ist schlicht: der Schalter ist noch nicht gebaut.
-        lockedBy: "Dieser Schalter ist noch nicht gebaut. Bis er kommt, wählt "
-          + "die Blockmessung ihre Blöcke selbst, und deine Marken an VO2max, "
-          + "SweetSpot und Tempo wirken auf keine Wattvorgabe.",
       })}
     </div>`;
+  }
+
+  async _setBlockSource(on) {
+    if (this._swBusy) return;
+    this._swBusy = true;
+    try {
+      await this._ws("set_block_source", { from_marks: !!on });
+      // Die Blockreihe speist Einheiten, Stufentest und Wochenplan — alle drei
+      // neu holen, sonst steht eine Karte auf der alten Auswahl.
+      this._blocks = null; this._workouts = null; this._goal = null;
+      await this._need("blocks");
+    } finally {
+      this._swBusy = false;
+      this._render();
+    }
   }
 
   async _setCurveSource(on) {
