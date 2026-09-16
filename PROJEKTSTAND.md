@@ -2112,6 +2112,34 @@ und `scaled()`. Eine Liste ohne Vollständigkeitsprüfung schützt genau bis zur
    in 0.51.0 und nicht in 0.51.1 gebaut**, damit ein Auslieferungs-Release nicht an einem
    Prüfstands-Umbau hängt — der Zuschnitt nach Herkunft ist der, der gebaut gehört.
 
+6. **„Erholung nach Einbruch" hängt an einer Und-Regel über Dreitagesmittel, und ein
+   erhöhter Ruhepuls sperrt sie auch dann, wenn die HRV gut steht.** Befund aus dem
+   Betrieb (Johannes, 16.09.2026), nicht gebaut. `coach.py` Z. 332:
+   `recovered = (now_hrv is not None and now_hrv >= 0) and (now_rhr is None or now_rhr <= 0)`,
+   mit `now_hrv`/`now_rhr` als Mittel der letzten DREI vorhandenen z-Werte (Z. 318–321)
+   — also nicht der Einzeltag, wie zuerst vermutet, aber auch nicht das
+   7-Tage-Mittel (`week_z`, Z. 323), das die Quellenangabe im Panel selbst als den
+   belastbaren Weg nennt. Am 16.09. standen HRV +1,4 SD und Ruhepuls +1,5 SD; die
+   Regel verlangt Ruhepuls ≤ 0 und fällt damit auf „noch im Einbruch", unabhängig
+   von der HRV — und das Lastbudget stand auf 0. **Noch nicht am Tageswert
+   nachgerechnet**: ob an diesem Morgen zusätzlich die HRV fehlte und welche drei
+   Tage `last3` trug, ist zu belegen, bevor gebaut wird. Zu klären dabei: (a) Einzelwert,
+   Dreitagesmittel oder `week_z` — eine Regel, die ihre eigene Quellenzeile nicht
+   befolgt, ist 0.11.0 in neuer Gestalt; (b) ob „ein Signal gut, eins erhöht" ein
+   eigener Zustand ist statt „noch im Einbruch"; (c) ob ein fehlender Wert als
+   Fehlen benannt wird statt still die Regel zu kippen (vierte Fehlerklasse).
+
+7. **Die Kopfzahl der Ermüdungskachel ist eine Setzung mit dem Etikett „gemessen".**
+   Gefunden bei der Verifikation von 0.58.0, nicht gebaut. „Ausgeruht, bei Dauer
+   null: 173 W" ist `anchor_base = plan[-1].watts / literature_factor(5 h)` — der
+   5-Stunden-Punkt der Kette (138,4 W, **eine** Fahrt, dünn), mit der Studienform
+   nach Gallo auf Dauer null zurückgerechnet. Daneben steht „gemessen: 10 Fahrten
+   in Stunde 1, Repräsentantenmethode" — die Notiz stammt aus der Zeit, als der
+   Anker an Stunde 1 saß; seit B2 sitzt er am Ende der Kette. Gemessen in Stunde 1
+   sind **149,6 W**. Dieselbe Klasse wie §7 Fall 13 (eine Zahl aus einer Rechnung
+   statt aus einer Messung) und wie die in 0.57.0 gestrichene Studienform-Zahl
+   unterhalb des Bestands — nur steht diese als Kopfzahl da.
+
 **Funktional offen:**
 - Webhooks statt Polling
 - Historien-Import in die HA-Langzeitstatistik (`async_import_statistics`)
