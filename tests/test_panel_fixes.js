@@ -1654,6 +1654,23 @@ const acts = F.activities(), thr = F.thresholds();
   ok(!/wirken noch nicht/.test(q._marksBlock(act)),
      "wirkung: der Hinweis ist im Frontend eingebaut statt aus der Payload");
 
+  // ── A1: KURVENSCHALTER AN → nur noch der Blocksatz, und die Überschrift
+  // sagt nicht mehr pauschal „die Markierungen". In 0.56.0 stand beides
+  // bedingungslos da und behauptete bei umgelegter Kurve das Gegenteil (§7).
+  q._smarks = payload();
+  q._smarks.not_active = { blocks: "BLOCKSATZ AUS DER PAYLOAD" };
+  const nurBlock = q._marksBlock(act);
+  ok(/BLOCKSATZ AUS DER PAYLOAD/.test(nurBlock),
+     "A1: ohne Kurvensatz fehlt auch der Blocksatz");
+  ok(/Blockmarkierungen wirken noch nicht/.test(nurBlock),
+     "A1: ohne Kurvensatz nennt die Überschrift nicht die Blockmarkierungen");
+  ok(!/Die Markierungen wirken noch nicht/.test(nurBlock),
+     "A1: ohne Kurvensatz behauptet die Überschrift, KEINE Markierung wirke");
+  // Trefferzusicherung: mit beiden Sätzen steht die pauschale Überschrift da —
+  // die Fixture unterscheidet die beiden Lagen wirklich.
+  ok(/Die Markierungen wirken noch nicht/.test(hinweis),
+     "A1 Fixture-Beweis: mit beiden Sätzen fehlt die pauschale Überschrift");
+
   // ── DER SATZ NENNT DIE FOLGE, NICHT NUR DIE ZAHL ─────────────────────
   // „0 davon mit Wert" ist richtig gerechnet und für sich unverständlich.
   q._smarks = payload({ measure: { endurance: { hours: [{ hour: 1, p075: null, points: 3600 },

@@ -798,25 +798,14 @@ def websocket_workouts(hass, connection, msg) -> None:
     data = coordinator.archive.data
     ready = analytics.readiness(data) or {}
     st = coach_module.state(data)
-    anchors = coach_module.anchors(data)
     lay = coach_module.layoff(data)
-
-    # The FTP travels ON THE ACTIVITIES as icu_ftp - that is where Intervals
-    # puts it, and it is present on every ride. The earlier version looked in
-    # sport_settings, which this archive does not carry, so the FTP came back
-    # as None and every workout fell back to percentages. Percentages are the
-    # honest fallback when nothing is known; they are the wrong answer when the
-    # number was sitting in the data all along.
-    ftp = _latest_ftp(data)
-    if ftp is None:
-        for settings in (data.get("sport_settings") or {}).values():
-            if isinstance(settings, dict) and settings.get("ftp"):
-                ftp = float(settings["ftp"])
-                break
-    if ftp is None:
-        ftp = anchors.get("ftp")
-
-    max_hr = _max_hr(data)
+    # EINE Stelle fuer die Eingaenge, aus denen eine Einheit ihre Zahlen
+    # bekommt - dieselbe fuer die Anzeige und fuer den Schreibweg nach
+    # Intervals (siehe `_session_inputs`).
+    inputs = _session_inputs(data)
+    anchors = inputs["anchors"]
+    ftp = inputs["ftp"]
+    max_hr = inputs["max_hr"]
 
     budget = (ready.get("budget") or {}).get("recommended")
     # FOUND WHILE BUILDING K: this handler never passed `recovery_offered`, so
@@ -839,13 +828,12 @@ def websocket_workouts(hass, connection, msg) -> None:
         # Die Wattvorgabe der Grundlagen- und Langfahrt-Familien kommt aus der
         # eigenen Messung, nicht aus einem Profilfeld. EINE Quelle: dieselbe
         # Kurve, die die Kachel zeigt.
-        curve=fatigue.curve(data, aerobic_hr=anchors.get("aerobic_hr"),
-                            aerobic_power=anchors.get("aerobic_power")),
-        blocks=blocks_lib.series(data),
+        curve=inputs["curve"],
+        blocks=inputs["blocks"],
         # Der Stufentest als naechste Stufe der Quellenkette (N2). Er wird
         # IMMER mitgegeben; ob er greift, entscheidet SOURCE_CHAIN je Familie -
         # und ohne markierten Test ist er None und aendert nichts.
-        ramp=ramp_lib.latest(data),
+        ramp=inputs["ramp"],
     )
     connection.send_result(msg["id"], {
         "ftp": ftp,
@@ -862,7 +850,7 @@ def websocket_workouts(hass, connection, msg) -> None:
         # `workouts` wie alles andere, mit Urteil und Stufe. Der abgeloeste
         # zweite Termin hatte ohne gemessenen ersten keine Form - daher der
         # Sonderweg, der hier entfaellt.
-        "ramp_test": ramp_lib.latest(data),
+        "ramp_test": inputs["ramp"],
     })
 
 
@@ -887,14 +875,35 @@ async def websocket_plan_workout(hass, connection, msg) -> None:
     if coordinator is None:
         connection.send_error(msg["id"], "not_found", "no Intervals.icu athlete loaded")
         return
-    entry = workout_lib.BY_KEY.get(str(msg["workout"]))
-    if entry is None:
+    template = workout_lib.BY_KEY.get(str(msg["workout"]))
+    if template is None:
         connection.send_error(msg["id"], "not_found", f"unknown workout {msg['workout']}")
         return
+    # NIE DER ROHE KATALOGEINTRAG. Er traegt nur FTP-Prozent, und eine
+    # Prozentangabe landet nur richtig, wenn die FTP in Intervals mit der
+    # uebereinstimmt, aus der hier gerechnet wird - sonst ist jede Vorgabe der
+    # Einheit still falsch. Geschrieben wird, was die Karte zeigt: dieselbe
+    # Rechnung aus denselben Eingaengen.
+    inputs = _session_inputs(coordinator.archive.data)
+    entry = workout_lib.scaled(
+        template, inputs["ftp"], inputs["anchors"].get("aerobic_hr"),
+        max_hr=inputs["max_hr"], curve=inputs["curve"], blocks=inputs["blocks"],
+        ramp=inputs["ramp"],
+    )
     payload = workout_lib.to_event(
         entry, str(msg["date"]), str(msg.get("sport") or "Ride"),
         note="Vorgeschlagen von Home Assistant",
     )
+    # DER WAECHTER AM SCHREIBWEG: nach Intervals gehen absolute Watt oder gar
+    # nichts. Ohne FTP gibt es keine Wattzahlen - dann wird nicht geschrieben,
+    # statt Prozente auf eine fremde FTP zu schicken.
+    if "%" in str(payload.get("description") or ""):
+        connection.send_error(
+            msg["id"], "no_watts",
+            "Nicht eingetragen: für diese Einheit liegen keine Wattzahlen vor "
+            "(keine FTP und keine Messung). Prozentangaben würden in Intervals "
+            "auf eine andere FTP gerechnet.")
+        return
     try:
         created = await coordinator.client.async_create_event(payload)
     except Exception as err:  # noqa: BLE001 - surfaced to the panel as a message
@@ -943,6 +952,42 @@ def websocket_context(hass, connection, msg) -> None:
         coach_module.session_context(coordinator.archive.data, str(msg["activity_id"])),
     )
 
+
+
+def _session_inputs(data: dict[str, Any]) -> dict[str, Any]:
+    """Woraus eine Einheit ihre Watt und ihren Puls bekommt - EINE Stelle.
+
+    Anzeige und Schreibweg nach Intervals lesen hier. Bis 0.56.0 las nur die
+    Anzeige die Messung; `plan_workout` nahm den ROHEN Katalogeintrag, und
+    `to_event` fiel auf dessen FTP-Prozent zurueck - die Karte zeigte 250 W,
+    im Kalender landeten 106-110 % einer FTP von 200 (PROJEKTSTAND §7). Zwei
+    Wege zu einer Zahl; hier ist es wieder einer.
+    """
+    anchors = coach_module.anchors(data)
+    # The FTP travels ON THE ACTIVITIES as icu_ftp - that is where Intervals
+    # puts it, and it is present on every ride. The earlier version looked in
+    # sport_settings, which this archive does not carry, so the FTP came back
+    # as None and every workout fell back to percentages.
+    ftp = _latest_ftp(data)
+    if ftp is None:
+        for settings in (data.get("sport_settings") or {}).values():
+            if isinstance(settings, dict) and settings.get("ftp"):
+                ftp = float(settings["ftp"])
+                break
+    if ftp is None:
+        ftp = anchors.get("ftp")
+    return {
+        "anchors": anchors,
+        "ftp": ftp,
+        "max_hr": _max_hr(data),
+        # Die Wattvorgabe der Grundlagen- und Langfahrt-Familien kommt aus der
+        # eigenen Messung, nicht aus einem Profilfeld. EINE Quelle: dieselbe
+        # Kurve, die die Kachel zeigt.
+        "curve": fatigue.curve(data, aerobic_hr=anchors.get("aerobic_hr"),
+                               aerobic_power=anchors.get("aerobic_power")),
+        "blocks": blocks_lib.series(data),
+        "ramp": ramp_lib.latest(data),
+    }
 
 def _latest_ftp(data: dict[str, Any]) -> float | None:
     """The most recent FTP Intervals recorded on an activity."""
@@ -1167,8 +1212,12 @@ def websocket_section_marks(hass, connection, msg) -> None:
         "not_measured": marks_lib.NOT_MEASURED,
         # Was die Markierungen heute bewirken - ZWEI Saetze, weil die beiden
         # Lagen verschieden sind. Aus dem Modul, nicht aus dem Frontend.
+        # Der Kurvensatz haengt an der SCHALTERSTELLUNG. In 0.56.0 stand er
+        # bedingungslos da und sagte bei umgelegtem Schalter, die Kurve lese
+        # die Marken nicht - das Gegenteil dessen, was sie tat (§7).
         "not_active": {"blocks": marks_lib.NOT_ACTIVE_BLOCKS,
-                       "curve": marks_lib.NOT_ACTIVE_CURVE},
+                       **({} if fatigue.curve_from_marks(data)
+                          else {"curve": marks_lib.NOT_ACTIVE_CURVE})},
         "no_value": marks_lib.NO_VALUE,
         # Was der Regelkreis spaeter sieht, BEVOR er es tut: je Familie die
         # Bloecke im und ausserhalb ihres Korridors.

@@ -2170,6 +2170,28 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
 }
 
 
+/* ── A2 · KEIN ROHSCHLÜSSEL IN DER AUSSCHLUSSLISTE ──────────────────────────
+   Die markierte Auswahl vergibt `not_measured`; das Panel kannte dafür kein
+   Wort und zeigte „not_measured: 1" (0.56.0, §7). Das Wort kommt jetzt aus
+   der Payload. */
+{
+  const q = new M.Panel();
+  const fahrt = [{ activity_id: "i9", date: "2026-06-04", name: "Volumen", above_z2: null, minutes: 90 }];
+  const basis = { rides_used: 12, dropped: { not_measured: fahrt }, dropped_counts: { not_measured: 1 } };
+  const mitWort = String(q._fatigueDropped({ ...basis,
+    dropped_words: { not_measured: ["WORT AUS DER PAYLOAD", "SATZ AUS DER PAYLOAD"] } }));
+  const ohneWort = String(q._fatigueDropped(basis));
+  ok(/not_measured/.test(JSON.stringify(basis)),
+     "A2 Fixture-Beweis: die Fixture trägt den Grund nicht");
+  ok(/WORT AUS DER PAYLOAD/.test(mitWort) && /SATZ AUS DER PAYLOAD/.test(mitWort),
+     "A2: das Wort aus der Payload wird nicht gezeigt");
+  ok(!/not_measured/.test(mitWort), "A2: der Rohschlüssel steht in der Anzeige");
+  // Auch wenn ein Wort fehlt, erscheint kein Rohschlüssel — sondern das Fehlen.
+  ok(!/not_measured/.test(ohneWort) && /ohne Beschreibung/.test(ohneWort),
+     "A2: ohne Wort erscheint der Rohschlüssel statt eines benannten Fehlens");
+  ok(/Volumen/.test(mitWort), "A2: die Fahrt steht nicht namentlich da");
+}
+
 /* ── DER QUELLEN-REITER ────────────────────────────────────────────────────
    ZWEI Schalter mit einer Sperre dazwischen. Die Abhängigkeitsrichtung ist nur
    zu sehen, wenn beide nebeneinander stehen — deshalb ein Reiter und keine
@@ -2243,16 +2265,45 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
 
   ok(/Ermüdungskurve/.test(aus) && /Arbeitsblöcke/.test(aus),
      "quellen: die beiden Schalter stehen nicht nebeneinander");
-  // DIE SPERRE SAGT WARUM, nicht nur DASS.
-  ok(/Noch gesperrt/.test(aus) && /Pulsfenster/.test(aus),
-     "quellen: die Sperre nennt ihren Grund nicht");
-  ok(!/Noch gesperrt/.test(an),
-     "quellen: der Blockschalter bleibt gesperrt, obwohl die Kurve um ist");
-  // Gegenprobe zur Sperre: ohne sie gäbe es einen Knopf.
+  // DIE SPERRE SAGT WARUM — und zwar den Grund, der AM CODE trägt. Bis 0.56.0
+  // stand dort, die Kurve liefere die Schwellenzahl für das Pulsfenster der
+  // Blockfamilien (falsch: aerobic_hr kommt aus coach.anchors), und bei
+  // umgelegter Kurve fiel die Sperre und hinterließ einen Knopf ohne Handler.
+  // Diese Prüfung sicherte damals genau diesen Knopf zu (§7).
+  ok(/Noch gesperrt/.test(aus) && /Noch gesperrt/.test(an),
+     "quellen: der Blockschalter ist in einer Stellung nicht gesperrt, obwohl er nicht gebaut ist");
+  ok(/noch nicht gebaut/.test(aus) && /noch nicht gebaut/.test(an),
+     "quellen: die Sperre nennt nicht den Grund, der am Code trägt");
+  // Der FALSCHE Grund wird namentlich ausgeschlossen (§7, achtzehnter Fall).
+  ok(!/Pulsfenster|Schwellenzahl/.test(aus + an),
+     "quellen: die widerlegte Begründung (Kurve → Pulsfenster) steht wieder da");
   const knoepfeAus = (aus.match(/data-act="swblocks"/g) || []).length;
   const knoepfeAn = (an.match(/data-act="swblocks"/g) || []).length;
-  ok(knoepfeAus === 0 && knoepfeAn === 1,
-     `quellen: der gesperrte Schalter ist bedienbar (${knoepfeAus} / ${knoepfeAn})`);
+  ok(knoepfeAus === 0 && knoepfeAn === 0,
+     `quellen: der nicht gebaute Schalter ist bedienbar (${knoepfeAus} / ${knoepfeAn})`);
+
+  // KEIN KNOPF OHNE HANDLER (§7, fünfundzwanzigster Fall, andersherum): jedes
+  // data-act, das der Reiter in einer der beiden Stellungen rendert, hat einen
+  // Zweig im Klick-Handler. Allgemein statt für swblocks allein — der nächste
+  // Schalter kommt mit B2b-2.
+  const handlerSrc = H.source();
+  const ohneHandler = (html) => [...new Set((html.match(/data-act="([^"]+)"/g) || [])
+    .map((m) => m.slice(10, -1)))].filter((a) => !handlerSrc.includes(`act === "${a}"`));
+  ok(ohneHandler(aus + an).length === 0,
+     `quellen: gerenderte Knöpfe ohne Handler: ${ohneHandler(aus + an).join(", ")}`);
+  // Trefferzusicherung für den Prüfer selbst: ein erfundener Knopf WIRD gefunden.
+  ok(ohneHandler('<button data-act="gibtesnicht">').length === 1,
+     "quellen Fixture-Beweis: der Handler-Prüfer findet einen Knopf ohne Handler nicht");
+
+  // KEIN LITERAL ALS RÜCKFALL für die Mindestzahl: ohne Payload-Zahl keine Zahl.
+  q._smarks = { ...marken, min_for_source: undefined };
+  const ohneMin = String(q.rQuellen(F.fatigue({ from_marks: true, plan_other: gegen }), q._blocks));
+  q._smarks = { ...marken, min_for_source: 4 };
+  const mitMin = String(q.rQuellen(F.fatigue({ from_marks: true, plan_other: gegen }), q._blocks));
+  q._smarks = marken;
+  ok(ohneMin !== mitMin, "quellen Fixture-Beweis: die Mindestzahl ändert nichts an der Anzeige");
+  ok(!/von 3/.test(ohneMin), "quellen: ohne Mindestzahl in der Payload steht eine 3 aus dem Quelltext");
+  ok(/von 4/.test(mitMin), "quellen: die Mindestzahl aus der Payload wird nicht gezeigt");
 
   // DIE ZAHLEN BEIDER STELLUNGEN, nebeneinander.
   // BEIDE Reihen stehen da, und die Fixture macht sie unterscheidbar.
