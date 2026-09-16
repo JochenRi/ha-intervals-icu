@@ -2163,7 +2163,7 @@ und `scaled()`. Eine Liste ohne Vollständigkeitsprüfung schützt genau bis zur
    statt aus einer Messung) und wie die in 0.57.0 gestrichene Studienform-Zahl
    unterhalb des Bestands — nur steht diese als Kopfzahl da.
 
-8. **Der Stufentest vom 16.09.2026 ist in Garmin und Intervals, aber nicht im Archiv.**
+8. **ERLEDIGT (Verzögerung bei Intervals, kein Grenzfehler).** Der Stufentest vom 16.09.2026 war in Garmin und Intervals, aber nicht im Archiv.
    Befund aus dem Betrieb, NICHT gebaut. Johannes' Verdacht: `newest=today` schließe den
    laufenden Tag aus. **Am Bestand widerlegt:** der Zustandsverlauf von
    `sensor.<athlet>_archiv` zeigt drei Fahrten, die am SELBEN Tag ankamen (11.09. 11:09,
@@ -2183,6 +2183,44 @@ und `scaled()`. Eine Liste ohne Vollständigkeitsprüfung schützt genau bis zur
    Umgebung stellen, in der Tempo und Schwelle gefahren werden; die Ableitung aus
    Grundlagenfahrten würde dritte Stufe. Entscheidung, sobald der Test im Archiv ist.
    Vorrechnung in docs/ausbau.md, „B2b-3 · Vorrechnung".
+
+10. **Stufentest 16.09.2026: `reached_anaerobic: true`, aber `hrvt2: null` — die Kachel
+    sagt „nicht erreicht". Falschaussage über die Fahrt, NICHT gebaut.** (Punkt 8 ist
+    erledigt: es war Verzögerung bei Intervals.) Johannes' Nachrechnung: Segment
+    224 → 1807 s, Hochpunkt 1,731, Gefälle −0,0413/min, r² 0,716, Gerade am Segmentende
+    0,641, Schnitt 0,75 bei 1649 s (gemeldet 1705 — ungeklärt), Schnitt 0,5 bei 2012 s
+    hinter dem Segmentende und damit korrekt abgelehnt. HRVT1 218 W bei **180 bpm**
+    (Maximum 194) — auffällig hoch.
+    **Quellenlage (nachgelesen 16.09.):** Die Regression läuft bei Rogers über den
+    nahezu linearen Abschnitt **zwischen 1,0 und 0,5** — die Kurve hat oben ein
+    stabiles Plateau über 1,0, fällt dann fast linear. **Und sie regressiert alpha
+    gegen HF (bzw. VO2), nicht gegen die ZEIT.** Der „Hochpunkt der frühen Rampe"
+    gehört bei Rogers 2024 zur PERSONALISIERTEN Schwelle (Mitte zwischen Hochpunkt und
+    0,5), nicht zum Fit-Bereich. `ramp.segment()` nimmt den Hochpunkt als Fit-Anfang
+    (Plateau im Fit → Gerade zu flach, unten zu hoch) und `ramp._fit` regressiert gegen
+    `index * step`, also gegen die Zeit. Das sind **zwei Abweichungen**, beide
+    unbeschriftet. Olieslagers 2026: 4-min-Stufen, +30 W; der Fit-Bereich steht im
+    Abstract nicht — im Volltext nachzulesen, nicht als „undokumentiert" zu werten.
+    **Nächste Sitzung, in dieser Reihenfolge:**
+    (a) Varianten am 1-Hz-Strom der Aktivität `i187258578` gegeneinander: heute
+    (Hochpunkt → erster Punkt unter 0,5, gegen Zeit) · ab alpha 1,0 → unter 0,5 gegen
+    Zeit · ab 1,0 gegen HF · steiler Teil nach begründeter Regel — je Steigung, r²,
+    Schnitt 0,75/0,5, Watt und Puls; Prüfstein ist die GEMESSENE Kreuzung (geglättet)
+    von 0,75 und 0,5. Zugang: `intervals_icu/streams` lehnt das MCP-Werkzeug am Namen
+    ab; möglich über `ha_manage_custom_tool` (nur lesend, Code auf HEIMDALL — braucht
+    Johannes' Freigabe) oder als Test mit den Stromdaten im Container.
+    (b) Der Widerspruch benannt: „unter 0,5 warst du; die Ausgleichsgerade trifft dort
+    nur nicht" — plus eine Prüfung, die `reached_anaerobic` und `hrvt2 is None`
+    gemeinsam MELDET statt durchlässt.
+    (c) Die 1649-gegen-1705-s-Abweichung klären, bevor irgendetwas umgestellt wird.
+
+11. **Belegter Rechenweg für ALLE Ableseverfahren — Auftrag zur LISTE, nicht zum Bau.**
+    Je Verfahren (Stufentest, Blockmessung, Ermüdungskurve, Anker): was die Quelle macht,
+    was wir machen, wo wir abweichen; Setzung als Setzung beschriften, Versehen
+    korrigieren. Bekannt vorab: Stufentest siehe Punkt 10; Anker: Ganzfahrt-Regression
+    wendet die Rampenmethode auf Fahrten ohne Rampe an (docs/ausbau.md, B2b-3);
+    Blockmessung: Median je Block nach 120 s Anlauf (Rogers 2021, am Bestand bestätigt);
+    Ermüdungskurve: Repräsentantenmethode je Stunde nach Andriolo 2024.
 
 **Funktional offen:**
 - Webhooks statt Polling
