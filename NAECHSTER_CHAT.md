@@ -2,9 +2,37 @@
 
 ## AKTUELL — Stufentest-Rechenweg auf e1 (16.09.2026, spät). Zuerst lesen.
 
-**Nichts gebaut, nichts im Code geändert.** Ausgeliefert bleibt 0.59.0. Prüfstand
-unverändert: **21 Dateien, 6.847 Prüfungen, 0 Fehler**. §10 Punkt 8 ist erledigt
-(Verzögerung bei Intervals), der Test ist im Archiv.
+**Schritt 1 GEBAUT auf `paket-b2-wip` (16.09.2026), nicht ausgeliefert.** Ausgeliefert
+bleibt 0.59.0. Prüfstand: **21 Dateien, 6.971 Prüfungen, 0 Fehler** (test_ramp 89→206,
+test_handlers 69→76). §10 Punkt 8 ist erledigt (Verzögerung bei Intervals).
+
+### Stand Schritt 1 — was gebaut ist und was die Übergabe korrigiert
+
+- `ramp.protocol()` · `segment(dfa, first, last)` nach e1 · `measure()` mit `code`/`reason`,
+  `evaluate()` ist nur noch `measure()["result"]`. 12 Gründe, je ein Satz. Handler
+  `websocket_set_ramp_test` schreibt den Grund aus `measure`. Setzungen in const.py:
+  `RAMP_PROTOCOL_SLOPE_SHARE` 0,5 · `RAMP_COOLDOWN_MAX_SHARE` 0,8 ·
+  `RAMP_END_CHECK_WINDOW_S` 60 · `RAMP_END_CHECK_GAP_S` 60 (zugleich Toleranz: ein um
+  < 60 s verschobenes Lastende fällt nicht auf, per Test festgehalten).
+- Prüfreihenfolge: Einrollen flach → Ende sitzt (nur wenn ein Ausrollen existiert) →
+  Rampe steigt → Ausrollen da. Erst andersherum: ein zu langes Ausrollen lag im
+  Rampenfenster und bekam „Rampe steigt nicht" — die Gegenprobe hat es gefunden.
+- `reached_anaerobic` wird jetzt IM Segment geprüft. `back_above_s` zählt ab Lastende
+  (echter Strom: 193 s) → Erklärtext in Schritt 3. Steigende Gerade gibt jetzt None mit
+  Grund statt eines Ergebnisses mit lauter None.
+- Sollwerte am echten Strom exakt getroffen; Fixture `tests/data/ramp_i187258578.json`.
+  13 Mutationen über Dateikopie, alle gezählt und benannt.
+- **KORREKTUR der Diagnose (für §7 Fall 36):** „Jede Variante mit Dip-Ende liefert hrvt2
+  null, gleich welcher Start" ist am Strom WIDERLEGT. Ab Rampenbeginn (900–1200) gefittet
+  und am ersten Dip (1807) beendet, liegt die Gerade dort bei 0,42–0,47 und schneidet 0,5
+  bei 1751–1780 s, also im Segment. Über 0,5 (0,68) liegt sie nur mit Start 224. Blind war
+  die KOMBINATION aus Plateau im Fit und Dip-Ende. Die Mutation „Ende am ersten Dip"
+  liefert unter e1 trotzdem hrvt2 null — aber über `reached_anaerobic`, weil der Lauf unter
+  0,5 an seiner ersten Sekunde abgeschnitten wird, nicht über die Gerade.
+- **KORREKTUR Protokollzahlen:** Einrollen 1,26 W/min ohne Nullen (1,70 mit), nicht ~0,8;
+  Rampe 5,69, nicht 6,2. Das Einrollen ist nicht konstant 128 W: 128 W bis Minute 6, dann
+  Stufe auf ~139 W. Die Grenze 2,5 trägt mit Faktor 2 nach beiden Seiten.
+- Nicht angefasst (Schritt 3): Docstring „Beide Arbeiten …", Quellenzuordnung, Karte.
 
 ### Befund (am 1-Hz-Strom der Aktivität i187258578 belegt)
 

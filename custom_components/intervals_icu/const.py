@@ -276,8 +276,10 @@ DURABILITY_TEST_REFERENCE = "-10,1 ± 6,5 % über 20 min, -10,8 ± 7,8 % über 5
 # ungeglaetteten Werten - die Glaettung sucht die Grenzen, sie verschiebt
 # keinen Messwert. SETZUNG.
 RAMP_SMOOTH_S = 30
-# Wie lange die geglaettete Kurve unter 0,5 bleiben muss, damit der Abfall als
-# beendet gilt. Ein einzelner Ausreisser unter 0,5 ist kein Ende. SETZUNG.
+# Wie lange die geglaettete Kurve IM SEGMENT unter 0,5 bleiben muss, damit der
+# Boden als erreicht gilt (Bedingung fuer HRVT2). Ein einzelner Ausreisser unter
+# 0,5 ist kein Boden. Das Segment ENDET nicht mehr hier, sondern am Lastende
+# (seit Rechenweg e1). SETZUNG.
 RAMP_FLAT_S = 60
 # Fensterbreite, aus der Watt und Puls AN einer Schnittstelle abgelesen werden.
 # Die Arbeiten lesen VO2 und HF ueber eigene Regressionen ab; wir lesen den
@@ -302,6 +304,24 @@ RAMP_COOLDOWN_MIN = 10
 # ablesbar, auch wenn HF und VO2 es waeren (Fleitas-Paniagua 2023 gegen
 # Rogers). Die laengere Testdauer bei einem starken Fahrer ist der Preis.
 RAMP_STEP_W_PER_MIN = 5
+# PROTOKOLLPRUEFUNG (Rechenweg e1). Die Segmentgrenzen kommen aus dem Protokoll
+# - Hochpunktsuche ab RAMP_WARMUP_MIN, Ende bei Laenge minus RAMP_COOLDOWN_MIN -,
+# also muss die Fahrt dieses Protokoll auch TRAGEN, sonst stehen die Grenzen an
+# der falschen Stelle. Die folgenden Zahlen sind alle SETZUNGEN, keine Quelle
+# nennt sie:
+# Anteil der Rampensteigung, der die Grenze zwischen "flach" und "steigt"
+# bildet: Einrollen flach heisst Watt-Steigung unter diesem Anteil von
+# RAMP_STEP_W_PER_MIN, Rampe steigt heisst mindestens dieser Anteil. SETZUNG.
+# Am Test vom 16.09.2026 gemessen: Einrollen 1,26 W/min, Rampe 5,69 W/min.
+RAMP_PROTOCOL_SLOPE_SHARE = 0.5
+# Ausrollen sitzt: der Watt-Median kurz NACH dem Protokollende liegt bei hoechstens
+# diesem Anteil des Medians kurz DAVOR. SETZUNG. Am 16.09.2026: 130 gegen 249 W.
+RAMP_COOLDOWN_MAX_SHARE = 0.8
+# Die beiden Vergleichsfenster um das Protokollende: je so breit, und so weit vom
+# Ende abgesetzt. Der Abstand ist zugleich die TOLERANZ - ein um weniger als ihn
+# verschobenes Lastende faellt der Pruefung nicht auf. SETZUNG.
+RAMP_END_CHECK_WINDOW_S = 60
+RAMP_END_CHECK_GAP_S = 60
 # ERWARTUNG fuer die Lastschaetzung der Katalogkarte, KEINE Vorgabe: die Rampe
 # endet an einem Zustand und nicht an der Uhr. Wie lange sie dauert, haengt an
 # der eigenen Spanne - bei einem starken Fahrer laenger, und das ist der Preis

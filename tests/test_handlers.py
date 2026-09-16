@@ -299,6 +299,62 @@ eq("B2b-2: feeds_watts kommt aus SOURCE_CHAIN",
 check("B2b-2: Tempo speist seine Watt nicht aus Bloecken",
       "tempo" not in (((_bl.results or [{}])[0]).get("feeds_watts") or ["tempo"]))
 
+# --- Stufentest-Markierung: der Grund kommt aus ramp.measure (Rechenweg e1) --
+# Vorher schrieb der Handler bei JEDEM leeren Ergebnis denselben Sammelsatz
+# "kein auswertbarer Abfall" - bei einer Fahrt ohne Einrollen ist das falsch.
+# Geprueft am echten Aufruf: echter Strom -> Zahlen; derselbe Strom ohne
+# Einrollen -> der Protokollgrund im Archiv.
+import json as _json  # noqa: E402
+from datetime import datetime as _datetime  # noqa: E402
+
+_REAL = _json.loads((Path(__file__).resolve().parent / "data" / "ramp_i187258578.json")
+                    .read_text(encoding="utf-8"))
+
+
+class StreamClient(FakeClient):
+    def __init__(self, dfa, watts, hr):
+        super().__init__()
+        self.streams = [{"type": "dfa_a1", "data": dfa}, {"type": "watts", "data": watts},
+                        {"type": "heartrate", "data": hr}]
+
+    async def async_get_streams(self, activity_id, types_):
+        return self.streams
+
+
+def _mark(dfa, watts, hr):
+    data = importer.empty_data("i1")
+    data.setdefault("activities", {})["i187258578"] = {"start_date_local": "2026-09-16T17:00:00"}
+    coord = FakeCoordinator(data)
+    coord.archive = SaveArchive(data)
+    coord.client = StreamClient(dfa, watts, hr)
+    ws._pick = lambda hass, athlete_id: coord
+    conn = FakeConn()
+    asyncio.run(ws.websocket_set_ramp_test(None, conn, {"id": 1, "activity_id": "i187258578",
+                                                         "mark": True}))
+    return ((conn.results or [{}])[0]).get("entry") or {}, conn
+
+
+_dt_saved = ws.dt_util
+ws.dt_util = types.SimpleNamespace(now=lambda: _datetime(2026, 9, 16, 21, 0))
+_ok_entry, _ok_conn = _mark(_REAL["alpha1"], _REAL["watts"], _REAL["heartrate"])
+eq("Stufentest-Handler: echter Strom ohne Fehlermeldung", _ok_conn.errors, [])
+eq("Stufentest-Handler: echter Strom traegt HRVT2 1861 s",
+   ((_ok_entry.get("result") or {}).get("hrvt2") or {}).get("seconds"), 1861)
+eq("Stufentest-Handler: echter Strom schreibt einen Grund", _ok_entry.get("reason"), "")
+# Derselbe Strom OHNE Einrollen: die ersten 15 Minuten abgeschnitten.
+_cut = 900
+_no_warm = (_REAL["alpha1"][_cut:], _REAL["watts"][_cut:], _REAL["heartrate"][_cut:])
+_expect = ws.ramp.measure(*_no_warm)
+check("Stufentest-Handler Trefferzusicherung: der geschnittene Strom verletzt das Protokoll "
+      "am Einrollen", _expect.get("code") == ws.ramp.WARMUP_NOT_FLAT)
+_bad_entry, _ = _mark(*_no_warm)
+eq("Stufentest-Handler: ohne Einrollen trotzdem Zahlen", _bad_entry.get("result"), None)
+eq("Stufentest-Handler: der Grund ist nicht der Satz aus ramp.measure",
+   _bad_entry.get("reason"), (_expect.get("reason") or "")[:256])
+check("Stufentest-Handler: der alte Sammelsatz steht im Archiv",
+      "auswertbarer Abfall" not in (_bad_entry.get("reason") or ""))
+ws.dt_util = _dt_saved
+
 print(f"test_handlers: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

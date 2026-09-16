@@ -625,7 +625,7 @@ async def websocket_set_ramp_test(hass, connection, msg) -> None:
     eine, die nie markiert war.
 
     Markieren MISST: die Stroeme werden live und UNGEDUENNT geholt und durch
-    ramp.evaluate geschickt. Ungeduennt, weil der Panel-Endpunkt bei 900
+    ramp.measure geschickt. Ungeduennt, weil der Panel-Endpunkt bei 900
     Punkten deckelt - das sind 7 bis 18 Sekunden je Probe, und eine Gerade
     durch den Abfall staende dann auf rund hundert Punkten statt auf
     tausenden (J1, dieselbe Begruendung wie beim abgeloesten Protokoll).
@@ -664,15 +664,16 @@ async def websocket_set_ramp_test(hass, connection, msg) -> None:
         reason = f"Ströme nicht abrufbar: {err}"
     else:
         by_name = derive.streams_to_dict(streams)
-        result = ramp.evaluate(by_name.get("dfa_a1"), by_name.get("watts"),
+        # Rechenweg e1: die Segmentgrenzen kommen aus dem Protokoll, also
+        # prueft measure() zuerst, ob die Fahrt es traegt. Der Grund ist je
+        # Fall ein eigener Satz - ein Sammelsatz "kein auswertbarer Abfall"
+        # waere bei einer Fahrt ohne Einrollen schlicht falsch.
+        outcome = ramp.measure(by_name.get("dfa_a1"), by_name.get("watts"),
                                by_name.get("heartrate"))
+        result = outcome.get("result")
         if result is None:
-            # Kein Vorwurf, eine Auskunft: die Fahrt traegt keinen
-            # auswertbaren Abfall. Das ist auch der Fall, wenn die Uhr kein
-            # alpha aufgezeichnet hat.
-            reason = ("Kein auswertbarer Abfall von DFA a1 in dieser Fahrt — "
-                      "entweder fehlt der alpha-Strom, oder die Rampe hat "
-                      "keinen zusammenhängenden Abfall ergeben.")
+            # Kein Vorwurf, eine Auskunft.
+            reason = str(outcome.get("reason") or "")
 
     try:
         entry = ramp_lib.set_entry(
@@ -1431,7 +1432,7 @@ async def websocket_measure_section_marks(hass, connection, msg) -> None:
       * SACHBEFUND ueber die Fahrt (die markierten Sekunden tragen kein
         auswertbares alpha) -> `set_measurement` mit Grund. Der ist bei jedem
         Versuch wieder derselbe, gehoert also ins Archiv - dieselbe Bauart wie
-        "kein auswertbarer Abfall" beim Stufentest.
+        der Grund aus ramp.measure beim Stufentest.
     """
     coordinator = _pick(hass, msg.get("athlete_id"))
     if coordinator is None:
