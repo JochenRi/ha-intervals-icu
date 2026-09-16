@@ -1,12 +1,11 @@
 # ha-intervals-icu — Übergabe an den nächsten Chat
 
-**Stand dieser Übergabe: 16.09.2026, nachts.** Ausgeliefert ist **0.58.1**
-(Kopfzahl der Ermüdungskachel: keine Zahl bei Dauer null). 0.58.0 ist am System
-verifiziert und der Blockschalter umgelegt. Prüfstand: **21 Dateien, 6.796
-Prüfungen**. **Als Nächstes: B2b-3 ist VORGERECHNET, nicht gebaut** —
-Entscheidung offen, siehe `docs/ausbau.md` „B2b-3 · Vorrechnung": Anker 160 →
-148 bpm (M1), Auswahlanteil ≈ −9…−10, Methodenanteil ≈ −2,5 (n = 3), und der
-Rolle-/Draußen-Befund gegen ein Tempo-Fenster von 144–151. B2c hängt an B2b-3.
+**Stand dieser Übergabe: 16.09.2026, nachts.** Ausgeliefert ist **0.59.0**
+(B2c, die Kachel-Erklärung). 0.58.0 ist verifiziert, beide Schalter stehen auf AN.
+Prüfstand: **21 Dateien, 6.847 Prüfungen**. **B2b-3 ist ZURÜCKGESTELLT** (PROJEKTSTAND
+§10 Punkt 9): entschieden wird, sobald der Stufentest vom 16.09. im Archiv ist.
+**Offen und blockierend:** der Test kommt nicht an (§10 Punkt 8); die These
+„obere Datumsgrenze exklusiv" ist am Bestand widerlegt, die Ursache ist offen.
 
 Dieses Dokument ist für einen Chat geschrieben, der nichts von diesem Projekt
 weiß. Es ersetzt keine Quelle, es sagt, **wo** die Wahrheit steht und **was

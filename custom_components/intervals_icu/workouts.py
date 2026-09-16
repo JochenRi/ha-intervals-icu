@@ -39,6 +39,7 @@ from typing import Any
 
 try:  # inside the package (Home Assistant)
     from .const import (
+        BLOCK_HR_WINDOW_SD_FACTOR,
         DURABILITY_FUELLING_G_PER_H,
         RAMP_COOLDOWN_MIN,
         RAMP_END_RESERVE_MIN,
@@ -51,6 +52,7 @@ try:  # inside the package (Home Assistant)
     )
 except ImportError:  # standalone (test suite loads this file directly)
     from const import (  # type: ignore[no-redef]
+        BLOCK_HR_WINDOW_SD_FACTOR,
         DURABILITY_FUELLING_G_PER_H,
         RAMP_COOLDOWN_MIN,
         RAMP_END_RESERVE_MIN,
@@ -1589,4 +1591,112 @@ def anchor_conflict(ftp: float | None, aerobic_power: float | None) -> dict[str,
             "neueren Validierungen schwach). Bis das geklärt ist: Grundlage nach "
             "Herzfrequenz und DFA fahren, nicht nach diesen Watt."
         ),
+    }
+
+
+# --- B2c · DIE KACHEL-ERKLAERUNG ------------------------------------------------
+# Der Kreislauf, in dem jede Vorgabe steht, in einfacher Sprache - und wo DIESE
+# Einheit darin steht. Die Saetze reisen aus dem Modul (fuenfte Bauregel): das
+# Panel ordnet sie nur an. Drei Stufen, weil es drei Arten gibt, zu einer Zahl
+# zu kommen: eine Eintragung, eine Messung ueber erkannte Einheiten, eine
+# Messung ueber das, was der Athlet selbst zugeordnet hat.
+CYCLE = (
+    ("ftp", "Die FTP bringt dich in Gang.",
+     "Solange für eine Familie nichts gemessen ist, rechnen ihre Einheiten in Prozent "
+     "deiner FTP. Die FTP ist eine Eintragung in Intervals, keine Messung."),
+    ("alpha", "Dein alpha korrigiert unterwegs.",
+     "Jede gemessene Einheit zeigt über den alpha-Wert, bei welcher Leistung du "
+     "wirklich an der Schwelle warst. Daraus rechnen die Vorgaben — zunächst über die "
+     "Einheiten, die das System an ihrem Namen erkennt."),
+    ("marks", "Deine Markierung übernimmt.",
+     "Sobald du umgestellt hast, kommen die Watt nur noch aus dem, was du selbst "
+     "zugeordnet und gemessen hast. Was du nicht markierst, zählt nicht."),
+)
+
+
+def explain(entry: dict[str, Any], ftp: float | None, curve: dict[str, Any] | None,
+            blocks: dict[str, Any] | None,
+            ramp: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Zahl, Herkunft, Kreislauf, gewertete Einheiten und Rechenweg EINER Einheit.
+
+    Aus der schon gerechneten Einheit (`scaled`) und den Reihen, aus denen sie
+    rechnete - keine zweite Rechnung, nur ihr Nachweis. Der Stufentest hat seine
+    eigene Herleitung (`derivation`) und bekommt keine zweite.
+    """
+    if entry.get("ramp_protocol") or not entry.get("blocks_w"):
+        return None
+    src = entry.get("watt_source")
+    # Dieselbe Familienbestimmung wie `scaled`: das Feld `family` setzt erst
+    # `suggest`, und ohne Rueckfall laese der Nachweis eine leere Reihe.
+    fam = entry.get("family") or _family_of(entry.get("key"))
+    window = entry.get("hr_window") or None
+    units: list[dict[str, Any]] = []
+    steps: list[str] = []
+    units_note = ""
+    if src == "blocks":
+        box = ((blocks or {}).get("families") or {}).get(fam) or {}
+        sel = (blocks or {}).get("selection") or {}
+        stage = "marks" if sel.get("from_marks") else "alpha"
+        bs = entry.get("block_source") or {}
+        watts = bs.get("watts")
+        origin = f"aus deiner Blockmessung, {sel.get('label') or ''}".rstrip(", ")
+        units = [{"activity_id": p.get("activity_id"), "date": p.get("date"),
+                  "name": p.get("name"),
+                  "detail": f"{p.get('median_watts')} W bei alpha {p.get('median_alpha')}"}
+                 for p in reversed(box.get("points") or [])]
+        units_count = box.get("sessions") or len(units)
+        steps.append(f"Vorgabe {watts} W = Median der Blockleistung in der letzten Einheit "
+                     f"({bs.get('date')}, {bs.get('n_blocks')} Blöcke, alpha {bs.get('alpha')}).")
+        hs = entry.get("hr_source") or {}
+        if hs.get("n"):
+            steps.append(f"Pulsfenster {hs.get('low')}–{hs.get('high')} bpm = Median der "
+                         f"Einheitspulse {hs.get('median')} bpm ± {BLOCK_HR_WINDOW_SD_FACTOR:g} × "
+                         f"Streuung {hs.get('sd')} bpm über {hs.get('n')} Einheiten.")
+    elif src == "curve":
+        sel = (curve or {}).get("selection") or {}
+        stage = "marks" if sel.get("from_marks") else "alpha"
+        rows = entry.get("curve_blocks") or []
+        watts = rows[0].get("watts") if rows else None
+        origin = f"aus deiner Ermüdungskurve, {sel.get('label') or ''}".rstrip(", ")
+        units = [{"activity_id": r.get("activity_id"), "date": r.get("date"), "name": r.get("name"),
+                  "detail": "Stunden mit Wert: " + ", ".join(str(h) for h in (r.get("hours_with_value") or []))}
+                 for r in reversed((curve or {}).get("used") or [])]
+        units_count = (curve or {}).get("rides_used") if curve else len(units)
+        for r in rows:
+            steps.append(f"{r.get('label')}: Schwelle für eine Fahrt von {r.get('hour')} h "
+                         f"{r.get('threshold')} W aus {r.get('n')} Fahrten × Anteil "
+                         f"{r.get('share')} = {r.get('watts')} W.")
+    elif src in ("ramp_hrvt1", "ramp_hrvt2"):
+        stage = "marks"
+        rs = entry.get("ramp_source") or {}
+        watts = round((rs.get("watts") or 0) * (rs.get("share") or 0)) if rs.get("watts") else None
+        origin = "aus deinem markierten Stufentest"
+        units = [{"activity_id": (ramp or {}).get("activity_id"), "date": rs.get("date"),
+                  "name": "Stufentest", "detail": f"{rs.get('watts')} W bei alpha {rs.get('alpha')}"}]
+        units_count = 1
+        steps.append(f"Vorgabe {watts} W = {rs.get('watts')} W an der Schwelle × Anteil {rs.get('share')}.")
+    else:
+        stage = "ftp"
+        work = [w for t, w in zip(entry.get("blocks") or [], entry.get("blocks_w") or [])
+                if t[1] == max(b[1] for b in entry.get("blocks") or [(0, 0)])]
+        watts = work[0][1] if work else None
+        origin = "Rückfall auf die FTP — nicht gemessen"
+        units_count = 0
+        units_note = "Keine: die FTP ist eine Eintragung, und für diese Einheit trägt noch keine Messung."
+        pct = max((b[1] for b in entry.get("blocks") or []), default=None)
+        # Die FTP wird UEBERGEBEN, nicht aus gerundeten Watt zurueckgerechnet:
+        # 108 W / 50 % ergaebe „FTP 216 W" bei einer FTP von 215.
+        steps.append(f"Vorgabe {watts} W = FTP {ftp:g} W × {pct} % der Vorlage."
+                     if ftp else f"Vorgabe {watts} W aus {pct} % der Vorlage.")
+    return {
+        "headline": {"watts": watts,
+                     "hr_low": window[0] if window else None,
+                     "hr_high": window[1] if window else None},
+        "origin": origin,
+        "stage": stage,
+        "cycle": [{"key": k, "title": t, "text": x, "here": k == stage} for k, t, x in CYCLE],
+        "units": units,
+        "units_count": units_count,
+        "units_note": units_note,
+        "steps": steps,
     }

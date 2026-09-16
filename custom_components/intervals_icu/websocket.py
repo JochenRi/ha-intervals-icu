@@ -880,6 +880,11 @@ def websocket_workouts(hass, connection, msg) -> None:
         # und ohne markierten Test ist er None und aendert nichts.
         ramp=inputs["ramp"],
     )
+    # B2c: je Einheit ihr Nachweis - aus DENSELBEN Eingaengen, aus denen sie
+    # gerechnet wurde, nicht aus einer zweiten Rechnung.
+    for pick in picks:
+        if isinstance(pick, dict):
+            pick["explain"] = workout_lib.explain(pick, ftp, inputs["curve"], inputs["blocks"], inputs["ramp"])
     connection.send_result(msg["id"], {
         "ftp": ftp,
         "aerobic_hr": anchors.get("aerobic_hr"),

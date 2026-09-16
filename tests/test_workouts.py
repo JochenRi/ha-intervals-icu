@@ -825,6 +825,9 @@ _NOT_FOR_RAMP = {
     # ein ZIEL, und ein Ziel gibt es in diesem Test nicht (§7, zwanzigster
     # Fall). An seiner Stelle steht `hr_note`, und das wird oben geprueft.
     "hr_window",
+    # Seit B2c: der Stufentest hat seine eigene Herleitung (`derivation`) und
+    # bekommt keine zweite - `explain` ist fuer ihn bewusst None.
+    "explain",
 }
 _card = W.scaled(W.BY_KEY["ramp_test"], 200.0, 160, None, _CURVE, _BLOCKS)
 for _field in sorted(_panel_fields - _NOT_FOR_RAMP):
@@ -1230,6 +1233,64 @@ check(all("Markierung" not in v and "Namenserkennung" not in v for v in W.SOURCE
 _rt_ftp = W.scaled(W.BY_KEY["ramp_test"], 215, 146)
 eq([((_rt_ftp.get("ramp_protocol") or {}).get(k) or {}).get("selection") for k in ("start_source", "end_source")],
    [None, None], "B2b-2: der FTP-Rueckfall behauptet eine Auswahl")
+
+# --- B2c · DIE KACHEL-ERKLAERUNG ----------------------------------------------
+# Je Einheit: Zahl, Herkunft, Stufe im Kreislauf, gewertete Einheiten, Rechenweg -
+# aus derselben Rechnung. Die Fixture traegt je Quelle beide Auswahlen, und das
+# ZAEHLFELD weicht absichtlich von der Listenlaenge ab (sechste Bauregel).
+_pts = [{"activity_id": f"a{i}", "date": f"2026-08-0{i}", "name": f"VO2 {i}",
+         "median_watts": 250 + i, "median_alpha": 0.40} for i in range(1, 4)]
+_b_fam = {**_BLOCKS["families"]["vo2max"], "points": _pts, "sessions": 9}
+_bl = lambda marks: {"families": {"vo2max": _b_fam}, "selection": {"from_marks": marks, "label": "SEL-B" if marks else "SEL-N"}}
+_cu = lambda marks: {**_CURVE, "selection": {"from_marks": marks, "label": "SEL-KURVE"}, "rides_used": 7,
+                     "used": [{"activity_id": "r1", "date": "2026-08-01", "name": "Volumen", "hours_with_value": [1, 2]}]}
+_quellen_b2c = {}
+for _key, _kw in (("vo2_4x4", dict(blocks=_bl(True))), ("vo2_4x4", dict(blocks=_bl(False))),
+                  ("z2_60", dict(curve=_cu(True))), ("tempo_2x20", dict(ramp=_RAMP)),
+                  ("recovery_40", dict())):
+    _e = W.scaled(W.BY_KEY[_key], 215, 146, **_kw)
+    _x = W.explain(_e, 215, _kw.get("curve"), _kw.get("blocks"), _kw.get("ramp"))
+    _quellen_b2c[(_e.get("watt_source"), (_kw.get("blocks") or _kw.get("curve") or {}).get("selection", {}).get("from_marks"))] = (_e, _x)
+eq(sorted(str(k) for k in _quellen_b2c),
+   sorted(str(k) for k in [("blocks", True), ("blocks", False), ("curve", True), ("ramp_hrvt2", None), ("ftp", None)]),
+   "B2c Fixture: nicht jede Quelle und Auswahl wird durchlaufen")
+_soll_stufe = {("blocks", True): "marks", ("blocks", False): "alpha", ("curve", True): "marks",
+               ("ramp_hrvt2", None): "marks", ("ftp", None): "ftp"}
+for _k, (_e, _x) in sorted(_quellen_b2c.items(), key=lambda kv: str(kv[0])):
+    _x = _x or {}
+    eq(_x.get("stage"), _soll_stufe[_k], f"B2c: Stufe im Kreislauf fuer {_k}")
+    eq([c.get("key") for c in _x.get("cycle") or []], ["ftp", "alpha", "marks"],
+       f"B2c: der Kreislauf steht nicht in seiner Reihenfolge ({_k})")
+    eq([c.get("key") for c in _x.get("cycle") or [] if c.get("here")], [_soll_stufe[_k]],
+       f"B2c: genau EINE Stufe traegt hier ({_k})")
+    check(bool(_x.get("origin")) and bool(_x.get("steps")), f"B2c: Herkunft oder Rechenweg fehlen ({_k})")
+    check("%" not in " ".join(_x.get("steps") or []) or _k[0] == "ftp",
+          f"B2c: ein gemessener Rechenweg rechnet in Prozent ({_k})")
+_eb, _xb = _quellen_b2c[("blocks", True)]
+eq((_xb or {}).get("units_count"), 9, "B2c: gewertete Einheiten kommen aus dem Zaehlfeld, nicht aus der Liste")
+eq([u.get("activity_id") for u in (_xb or {}).get("units") or []], ["a3", "a2", "a1"],
+   "B2c: die Einheiten stehen nicht neuestes zuerst")
+check(f"Vorgabe {(_eb.get('block_source') or {}).get('watts')} W" in " ".join((_xb or {}).get("steps") or []),
+      "B2c: der Rechenweg nennt nicht die Vorgabe der Einheit")
+check(f"± {W.BLOCK_HR_WINDOW_SD_FACTOR:g} ×" in " ".join((_xb or {}).get("steps") or []),
+      "B2c: der Pulsfenster-Faktor kommt nicht aus der Konstante")
+check("SEL-B" in (_xb or {}).get("origin", "") and "SEL-N" in ((_quellen_b2c[("blocks", False)][1]) or {}).get("origin", ""),
+      "B2c: die Herkunft nennt ihre Auswahl nicht")
+eq(((_xb or {}).get("headline") or {}).get("watts"), (_eb.get("block_source") or {}).get("watts"),
+   "B2c: die Kopfzahl ist nicht die Vorgabe der Einheit")
+_ec, _xc = _quellen_b2c[("curve", True)]
+eq((_xc or {}).get("units_count"), 7, "B2c Kurve: Einheiten aus rides_used")
+check(f"= {(_ec.get('curve_blocks') or [{}])[0].get('watts')} W" in " ".join((_xc or {}).get("steps") or []),
+      "B2c Kurve: der Rechenweg endet nicht auf der Vorgabe")
+_ef, _xf = _quellen_b2c[("ftp", None)]
+eq((_xf or {}).get("units_count"), 0, "B2c FTP: keine gewerteten Einheiten")
+check("FTP 215 W" in " ".join((_xf or {}).get("steps") or []), "B2c FTP: der Rechenweg nennt die FTP nicht")
+eq(W.explain(W.scaled(W.BY_KEY["ramp_test"], 215, 146), 215, None, None, None), None,
+   "B2c: der Stufentest bekommt keine zweite Herleitung")
+eq(W.explain(W.BY_KEY["vo2_4x4"], 215, None, None, None), None,
+   "B2c: ein ungerechneter Katalogeintrag wird erklaert")
+for _wort in ("zu locker", "Fehler", "Mangel", "leider", "nicht ausreich"):
+    check(all(_wort not in t + x for _, t, x in W.CYCLE), f"B2c: gesperrtes Wort im Kreislauf ({_wort})")
 
 print(f"test_workouts: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:

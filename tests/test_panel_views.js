@@ -2390,6 +2390,32 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   ok(/data-act="swblocks"[^>]*data-on="1"/.test(bAus) && /data-act="swblocks"[^>]*data-on="0"/.test(bAn),
      "blockschalter: der Knopf schaltet nicht in die andere Stellung");
 
+  // ── B2c · DIE KACHEL-ERKLÄRUNG ─────────────────────────────────────────
+  const xe = { watt_source: "blocks", family: "vo2max", block_source: { watts: 250 },
+    explain: { headline: { watts: 250, hr_low: 176, hr_high: 186 }, origin: "HERKUNFT AUS DER PAYLOAD",
+      stage: "marks", units_count: 6, units_note: "",
+      cycle: [{ key: "ftp", title: "STUFE-FTP", text: "t1", here: false },
+              { key: "alpha", title: "STUFE-ALPHA", text: "t2", here: false },
+              { key: "marks", title: "STUFE-MARKEN", text: "t3", here: true }],
+      units: [{ activity_id: "e1", date: "2026-09-01", name: "VO2 <x>", detail: "250 W" }],
+      steps: ["RECHENWEG-ZEILE"] } };
+  const xh = String(q._explain(xe));
+  const auf = xh.indexOf("<details");
+  ok(auf > 0 && xh.indexOf("250 W · Puls 176–186") > -1 && xh.indexOf("250 W · Puls 176–186") < auf
+     && xh.indexOf("HERKUNFT AUS DER PAYLOAD") > -1 && xh.indexOf("HERKUNFT AUS DER PAYLOAD") < auf,
+     "B2c: zugeklappt stehen Zahl und Herkunft nicht vor dem Aufklappteil");
+  const iK = xh.indexOf("Der Kreislauf"), iE = xh.indexOf("Gewertete Einheiten"), iR = xh.indexOf("Der Rechenweg");
+  ok(auf < iK && iK < iE && iE < iR, `B2c: die Reihenfolge Kreislauf → Einheiten → Rechenweg stimmt nicht (${iK}/${iE}/${iR})`);
+  ok((xh.match(/hier steht diese Einheit/g) || []).length === 1
+     && xh.indexOf("hier steht diese Einheit") > xh.indexOf("STUFE-MARKEN"),
+     "B2c: die eigene Stufe ist nicht genau einmal und an der richtigen Stelle markiert");
+  ok(/data-act="gotoact" data-id="e1"/.test(xh) && /&lt;x&gt;/.test(xh), "B2c: Einheiten nicht klickbar oder unmaskiert");
+  ok(/Gewertete Einheiten: 6/.test(xh) && /RECHENWEG-ZEILE/.test(xh), "B2c: Zählfeld oder Rechenweg fehlen");
+  const xAlt = String(q._sourceText(xe));
+  ok(xAlt.length > 0 && xh.includes(xAlt), "B2c: der bisherige Herkunftsabsatz fehlt im Rechenweg");
+  ok(String(q._explain({ ...xe, explain: null })) === xAlt,
+     "B2c: ohne Payload steht nicht der bisherige Absatz");
+
   // ── DIE 40-WATT-FRAGE nennt je Zahl ihre Auswahl ─────────────────────────
   const gap = String(q.rRampGap(blk(false), F.fatigue({ selection: { label: "KURVE AUS MARKEN" } }), null));
   const gapLeer = String(q.rRampGap({ ...blk(false), selection: null }, F.fatigue({ selection: null }), null));
