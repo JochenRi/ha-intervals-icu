@@ -77,6 +77,63 @@ test_handlers 69→76→77). §10 Punkt 8 ist erledigt (Verzögerung bei Interva
   Zwischen 1380 und 1620 s steht alpha als Stufe bei 0,75–0,79 (r² ist hier kein
   Gütemaß). Die 175–180 bpm an HRVT1 sind überwiegend echt, nicht Fitfehler.
 
+### Schritt 3 — Fundstellenliste (erhoben 16.09.2026, NICHTS umgeschrieben)
+
+Zählung (Zeilen mit „Rogers"): Code **22** über 7 Bauteile (analytics 1 · coach 3 ·
+const 4 · ramp 3 · ramp_tests 3 · workouts 5 · Panel 3) — deckt sich mit Johannes'
+Überschlag. Dazu außerhalb: docs/ausbau.md 11 · PROJEKTSTAND 8 · README 2 ·
+NAECHSTER_CHAT 5 · Tests 7 (test_coach 1, test_import 2, panel_fixtures 3,
+test_panel_design 1 — prüfen, ob sie Texte festnageln, die sich ändern).
+
+**A · SCHWELLE (bleibt Rogers; Sportart ergänzen, wo sie fehlt)**
+- analytics.py:24 (Docstring, engl.) — Sportart fehlt
+- coach.py:22 (ROGERS-Block) — Sportart fehlt; der Satz „unter Ermüdung sinkt alpha
+  bei gleicher Last" ist ein DRITTES Thema → Quelle prüfen, von e1 nicht betroffen
+- coach.py:443 (Anker-Quelle, sichtbar) — Sportart fehlt
+- coach.py:1162 (Zonen-Quelle, sichtbar) — Sportart fehlt
+- const.py:345 — Laufband steht schon da ✓
+- ramp_tests.py:51 (Rogers 2021a) — LAUFBAND steht ✓
+- ramp_tests.py:54 (Rogers 2021b, JFMK, 0,5) — **Sportart NICHT belegt**, nachlesen
+- workouts.py:203 (Schwellen-Einheit, sichtbar) — Sportart fehlt
+- workouts.py:422 (Stufentest-evidence) — Laufband steht ✓, Satz nennt kein Verfahren
+- Panel :5290, :5668 (DFA-Tab, Quelle und Grenzen) — Sportart fehlt
+
+**B · VERFAHREN (→ Olieslagers 2026, Rad)**
+- const.py:268 „Die Auswertung nach Rogers/Olieslagers: eine Regressionsgerade …" →
+  Olieslagers: gegen die Zeit, vom Beginn des linearen Abfalls bis zum letzten Zeitpunkt.
+- ramp.py Docstring „Beide Arbeiten …" (kein Rogers-Treffer, gleiche Klasse): behauptet
+  für BEIDE Zeit-Achse und Segment von Hand. **Rogers' Verfahren (Regression gegen HF,
+  1,0–0,5) steht nur aus §10.10 und ist NICHT selbst nachgelesen** — vor dem Umschreiben
+  lesen oder als unbelegt beschriften, nicht behaupten.
+- docs/ausbau.md: 1 Treffer „beiden Arbeiten" + die 11 Rogers-Zeilen einzeln sortieren.
+
+**C · PERSONALISIERTE SCHWELLE (Rogers 2024 definiert, Olieslagers operationalisiert)**
+- ramp.py:39/42/49, ramp_tests.py:56 — Zuordnung bleibt richtig. Einziger e1-Bezug:
+  „Hochpunkt am Beginn des linearen Abfalls" ist jetzt „ab Rampenbeginn". **Achtung
+  Sportart: Rogers 2024 (Murias, Fleitas-Paniagua) ist vermutlich RAD, nicht Laufband —
+  nachlesen, sonst schreibt die Regel „Rogers = Laufband" einen neuen Fehler.**
+
+**D · DRITTES (prüfen, ob betroffen)**
+- const.py:131 + Panel :1537 — Zwei-Minuten-Regel je Block (Rogers, Front Sports Act
+  Living 2021): von e1 NICHT betroffen. Sportart nachlesen.
+- const.py:305, workouts.py:449 — Rampensteigung (Fleitas-Paniagua 2023 gegen Rogers):
+  nicht betroffen, Sportarten stehen.
+- workouts.py:443 Einrollen — **betroffen**: der Grund nennt nur Einschwingen und
+  Rechenfenster; seit e1 ist das Einrollen auch die Grenze der Hochpunktsuche und muss
+  flach sein (Protokollprüfung).
+- workouts.py:457 Abbruch — Rogers-Bezug bleibt; **betroffen** ist der Folgesatz zum
+  Ausrollen (:465): „nicht abkürzen" hat seit e1 einen zweiten Grund — das Lastende wird
+  als Länge minus 10 min gerechnet.
+
+**E · DIE DREI NEUEN TEXTE**
+- Widerspruch: Panel :3228 schreibt unter HRVT2 nur bei `reached_anaerobic` false
+  („nie stabil unter 0,5"). Im Widerspruchsfall steht dort NICHTS → `r.contradiction.reason`
+  hierhin, samt Panel-Prüfung mit Fixture (Trefferzusicherung: Fixture trägt das Feld).
+- Protokollgründe: Panel :4416 zeigt `test.reason` schon („Keine Werte. …") — prüfen, ob
+  jeder der 12 Sätze in diesem Rahmen trägt; eine Panel-Prüfung mit einem Protokollgrund.
+- `back_above_s`: kein Panel-Treffer → die Karte zeigt die Erholung heute gar nicht.
+  Klären, ob der „Erklärtext" in workouts/docs sitzt, sonst entfällt dieser Posten.
+
 ### ENTSCHIEDEN (Johannes): Rechenweg e1
 
 Olieslagers wörtlich: Hochpunktsuche erst **ab Rampenbeginn**, Ende am **Lastende**,
