@@ -2222,11 +2222,23 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   ok(!/\b153\b|\b138\b|\b136\b/.test(H.source().replace(/\/\*[\s\S]*?\*\//g, "")
        .split("rQuellen(")[1].split("_setCurveSource")[0]),
      "quellen: eine Vergleichszahl steht als Literal im Quelltext");
-  // Und die Spalten tauschen mit der Stellung - die Gegenseite ist immer die
-  // ANDERE, nicht immer dieselbe Spalte.
-  const spalteAus = /161 W<\/td>\s*<td class="tn">152|152[^<]*<\/td>\s*<td class="tn">161/;
-  ok(spalteAus.test(aus.replace(/\s+/g, " ")) || /161/.test(aus),
-     "quellen: die Gegenstellung fehlt in der Aus-Stellung");
+  // DIE SPALTEN TAUSCHEN MIT DER STELLUNG. Die erste Fassung dieser Zeile hatte
+  // ein `|| /161/.test(aus)` - ein ODER, das sie unbedingt wahr machte, und die
+  // Mutation lief mit 0 Fehlern durch (M56). Eine Prüfung mit einem Ausweg ist
+  // keine.
+  const ersteZeile = (html) => {
+    const t = /<td>1 h geplante Dauer<\/td>\s*<td class="tn">([^<]*)<\/td>\s*<td class="tn">([^<]*)</
+      .exec(html.replace(/\s+/g, " "));
+    return t ? [t[1].trim(), t[2].trim()] : null;   // Regex null-geprüft (§9)
+  };
+  const zAus = ersteZeile(aus), zAn = ersteZeile(an);
+  ok(zAus !== null && zAn !== null,
+     "quellen: die Zahlenzeile ist nicht ablesbar");
+  ok(zAus && zAn && zAus[0] === zAn[1] && zAus[1] === zAn[0],
+     `quellen: die Spalten tauschen nicht mit der Stellung (${JSON.stringify([zAus, zAn])})`);
+  // Trefferzusicherung: die beiden Zahlen sind ÜBERHAUPT verschieden.
+  ok(zAus && zAus[0] !== zAus[1],
+     "quellen Fixture-Beweis: beide Spalten tragen dieselbe Zahl - der Tausch wäre unsichtbar");
   ok(/LESERICHTUNGSSATZ AUS DER PAYLOAD/.test(aus),
      "quellen: der Satz zur Leserichtung steht nicht da oder kommt aus dem Frontend");
 

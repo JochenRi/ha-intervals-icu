@@ -562,6 +562,29 @@ ok("Schalter: und sagt, dass die Verschiebung kein Rechenfehler ist",
    "kein" in fatigue.SWITCH_NOTE and "Rechenfehler" in fatigue.SWITCH_NOTE)
 check("Schalter: der Satz reist mit", fatigue.curve(_basis).get("switch_note"),
       fatigue.SWITCH_NOTE)
+
+# DIE GEGENSTELLUNG WIRD GERECHNET, nicht behauptet: der Reiter zeigt beide
+# Reihen nebeneinander, und die andere kann nur hier entstehen - im Frontend
+# waere sie ein Literal ohne Herkunft.
+_an_p = fatigue.curve(_basis)
+_basis["settings"] = {fatigue.CURVE_SWITCH: False}
+_aus_p = fatigue.curve(_basis)
+check("Gegenstellung: sie entspricht genau der Kette der anderen Stellung",
+      [(r["hours"], r["watts"]) for r in (_an_p.get("plan_other") or [])],
+      [(r["hours"], r["watts"]) for r in (_aus_p.get("plan") or [])])
+check("Gegenstellung: und umgekehrt ebenso",
+      [(r["hours"], r["watts"]) for r in (_aus_p.get("plan_other") or [])],
+      [(r["hours"], r["watts"]) for r in (_an_p.get("plan") or [])])
+# TREFFERZUSICHERUNG: die beiden Stellungen liefern ueberhaupt verschiedene
+# Zahlen - sonst pruefen die zwei Zeilen oben nur, dass zweimal dasselbe
+# gerechnet wurde.
+ok("Gegenstellung Fixture-Beweis: beide Stellungen liefern dieselbe Kette",
+   [(r["hours"], r["watts"]) for r in (_aus_p.get("plan") or [])]
+   != [(r["hours"], r["watts"]) for r in (_an_p.get("plan") or [])])
+# Und der Bestand bleibt unberuehrt: die Gegenrechnung arbeitet auf einer
+# Kopie der Stellung, nicht auf den Daten.
+check("Gegenstellung: der Schalter steht danach unveraendert",
+      fatigue.curve_from_marks(_basis), False)
 _basis["settings"] = {fatigue.CURVE_SWITCH: False}
 
 
