@@ -265,12 +265,15 @@ DURABILITY_TEST_ALLOUT_5_FACTOR = 1.30
 DURABILITY_TEST_REFERENCE = "-10,1 ± 6,5 % über 20 min, -10,8 ± 7,8 % über 5 min"
 
 # --- Stufentest (docs/ausbau.md N) -------------------------------------------
-# Die Auswertung nach Rogers/Olieslagers: eine Regressionsgerade durch den
-# nahezu linearen Abfall von DFA a1, und die Schwelle ist der SCHNITTPUNKT der
+# Die Auswertung angelehnt an Olieslagers 2026 (Rad, Methodenteil): eine
+# Regressionsgerade von DFA a1 ueber der ZEIT, vom Beginn des nahezu linearen
+# Abfalls bis zum letzten Zeitpunkt; die Schwelle ist der SCHNITTPUNKT der
 # Geraden mit 0,75 bzw. 0,5. Das ist NICHT "der erste Punkt unter 0,75" - eine
-# andere Rechnung mit einem anderen Ergebnis. In beiden Arbeiten wird das
-# Segment von Hand bestimmt; unsere Regel dafuer ist deshalb eine SETZUNG und
-# steht als solche in der Karte.
+# andere Rechnung mit einem anderen Ergebnis. Rogers 2021a/b (Laufband) legen
+# die Gerade nur ueber den Abfall von etwa 1,0 bis etwa 0,5, 2021b gegen die
+# Herzfrequenz, und bestimmen den Abschnitt nach Augenschein; ob Olieslagers
+# den Beginn von Hand setzt, ist nicht nachgelesen. Hier sucht eine Regel den
+# Beginn automatisch - eine SETZUNG, und sie steht als solche in der Karte.
 #
 # Glaettungsbreite fuer die SEGMENTSUCHE. Gerechnet wird danach auf den
 # ungeglaetteten Werten - die Glaettung sucht die Grenzen, sie verschiebt

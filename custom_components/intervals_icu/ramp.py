@@ -1,17 +1,27 @@
 """Stufentest: die beiden Schwellen aus EINER Fahrt (docs/ausbau.md N).
 
 WIE DIE SCHWELLE ENTSTEHT - und warum das nicht "ablesen" ist
-Beide Arbeiten, an denen dieses Modul haengt, machen dasselbe: DFA a1 wird
-ueber die Zeit aufgetragen, die Kurve zeigt einen stabilen Bereich oben, dann
-einen nahezu linearen Abfall, dann eine flache Strecke unten. Durch den
-ABFALL wird eine Gerade gelegt, und die Schwelle ist der SCHNITTPUNKT dieser
-Geraden mit 0,75 (HRVT1) bzw. 0,5 (HRVT2).
+Durch den nahezu linearen ABFALL von DFA a1 wird eine Gerade gelegt, und die
+Schwelle ist der SCHNITTPUNKT dieser Geraden mit 0,75 (HRVT1) bzw. 0,5
+(HRVT2). Die Arbeiten legen die Gerade verschieden (gelesen 16.09.2026:
+Rogers 2021a/b im Volltext, Olieslagers nur ein Ausschnitt des Methodenteils):
+  Rogers 2021a (Front Physiol, LAUFBAND, 0,75): ueber die ZEIT (fuer VO2)
+         und gegen die HERZFREQUENZ (fuer HF), jeweils ueber den Abfall von
+         etwa 1,0 bis etwa 0,5; der Abschnitt nach Augenschein.
+  Rogers 2021b (JFMK, LAUFBAND, 0,5): gegen die HERZFREQUENZ, von etwa 1,0
+         bis etwa 0,5 oder tiefer, solange die Werte gerade bleiben; der
+         Abschnitt nach Augenschein.
+  Olieslagers 2026 (Physiol Rep, RAD, 4-min-Stufen): ueber die ZEIT, vom
+         Beginn des nahezu linearen Abfalls bis zum LETZTEN ZEITPUNKT. Ob der
+         Beginn von Hand gesetzt wird: nicht nachgelesen.
+Gebaut ist die Fassung von Olieslagers - Zeitachse, Ende am letzten Zeitpunkt
+der Belastung -, angelehnt, nicht nachgebaut: der Startpunkt wird hier
+automatisch gesucht.
 
 Das ist etwas anderes als "der erste Punkt unter 0,75", und es liefert ein
 anderes Ergebnis: ein einzelner Ausreisser entscheidet nichts mehr, dafuer
-entscheidet die Wahl des Segments alles. In beiden Arbeiten wird dieses
-Segment VON HAND bestimmt - visuell, am Plot. Unsere Regel dafuer ist deshalb
-eine SETZUNG, und die Karte sagt das.
+entscheidet die Wahl des Segments alles. Unsere Regel dafuer ist eine
+SETZUNG, und die Karte sagt das.
 
 DIE SEGMENTREGEL - Rechenweg e1 (eine Bestimmung, zwei Ergebnisse)
   Ende   das LASTENDE aus dem Protokoll: Laenge der Fahrt minus
@@ -23,8 +33,8 @@ DIE SEGMENTREGEL - Rechenweg e1 (eine Bestimmung, zwei Ergebnisse)
   Anfang der LETZTE Hochpunkt der geglaetteten Kurve AB RAMPENBEGINN
          (RAMP_WARMUP_MIN) bis zum Ende. Bei einem Plateau ist das dessen
          rechtes Ende - also genau die Stelle, an der der Abfall beginnt.
-         Ohne die Grenze lag der Hochpunkt im Einrollen, bei konstanter
-         Leistung, zwoelf Minuten vor der Rampe.
+         Ohne die Grenze lag der Hochpunkt im flachen Einrollen, zwoelf
+         Minuten vor der Rampe.
   Und derselbe Hochpunkt ist `max_alpha_start` fuer die dritte Zahl.
   Beide Grenzen sind SETZUNGEN aus dem Protokoll. Deshalb prueft
   protocol() zuerst, ob die Fahrt das Protokoll traegt - sonst stuenden die

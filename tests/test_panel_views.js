@@ -2129,10 +2129,29 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   ok(!/nie stabil/.test(voll),
      "N3 Gegenprobe: der Hinweis steht auch da, wo die Schwelle erreicht wurde");
 
+  // --- 4b Widerspruch: unter 0,5 gemessen, HRVT2 trotzdem leer -------------
+  const WID = "Unter 0,5 warst du — ab Sekunde 1900 mindestens 60 s lang. Die "
+    + "Ausgleichsgerade durch den Abfall trifft 0,5 dort nur nicht, deshalb steht keine HRVT2.";
+  const widFix = { ...rt.latest.result, hrvt2: null, reached_anaerobic: true,
+    contradiction: { code: "reached_without_hrvt2", below_from_s: 1900, reason: WID } };
+  ok(widFix.contradiction.reason === WID && widFix.reached_anaerobic === true,
+     "N3 Widerspruch: die Fixture trägt das Feld nicht (Trefferzusicherung)");
+  const wid = eineZeile(q.rRampTest({ ...rt, latest: { date: "2026-09-14", result: widFix } }));
+  contains(wid, WID, "N3 Widerspruch: der Grund aus dem Ergebnis steht nicht in der Karte");
+  contains(wid, "die Gerade trifft 0,5 nicht", "N3 Widerspruch: die Zelle der zweiten Schwelle bleibt ohne Hinweis");
+  ok(!/nie stabil/.test(wid), "N3 Widerspruch: die Karte behauptet „nie stabil\", obwohl unter 0,5 gemessen wurde");
+  ok(!/Ausgleichsgerade durch den Abfall trifft/.test(voll) && !/Ausgleichsgerade durch den Abfall trifft/.test(halb),
+     "N3 Widerspruch Gegenprobe: der Satz steht auch ohne Widerspruch da");
+
   // --- 5 Der Rechenweg nennt Setzung und Verfahren -------------------------
   contains(voll, "gefittet", "N3 Rechenweg: dass gefittet wird, fehlt");
   contains(voll, "unsere Setzung", "N3 Rechenweg: die Segmentwahl wird nicht als Setzung benannt");
-  contains(voll, "von Hand", "N3 Rechenweg: dass die Arbeiten es von Hand tun, fehlt");
+  // Belegtexte seit e1 (Quellen gelesen 16.09.2026): Rogers nach Augenschein,
+  // Olieslagers' Handbestimmung offen, Ende am Lastende.
+  contains(voll, "nach Augenschein", "N3 Rechenweg: wie Rogers den Abschnitt bestimmt, fehlt");
+  contains(voll, "nicht nachgelesen", "N3 Rechenweg: die offene Handbestimmung bei Olieslagers wird behauptet statt beschriftet");
+  contains(voll, "bis zum Lastende", "N3 Rechenweg: das Segment-Ende nach e1 fehlt");
+  ok(!/flach unter 0,5 bleibt/.test(voll), "N3 Rechenweg: das alte Segment-Ende (vor e1) steht noch da");
   contains(voll, "HRV-Schwellen allgemein",
            "N3 Rechenweg: die Einschränkung zur Metaanalyse fehlt");
   ok(!/r = 0,85 für DFA/.test(voll),

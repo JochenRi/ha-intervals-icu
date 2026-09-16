@@ -1368,6 +1368,30 @@ const acts = F.activities(), thr = F.thresholds();
   const leer = q._marksBlock({ id: "a9", dfa: { blocks: [{ start_index: 1 }] } });
   ok(!/Im Archiv:/.test(leer),
      "quittung Gegenprobe: eine nie markierte Fahrt zeigt trotzdem eine Quittung");
+
+  // ── Stufentest im Fahrtdetail: Widerspruch und Protokollgrund (e1, Schritt 3) ──
+  const WID = "Unter 0,5 warst du — ab Sekunde 1900 mindestens 60 s lang. Die "
+    + "Ausgleichsgerade durch den Abfall trifft 0,5 dort nur nicht, deshalb steht keine HRVT2.";
+  const PROTO = "Das Ausrollen ist länger als 10 Minuten: 10 Minuten vor Schluss wird "
+    + "schon ausgerollt (240 W davor, 120 W danach).";
+  const rtRes = (extra) => ({ hrvt1: { watts: 218, alpha: 0.75, hr: 180 }, hrvt2: null,
+    hrvt1_pers: null, read_window_s: 30, reached_anaerobic: true, contradiction: null, ...extra });
+  const rtVorher = q._rtests;
+  q._rtests = { tests: [{ activity_id: act.id, date: "2026-09-14",
+    result: rtRes({ contradiction: { code: "reached_without_hrvt2", below_from_s: 1900, reason: WID } }) }] };
+  ok(q._rtests.tests[0].result.contradiction.reason === WID,
+     "stufentest detail: die Fixture trägt den Widerspruch nicht (Trefferzusicherung)");
+  const rtWid = q._marksBlock(act);
+  ok(rtWid.includes(WID), "stufentest detail: der Widerspruchsgrund steht nicht im Fahrtdetail");
+  ok(!/nie stabil unten/.test(rtWid), "stufentest detail: im Widerspruch steht „nie stabil unten\"");
+  q._rtests = { tests: [{ activity_id: act.id, date: "2026-09-14", result: rtRes({}) }] };
+  ok(!q._marksBlock(act).includes("Ausgleichsgerade durch den Abfall trifft"),
+     "stufentest detail Gegenprobe: der Widerspruchssatz steht auch ohne Widerspruch da");
+  q._rtests = { tests: [{ activity_id: act.id, date: "2026-09-14", result: null, reason: PROTO }] };
+  const rtProto = q._marksBlock(act);
+  ok(rtProto.includes("Keine Werte.") && rtProto.includes(PROTO),
+     "stufentest detail: der Protokollgrund steht nicht hinter „Keine Werte.\"");
+  q._rtests = rtVorher;
   // und eine GEMESSENE Fahrt sagt das statt „noch nicht gemessen"
   q._smarks.marks[0].measure = { endurance: { hours: [{ hour: 1, p075: 208, points: 3600 },
                                                        { hour: 2, p075: 201, points: 3600 }] } };

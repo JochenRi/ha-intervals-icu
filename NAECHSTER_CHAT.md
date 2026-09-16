@@ -6,6 +6,50 @@
 bleibt 0.59.0. Prüfstand: **21 Dateien, 6.995 Prüfungen, 0 Fehler** (test_ramp 89→206→229,
 test_handlers 69→76→77). §10 Punkt 8 ist erledigt (Verzögerung bei Intervals).
 
+### Stand Schritt 3 — Quellen gelesen, b und e gebaut (16.09.2026, zweite Sitzung)
+
+Prüfstand: **21 Dateien, 7.008 Prüfungen, 0 Fehler** (test_panel_views 1409→1417,
+test_panel_fixes 751→756). Nicht ausgeliefert, 0.59.0 bleibt.
+
+**Quellentabelle (das Ergebnis, vor jedem Text):**
+
+| Arbeit | Sportart | Achse | Segment | Startpunkt | gelesen |
+|---|---|---|---|---|---|
+| Rogers 2021a, Front Physiol (0,75) | Laufband | ZEIT (für VO2) und HF (für HF) | ~1,0 bis ~0,5 (HF: bis unter 0,5) | Augenschein, keine Regel | Methodenteil, Volltext |
+| Rogers 2021b, JFMK (0,5) | Laufband | HF | ~1,0 bis ~0,5, tiefer solange gerade | Augenschein (Punkte in Abb. 1 markiert) | Methodenteil, Volltext |
+| Rogers 2024, IJSPP (pers.) | im Abstract nicht genannt | nicht nachgelesen | nicht nachgelesen | nicht nachgelesen | Abstract |
+| Olieslagers 2026, Physiol Rep | Rad, 4-min-Stufen, 40 W +30 W | ZEIT | Beginn des nahezu linearen Abfalls bis letzter Zeitpunkt | nicht nachgelesen | Abstract + Ausschnitt Methodenteil (Verlagsseite; PMC per Captcha gesperrt) |
+| Rogers FSAL 2021 (2-min-Regel) | nicht nachgelesen | – | – | – | nein |
+
+**Was das für die Zuordnung heißt:** „Rogers = gegen HF" ist FALSCH — 2021a fittet
+auch über die Zeit. Die Zeitachse ist nicht Olieslagers' Beitrag. Der tragende
+Unterschied zwischen Rogers und e1 ist das SEGMENT-ENDE (Rogers ~0,5, e1 Lastende);
+das stützt sich auf Olieslagers' Methodensatz, jetzt im Ausschnitt belegt. Ob
+Olieslagers den Beginn von Hand setzt, bleibt offen und steht so beschriftet.
+
+**Gebaut:**
+- b: ramp.py-Docstring (Tabelle als Absatz, „angelehnt an Olieslagers, Startpunkt
+  automatisch gesucht"; „bei konstanter Leistung" im Einrollen gestrichen), const.py:268.
+- b, NICHT in der Liste: Panel-Rechenweg (Trainer-Karte) beschrieb noch das Segment
+  VOR e1 („bis die Kurve flach unter 0,5 bleibt") und „in beiden Arbeiten von Hand".
+  Kein Rogers-Treffer, deshalb durch die Liste gefallen — **die Liste suchte nach einem
+  Stichwort statt nach dem Inhalt.** Dieselbe Klasse wie die zwei Befund-Sätze unten.
+  Prüfung „von Hand" ersetzt durch „nach Augenschein" + „nicht nachgelesen" + „bis zum
+  Lastende" + Wächter gegen den alten Satz (−1 +4).
+- e: Widerspruch in Trainer-Karte (Absatz + Zellhinweis) und Fahrtdetail; Protokollgrund
+  hinter „Keine Werte." geprüft (+5 views, +5 fixes, je mit Trefferzusicherung und
+  Gegenprobe). Die 12 Sätze tragen in diesem Rahmen, keiner beginnt mit Urteil.
+- 5 Mutationen über Dateikopie, alle gezählt und benannt (Karten-Absatz, Zellhinweis,
+  Detail-Widerspruch, Protokollgrund, alter Rechenweg → 2 Fehler).
+- e `back_above_s`: ENTFÄLLT, belegt — kein Leser außer ramp.py und 4 Rechenprüfungen,
+  kein Erklärtext irgendwo. Idee notiert, NICHT bauen: „Karte zeigt die Erholung".
+
+**Offen, Reihenfolge bleibt:** a/c Sportarten (Rogers 2024 NICHT als Rad eintragen) ·
+Panel „Hochpunkt am Beginn deines Abfalls" (→ ab Rampenbeginn) · d workouts:443/457/465 ·
+docs/ausbau.md (u. a. :3001 „in beiden Arbeiten … von Hand") · PROJEKTSTAND-Texte ·
+Wattvorgaben/Pulsfenster vor Auslieferung (HEIMDALL-Lesezugriff einzeln vorschlagen) ·
+dann Schritt 4.
+
 ### Stand Schritt 1 — was gebaut ist und was die Übergabe korrigiert
 
 - `ramp.protocol()` · `segment(dfa, first, last)` nach e1 · `measure()` mit `code`/`reason`,
@@ -62,15 +106,19 @@ test_handlers 69→76→77). §10 Punkt 8 ist erledigt (Verzögerung bei Interva
 - **Olieslagers 2026 (Physiol Rep, e70777, Methodenteil):** lineare Regression von
   DFAa1 **über der ZEIT**, vom Beginn des nahezu linearen Abfalls **bis zum letzten
   Zeitpunkt**; HRVT1pers = Mitte aus höchstem Wert am Beginn des Abfalls und 0,5.
-  Rad (4-min-Stufen, +30 W). Rogers (Laufband) regressiert laut §10.10 gegen HF im
-  Bereich 1,0–0,5 — von mir NICHT selbst nachgelesen.
+  Rad (4-min-Stufen, +30 W). ~~Rogers (Laufband) regressiert laut §10.10 gegen HF im
+  Bereich 1,0–0,5~~ **WIDERLEGT/UNVOLLSTÄNDIG (Schritt 3):** 2021a fittet über Zeit UND
+  HF, 2021b gegen HF — siehe Quellentabelle.
 - **Die Diagnose kehrt sich um:** `segment()` endet am ERSTEN 60-s-Lauf unter 0,5.
   Die Gerade mittelt über den Abfall und liegt dort fast immer noch über 0,5, „kein
   Hochrechnen" lehnt den Schnitt dann ab → **hrvt2 strukturell unerreichbar**. Jede
   Variante mit diesem Ende liefert hrvt2 null, gleich welcher Start und welche Achse.
+  **WIDERLEGT (Stand Schritt 1):** blind war erst die Kombination aus Plateau im Fit
+  und Dip-Ende.
   → eigener **§7-Fall (sechsunddreißigster)**: eine Abbruchbedingung, die genau den
   Zustand ausschließt, für dessen Messung sie gebaut wurde.
-- **Der Start ist trotzdem falsch:** s 224 liegt im Einrollen (konstant 128 W), zwölf
+- **Der Start ist trotzdem falsch:** s 224 liegt im Einrollen (~~konstant 128 W~~
+  **WIDERLEGT:** 128 W bis Minute 6, dann ~139 W), zwölf
   Minuten vor Rampenbeginn. Auch mit korrektem Ende zieht das hrvt2 um +15 W hoch.
 - Prüfstein (geglättetes alpha, 30-s-Median): 0,75 erste Kreuzung 1447 s / 193 W /
   174 bpm, 60 s darunter 1631 s / 213 W / 178 bpm; 0,5 bei 1807 s / 226 W / 185 bpm.

@@ -3226,9 +3226,12 @@ class IntervalsIcuPanel extends HTMLElement {
       <div class="statgrid">
         ${zelle(r.hrvt1, "Erste Schwelle (HRVT1)", "")}
         ${zelle(r.hrvt2, "Zweite Schwelle (HRVT2)",
-                r.reached_anaerobic ? "" : "nie stabil unter 0,5 — nicht erreicht")}
+                r.reached_anaerobic
+                  ? (r.contradiction ? "unter 0,5 gemessen, die Gerade trifft 0,5 nicht" : "")
+                  : "nie stabil unter 0,5 — nicht erreicht")}
         ${zelle(r.hrvt1_pers, "Erste, personalisiert", "")}
       </div>
+      ${r.contradiction ? `<p class="src">${esc(r.contradiction.reason || "")}</p>` : ""}
       <p class="src"><b>Die dritte Zahl steht daneben, nicht anstelle der ersten.</b>
         Sie liegt mittig zwischen dem Hochpunkt am Beginn deines Abfalls
         (alpha ${fmt(r.max_alpha_start, 2)}) und 0,5, hier also alpha
@@ -3270,10 +3273,12 @@ class IntervalsIcuPanel extends HTMLElement {
             Schwelle ist deren Schnittpunkt mit 0,75 beziehungsweise 0,5. Ein einzelner
             Ausreißer entscheidet damit nichts — dafür entscheidet die Wahl des Abschnitts
             alles.</p>
-          <p class="src"><b>Diese Wahl ist unsere Setzung.</b> In beiden Arbeiten wird der
-            Abschnitt von Hand am Diagramm bestimmt. Hier läuft er vom letzten Hochpunkt vor
-            dem Abfall bis zu der Stelle, ab der die Kurve flach unter 0,5 bleibt — beides
-            aus der geglätteten Kurve, gerechnet wird auf den ungeglätteten Werten.
+          <p class="src"><b>Diese Wahl ist unsere Setzung.</b> Rogers (Laufband) bestimmt den
+            Abschnitt nach Augenschein am Diagramm; ob Olieslagers (Rad) den Beginn von Hand
+            setzt, ist nicht nachgelesen. Hier sucht eine Regel: ab Rampenbeginn der letzte
+            Hochpunkt, von dort bis zum Lastende — angelehnt an Olieslagers, der die Gerade
+            bis zum letzten Zeitpunkt legt. Gesucht wird auf der geglätteten Kurve, gerechnet
+            auf den ungeglätteten Werten.
             ${r.segment ? `Für diesen Test: ${fmt(r.segment.points, 0)} Punkte,
             Bestimmtheitsmaß ${fmt(r.segment.r2, 2)}.` : ""}</p>
           <p class="src"><b>Ein- und Ausrollen gehören zur Messung.</b> Die Dauern sind die
@@ -4409,7 +4414,7 @@ class IntervalsIcuPanel extends HTMLElement {
          <p class="src">Gemessen aus den ungedünnten Strömen: eine Gerade durch den
            Abfall von DFA a1, die Schwelle ist ihr Schnittpunkt. Abgelesen über
            ${fmt(r.read_window_s, 0)} Sekunden.${r.reached_anaerobic
-             ? "" : " Die zweite Schwelle fehlt, weil der alpha-Wert nie stabil unten war —"
+             ? (r.contradiction ? " " + esc(r.contradiction.reason || "") : "") : " Die zweite Schwelle fehlt, weil der alpha-Wert nie stabil unten war —"
                     + " das ist eine Auskunft, kein Fehler."}</p>
          <button class="ctxremove" data-act="rtdel" data-id="${esc(a.id)}"
            ${rtBusy ? "disabled" : ""}>Stufentest-Markierung zurücknehmen</button>`
