@@ -1,11 +1,10 @@
 # ha-intervals-icu — Übergabe an den nächsten Chat
 
-**Stand dieser Übergabe: 16.09.2026.** Gebaut und als Release angelegt ist
-**0.56.1** (Fix-Release, siehe §6 Punkt 1); Johannes' HACS-Update und die
-Verifikation am System stehen aus. Prüfstand auf `main`: **21 Dateien, 6.611
-Prüfungen**, alle grün. Der Arbeitsstand für die Fahrtenliste liegt auf
-`paket-b2-wip` @ `498b629` (noch auf 0.56.0, 20 Dateien / 6.516) und braucht
-als Erstes `main` hineingemergt.
+**Stand dieser Übergabe: 16.09.2026, abends.** Ausgeliefert ist **0.57.0**
+(die Fahrtenliste, §6 Punkt 2); 0.56.1 ist am System verifiziert, der
+Kalenderweg am echten Eintrag. Prüfstand: **21 Dateien, 6.726 Prüfungen**, alle
+grün. `main` und `paket-b2-wip` stehen gleich. **Als Nächstes: B2b-2, der
+Blockschalter — erster Schritt die Simulation je Familie.**
 
 Dieses Dokument ist für einen Chat geschrieben, der nichts von diesem Projekt
 weiß. Es ersetzt keine Quelle, es sagt, **wo** die Wahrheit steht und **was
@@ -126,7 +125,8 @@ Die Reihe von Paket P bis heute:
 | 0.55.0 | B2b-0: der Knopf misst alle markierten Familien, Ablage je Familie, `MEASURE_VERSION` 2→3; B2: Leitzahl nach geplanter Dauer |
 | 0.55.1 | Messzustand je Familie in der Aktivitätenliste |
 | 0.56.0 | B2b-1: der Kurvenschalter im Reiter „Quellen", `settings.curve_from_marks` im Archiv |
-| **0.56.1** | **Fix-Release:** Schreibweg nach Intervals mit absoluten Watt (A4), Wattliste ohne Prozentzeichen (A3), Kurvensatz nach Schalterstellung (A1), Wort für `not_measured` (A2), Sperre des Blockschalters mit wahrem Grund, kein Knopf ohne Handler |
+| 0.56.1 | Fix-Release, am System verifiziert: Schreibweg nach Intervals mit absoluten Watt (A4), Wattliste ohne Prozentzeichen (A3), Kurvensatz nach Schalterstellung (A1), Wort für `not_measured` (A2), Sperre des Blockschalters mit wahrem Grund, kein Knopf ohne Handler |
+| **0.57.0** | **Die Fahrtenliste** im Reiter „Quellen": tragende Fahrten (mindestens ein Wert) klickbar mit Abschnitten und Stunden; die übrigen markierten unter sieben Gründen; `rides_used` zählt nur Fahrten mit Wert; Feld `lost` für den Verwerfungsgrund; Weglassprobe nur über Fahrten mit Wert; aus dem WIP-Stand die Studienform-Grenze nach unten und die Korridorzeile im Kategorienregister |
 
 ### Was Johannes umgelegt hat und was es bewirkt
 
@@ -525,7 +525,18 @@ gegengeprüft.
 bekommt `main` hineingemergt, bevor die Fahrtenliste weitergebaut wird —
 Konflikte sind in PROJEKTSTAND §9 (Zähltabelle) und §12 zu erwarten.
 
-### 2 · Die Fahrtenliste im Reiter „Quellen" — ALS NÄCHSTES
+### 2 · Die Fahrtenliste im Reiter „Quellen" — GEBAUT als 0.57.0, Verifikation am System offen
+
+Erwartung am Bestand vom 16.09.: „Welche Fahrten die Kurve tragen: 12";
+darunter fünf „gemessen, ohne Punkt für die Kurve" (26.06., 03.07., 20.07.,
+02.09., 11.09.) und eine „frühere Messung gilt nicht mehr" (04.06. „Volumen",
+Grund nicht festgehalten, weil älter als das Feld). Die Kurvenzahlen bleiben.
+
+Beim Bau gefunden (§7 Fall 33): die Weglassprobe lief auch über Fahrten ohne
+Wert und machte eine einzelne tragende Fahrt zu einer „gemessenen" Linie. Am
+Bestand ohne Wirkung, behoben.
+
+**Ursprünglicher Auftrag (Referenz):**
 
 **Erster Handgriff:** `main` in `paket-b2-wip` mergen, Suite fahren, Zählung
 melden. Dann die Korridorzeile aus `.src.warn` ins Kategorienregister.
