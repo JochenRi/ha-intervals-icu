@@ -115,6 +115,7 @@ def async_register(hass: HomeAssistant) -> None:
         websocket_set_section_mark,
         websocket_confirm_section_marks,
         websocket_measure_section_marks,
+        websocket_set_curve_source,
         websocket_reconcile,
     ):
         websocket_api.async_register_command(hass, handler)
@@ -454,6 +455,40 @@ def websocket_day_context(hass, connection, msg) -> None:
         "min_weight_sum": day_context_lib.MIN_WEIGHT_SUM,
         "sources": day_context_lib.SOURCES,
     })
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "intervals_icu/set_curve_source",
+        vol.Required("from_marks"): bool,
+        vol.Optional("athlete_id"): str,
+    }
+)
+@websocket_api.async_response
+async def websocket_set_curve_source(hass, connection, msg) -> None:
+    """Den Kurvenschalter umlegen - und zurueck.
+
+    DER RUECKWEG IST DER ZWECK. Umgelegt wird die QUELLE der Auswahl, nicht der
+    Bestand: Marken, Anker und Messungen liegen im Archiv und werden hier nicht
+    angefasst. Zurueckgestellt rechnet wieder die Namenserkennung, und zwar mit
+    demselben Ergebnis wie vorher - ein Schalter ohne Rueckweg ist keiner.
+
+    Gespeichert wird nur im AENDERUNGSFALL (J7, zweite Auflage).
+    """
+    coordinator = _pick(hass, msg.get("athlete_id"))
+    if coordinator is None:
+        connection.send_error(msg["id"], "not_found", "no Intervals.icu athlete loaded")
+        return
+    data = coordinator.archive.data
+    box = data.get("settings")
+    if not isinstance(box, dict):
+        box = {}
+        data["settings"] = box
+    want = bool(msg["from_marks"])
+    if bool(box.get(fatigue.CURVE_SWITCH)) != want:
+        box[fatigue.CURVE_SWITCH] = want
+        await coordinator.archive.async_save_now()
+    connection.send_result(msg["id"], {"from_marks": fatigue.curve_from_marks(data)})
 
 
 @websocket_api.websocket_command(

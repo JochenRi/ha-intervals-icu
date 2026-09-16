@@ -27,6 +27,7 @@ from typing import Any
 
 try:  # inside the package (Home Assistant)
     from . import derive
+    from . import section_marks as marks_lib
     from .const import (
         FATIGUE_MAX_ABOVE_Z2,
         FATIGUE_MIN_MINUTES,
@@ -36,6 +37,7 @@ try:  # inside the package (Home Assistant)
     )
 except ImportError:  # standalone (test suite loads this file directly)
     import derive  # type: ignore[no-redef]
+    import section_marks as marks_lib  # type: ignore[no-redef]
     from const import (  # type: ignore[no-redef]
         FATIGUE_MAX_ABOVE_Z2,
         FATIGUE_MIN_MINUTES,
@@ -177,6 +179,64 @@ def solid_until(plan: list[dict[str, Any]]) -> int:
     return out
 
 
+# DER SCHALTER. Er steht im Archiv, nicht in den Integrationsoptionen: er
+# gehoert zu den Daten, die er umschaltet, und er wird an der Kachel bedient,
+# an der man die Folge sieht.
+CURVE_SWITCH = "curve_from_marks"
+
+# WAS SICH BEIM UMLEGEN AENDERT, und der wichtigste Teil sind nicht die Zahlen.
+# Die LESERICHTUNG ist eine andere - ohne diesen Satz haelt der Athlet die
+# verschobenen Werte fuer einen Rechenfehler.
+SWITCH_NOTE = ("Umgelegt liest die Kurve NUR deine markierten Abschnitte — und "
+               "sie liest sich anders: die große Zahl sagt, welche Leistung du "
+               "über eine Fahrt DIESER LÄNGE hältst, nicht was in Stunde X war. "
+               "Beides zusammen verschiebt die Zahlen; das ist kein "
+               "Rechenfehler, sondern eine andere Frage.")
+
+# Warum nur die markierten zaehlen, wenn der Schalter aus ist: die alte Auswahl
+# schliesst strukturierte Einheiten VOR der Messung aus (derive-Bauteil aus L0
+# Runde 3, +4 gegen +42 W). Sie bleibt als Rueckfall stehen, solange der
+# Schalter aus sein kann - `fatigue_curve_reason` und `above_endurance_share`
+# sind EIN Bauteil, nicht zwei.
+NOT_MEASURED_REASON = "not_measured"
+
+
+def curve_from_marks(data: dict[str, Any]) -> bool:
+    """Steht der Kurvenschalter auf AN?"""
+    box = (data or {}).get("settings")
+    return bool(isinstance(box, dict) and box.get(CURVE_SWITCH))
+
+
+def _marked_rides(data: dict[str, Any]) -> dict[str, Any]:
+    """Die Fahrten aus den MARKEN - eine Fahrt zaehlt, wenn sie gemessen ist.
+
+    Kein Filter, keine Heuristik: was markiert und gemessen ist, geht in die
+    Rechnung; was nicht markiert ist, kommt gar nicht erst vor. Markiert und
+    noch nicht gemessen ist NAMENTLICH nachvollziehbar, statt still zu fehlen.
+    """
+    used: list[dict[str, Any]] = []
+    dropped: dict[str, list[dict[str, Any]]] = {}
+    marks_box = (data.get("section_marks") or {})
+    for key, entry in marks_box.items():
+        activity = (data.get("activities") or {}).get(key) or {}
+        day = str(activity.get("start_date_local") or entry.get("date") or "")[:10]
+        row = {"activity_id": key, "date": day, "name": activity.get("name"),
+               "above_z2": None,
+               "minutes": round((activity.get("moving_time") or 0) / 60)}
+        if not marks_lib.marked(entry, "endurance"):
+            continue
+        got = marks_lib.measurement(entry, "endurance") or {}
+        hours = got.get("hours")
+        if not isinstance(hours, list) or not hours:
+            dropped.setdefault(NOT_MEASURED_REASON, []).append(row)
+            continue
+        used.append({**row, "hours": hours})
+    used.sort(key=lambda r: r["date"])
+    for items in dropped.values():
+        items.sort(key=lambda r: r["date"])
+    return {"used": used, "dropped": dropped}
+
+
 def rides(data: dict[str, Any]) -> dict[str, Any]:
     """Welche Fahrten ihren Stundenverlauf hergeben - und welche warum nicht.
 
@@ -185,6 +245,8 @@ def rides(data: dict[str, Any]) -> dict[str, Any]:
     den Stoerer eingesammelt statt ihn auszuschliessen: die -31,9 W waren der
     Trainingsplan, nicht die Ermuedung.
     """
+    if curve_from_marks(data):
+        return _marked_rides(data)
     used: list[dict[str, Any]] = []
     dropped: dict[str, list[dict[str, Any]]] = {}
     for key, activity in (data.get("activities") or {}).items():
@@ -429,6 +491,10 @@ def curve(data: dict[str, Any], aerobic_hr: float | None = None,
         "plan_thin_until_hours": plan_thin or None,
         # Die Saetze reisen aus dem Modul, nicht als Literal im Frontend.
         "selection_note": SELECTION_NOTE,
+        # Welche Quelle gerade zaehlt, und was das Umlegen aendert - beides aus
+        # dem Modul, damit die Kachel es nennen kann, ohne es zu kennen.
+        "from_marks": curve_from_marks(data),
+        "switch_note": SWITCH_NOTE,
         "axis_note": AXIS_NOTE,
         "literature": literature,
         "anchor_watts": anchor,

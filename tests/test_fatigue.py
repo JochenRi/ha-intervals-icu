@@ -7,8 +7,10 @@ from pathlib import Path
 import coldcache  # noqa: F401  - MUSS vor jedem Bauteil-Import stehen (§9)
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "custom_components" / "intervals_icu"))
 
+import copy  # noqa: E402
 import derive  # noqa: E402
 import fatigue  # noqa: E402
+import section_marks as marks_lib  # noqa: E402
 from const import FATIGUE_SOLID_MIN_RIDES, FATIGUE_THIN_MIN_RIDES  # noqa: E402
 
 failures = []
@@ -461,6 +463,93 @@ ok("Kachel: der Achsen-Vorbehalt nennt die Intensitaet der Vorbelastung",
 check("Kachel: beide reisen ueber die Payload, nicht als Literal",
       (out.get("selection_note"), out.get("axis_note")),
       (fatigue.SELECTION_NOTE, fatigue.AXIS_NOTE))
+
+
+# --- Der Kurvenschalter -------------------------------------------------------
+# WAS ICH MARKIERE, GEHT IN DIE RECHNUNG. Umgelegt liest die Kurve NUR die
+# markierten und gemessenen Fahrten; aus rechnet weiter die Namenserkennung.
+print("\n=== Der Kurvenschalter, beide Stellungen ===")
+
+_basis = bestand([
+    ("v1", "2026-09-01", "volumen", [160.0, 150.0], VOLUMEN, 150),
+    ("v2", "2026-09-03", "volumen", [158.0, 148.0], VOLUMEN, 150),
+    ("s1", "2026-09-05", "SweetSpot 2x20Min", [170.0, 165.0], STRUKTUR, 150),
+])
+# NUR v1 ist markiert UND gemessen; v2 ist gar nicht markiert, s1 ist markiert
+# aber nicht gemessen. Damit unterscheiden sich die Stellungen wirklich:
+# AUS zaehlt v1+v2 (s1 faellt als strukturiert), AN zaehlt nur v1.
+_basis["section_marks"] = {
+    "v1": {"date": "2026-09-01", "marks": {"endurance": [0]},
+           "anchor": {"laps": 1, "sections": [{"i": 0, "s": 7200}]},
+           "measure": {"endurance": {"hours": [{"hour": 1, "p075": 160.0},
+                                               {"hour": 2, "p075": 150.0}]}},
+           "reason": "", "set_at": "2026-09-01", "v": marks_lib.MEASURE_VERSION},
+    "s1": {"date": "2026-09-05", "marks": {"endurance": [0]},
+           "anchor": {"laps": 1, "sections": [{"i": 0, "s": 7200}]},
+           "measure": {}, "reason": "", "set_at": "2026-09-05",
+           "v": marks_lib.MEASURE_VERSION},
+}
+_aus = fatigue.rides(_basis)
+_basis["settings"] = {fatigue.CURVE_SWITCH: True}
+_an = fatigue.rides(_basis)
+
+# TREFFERZUSICHERUNG: die beiden Stellungen liefern WIRKLICH Verschiedenes.
+# Eine Fixture, in der beide dasselbe ergeben, prueft den Schalter nicht -
+# sie prueft nur, dass zweimal gerechnet wurde (§7, achtundzwanzigster Fall).
+ok("Schalter Fixture-Beweis: beide Stellungen liefern dieselbe Auswahl",
+   sorted(r["activity_id"] for r in _aus["used"])
+   != sorted(r["activity_id"] for r in _an["used"]))
+
+check("Schalter AUS: die Namenserkennung zaehlt beide Volumenfahrten",
+      sorted(r["activity_id"] for r in _aus["used"]), ["v1", "v2"])
+check("Schalter AN: nur die markierte UND gemessene Fahrt zaehlt",
+      [r["activity_id"] for r in _an["used"]], ["v1"])
+check("Schalter AN: eine unmarkierte Fahrt kommt gar nicht erst vor",
+      [r for items in _an["dropped"].values() for r in items
+       if r["activity_id"] == "v2"], [])
+check("Schalter AN: markiert und ungemessen ist NAMENTLICH nachvollziehbar",
+      [r["activity_id"] for r in _an["dropped"].get(fatigue.NOT_MEASURED_REASON, [])],
+      ["s1"])
+check("Schalter AN: die Stunden kommen aus dem Familienfach",
+      [h.get("p075") for h in (_an["used"][0]["hours"] if _an["used"] else [])],
+      [160.0, 150.0])
+
+# DER RUECKWEG, BELEGT: zurueckgestellt steht wieder genau dasselbe da wie
+# vorher - und der Bestand ist unberuehrt geblieben.
+_vorher = copy.deepcopy(_basis["section_marks"])
+_basis["settings"] = {fatigue.CURVE_SWITCH: False}
+_zurueck = fatigue.rides(_basis)
+check("Rueckweg: dieselbe Auswahl wie vor dem Umlegen",
+      sorted(r["activity_id"] for r in _zurueck["used"]),
+      sorted(r["activity_id"] for r in _aus["used"]))
+check("Rueckweg: dieselben Ausschluesse wie vorher",
+      {k: [r["activity_id"] for r in v] for k, v in _zurueck["dropped"].items()},
+      {k: [r["activity_id"] for r in v] for k, v in _aus["dropped"].items()})
+check("Rueckweg: Marken, Anker und Messungen sind unberuehrt",
+      _basis["section_marks"], _vorher)
+
+# Der ALTE Rueckfall bleibt stehen, solange der Schalter aus sein kann - und
+# er ist EIN Bauteil: fatigue_curve_reason ruft above_endurance_share.
+ok("Rueckfall: die strukturierte Einheit faellt in der Aus-Stellung weiter",
+   any(r["activity_id"] == "s1" for items in _aus["dropped"].values() for r in items))
+ok("Rueckfall: beide Bauteile stehen noch",
+   callable(getattr(derive, "fatigue_curve_reason", None))
+   and callable(getattr(derive, "above_endurance_share", None)))
+
+# Die Kachel muss sagen, WAS sich aendert - und der wichtigste Teil sind nicht
+# die Zahlen, sondern die LESERICHTUNG.
+_p = fatigue.curve(_basis)
+check("Schalter: die Quelle reist in der Payload mit", _p.get("from_marks"), False)
+_basis["settings"] = {fatigue.CURVE_SWITCH: True}
+check("Schalter: und sie folgt der Stellung",
+      fatigue.curve(_basis).get("from_marks"), True)
+ok("Schalter: der Satz nennt die geaenderte LESERICHTUNG",
+   "DIESER LÄNGE" in fatigue.SWITCH_NOTE and "Stunde X" in fatigue.SWITCH_NOTE)
+ok("Schalter: und sagt, dass die Verschiebung kein Rechenfehler ist",
+   "kein" in fatigue.SWITCH_NOTE and "Rechenfehler" in fatigue.SWITCH_NOTE)
+check("Schalter: der Satz reist mit", fatigue.curve(_basis).get("switch_note"),
+      fatigue.SWITCH_NOTE)
+_basis["settings"] = {fatigue.CURVE_SWITCH: False}
 
 
 print(f"\ntest_fatigue: {CHECKS} Prüfungen, {len(failures)} Fehler")
