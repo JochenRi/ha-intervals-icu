@@ -616,16 +616,23 @@ def curve_watts(curve: dict[str, Any] | None, hours: float) -> dict[str, Any] | 
 #   0.49.2 in neuer Gestalt: zwei verschieden erhobene Zahlen unter einer
 #   Ueberschrift.
 #
-# Tempo und Schwelle haben keine eigene erste Stufe - fuer sie IST der
-# Stufentest die Messung. Welche seiner beiden Schwellen: HRVT2, weil beide
-# Familien am oberen Ende liegen. Das ist eine SETZUNG, keine Vorgabe aus N2.
+# DER STUFENTEST STEUERT VORERST NICHTS (Johannes, 16.09.2026, Variante B).
+# Bis 0.59.0 stand er hier als Stufe `ramp_hrvt2` (VO2max, SweetSpot, Tempo,
+# Schwelle) und `ramp_hrvt1` (Grundlage, lang). Der Zweig in `scaled()` setzt
+# aber jeden Arbeitsblock auf HRVT2 x 1,0 - am Test vom 16.09.2026 haetten vier
+# Familien dieselben 233 W bekommen. Unsichtbar, solange hrvt2 immer leer war;
+# Rechenweg e1 haette ihn scharf geschaltet (§7, achtunddreissigster Fall).
+# Die Messung steht auf der Karte; wie daraus eine Vorgabe wird, ist ein eigener
+# Auftrag (PROJEKTSTAND §10: Ablesung je alpha-Korridor statt Anteil einer
+# Schwelle). Der Zweig in `scaled()` bleibt stehen und ist unerreichbar - ein
+# Waechter in test_workouts haelt beides fest.
 SOURCE_CHAIN: dict[str, tuple[str, ...]] = {
-    "vo2max":    ("blocks", "ramp_hrvt2", "ftp"),
-    "sweetspot": ("blocks", "ramp_hrvt2", "ftp"),
-    "tempo":     ("ramp_hrvt2", "ftp"),
-    "threshold": ("ramp_hrvt2", "ftp"),
-    "endurance": ("curve", "ramp_hrvt1", "ftp"),
-    "long":      ("curve", "ramp_hrvt1", "ftp"),
+    "vo2max":    ("blocks", "ftp"),
+    "sweetspot": ("blocks", "ftp"),
+    "tempo":     ("ftp",),
+    "threshold": ("ftp",),
+    "endurance": ("curve", "ftp"),
+    "long":      ("curve", "ftp"),
 }
 
 # Wie jede Stufe heisst, wenn die Karte sie nennt. Eine Zahl OHNE Herkunft ist

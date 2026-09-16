@@ -713,7 +713,8 @@ const CTX_COLOR = {
    kein Urteil. Ein Test erzwingt beides. */
 /* VIER Familien, seit 15.09.2026. "Schwelle" und "lange Fahrt" sind
    stillgelegt, der Grund steht bei section_marks.RETIRED: die Schwelle misst
-   nicht ueber Bloecke (ihr Wert kommt aus dem Stufentest), und die lange
+   nicht ueber Bloecke (ihr Wert soll aus dem Stufentest kommen; bis die
+   Ableitung gebaut ist, aus der FTP), und die lange
    Fahrt rechnet mit der Grundlage identisch. Ein Bedienelement ohne Wirkung
    ist schlimmer als keines. Diese Liste wird NICHT gegen die Payload
    gepflegt - sie traegt Form, Kuerzel und Farbe, und das sind
@@ -3232,6 +3233,9 @@ class IntervalsIcuPanel extends HTMLElement {
         ${zelle(r.hrvt1_pers, "Erste, personalisiert", "")}
       </div>
       ${r.contradiction ? `<p class="src">${esc(r.contradiction.reason || "")}</p>` : ""}
+      <p class="src"><b>Diese Messung steuert noch keine Vorgabe.</b> Wie aus den Schwellen
+        Wattzahlen und Pulsfenster deiner Einheiten werden, wird erst gebaut — bis dahin
+        kommen sie weiter aus Blockmessung, Ermüdungskurve oder FTP.</p>
       <p class="src"><b>Die dritte Zahl steht daneben, nicht anstelle der ersten.</b>
         Sie liegt mittig zwischen dem höchsten Wert ab Rampenbeginn
         (alpha ${fmt(r.max_alpha_start, 2)}) und 0,5, hier also alpha

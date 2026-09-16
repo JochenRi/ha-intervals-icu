@@ -1,6 +1,51 @@
 # ha-intervals-icu — Übergabe an den nächsten Chat
 
-## AKTUELL — Stufentest-Rechenweg auf e1 (16.09.2026, spät). Zuerst lesen.
+## AKTUELL — 0.60.0 ausgeliefert: Rechenweg e1, Stufentest steuert NICHTS (16.09.2026, Nacht). Zuerst lesen.
+
+**Ausgeliefert: 0.60.0** (Tag `v0.60.0`, `main` = `paket-b2-wip`). Prüfstand **21 Dateien,
+7.048 Prüfungen, 0 Fehler**. Johannes: HACS-Update, HA-Neustart, Browser hart neu laden,
+dann den Stufentest vom 16.09. **neu messen** (MEASURE_VERSION 2 hat die alten Zahlen
+verworfen, die Markierung steht). **Sollwerte am Strom:** Segment 1058 → 2134, HRVT1 1630 s /
+213 W / 178 bpm, HRVT2 1861 s / 233 W / 186 bpm, HRVT1pers α 1,081 → 183 W / 167 bpm.
+Claude verifiziert danach LESEND (`intervals_icu/ramp_tests`, Freigabe einzeln).
+
+**Was 0.60.0 enthält:** Rechenweg e1 (Olieslagers: Zeitachse, Beginn = HÖCHSTER WERT ab
+Rampenbeginn, Ende am Lastende), Protokollprüfung mit Grund, Widerspruchsmeldung, alle
+Quellenstellen je Arbeit (Rogers 2021a/b Laufband, 2024 ohne Sportart, Olieslagers-Beginn
+nicht nachgelesen), **Variante B**: `ramp_hrvt1/2` aus `SOURCE_CHAIN`, Karte sagt „Diese
+Messung steuert noch keine Vorgabe". §7 Fälle 36 (Diagnose korrigiert), 37 (Etikett
+„letzter Hochpunkt"), 38 (`share = 1.0`, vier Familien auf 233 W).
+
+**Bewusste Ausnahme, von Johannes zu bestätigen:** die Karte des Stufentests selbst liest
+ihre ERWARTETE Rampe weiter aus dem Test (`RAMP_START_CHAIN`/`RAMP_END_CHAIN`, Start =
+HRVT1 × 0,90, Ende = HRVT2 + Reserve). Nach dem Neumessen verschiebt sich dort Start/Ende
+der nächsten Test-Karte. Nicht der Fall-38-Zweig, als Erwartung beschriftet.
+
+### NÄCHSTER GROSSER SCHRITT — PROJEKTSTAND §10 Punkt 0 (vollständig dort)
+
+Vorgabe aus dem Stufentest als **Ablesung je alpha-Korridor** (`BLOCK_CORRIDORS` 0,20–0,50 /
+0,50–0,75 / 0,75–1,00): die Leistung, bei der alpha im Korridor der Familie lag. Kein
+Anteil, keine FTP. **Erst prüfen, nicht bauen:** (1) Ablesung je Korridor an der Fixture
+gegen die Blockmessungen (Angabe Johannes: VO2max 257 W @ 0,47, SweetSpot 198 @ 0,87,
+Tempo 169 @ 0,87 — gegen den Bestand prüfen, lesend HEIMDALL); weit auseinander = 40-Watt-
+Frage, benennen. (2) Literatur: Trainingsbereiche in der DFA-Welt als Korridor, als Anteil
+oder gar nicht — sonst Setzung. (3) Rolle ≠ draußen. (4) Pulsseite eigene Regel;
+Fensterpaarung alpha (t−120, t] gegen Watt/Puls um t vorher klären.
+Der alte Zweig in `scaled()` steht unerreichbar; beim Neubau ersetzen, Wächter in
+test_workouts §N2-3 (15 Einheiten × Watt/Puls) dann bewusst umstellen.
+
+### Arbeitsweise, die sich in dieser Runde bewährt hat
+
+- Fundstellen nach INHALT suchen, nicht nach Stichwort; Code gegen den Satz lesen (Fall 37).
+- Vor jeder Änderung, die eine Vorbedingung erstmals erfüllt, die Wirkung durchrechnen (Fall 38).
+- Toleranzen und Grenzen am Strom festnageln, nicht an einer Zahl im Kommentar.
+- Jede neue Prüfung per Mutation beißen lassen — drei waren diesmal zuerst leer.
+- Harness `/home/claude/mut.py`-Muster: Repo-Kopie, eine Ersetzung mit Trefferzahl, erwartete
+  Prüfungsnamen als „BENANNT/FEHLT".
+
+---
+
+## VORHERIG — Stufentest-Rechenweg auf e1 (16.09.2026, spät).
 
 **Schritte 1 und 2 GEBAUT auf `paket-b2-wip` (16.09.2026), nicht ausgeliefert.** Ausgeliefert
 bleibt 0.59.0. Prüfstand: **21 Dateien, 6.995 Prüfungen, 0 Fehler** (test_ramp 89→206→229,

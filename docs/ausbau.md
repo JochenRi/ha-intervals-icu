@@ -2915,6 +2915,12 @@ Schwellen (durchgängig hohe Übereinstimmung mit zweiten Schwellen).
 Für einen Einsteiger rutscht der Test automatisch nach oben, weil nichts
 darüber liegt. Die Karte beschriftet wie überall, welche Stufe greift.
 
+**ZURÜCKGENOMMEN in 0.60.0 (Variante B, PROJEKTSTAND §7 Fall 38):** der Stufentest steht
+in keiner Kette mehr. Gebaut war die Stufe als „jeder Arbeitsblock = HRVT2 × 1,0" — mit
+dem ersten gefüllten Test hätten VO2max, SweetSpot, Tempo und Schwelle dieselben 233 W
+bekommen. Die Messung steht auf der Karte und steuert nichts; die Vorgabe daraus wird als
+Ablesung je alpha-Korridor neu gebaut (PROJEKTSTAND §10 Punkt 0).
+
 **Die Zuordnung zu unseren Größen — NICHT Schwelle gegen Trainingsvorgabe:**
 HRVT2 (alpha 0,5) gehört gegen die **Leitzahl**, den ersten eingeschwungenen
 Block (260 W bei alpha 0,49) — das ist per Definition dieselbe Größe. HRVT1
@@ -4368,7 +4374,7 @@ werden nur noch **VO2max · SweetSpot · Tempo · Grundlage**, dazu der Stufente
 als ganze Fahrt.
 
 - **`long` rechnet mit `endurance` identisch.** Beide tragen in
-  `workouts.SOURCE_CHAIN` dieselbe Kette (`curve`, `ramp_hrvt1`, `ftp`) und
+  `workouts.SOURCE_CHAIN` dieselbe Kette (`curve`, `ramp_hrvt1`, `ftp`; seit 0.60.0 `curve`, `ftp`) und
   stehen beide in `CURVE_FAMILIES`. Und die Kurve misst **je Fahrtstunde**:
   eine Achtstundenfahrt liefert acht Punkte, eine Zweistundenfahrt zwei — sie
   ordnet sich von selbst ein und braucht kein Etikett. Eine Grenze „ab wann ist

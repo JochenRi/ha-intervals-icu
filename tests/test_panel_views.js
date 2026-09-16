@@ -2159,6 +2159,10 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   ok(!/letzte\s+Hochpunkt/.test(voll) && !/Hochpunkt am Beginn deines Abfalls/.test(voll),
      "N3: die Karte beschreibt eine Suche nach dem letzten Hochpunkt, die der Code nie gemacht hat");
   contains(voll, "Rogers 2021a/b (Laufband)", "N3 Rechenweg: Rogers ohne Arbeit und Sportart");
+  // Variante B (§7 Fall 38): die Messung steht da und steuert noch nichts - das sagt die Karte.
+  contains(voll, "Diese Messung steuert noch keine Vorgabe", "N3 B: die Karte sagt nicht, dass die Messung noch nichts steuert");
+  contains(leer, "Stufentest", "N3 B Trefferzusicherung: die leere Karte ist nicht gerendert");
+  ok(!/steuert noch keine Vorgabe/.test(leer), "N3 B Gegenprobe: der Satz steht auch ohne Messung da");
   contains(voll, "HRV-Schwellen allgemein",
            "N3 Rechenweg: die Einschränkung zur Metaanalyse fehlt");
   ok(!/r = 0,85 für DFA/.test(voll),

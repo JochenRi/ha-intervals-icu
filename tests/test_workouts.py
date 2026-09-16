@@ -975,8 +975,7 @@ check("nicht gemessen" in W.SOURCE_LABEL["ftp"],
 # Fuer jede Familie: die hoechste Stufe, die Daten hat, muss gewinnen. Geprueft
 # wird nicht der Quelltext, sondern das ERGEBNIS von scaled().
 for _fam, _first, _key in (("vo2max", "blocks", "vo2_4x4"),
-                           ("endurance", "curve", "z2_90"),
-                           ("tempo", "ramp_hrvt2", "tempo_2x20")):
+                           ("endurance", "curve", "z2_90")):
     _entry = W.BY_KEY[_key]
     _alles = W.scaled(_entry, 215, 146, curve=_CURVE, blocks=_BLOCKS, ramp=_RAMP)
     eq(_alles.get("watt_source"), _first,
@@ -998,27 +997,37 @@ check(len({252, 248, 215}) == 3,
       "N2 Fixture-Beweis: Blockmessung, Stufentest und FTP tragen dieselbe "
       "Zahl — die Rangfolge waere nicht pruefbar")
 
-# --- 3 · DER GLEICHSTAND AUS 0.47.1 GILT WEITER ------------------------------
-# Watt- und Pulsseite derselben Einheit kommen aus DERSELBEN Quelle. Der
-# Stufentest als zweite Stufe darf das nicht aufbrechen.
-_ramp_only = W.scaled(W.BY_KEY["vo2_4x4"], 215, 146, ramp=_RAMP)
-eq(_ramp_only.get("watt_source"), "ramp_hrvt2", "N2: der Test greift gar nicht")
-eq((_ramp_only.get("hr_source") or {}).get("kind"), "ramp_hrvt2",
-   "N2 Gleichstand: die Wattseite kommt aus dem Test, die Pulsseite nicht")
-check(_ramp_only.get("hr_window") is None,
-      "N2 Gleichstand: neben dem gemessenen Punkt steht zusaetzlich ein "
-      "Fenster aus der aeroben Schwelle — zwei Quellen in einer Karte")
-eq((_ramp_only or {}).get("hr_point"), 171,
-   "N2 Gleichstand: der Puls kommt nicht aus demselben Messpunkt wie die Watt")
-# Und die Gegenprobe: OHNE Puls am Messpunkt faellt AUCH die Wattseite zurueck.
-_kein_puls = {"date": "2026-09-14",
-              "result": {"hrvt2": {"alpha": 0.5, "watts": 248.0, "hr": None}}}
-_halb = W.scaled(W.BY_KEY["vo2_4x4"], 215, 146, ramp=_kein_puls)
-eq(_halb.get("watt_source"), "ftp",
-   "N2 Gleichstand: die Wattseite nimmt den Test, obwohl die Pulsseite dort "
-   "nichts hergibt — genau der Fehler aus 0.47.1")
-check(_halb.get("hr_window") is not None,
-   "N2 Gleichstand: nach dem Rueckfall fehlt auch das gewohnte HF-Fenster")
+# --- 3 · DER STUFENTEST STEUERT VORERST NICHTS (Variante B, 16.09.2026) ------
+# Der Zweig in `scaled()` setzte jeden Arbeitsblock auf HRVT2 x 1,0 (§7, Fall
+# 38). Bis die Ablesung je alpha-Korridor gebaut ist (§10), steht der Test auf
+# keiner Stufe - und ein GEFUELLTER Test aendert an keiner Einheit eine Zahl.
+# Die Pruefungen zu Gleichstand und Anteil am Rampenzweig sind damit ohne
+# Gegenstand und entfallen; sie kommen mit dem Neubau zurueck.
+check(not any(s.startswith("ramp_") for c in W.SOURCE_CHAIN.values() for s in c),
+      "N2 B: der Stufentest steht wieder in einer Quellenkette, obwohl die Ableitung "
+      "zur Vorgabe nicht gebaut ist")
+# TREFFERZUSICHERUNG FUER DIE FIXTURE: der Test traegt an BEIDEN Schwellen Watt
+# und Puls, und seine Watt liegen weit neben der FTP-Rechnung - stuende er in
+# einer Kette, aenderte er die Zahlen (so war es bis 0.59.0).
+_ftp_vo2 = [b[1] for b in W.scaled(W.BY_KEY["vo2_4x4"], 215, 146).get("blocks_w") or []]
+check(all((_RAMP["result"].get(k) or {}).get("watts") and (_RAMP["result"].get(k) or {}).get("hr")
+          for k in ("hrvt1", "hrvt2")) and 248 not in _ftp_vo2 and 196 not in _ftp_vo2,
+      "N2 B Fixture-Beweis: der Test ist nicht gefuellt oder faellt mit der FTP-Rechnung zusammen")
+# AUSNAHME, bewusst: die Karte des Stufentests selbst liest ihre ERWARTETE
+# Rampe (Start/Ende) ueber RAMP_START_CHAIN/RAMP_END_CHAIN aus dem letzten Test -
+# beschriftet als Erwartung, keine Vorgabe, und nicht der Zweig aus Fall 38.
+check("ramp_test" in W.BY_KEY and any(s.startswith("ramp_") for s in W.RAMP_END_CHAIN),
+      "N2 B Ausnahme: die Stufentest-Karte liest ihre Erwartung nicht mehr aus dem Test - "
+      "dann gehoert sie in die Schleife unten")
+for _key in sorted(k for k in W.BY_KEY if k != "ramp_test"):
+    _mit = W.scaled(W.BY_KEY[_key], 215, 146, ramp=_RAMP)
+    _ohne_t = W.scaled(W.BY_KEY[_key], 215, 146)
+    eq((_mit.get("blocks_w"), _mit.get("watt_source"), _mit.get("ramp_source")),
+       (_ohne_t.get("blocks_w"), _ohne_t.get("watt_source"), _ohne_t.get("ramp_source")),
+       f"N2 B: {_key} faehrt mit gefuelltem Stufentest andere Watt")
+    eq((_mit.get("hr_window"), _mit.get("hr_point"), (_mit.get("hr_source") or {}).get("kind")),
+       (_ohne_t.get("hr_window"), _ohne_t.get("hr_point"), (_ohne_t.get("hr_source") or {}).get("kind")),
+       f"N2 B: {_key} traegt mit gefuelltem Stufentest einen anderen Puls")
 
 # --- 4 · IM LEEREN ZUSTAND AENDERT SICH NICHTS -------------------------------
 # Solange kein Stufentest markiert ist, muss die Kette EXAKT so entscheiden wie
@@ -1036,28 +1045,14 @@ for _key in ("vo2_4x4", "sweetspot_2x20", "tempo_2x20", "threshold_4x10",
            f"N2 Leerzustand: {_key} nennt mit leerem Test eine andere Quelle")
         eq(_mit_leer.get("hr_window"), _ohne_alles.get("hr_window"),
            f"N2 Leerzustand: {_key} traegt mit leerem Test ein anderes HF-Fenster")
-# Gegenprobe, gezaehlt und benannt: mit einem GEFUELLTEN Test aendert sich
-# sehr wohl etwas - sonst prueft der Abschnitt oben nur, dass nie etwas
-# passiert.
-check(W.scaled(W.BY_KEY["vo2_4x4"], 215, 146).get("blocks_w")
-      != W.scaled(W.BY_KEY["vo2_4x4"], 215, 146, ramp=_RAMP).get("blocks_w"),
-      "N2 Leerzustand Gegenprobe: auch ein gefuellter Test aendert nichts — "
-      "die Pruefung ist blind")
+# Die Gegenprobe "ein gefuellter Test aendert etwas" entfaellt mit Variante B;
+# ihre Rolle traegt der Fixture-Beweis in Abschnitt 3.
 
-# --- 5 · DIE MESSUNG IST NICHT IMMER DIE VORGABE -----------------------------
-# An der zweiten Schwelle ist die gemessene Leistung dieselbe Groesse wie die
-# Leitzahl und wird direkt uebernommen. An der ERSTEN ist sie eine Schwelle -
-# gefahren wird derselbe Anteil davon wie bei der Kurve, eine Regel und nicht
-# zwei.
-eq((_ramp_only.get("ramp_source") or {}).get("share"), 1.0,
-   "N2: an der zweiten Schwelle wird ein Anteil abgezogen")
-_lang = W.scaled(W.BY_KEY["z2_90"], 215, 146, ramp=_RAMP)
-eq((_lang.get("ramp_source") or {}).get("share"), W.CURVE_TARGET_SHARE,
-   "N2: an der ersten Schwelle wird NICHT derselbe Anteil benutzt wie bei der "
-   "Kurve — zwei Regeln fuer dieselbe Groesse")
-check(max(b[1] for b in _lang["blocks_w"] if b[1]) < 196,
-      "N2: die Grundlageneinheit sitzt AUF der gemessenen Schwelle statt "
-      "darunter")
+# --- 5 · (entfallen mit Variante B) ------------------------------------------
+# Hier stand "share = 1,0 an der zweiten Schwelle" als PRUEFUNG - sie hielt genau
+# den Zweig fest, der vier Familien auf dieselbe Wattzahl gesetzt haette (§7,
+# Fall 38). Welcher Anteil oder welche Ablesung richtig ist, entscheidet der
+# Neubau (§10), nicht eine Pruefung, die den alten Stand konserviert.
 
 # --- L4: die Wattvorgabe kommt aus der eigenen Messung ------------------------
 # Gestaffelt wird auf der GEPAARTEN Reihe; bis zur letzten gemessenen Stunde
@@ -1180,8 +1175,9 @@ eq(sorted({b["source"] for b in lang["curve_blocks"]}), ["measured"], "jeder Kur
 _A3_FAELLE = (
     ("vo2_4x4", dict(curve=_CURVE, blocks=_BLOCKS, ramp=_RAMP), "blocks"),
     ("z2_60", dict(curve=_CURVE, blocks=_BLOCKS, ramp=_RAMP), "curve"),
-    ("tempo_2x20", dict(curve=_CURVE, blocks=_BLOCKS, ramp=_RAMP), "ramp_hrvt2"),
-    ("z2_90", dict(ramp=_RAMP), "ramp_hrvt1"),
+    # Variante B: mit gefuelltem Test laufen beide ueber die FTP (§7, Fall 38).
+    ("tempo_2x20", dict(curve=_CURVE, blocks=_BLOCKS, ramp=_RAMP), "ftp"),
+    ("z2_90", dict(ramp=_RAMP), "ftp"),
     ("recovery_40", dict(curve=_CURVE, blocks=_BLOCKS, ramp=_RAMP), "ftp"),
 )
 _a3_quellen = set()
@@ -1206,7 +1202,7 @@ for _key, _kw, _soll in _A3_FAELLE:
     check("%" not in _ev.get("description", ""),
           f"A3: {_key} ({_quelle}) Kalendereintrag traegt Prozent")
 # Die Fixture deckt ALLE Stufen der Kette ab - fehlt eine, ist genau sie ungeprueft.
-eq(sorted(_a3_quellen), sorted({"blocks", "curve", "ramp_hrvt2", "ramp_hrvt1", "ftp"}),
+eq(sorted(_a3_quellen), sorted({"blocks", "curve", "ftp"}),
    "A3 Fixture-Beweis: nicht jede Quelle wird durchlaufen")
 # Ohne FTP gibt es keine halbe Wattliste: Ein- und Ausrollen haetten keine Zahl.
 _ohne_ftp = W.scaled(W.BY_KEY["vo2_4x4"], None, 146, curve=_CURVE, blocks=_BLOCKS, ramp=_RAMP)
@@ -1262,16 +1258,15 @@ _cu = lambda marks: {**_CURVE, "selection": {"from_marks": marks, "label": "SEL-
                      "used": [{"activity_id": "r1", "date": "2026-08-01", "name": "Volumen", "hours_with_value": [1, 2]}]}
 _quellen_b2c = {}
 for _key, _kw in (("vo2_4x4", dict(blocks=_bl(True))), ("vo2_4x4", dict(blocks=_bl(False))),
-                  ("z2_60", dict(curve=_cu(True))), ("tempo_2x20", dict(ramp=_RAMP)),
-                  ("recovery_40", dict())):
+                  ("z2_60", dict(curve=_cu(True))), ("recovery_40", dict())):
     _e = W.scaled(W.BY_KEY[_key], 215, 146, **_kw)
     _x = W.explain(_e, 215, _kw.get("curve"), _kw.get("blocks"), _kw.get("ramp"))
     _quellen_b2c[(_e.get("watt_source"), (_kw.get("blocks") or _kw.get("curve") or {}).get("selection", {}).get("from_marks"))] = (_e, _x)
 eq(sorted(str(k) for k in _quellen_b2c),
-   sorted(str(k) for k in [("blocks", True), ("blocks", False), ("curve", True), ("ramp_hrvt2", None), ("ftp", None)]),
+   sorted(str(k) for k in [("blocks", True), ("blocks", False), ("curve", True), ("ftp", None)]),
    "B2c Fixture: nicht jede Quelle und Auswahl wird durchlaufen")
 _soll_stufe = {("blocks", True): "marks", ("blocks", False): "alpha", ("curve", True): "marks",
-               ("ramp_hrvt2", None): "marks", ("ftp", None): "ftp"}
+               ("ftp", None): "ftp"}
 for _k, (_e, _x) in sorted(_quellen_b2c.items(), key=lambda kv: str(kv[0])):
     _x = _x or {}
     eq(_x.get("stage"), _soll_stufe[_k], f"B2c: Stufe im Kreislauf fuer {_k}")

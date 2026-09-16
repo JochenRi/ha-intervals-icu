@@ -73,7 +73,7 @@ FAMILIES: tuple[str, ...] = ("vo2max", "sweetspot", "tempo", "endurance")
 # Entscheidung - sonst baut sie jemand beim naechsten Umbau zurueck:
 #
 #   * `long` rechnet mit `endurance` IDENTISCH. Beide tragen in
-#     workouts.SOURCE_CHAIN dieselbe Kette ("curve", "ramp_hrvt1", "ftp") und
+#     workouts.SOURCE_CHAIN dieselbe Kette (seit 16.09.2026 ("curve", "ftp")) und
 #     stehen beide in CURVE_FAMILIES. Und die Kurve misst je FAHRTSTUNDE:
 #     eine Achtstundenfahrt liefert acht Punkte, eine Zweistundenfahrt zwei -
 #     sie ordnet sich von selbst ein und braucht kein Etikett. Eine Grenze
