@@ -488,6 +488,15 @@ _basis["section_marks"] = {
            "anchor": {"laps": 1, "sections": [{"i": 0, "s": 7200}]},
            "measure": {}, "reason": "", "set_at": "2026-09-05",
            "v": marks_lib.MEASURE_VERSION},
+    # EINE FAHRT MIT EINER ANDEREN FAMILIE, gemessen - sie darf in der Kurve
+    # NICHT auftauchen. Ohne sie prueft die Familienschranke nichts: die
+    # Mutation "lass die Familienpruefung weg" lief mit 0 Fehlern durch (M51),
+    # weil die Fixture nur Grundlagen-Marken enthielt.
+    "b1": {"date": "2026-09-06", "marks": {"vo2max": [0]},
+           "anchor": {"laps": 1, "sections": [{"i": 0, "s": 240}]},
+           "measure": {"vo2max": {"blocks": [{"start_index": 0, "alpha": 0.4,
+                                              "watts": 250}], "hours": None}},
+           "reason": "", "set_at": "2026-09-06", "v": marks_lib.MEASURE_VERSION},
 }
 _aus = fatigue.rides(_basis)
 _basis["settings"] = {fatigue.CURVE_SWITCH: True}
@@ -510,6 +519,10 @@ check("Schalter AN: eine unmarkierte Fahrt kommt gar nicht erst vor",
 check("Schalter AN: markiert und ungemessen ist NAMENTLICH nachvollziehbar",
       [r["activity_id"] for r in _an["dropped"].get(fatigue.NOT_MEASURED_REASON, [])],
       ["s1"])
+check("Schalter AN: eine Fahrt einer ANDEREN Familie kommt nicht in die Kurve",
+      [r["activity_id"] for r in _an["used"] if r["activity_id"] == "b1"]
+      + [r["activity_id"] for items in _an["dropped"].values() for r in items
+         if r["activity_id"] == "b1"], [])
 check("Schalter AN: die Stunden kommen aus dem Familienfach",
       [h.get("p075") for h in (_an["used"][0]["hours"] if _an["used"] else [])],
       [160.0, 150.0])
