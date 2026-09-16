@@ -4003,7 +4003,10 @@ class IntervalsIcuPanel extends HTMLElement {
           <td class="tn">${esc(r.off)}</td><td class="tn">${esc(r.on)}</td></tr>`).join("")}
       </table>` : ""}
       ${cfg.note ? `<p class="src">${esc(cfg.note)}</p>` : ""}
-      ${cfg.basis ? `<p class="src"><b>Grundlage:</b> ${esc(cfg.basis)}</p>` : ""}
+      ${/* NICHT "Grundlage": das ist der Name einer FAMILIE, und über dem
+             Blockschalter stand dann "Grundlage: VO2max: 0 von 3". Ein Wort,
+             das in derselben Kachel zwei Dinge bedeutet, ist eines zu viel. */
+        cfg.basis ? `<p class="src"><b>Worauf es steht:</b> ${esc(cfg.basis)}</p>` : ""}
       ${gesperrt
         // DIE SPERRE SAGT WARUM, nicht nur DASS. Eine gesperrte Schaltflaeche
         // ohne Grund ist eine Sackgasse mit Rahmen.

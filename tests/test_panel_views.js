@@ -2201,6 +2201,13 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
 
   // TREFFERZUSICHERUNG: die beiden Stellungen rendern WIRKLICH Verschiedenes.
   ok(aus !== an, "quellen Fixture-Beweis: beide Stellungen rendern dasselbe");
+  // EIN WORT, EINE BEDEUTUNG: "Grundlage" ist der Name einer Familie. Als
+  // Beschriftung der Trägerzeile stand über dem Blockschalter "Grundlage:
+  // VO2max: 0 von 3" — zwei Bedeutungen in einer Kachel.
+  ok(!/<b>Grundlage:<\/b>/.test(aus) && !/<b>Grundlage:<\/b>/.test(an),
+     "quellen: das Wort Grundlage steht als Beschriftung neben der Familie gleichen Namens");
+  ok(/Worauf es steht:/.test(aus),
+     "quellen: die Trägerzeile fehlt");
 
   ok(/Ermüdungskurve/.test(aus) && /Arbeitsblöcke/.test(aus),
      "quellen: die beiden Schalter stehen nicht nebeneinander");
