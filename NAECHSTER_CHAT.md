@@ -1,6 +1,107 @@
 # ha-intervals-icu — Übergabe an den nächsten Chat
 
-**Stand dieser Übergabe: 16.09.2026, nachts.** Ausgeliefert ist **0.59.0**
+## AKTUELL — Stufentest-Rechenweg auf e1 (16.09.2026, spät). Zuerst lesen.
+
+**Nichts gebaut, nichts im Code geändert.** Ausgeliefert bleibt 0.59.0. Prüfstand
+unverändert: **21 Dateien, 6.847 Prüfungen, 0 Fehler**. §10 Punkt 8 ist erledigt
+(Verzögerung bei Intervals), der Test ist im Archiv.
+
+### Befund (am 1-Hz-Strom der Aktivität i187258578 belegt)
+
+- **Dieselbe Größe:** Das `Alpha1` der FIT-Datei (alphaHRV-Datenfeld, 2-min-Fenster,
+  1 Hz, keine Lücke) durch das UNVERÄNDERTE `ramp.evaluate` reproduziert die
+  gespeicherten Zahlen exakt: Segment 224→1807, 1584 Punkte, Hochpunkt 1,731,
+  −0,0413/min, r² 0,716, HRVT1 1705 s / 218 W / 180 bpm, hrvt2 null. Intervals
+  rechnet alpha1 nicht selbst, es übernimmt das Feld (Forum, Feb. 2025).
+- **1649 gegen 1705 s geklärt:** 1705,2 s ist der Schnitt der GERADEN (`at()`); das
+  30-s-Fenster betrifft nur Watt/Puls. Johannes' Nachrechnung ist in beiden Schnitten
+  um konstant 56 s verschoben (1649/1705,2 und 2012/2068,7) bei gleicher Steigung —
+  Zeitachsenversatz, nicht Ablesemethode. Die Ursache des Versatzes ist nicht belegt.
+- **Olieslagers 2026 (Physiol Rep, e70777, Methodenteil):** lineare Regression von
+  DFAa1 **über der ZEIT**, vom Beginn des nahezu linearen Abfalls **bis zum letzten
+  Zeitpunkt**; HRVT1pers = Mitte aus höchstem Wert am Beginn des Abfalls und 0,5.
+  Rad (4-min-Stufen, +30 W). Rogers (Laufband) regressiert laut §10.10 gegen HF im
+  Bereich 1,0–0,5 — von mir NICHT selbst nachgelesen.
+- **Die Diagnose kehrt sich um:** `segment()` endet am ERSTEN 60-s-Lauf unter 0,5.
+  Die Gerade mittelt über den Abfall und liegt dort fast immer noch über 0,5, „kein
+  Hochrechnen" lehnt den Schnitt dann ab → **hrvt2 strukturell unerreichbar**. Jede
+  Variante mit diesem Ende liefert hrvt2 null, gleich welcher Start und welche Achse.
+  → eigener **§7-Fall (sechsunddreißigster)**: eine Abbruchbedingung, die genau den
+  Zustand ausschließt, für dessen Messung sie gebaut wurde.
+- **Der Start ist trotzdem falsch:** s 224 liegt im Einrollen (konstant 128 W), zwölf
+  Minuten vor Rampenbeginn. Auch mit korrektem Ende zieht das hrvt2 um +15 W hoch.
+- Prüfstein (geglättetes alpha, 30-s-Median): 0,75 erste Kreuzung 1447 s / 193 W /
+  174 bpm, 60 s darunter 1631 s / 213 W / 178 bpm; 0,5 bei 1807 s / 226 W / 185 bpm.
+  Zwischen 1380 und 1620 s steht alpha als Stufe bei 0,75–0,79 (r² ist hier kein
+  Gütemaß). Die 175–180 bpm an HRVT1 sind überwiegend echt, nicht Fitfehler.
+
+### ENTSCHIEDEN (Johannes): Rechenweg e1
+
+Olieslagers wörtlich: Hochpunktsuche erst **ab Rampenbeginn**, Ende am **Lastende**,
+Regression **gegen die Zeit**. Grenzen aus dem Protokoll:
+`RAMP_WARMUP_MIN` (900 s) und Länge − `RAMP_COOLDOWN_MIN` (N−600) — beide SETZUNGEN,
+so beschriftet. Die HRVT2-Bedingung `reached_anaerobic` bleibt.
+
+**Sollwerte am echten Strom (Grenzen 900 / N−600 = 2134):** Segment **1058 → 2134**,
+Hochpunkt 1,662, −0,0649/min, r² 0,815 · HRVT1 **1630 s / 213 W / 178 bpm** ·
+HRVT2 **1861 s / 233 W / 186 bpm** · HRVT1pers (α 1,081) 1324 s / 183 W / 167 bpm.
+
+### Bau-Reihenfolge, jeder Schritt einzeln gemeldet
+
+1. **Rechenweg e1 + Protokollprüfung** (`ramp.py`, `const.py`, `tests/test_ramp.py`).
+   - Protokollprüfung, eigene Funktion, die den GRUND als Satz liefert (der
+     Handler-Satz „kein auswertbarer Abfall" wäre sonst falsch): Einrollen flach
+     (Watt-Steigung in [0, 900) < ½ × `RAMP_STEP_W_PER_MIN`; gemessen ~0,8 W/min),
+     Rampe steigt (≥ ½ × Step; gemessen 6,2), Ausrollen vorhanden und Ende sitzt
+     (Watt-Median (Ende−120, Ende−60] gegen (Ende+60, Ende+120], Ausrollen ≤ 80 %;
+     gemessen ~250 gegen ~133), ohne Watt-Strom kein Ergebnis mit eigenem Grund.
+     **½ und 80 % sind Setzungen in const.py, beschriftet.**
+   - Die Fixture von test_ramp trägt das Protokoll nicht (Einrollen 600, `treppe()`
+     und `konvex` ohne Einrollen und ohne Watt) → **neu auf Protokoll-Fixture**.
+     Zählung bewegt sich; jede sinkende Prüfung einzeln erklären.
+   - Zwei Prüfungen verlieren ihren Gegenstand (Plateau/Ausreißer im EINROLLEN):
+     ersetzt durch dasselbe Plateau AM RAMPENBEGINN, plus neue Probe, dass ein
+     Ausreißer im Einrollen gar nicht mehr gesehen wird.
+   - Der echte Strom als Fixture-Datei, gegen die Sollwerte oben.
+   - Gegenproben (je gezählt, benannt, Trefferzusicherung für Fixture UND Mutation):
+     Ende am ersten Dip → hrvt2 null; Start ohne Warmup-Grenze → Hochpunkt im
+     Einrollen; ohne Einrollen; ohne Ausrollen; zu kurzes Ausrollen; ohne Watt.
+   - `recovery()` setzt jetzt am Lastende an → `back_above_s` wechselt die
+     Bedeutung: in denselben Release und in den Erklärtext.
+   - `evaluate` holt den `time`-Strom, rechnet aber Index = Sekunde (hier ohne
+     Lücke harmlos) → in die Liste aus Schritt 5.
+2. **Widerspruchsprüfung** `reached_anaerobic ∧ hrvt2 is None` meldet statt
+   durchzulassen — auch wenn er nach 1 nicht mehr auftritt.
+3. **Texte:** das VERFAHREN (Regression) ist Olieslagers 2026, Rad; die SCHWELLEN
+   0,75/0,5 bleiben Rogers, Laufband. Alle Stellen (grep `Rogers`, Docstring
+   `ramp.py` „Beide Arbeiten …", Karte, Erklärtexte, docs/ausbau.md), nicht nur die
+   Stufentest-Karte. Gesperrte Mangel-Wörter gelten.
+4. **`MEASURE_VERSION` 1 → 2** (`ramp_tests.py`): Johannes misst mit einem Knopfdruck
+   neu, Markierungen bleiben. §7 Fall 36 schreiben.
+5. **§10 Punkt 11, die Liste** „Quelle macht · wir machen · Abweichung" für
+   Blockmessung, Ermüdungskurve, Anker — messen, nicht bauen. Darin auch die
+   **Fensterpaarung**: alpha(t) aus den RR von (t−120, t], Watt/Puls aber um t
+   zentriert abgelesen (am Strom 3–5 W / 1–5 bpm); wie paaren Rogers und
+   Olieslagers? Nicht auf Verdacht ändern.
+
+**Vor der Auslieferung:** die Deltas je Familie über `scaled()` am Livebestand
+(Lesezugriff HEIMDALL, einzeln zur Freigabe). Wirkung: `ramp_hrvt2` steht an
+Stelle 1 für Tempo und Schwelle, an Stelle 2 (hinter Blöcken) für VO2max und
+SweetSpot; `ramp_hrvt1` an Stelle 2 (hinter der Kurve) für Grundlage und lang.
+Vorgabe ist der FAMILIENANTEIL der Schwelle (0.47.1), heute derselbe Anteil der FTP.
+
+### Vorlauf, den der neue Chat braucht
+
+- FIT-Datei `i187258578.fit` neu hochladen; Token-Datei; Zweig `paket-b2-wip`.
+- Lesen: dieser Abschnitt, PROJEKTSTAND §10 Punkte 10/11, §11 (vier Handgriffe),
+  `ramp.py`, `tests/test_ramp.py`, `ramp_tests.py` (MEASURE_VERSION), der
+  Stufentest-Handler in `websocket.py` (`websocket_set_ramp_test`). §7 nur die
+  Fälle 28, 30, 34, 35 und die Fehlerklassen — der Abschnitt hat 123 kb.
+- `pip install fitparse --break-system-packages`; die Developer-Felder heißen
+  `Alpha1`, `Artifacts`, `heart_rate`, `power` im `record`.
+
+
+**Vorheriger Stand (16.09.2026, nachts — in den Punkten Stufentest und §10.8 ÜBERHOLT, siehe oben):** Ausgeliefert ist **0.59.0**
 (B2c, die Kachel-Erklärung). 0.58.0 ist verifiziert, beide Schalter stehen auf AN.
 Prüfstand: **21 Dateien, 6.847 Prüfungen**. **B2b-3 ist ZURÜCKGESTELLT** (PROJEKTSTAND
 §10 Punkt 9): entschieden wird, sobald der Stufentest vom 16.09. im Archiv ist.
