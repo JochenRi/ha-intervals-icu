@@ -1153,6 +1153,52 @@ eq(W.scaled(W.BY_KEY["z2_150"], 215, 160, 185, None)["watt_source"], "ftp", "ohn
 # ohne Auskunft, woher sie kommt.
 eq(sorted({b["source"] for b in lang["curve_blocks"]}), ["measured"], "jeder Kurven-Abschnitt nennt seine Herkunft")
 
+# --- A3 · DIE WATTLISTE TRAEGT WATT - AUF JEDEM WEG, NICHT NUR AUF DEM FTP-WEG --
+# Bis 0.56.0 druckte `steps_text(staged, None)` die gestaffelten WATT der
+# gemessenen Wege mit Prozentzeichen: "45m 135%" fuer 135 W. Die Pruefung unter
+# "10 Watt" oben lief nur ueber `scaled(entry, ftp, hr)` OHNE Messung - also
+# ausschliesslich ueber den FTP-Weg, auf dem der Fehler nicht sitzt (§7).
+_A3_FAELLE = (
+    ("vo2_4x4", dict(curve=_CURVE, blocks=_BLOCKS, ramp=_RAMP), "blocks"),
+    ("z2_60", dict(curve=_CURVE, blocks=_BLOCKS, ramp=_RAMP), "curve"),
+    ("tempo_2x20", dict(curve=_CURVE, blocks=_BLOCKS, ramp=_RAMP), "ramp_hrvt2"),
+    ("z2_90", dict(ramp=_RAMP), "ramp_hrvt1"),
+    ("recovery_40", dict(curve=_CURVE, blocks=_BLOCKS, ramp=_RAMP), "ftp"),
+)
+_a3_quellen = set()
+for _key, _kw, _soll in _A3_FAELLE:
+    _e = W.scaled(W.BY_KEY[_key], 215, 146, **_kw)
+    _quelle = _e.get("watt_source")
+    _a3_quellen.add(_quelle)
+    # TREFFERZUSICHERUNG FUER DIE FIXTURE: der Fall nimmt WIRKLICH den Weg,
+    # fuer den er steht - sonst prueft die Zeile unten wieder nur den FTP-Weg.
+    eq(_quelle, _soll, f"A3 Fixture: {_key} laeuft nicht ueber {_soll}")
+    _text = _e.get("text_w") or ""
+    check("%" not in _text, f"A3: {_key} ({_quelle}) druckt Prozent: {_text!r}")
+    _zeilen = [z for z in _text.splitlines() if z.startswith("- ")]
+    _watt = [b[1] for b in (_e.get("blocks_w") or [])]
+    if _quelle != "ftp":
+        # Nur die gestaffelten Wege schreiben Zeile fuer Zeile aus blocks_w;
+        # der FTP-Weg rechnet die Vorlage um und behaelt ihre Wiederholungen.
+        eq(len(_zeilen), len(_watt), f"A3: {_key} Zeilenzahl gegen blocks_w")
+        for _z, _w in zip(_zeilen, _watt):
+            check(f" {_w}w " in f"{_z} ", f"A3: {_key} Zeile traegt nicht {_w} W: {_z!r}")
+    _ev = W.to_event(_e, "2026-09-17")
+    check("%" not in _ev.get("description", ""),
+          f"A3: {_key} ({_quelle}) Kalendereintrag traegt Prozent")
+# Die Fixture deckt ALLE Stufen der Kette ab - fehlt eine, ist genau sie ungeprueft.
+eq(sorted(_a3_quellen), sorted({"blocks", "curve", "ramp_hrvt2", "ramp_hrvt1", "ftp"}),
+   "A3 Fixture-Beweis: nicht jede Quelle wird durchlaufen")
+# Ohne FTP gibt es keine halbe Wattliste: Ein- und Ausrollen haetten keine Zahl.
+_ohne_ftp = W.scaled(W.BY_KEY["vo2_4x4"], None, 146, curve=_CURVE, blocks=_BLOCKS, ramp=_RAMP)
+check(any(b[1] is None for b in (_ohne_ftp.get("blocks_w") or [])),
+      "A3 Fixture: ohne FTP traegt kein Abschnitt eine leere Zahl - der Fall ist nicht hergestellt")
+check(_ohne_ftp.get("text_w") is None,
+      f"A3: ohne FTP eine Wattliste mit Luecken erzeugt: {_ohne_ftp.get('text_w')!r}")
+eq(W.watts_text([(10, 120, "a"), (5, None, "b")]), None,
+   "A3: watts_text liefert eine Liste mit fehlender Zahl")
+eq(W.watts_text([(10, 120, "a")]), "- 10m 120w  (a)", "A3: watts_text Form")
+
 print(f"test_workouts: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

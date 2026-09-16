@@ -831,7 +831,7 @@ def scaled(entry: dict[str, Any], ftp: float | None, aerobic_hr: int | None,
                 staged.append((block[0], round(ftp * block[1] / 100) if ftp else None,
                                block[2], *block[3:]))
         out["blocks_w"] = staged
-        out["text_w"] = steps_text(staged, None)
+        out["text_w"] = watts_text(staged) or out.get("text_w")
         out["watt_source"] = "blocks"
         out["block_source"] = {
             "date": latest["date"], "alpha": latest["median_alpha"],
@@ -874,7 +874,7 @@ def scaled(entry: dict[str, Any], ftp: float | None, aerobic_hr: int | None,
         if changed:
             out["curve_share"] = CURVE_TARGET_SHARE
             out["blocks_w"] = staged
-            out["text_w"] = steps_text(staged, None)
+            out["text_w"] = watts_text(staged) or out.get("text_w")
             out["watt_source"] = "curve"
     # --- Der Stufentest als naechste Stufe (N2) -------------------------------
     # Er steht NACH der Blockmessung und NACH der Kurve, weil SOURCE_CHAIN es
@@ -919,7 +919,7 @@ def scaled(entry: dict[str, Any], ftp: float | None, aerobic_hr: int | None,
                                block[2], *block[3:]))
         if changed:
             out["blocks_w"] = staged
-            out["text_w"] = steps_text(staged, None)
+            out["text_w"] = watts_text(staged) or out.get("text_w")
             out["watt_source"] = want
             out["ramp_source"] = {
                 "alpha": node.get("alpha"), "watts": node.get("watts"),
@@ -1273,6 +1273,21 @@ def steps_text(blocks: list[tuple], ftp: float | None) -> str:
         value = f"{round(ftp * block[1] / 100)}w" if ftp else f"{block[1]}%"
         lines.append(f"- {block[0]}m {value}  ({block[2]})")
     return "\n".join(lines)
+
+
+def watts_text(blocks: list[tuple]) -> str | None:
+    """Die Schrittliste fuer Abschnitte, die schon WATT tragen.
+
+    `steps_text(blocks, None)` liest `block[1]` als Prozent - richtig fuer die
+    Vorlage, falsch fuer gestaffelte Abschnitte aus Kurve, Bloecken oder
+    Stufentest, die an dieser Stelle Watt tragen. Bis 0.56.0 stand dort
+    "45m 135%" fuer 135 W (PROJEKTSTAND §7). Fehlt einem Abschnitt die Zahl
+    (keine FTP fuer Ein- und Ausrollen), gibt es KEINE Wattliste statt einer
+    halben: die Vorlage bleibt stehen und sagt, dass sie Prozent ist.
+    """
+    if not blocks or any(block[1] is None for block in blocks):
+        return None
+    return "\n".join(f"- {block[0]}m {block[1]}w  ({block[2]})" for block in blocks)
 
 
 def stage(fit: str, fits_budget: bool | None, recovery: bool = False) -> dict[str, Any]:

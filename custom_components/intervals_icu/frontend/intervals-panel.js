@@ -1579,6 +1579,10 @@ class IntervalsIcuPanel extends HTMLElement {
       no_zones: ["ohne Zonenzeiten", "ohne sie ist nicht entscheidbar, ob die Einheit strukturiert war"],
       no_dfa: ["ohne DFA-Strom", "die Uhr hat für diese Fahrt kein alpha-1 aufgezeichnet"],
       no_activity: ["unbrauchbar", "kein verwertbarer Datensatz"],
+      // Die Gründe der MARKIERTEN Auswahl vergibt fatigue.py, und von dort
+      // kommen auch ihre Wörter. In 0.56.0 fehlte hier eines, und die Kachel
+      // zeigte den Rohschlüssel.
+      ...(f.dropped_words || {}),
     };
     // Gezaehlt wird aus den ZAEHLFELDERN, nicht aus den Listen: die Listen
     // koennen gekappt sein, die Zahl darf es nie. Sonst behauptet die Karte
@@ -1589,7 +1593,8 @@ class IntervalsIcuPanel extends HTMLElement {
     if (!total) return "";
     const blocks = Object.entries(d).map(([reason, items]) => {
       const shown = countOf(reason, items);
-      const [label, why] = words[reason] || [reason, ""];
+      // Kein Rohschlüssel in der Anzeige: fehlt ein Wort, steht das da.
+      const [label, why] = words[reason] || ["ohne Beschreibung", ""];
       const list = items.slice(-8).reverse().map((x) =>
         `<li>${esc(x.name || "ohne Namen")} vom ${dMed(x.date)}${x.above_z2 != null
           ? ` — <b class="tn">${fmt(x.above_z2, 1)} %</b> über Zone 2` : ""}${
@@ -4027,7 +4032,10 @@ class IntervalsIcuPanel extends HTMLElement {
     }).length;
     const famStand = ["vo2max", "sweetspot", "tempo"].map((fam) => {
       const n = zaehl(fam, true);
-      const min = sm.min_for_source == null ? 3 : sm.min_for_source;
+      // Die Mindestzahl kommt aus der Payload oder gar nicht — kein Literal
+      // als Rückfall (fünfte Bauregel).
+      const min = sm.min_for_source;
+      if (min == null) return `${(FAM[fam] || {}).l || fam}: ${fmt(n)}`;
       return `${(FAM[fam] || {}).l || fam}: ${fmt(n)} von ${fmt(min)}`
         + (n >= min ? "" : ` — noch ${fmt(min - n)}`);
     }).join(" · ");
@@ -4077,10 +4085,15 @@ class IntervalsIcuPanel extends HTMLElement {
         what: "VO2max, SweetSpot und Tempo messen über deine Arbeitsblöcke. Heute "
           + "wählt diese Messung ihre Blöcke selbst, an deinen Marken vorbei.",
         basis: famStand,
-        lockedBy: kurveAn ? "" : "Erst die Ermüdungskurve. Sie liefert die "
-          + "Schwellenzahl, und die steuert das Pulsfenster, an dem die "
-          + "Blockfamilien hängen — wer die Blöcke zuerst umstellt, stellt sie "
-          + "auf ein Fenster ein, das gleich darauf wandert.",
+        // DIE SPERRE MIT DEM GRUND, DER AM CODE TRÄGT. Bis 0.56.0 hieß es, die
+        // Kurve liefere die Schwellenzahl für das Pulsfenster der Blockfamilien
+        // — falsch: aerobic_hr kommt aus coach.anchors, VO2max und SweetSpot
+        // nehmen ihr Fenster aus den eigenen Blöcken. Und bei umgelegter Kurve
+        // fiel die Sperre und hinterließ einen Knopf ohne Handler (§7). Der
+        // wahre Grund ist schlicht: der Schalter ist noch nicht gebaut.
+        lockedBy: "Dieser Schalter ist noch nicht gebaut. Bis er kommt, wählt "
+          + "die Blockmessung ihre Blöcke selbst, und deine Marken an VO2max, "
+          + "SweetSpot und Tempo wirken auf keine Wattvorgabe.",
       })}
     </div>`;
   }
@@ -4368,8 +4381,12 @@ class IntervalsIcuPanel extends HTMLElement {
     // Kurve misst die Marken schon und liest sie noch nicht. Beides aus der
     // Payload.
     const na = sm.not_active || {};
+    // Die Überschrift folgt der LAGE: steht nur noch der Blocksatz da, wirken
+    // die Grundlagen-Marken bereits (Kurvenschalter an), und ein pauschales
+    // „die Markierungen" wäre falsch.
     const nochNicht = (na.blocks || na.curve) ? `<p class="src warn">
-        <b>Die Markierungen wirken noch nicht.</b>
+        <b>${na.curve ? "Die Markierungen wirken noch nicht."
+                      : "Die Blockmarkierungen wirken noch nicht."}</b>
         ${esc(na.blocks || "")} ${esc(na.curve || "")}</p>` : "";
 
     const stand = !cur ? "" : `<p class="src">

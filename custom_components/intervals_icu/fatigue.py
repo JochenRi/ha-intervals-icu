@@ -200,6 +200,18 @@ SWITCH_NOTE = ("Umgelegt liest die Kurve NUR deine markierten Abschnitte — und
 # sind EIN Bauteil, nicht zwei.
 NOT_MEASURED_REASON = "not_measured"
 
+# DAS WORT ZUM GRUND, aus dem Modul, das den Grund vergibt. In 0.56.0 kannte
+# das Panel nur die Gruende der Namenserkennung und zeigte fuer diesen den
+# Rohschluessel "not_measured" (§7). Der Satz sagt nicht "noch nicht gemessen":
+# eine Messung kann auch VERWORFEN sein (Versionssprung, Drift, Umhaken), und
+# welches davon, steht heute nicht unterscheidbar im Eintrag.
+DROPPED_WORDS: dict[str, tuple[str, str]] = {
+    NOT_MEASURED_REASON: (
+        "markiert, ohne gültige Messung",
+        "die Kurve hat für diese Fahrt nichts zu lesen — im Aktivitätsdetail "
+        "auf „übernehmen und messen“"),
+}
+
 
 def _flipped(data: dict[str, Any]) -> dict[str, Any]:
     """Dieselben Daten, der Schalter andersherum - OHNE den Bestand anzufassen.
@@ -528,6 +540,7 @@ def curve(data: dict[str, Any], aerobic_hr: float | None = None,
         "min_pairs": FATIGUE_MIN_PAIRS,
         "dropped": selection["dropped"],
         "dropped_counts": {reason: len(items) for reason, items in selection["dropped"].items()},
+        "dropped_words": {key: list(value) for key, value in DROPPED_WORDS.items()},
         # Die Grenzen reisen mit, damit die Kachel sie NENNEN kann, ohne sie
         # zu kennen - und damit keine zweite Wahrheit im Frontend entsteht.
         "max_above_z2": FATIGUE_MAX_ABOVE_Z2,

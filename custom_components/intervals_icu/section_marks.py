@@ -431,8 +431,12 @@ def usable_hours(entry: Any, laps: Any) -> list[Any] | None:
 
     DREI Gruende, nichts herauszugeben, und alle drei sind an anderer Stelle
     SICHTBAR: keine Messung, eine veraltete Messmarke, eine verschobene Fahrt.
-    Diese Funktion ist die einzige Tuer, durch die maskierte Stunden in die
-    Kurve gelangen - damit es nicht zwei Antworten auf eine Frage gibt.
+    NICHT die einzige Tuer, auch wenn diese Zeile das bis 0.56.0 behauptete:
+    `fatigue._marked_rides` liest `measurement()` direkt, ohne Drift- und
+    Versionspruefung - die Drift, weil dort keine Runden vorliegen (der
+    benannte Stellvertreter), die Version, weil `migrate()` veraltete
+    Messungen schon beim Laden leert. Wer eine der beiden Voraussetzungen
+    aendert, prueft beide Stellen.
     """
     if not isinstance(entry, dict):
         return None
