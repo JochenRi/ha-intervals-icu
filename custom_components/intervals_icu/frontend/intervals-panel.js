@@ -1595,16 +1595,49 @@ class IntervalsIcuPanel extends HTMLElement {
       const shown = countOf(reason, items);
       // Kein Rohschlüssel in der Anzeige: fehlt ein Wort, steht das da.
       const [label, why] = words[reason] || ["ohne Beschreibung", ""];
+      // Jede Fahrt ist KLICKBAR (derselbe Weg wie aus der DFA-Liste) und nennt,
+      // wo es sie gibt, ihre markierten Abschnitte und den Grund der Messung.
       const list = items.slice(-8).reverse().map((x) =>
-        `<li>${esc(x.name || "ohne Namen")} vom ${dMed(x.date)}${x.above_z2 != null
+        `<li><a class="lnk" data-act="gotoact" data-id="${esc(x.activity_id)}">${
+          esc(x.name || "ohne Namen")}</a> vom ${dMed(x.date)}${this._sectionText(x.sections)}${
+          x.above_z2 != null
           ? ` — <b class="tn">${fmt(x.above_z2, 1)} %</b> über Zone 2` : ""}${
-          reason === "short" ? ` — <b class="tn">${fmt(x.minutes)} min</b>` : ""}</li>`).join("");
-      return `<p class="src"><b>${label}: ${fmt(shown)}</b> — ${why}</p>
+          reason === "short" ? ` — <b class="tn">${fmt(x.minutes)} min</b>` : ""}${
+          x.detail ? ` — ${esc(x.detail)}` : ""}</li>`).join("");
+      return `<p class="src"><b>${esc(label)}: ${fmt(shown)}</b> — ${esc(why)}</p>
         <ul class="droplist">${list}${shown > 8
           ? `<li class="mut">… und ${fmt(shown - 8)} weitere</li>` : ""}</ul>`;
     }).join("");
     return `<p class="src"><b>Von ${fmt(total + (f.rides_used || 0))} Einheiten zählen
       ${fmt(f.rides_used)}</b> — ${fmt(total)} bleiben draußen:</p>${blocks}`;
+  }
+
+  /* Die markierten Abschnitte einer Fahrt als Text: Beginn in der Fahrt und
+     Dauer, aus dem Anker. `start_index` zählt Sekunden im 1-Hz-Strom. Ohne
+     Abschnitte (Namenserkennung) steht nichts da. */
+  _sectionText(sections) {
+    const rows = (sections || []).filter((x) => x && x.start_index != null);
+    if (!rows.length) return "";
+    return " — " + rows.map((x) => `ab ${dur(x.start_index)}`
+      + (x.seconds != null ? `, ${dur(x.seconds)}` : "")).join(" · ");
+  }
+
+  /* DIE FAHRTENLISTE: welche Fahrten die Kurve tragen, und welche markierten
+     nicht, mit Grund. Ohne sie ist der Kurvenschalter nicht nachprüfbar —
+     die Kachel nennt eine Zahl, und niemand sieht, ob es die richtigen sind.
+     Die Zahl kommt aus dem Zählfeld (`rides_used`), die Gründe mit ihren
+     Wörtern aus der Payload. */
+  _curveRides(f) {
+    if (!f) return "";
+    const used = f.used || [];
+    const rows = used.slice().reverse().map((x) => `<li><a class="lnk" data-act="gotoact"
+        data-id="${esc(x.activity_id)}">${esc(x.name || "ohne Namen")}</a> vom ${dMed(x.date)}${
+        this._sectionText(x.sections)} — Stunde${(x.hours_with_value || []).length === 1 ? "" : "n"}
+        mit Wert: <b class="tn">${(x.hours_with_value || []).map((h) => fmt(h)).join(", ")}</b></li>`).join("");
+    return `<details class="ridelist"><summary>Welche Fahrten die Kurve tragen:
+        <b class="tn">${fmt(f.rides_used || 0)}</b></summary>
+      ${rows ? `<ul class="droplist">${rows}</ul>` : `<p class="src">Noch keine Fahrt mit Wert.</p>`}
+      ${this._fatigueDropped(f)}</details>`;
   }
 
   _decGood() {
@@ -4098,6 +4131,7 @@ class IntervalsIcuPanel extends HTMLElement {
         basis: `${fmt(((f || {}).rides_used) || 0)} Fahrten tragen die Kurve heute · `
           + `${fmt(zaehl("endurance", true))} markierte Grundlagen-Fahrten sind gemessen`,
       })}
+      ${this._curveRides(f)}
 
       ${this._switchRow({
         title: "Arbeitsblöcke", act: "swblocks", on: false,
@@ -4393,9 +4427,15 @@ class IntervalsIcuPanel extends HTMLElement {
     // angekommen. Unterschieden wird an `measured_at` - der Zustand steht in
     // Feldern, der Satz kommt aus dem Leseweg (0.53.1).
     const etwasGemessen = famListe.some((key) => mess[key]);
+    // Und seit 0.57: WARUM eine Messung fort ist, steht als Feld `lost` im
+    // Eintrag. Ohne Feld, aber mit measured_at, ist der Grund UNBEKANNT — die
+    // Kachel sagte bis dahin „Auswahl geändert", auch wo niemand umgehakt hatte.
+    const lostText = sm.lost_text || {};
     const offen = !cur ? "" : (cur.reason
       ? esc(cur.reason)
-      : esc((cur.measured_at ? sm.remeasure : sm.not_measured) || ""));
+      : esc((cur.measured_at
+          ? (lostText[cur.lost] || lostText.unknown || sm.remeasure)
+          : sm.not_measured) || ""));
 
     // DIE MARKIERUNGEN WIRKEN NOCH NICHT, und das steht da, solange es so
     // ist - unabhaengig davon, ob an DIESER Fahrt schon etwas markiert ist,
@@ -5822,6 +5862,8 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
 .smrunbtn.ok{border-color:${C.green};color:${C.green};background:${C.green}1f}
 .src.warn{border-left:2px solid ${C.amber};padding-left:9px}
 .src.info{border-left:2px solid ${C.slate};padding-left:9px}
+.lnk{color:${C.blue};cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+.ridelist{margin-top:10px}.ridelist>summary{cursor:pointer;color:${C.tx2};font-size:13.5px}
 .smbox.on{border-color:var(--fc);background:color-mix(in srgb,var(--fc) 16%,transparent)}
 /* Tagesbeschriftung (B5): fester Dialog, Kategorien-Chips, Marker */
 .tday[data-act]{cursor:pointer}

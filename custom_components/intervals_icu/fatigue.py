@@ -200,17 +200,43 @@ SWITCH_NOTE = ("Umgelegt liest die Kurve NUR deine markierten Abschnitte — und
 # sind EIN Bauteil, nicht zwei.
 NOT_MEASURED_REASON = "not_measured"
 
-# DAS WORT ZUM GRUND, aus dem Modul, das den Grund vergibt. In 0.56.0 kannte
-# das Panel nur die Gruende der Namenserkennung und zeigte fuer diesen den
-# Rohschluessel "not_measured" (§7). Der Satz sagt nicht "noch nicht gemessen":
-# eine Messung kann auch VERWORFEN sein (Versionssprung, Drift, Umhaken), und
-# welches davon, steht heute nicht unterscheidbar im Eintrag.
-DROPPED_WORDS: dict[str, tuple[str, str]] = {
-    NOT_MEASURED_REASON: (
-        "markiert, ohne gültige Messung",
-        "die Kurve hat für diese Fahrt nichts zu lesen — im Aktivitätsdetail "
-        "auf „übernehmen und messen“"),
+# DIE GRUENDE DER MARKIERTEN AUSWAHL, getrennt. Bis 0.56.1 gab es einen:
+# `not_measured` fasste „nie gemessen" und „Messung verworfen" zusammen, und
+# Fahrten, die gemessen waren und keinen Wert lieferten, zaehlten als tragend
+# („17 Fahrten tragen die Kurve", fuenf davon ohne einen Punkt). Ein Zaehler,
+# der zwei Gruende zusammenfasst, erfindet den haeufigeren (§7).
+NO_VALUE_REASON = "no_value"
+MEASURE_FAILED_REASON = "measure_failed"
+LOST_REASON = {
+    marks_lib.LOST_CHANGED: "remeasure_changed",
+    marks_lib.LOST_MOVED: "remeasure_moved",
+    marks_lib.LOST_VERSION: "remeasure_version",
+    marks_lib.LOST_UNKNOWN: "remeasure_unknown",
 }
+
+# DAS WORT ZUM GRUND, aus dem Modul, das den Grund vergibt. In 0.56.0 kannte
+# das Panel keines und zeigte den Rohschluessel (§7). Die Saetze kommen, wo es
+# sie schon gibt, aus `section_marks` - ein Satz, ein Ort.
+DROPPED_WORDS: dict[str, tuple[str, str]] = {
+    NOT_MEASURED_REASON: ("markiert, noch nicht gemessen", marks_lib.NOT_MEASURED),
+    NO_VALUE_REASON: ("gemessen, ohne Punkt für die Kurve", marks_lib.NO_VALUE),
+    MEASURE_FAILED_REASON: ("gemessen, ohne Ergebnis",
+                            "die Messung lief und brachte keine Zahlen — der Grund "
+                            "steht an der Fahrt"),
+    LOST_REASON[marks_lib.LOST_CHANGED]: ("Auswahl seit der Messung geändert",
+                                          marks_lib.LOST_TEXT[marks_lib.LOST_CHANGED]),
+    LOST_REASON[marks_lib.LOST_MOVED]: ("Abschnitte in Intervals verschoben",
+                                        marks_lib.LOST_TEXT[marks_lib.LOST_MOVED]),
+    LOST_REASON[marks_lib.LOST_VERSION]: ("Messung bei einer Rechenänderung verworfen",
+                                          marks_lib.LOST_TEXT[marks_lib.LOST_VERSION]),
+    LOST_REASON[marks_lib.LOST_UNKNOWN]: ("frühere Messung gilt nicht mehr",
+                                          marks_lib.LOST_TEXT[marks_lib.LOST_UNKNOWN]),
+}
+
+
+def has_value(ride: dict[str, Any]) -> bool:
+    """Traegt diese Fahrt der Kurve mindestens einen Punkt bei?"""
+    return any((row or {}).get("p075") is not None for row in ride.get("hours") or [])
 
 
 def _flipped(data: dict[str, Any]) -> dict[str, Any]:
@@ -249,12 +275,22 @@ def _marked_rides(data: dict[str, Any]) -> dict[str, Any]:
                "minutes": round((activity.get("moving_time") or 0) / 60)}
         if not marks_lib.marked(entry, "endurance"):
             continue
+        row["sections"] = marks_lib.marked_sections(entry, "endurance")
         got = marks_lib.measurement(entry, "endurance") or {}
         hours = got.get("hours")
-        if not isinstance(hours, list) or not hours:
-            dropped.setdefault(NOT_MEASURED_REASON, []).append(row)
+        if isinstance(hours, list) and hours:
+            used.append({**row, "hours": hours})
             continue
-        used.append({**row, "hours": hours})
+        # WARUM nichts da ist, in dieser Rangfolge: ein Messversuch mit Grund
+        # sagt mehr als ein fehlender; ein verworfener mehr als keiner.
+        if got.get("reason"):
+            reason = MEASURE_FAILED_REASON
+            row["detail"] = str(got.get("reason"))
+        elif marks_lib.lost_of(entry):
+            reason = LOST_REASON[marks_lib.lost_of(entry)]
+        else:
+            reason = NOT_MEASURED_REASON
+        dropped.setdefault(reason, []).append(row)
     used.sort(key=lambda r: r["date"])
     for items in dropped.values():
         items.sort(key=lambda r: r["date"])
@@ -400,9 +436,23 @@ def curve(data: dict[str, Any], aerobic_hr: float | None = None,
     # Das deckt sich mit der Belegung der Schritte (10 · 9 · 3 · 2) - zwei
     # voneinander unabhaengige Kriterien setzen die Grenze an dieselbe Stelle.
     # Die Uebereinstimmung ist der Grund, ihr zu trauen.
+    # Die Fahrten ohne Punkt stehen in der Meldung unter ihrem eigenen Grund -
+    # in BEIDEN Schalterstellungen, damit „tragen" dasselbe heisst.
+    dropped = {reason: list(items) for reason, items in selection["dropped"].items()}
+    empty = [{k: v for k, v in ride.items() if k != "hours"}
+             for ride in selection["used"] if not has_value(ride)]
+    if empty:
+        dropped[NO_VALUE_REASON] = empty
     plan = _plan_chain(selection["used"])
     if plan:
-        keys = [ride["activity_id"] for ride in selection["used"]]
+        # NUR FAHRTEN MIT WERT. Eine Fahrt ohne Punkt verschiebt nichts; ihre
+        # Herausnahme lieferte eine Verschiebung von 0,0 - und traegt nur EINE
+        # Fahrt die Kurve, war das der einzige Eintrag: Verhaeltnis 0,0, die
+        # Linie „gemessen" und durchgezogen, obwohl eine einzelne Fahrt nie
+        # eine Weglassprobe bestehen kann (§7, beim Bau der Fahrtenliste
+        # gefunden). Am Bestand vom 16.09.2026 ohne Wirkung: jede Verschiebung
+        # dort ist groesser als null, das Maximum kam also aus Fahrten mit Wert.
+        keys = [ride["activity_id"] for ride in selection["used"] if has_value(ride)]
         shifts: dict[int, float] = {}
         for key in keys:
             ohne = _plan_chain([r for r in selection["used"] if r["activity_id"] != key])
@@ -557,21 +607,24 @@ def curve(data: dict[str, Any], aerobic_hr: float | None = None,
         "literature_from_hours": round(attach_t, 2) if measured else None,
         "solid_until_hour": measured_solid,
         "thin_until_hour": thin_until,
-        "rides_used": len(selection["used"]),
-        # WELCHE Fahrten es sind, nicht nur wie viele. Ohne diese Zeile ist der
-        # Schalter nicht ueberpruefbar: die Kachel nennt "10 Fahrten" und
-        # niemand kann nachsehen, ob es die richtigen sind. Schlank gehalten -
-        # die Stundenreihen selbst bleiben draussen, sie stehen an der Fahrt.
+        # WELCHE Fahrten die Kurve TRAGEN: die mit mindestens einem Punkt. Eine
+        # Fahrt ohne Wert geht in keinen Median und keinen Schritt ein, und
+        # seit der Fahrtenliste auch nicht mehr in die Weglassprobe (oben).
+        "rides_used": sum(1 for row in selection["used"] if has_value(row)),
+        # Ohne diese Liste ist der Schalter nicht ueberpruefbar: die Kachel
+        # nennt eine Zahl, und niemand kann nachsehen, ob es die richtigen
+        # Fahrten sind. Schlank - die Stundenreihen stehen an der Fahrt.
         "used": [{"activity_id": row.get("activity_id"), "date": row.get("date"),
                   "name": row.get("name"),
-                  "hours_with_value": sum(
-                      1 for h in (row.get("hours") or []) if (h or {}).get("p075") is not None)}
-                 for row in selection["used"]],
+                  "sections": row.get("sections"),
+                  "hours_with_value": [int(h.get("hour")) for h in (row.get("hours") or [])
+                                       if (h or {}).get("p075") is not None]}
+                 for row in selection["used"] if has_value(row)],
         "paired": paired,
         "occupancy_rising": rising,
         "min_pairs": FATIGUE_MIN_PAIRS,
-        "dropped": selection["dropped"],
-        "dropped_counts": {reason: len(items) for reason, items in selection["dropped"].items()},
+        "dropped": dropped,
+        "dropped_counts": {reason: len(items) for reason, items in dropped.items()},
         "dropped_words": {key: list(value) for key, value in DROPPED_WORDS.items()},
         # Die Grenzen reisen mit, damit die Kachel sie NENNEN kann, ohne sie
         # zu kennen - und damit keine zweite Wahrheit im Frontend entsteht.

@@ -1584,6 +1584,32 @@ const acts = F.activities(), thr = F.thresholds();
   ok(/ANDERER SATZ AUS DER PAYLOAD/.test(q._marksBlock(act)),
      "messzustand: der Satz kommt aus dem Frontend, nicht aus der Payload");
 
+  // ── WARUM DIE MESSUNG FORT IST: der Satz folgt dem Feld `lost` ────────
+  // Bis hierhin las jede verworfene Messung „Auswahl geändert" — auch an der
+  // Fahrt vom 04.06.2026, an der niemand umgehakt hatte (§7). Ohne Feld ist der
+  // Grund UNBEKANNT, und genau das steht dann da.
+  const gruende = { changed: "GRUND UMGEHAKT", moved: "GRUND VERSCHOBEN",
+                    version: "GRUND RECHENÄNDERUNG", unknown: "GRUND UNBEKANNT" };
+  const mitGrund = (extra) => Object.assign(payload(extra), { lost_text: gruende });
+  const satzBei = (extra) => { q._smarks = mitGrund(extra); return q._marksBlock(act); };
+  const lostLagen = [["changed", "GRUND UMGEHAKT"], ["moved", "GRUND VERSCHOBEN"],
+                 ["version", "GRUND RECHENÄNDERUNG"]];
+  for (const [code, satz] of lostLagen) {
+    const html = satzBei({ measured_at: "2026-09-15", lost: code });
+    ok(html.includes(satz), `grund: ${code} liest nicht seinen Satz`);
+    ok(Object.values(gruende).filter((t) => t !== satz).every((t) => !html.includes(t)),
+       `grund: ${code} liest zusätzlich einen fremden Satz`);
+  }
+  const altbestand = satzBei({ measured_at: "2026-09-15" });
+  ok(altbestand.includes("GRUND UNBEKANNT") && !altbestand.includes("GRUND UMGEHAKT"),
+     "grund: ohne Feld erfindet die Kachel „Auswahl geändert“ statt „unbekannt“");
+  const nieGrund = satzBei({});
+  ok(!Object.values(gruende).some((t) => nieGrund.includes(t)),
+     "grund: eine nie gemessene Fahrt liest einen Verwerfungsgrund");
+  // Trefferzusicherung: die Fixture unterscheidet die Lagen WIRKLICH.
+  ok(new Set(Object.values(gruende)).size === 4,
+     "grund Fixture-Beweis: zwei Gründe tragen denselben Satz");
+
   // ── DER DRIFTZUSTAND UND SEIN AUSWEG, an derselben Stelle ────────────
   // confirm_section_marks war drei Releases lang gebaut und nie bedienbar.
   // Harmlos, SOLANGE nichts den Zustand auslöste; seit der Messweg ihn

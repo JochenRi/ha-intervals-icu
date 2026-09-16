@@ -183,6 +183,60 @@ _LEGACY_NOT_MEASURED = (
     "Markiert, noch nicht gemessen",
 )
 
+# WARUM EINE MESSUNG FORT IST - als Feld `lost`, nicht als Satz. Drei Wege
+# leeren `measure`, und bis zu diesem Feld waren sie im Eintrag nicht zu
+# unterscheiden: Umhaken (`_write`), Drift beim Oeffnen oder Bestaetigen
+# (`drop_hours`, `reanchor`) und ein Versionssprung (`migrate`). Die Kachel
+# sagte deshalb bei jeder verworfenen Messung „die Auswahl hat sich
+# geaendert" - auch an der Fahrt vom 04.06.2026, an der niemand umgehakt
+# hatte (PROJEKTSTAND §7). Das Feld steht NUR im Eintrag, wenn es einen Wert
+# hat: sonst machte `migrate` aus jedem Ladevorgang einen Schreibvorgang.
+LOST_CHANGED = "changed"
+LOST_MOVED = "moved"
+LOST_VERSION = "version"
+LOST_UNKNOWN = "unknown"   # nur im Leseweg: der Eintrag ist aelter als das Feld
+
+# Die Saetze dazu reisen im Leseweg (fuenfte Bauregel). „Unbekannt" behauptet
+# keine Ursache: fuer Eintraege von vor diesem Feld steht sie nirgends.
+LOST_TEXT = {
+    LOST_CHANGED: REMEASURE,
+    LOST_MOVED: ("Die markierten Abschnitte haben sich in Intervals verschoben — "
+                 "die Messung gilt nicht mehr. Neu zu messen auf „übernehmen "
+                 "und messen“."),
+    LOST_VERSION: ("Die Messung wurde bei einer Änderung der Rechnung verworfen — "
+                   "die Ströme liegen nicht im Archiv. Neu zu messen auf "
+                   "„übernehmen und messen“."),
+    LOST_UNKNOWN: ("Eine frühere Messung gilt nicht mehr; warum, ist für diese "
+                   "Fahrt nicht festgehalten. Neu zu messen auf „übernehmen und "
+                   "messen“."),
+}
+
+
+def lost_of(entry: Any) -> str | None:
+    """Warum die Messung fort ist - oder None, wenn nie gemessen wurde."""
+    if not isinstance(entry, dict) or not entry.get("measured_at"):
+        return None
+    code = entry.get("lost")
+    return code if code in (LOST_CHANGED, LOST_MOVED, LOST_VERSION) else LOST_UNKNOWN
+
+
+def marked_sections(entry: Any, family: str) -> list[dict[str, Any]]:
+    """Die markierten Abschnitte einer Familie, mit ihrer Dauer aus dem Anker.
+
+    Nur fuer die ANZEIGE (welche Abschnitte eine Fahrt beitraegt). Der Anker
+    haelt Start und Dauer beim ersten Haken; zum Schneiden taugt er nicht.
+    """
+    want = set(marked(entry, family))
+    out = []
+    for section in ((entry or {}).get("anchor") or {}).get("sections") or []:
+        if isinstance(section, dict) and _index(section.get("i")) in want:
+            out.append({"start_index": _index(section.get("i")),
+                        "seconds": _index(section.get("s"))})
+    known = {row["start_index"] for row in out}
+    out += [{"start_index": i, "seconds": None} for i in sorted(want - known)]
+    return sorted(out, key=lambda row: row["start_index"])
+
+
 # Warum eine vorhandene Messung nicht mehr gilt.
 STALE_REASON = {
     "laps_missing": "Die Runden dieser Fahrt sind nicht geladen — ohne sie ist "
@@ -637,6 +691,13 @@ def _write(block: dict[str, Any], key: str, old: dict[str, Any] | None,
         "set_at": set_at,
         "v": MEASURE_VERSION,
     }
+    # Eine vorhandene Messung faellt hier, weil sich die AUSWAHL geaendert hat.
+    # War keine da, bleibt ein frueherer Grund stehen - ein Haken auf einer
+    # Fahrt, deren Messung beim Versionssprung fiel, macht daraus keine
+    # Umhak-Geschichte.
+    lost = LOST_CHANGED if (old or {}).get("measure") else (old or {}).get("lost")
+    if lost:
+        entry["lost"] = lost
     block[key] = entry
     return entry
 
@@ -679,6 +740,7 @@ def set_measurement(data: dict[str, Any], activity_id: Any, family: str = "",
     # waere schlicht falsch.
     if (isinstance(hours, list) and hours) or (isinstance(blocks, list) and blocks):
         entry["measured_at"] = measured_at or entry.get("measured_at") or None
+        entry.pop("lost", None)
     entry["v"] = MEASURE_VERSION
     return entry
 
@@ -703,6 +765,7 @@ def drop_hours(data: dict[str, Any], activity_id: Any, reason: str = "") -> bool
         return False
     entry["measure"] = {}
     entry["reason"] = (reason or "")[:REASON_LIMIT]
+    entry["lost"] = LOST_MOVED
     return True
 
 
@@ -728,6 +791,10 @@ def reanchor(data: dict[str, Any], activity_id: Any, laps: Any) -> dict[str, Any
             + " — die Zuordnung ist neu zu setzen, nicht zu bestätigen"
         )
     entry["anchor"] = anchor_of(rows, marked(entry))
+    # Bestaetigen einer Drift: die Messung sass auf dem alten Ausschnitt.
+    # Hat `drop_hours` sie beim Oeffnen schon genommen, steht der Grund bereits.
+    if entry.get("measure"):
+        entry["lost"] = LOST_MOVED
     entry["measure"] = {}
     entry["reason"] = ""
     entry["v"] = MEASURE_VERSION
@@ -816,11 +883,14 @@ def migrate(block: Any) -> dict[str, Any] | None:
             "set_at": str(entry.get("set_at") or ""),
             "v": MEASURE_VERSION,
         }
+        if entry.get("lost") in (LOST_CHANGED, LOST_MOVED, LOST_VERSION):
+            row["lost"] = entry["lost"]
         if entry.get("v") != MEASURE_VERSION and row["measure"]:
             row["measure"] = {}
             row["reason"] = ("Nach einer Änderung der Messung neu zu messen — "
                              "die Ströme liegen nicht im Archiv. Die Zuordnung "
                              "und ihr Anker bleiben stehen.")
+            row["lost"] = LOST_VERSION
             changed = True
         if retired:
             # Die Marken sind fort, also gilt eine Messung darauf nicht mehr -

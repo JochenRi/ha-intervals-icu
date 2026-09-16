@@ -714,6 +714,92 @@ ok("Korridor-Satz: er nennt den Regelkreis nicht",
    "Regelkreis" in sm.OUTSIDE_NOTE and "Vorgabe" in sm.OUTSIDE_NOTE)
 
 
+# --- WARUM EINE MESSUNG FORT IST: das Feld `lost` ------------------------------
+# Drei Wege leeren `measure`, und bis zu diesem Feld waren sie im Eintrag nicht
+# zu unterscheiden. Die Kachel sagte an der Fahrt vom 04.06.2026 „Auswahl
+# geaendert", obwohl niemand umgehakt hatte (§7). Jeder Weg setzt SEINEN Grund.
+_LAPS = [{"start_index": 0, "end_index": 600, "moving_time": 600},
+         {"start_index": 600, "end_index": 1200, "moving_time": 600}]
+_ZAHLEN = [{"hour": 1, "p075": 150.0}]
+
+
+def _gemessen():
+    d = importer.empty_data("i1")
+    sm.set_mark(d, "L1", "2026-09-10", "endurance", 0, _LAPS, set_at="2026-09-10")
+    sm.set_measurement(d, "L1", "endurance", hours=list(_ZAHLEN), measured_at="2026-09-11")
+    return d
+
+
+# Umhaken: die Auswahl hat sich geaendert.
+_d = _gemessen()
+ok("lost Fixture: vor dem Umhaken liegt eine Messung vor",
+   bool((sm.entry_for(_d, "L1") or {}).get("measure")))
+check("lost: vor dem Umhaken ist kein Grund gesetzt", (sm.entry_for(_d, "L1") or {}).get("lost"), None)
+sm.set_mark(_d, "L1", "2026-09-10", "endurance", 600, _LAPS, set_at="2026-09-12")
+check("lost: Umhaken setzt „geaendert\"", (sm.entry_for(_d, "L1") or {}).get("lost"), sm.LOST_CHANGED)
+check("lost: und der Leseweg liefert ihn", sm.lost_of(sm.entry_for(_d, "L1")), sm.LOST_CHANGED)
+
+# Drift beim Oeffnen.
+_d = _gemessen()
+ok("lost: drop_hours meldet eine Aenderung", sm.drop_hours(_d, "L1", "verschoben"))
+check("lost: Drift setzt „verschoben\"", (sm.entry_for(_d, "L1") or {}).get("lost"), sm.LOST_MOVED)
+
+# Bestaetigen einer Drift nimmt die Messung - mit demselben Grund.
+_d = _gemessen()
+sm.reanchor(_d, "L1", _LAPS)
+check("lost: Bestaetigen setzt „verschoben\"", (sm.entry_for(_d, "L1") or {}).get("lost"), sm.LOST_MOVED)
+
+# Versionssprung beim Laden - und beim zweiten Laden ein No-op (J7).
+_d = _gemessen()
+_alt = copy.deepcopy(_d["section_marks"])
+_alt["L1"]["v"] = sm.MEASURE_VERSION - 1
+_neu = sm.migrate(_alt)
+check("lost: Versionssprung setzt „Rechenaenderung\"", ((_neu or {}).get("L1") or {}).get("lost"), sm.LOST_VERSION)
+check("lost: der zweite Ladevorgang ist ein No-op", sm.migrate(_neu), None)
+
+# DAS FELD MACHT KEINEN LADEVORGANG ZUM SCHREIBVORGANG: ein Eintrag ohne Grund
+# bekommt keinen leeren Schluessel angehaengt.
+_d = _gemessen()
+check("lost: ein Bestand ohne Grund migriert als No-op", sm.migrate(copy.deepcopy(_d["section_marks"])), None)
+ok("lost: kein leerer Schluessel im Eintrag", "lost" not in (sm.entry_for(_d, "L1") or {}))
+
+# Eine neue Messung mit Zahlen raeumt den Grund ab.
+_d = _gemessen()
+sm.drop_hours(_d, "L1", "verschoben")
+sm.set_measurement(_d, "L1", "endurance", hours=list(_ZAHLEN), measured_at="2026-09-13")
+ok("lost: eine neue Messung raeumt den Grund ab", "lost" not in (sm.entry_for(_d, "L1") or {}))
+
+# Ein Haken auf einer Fahrt, deren Messung schon fort ist, erfindet keine
+# Umhak-Geschichte: der fruehere Grund bleibt.
+_d = _gemessen()
+_alt = copy.deepcopy(_d["section_marks"]); _alt["L1"]["v"] = sm.MEASURE_VERSION - 1
+_d["section_marks"] = sm.migrate(_alt)
+sm.set_mark(_d, "L1", "2026-09-10", "endurance", 600, _LAPS, set_at="2026-09-14")
+check("lost: ein Haken nach dem Versionssprung behaelt dessen Grund",
+      (sm.entry_for(_d, "L1") or {}).get("lost"), sm.LOST_VERSION)
+
+# Nie gemessen gegen Grund unbekannt.
+_d = importer.empty_data("i1")
+sm.set_mark(_d, "L2", "2026-09-10", "endurance", 0, _LAPS)
+check("lost: nie gemessen hat keinen Grund", sm.lost_of(sm.entry_for(_d, "L2")), None)
+check("lost: gemessen, Feld fehlt (Altbestand) = unbekannt",
+      sm.lost_of({"measured_at": "2026-09-15", "measure": {}}), sm.LOST_UNKNOWN)
+ok("lost: jeder Grund hat einen Satz",
+   all(sm.LOST_TEXT.get(k) for k in (sm.LOST_CHANGED, sm.LOST_MOVED, sm.LOST_VERSION, sm.LOST_UNKNOWN)))
+ok("lost: die vier Saetze sind verschieden", len(set(sm.LOST_TEXT.values())) == 4)
+ok("lost: „unbekannt\" behauptet keine Ursache",
+   "Auswahl" not in sm.LOST_TEXT[sm.LOST_UNKNOWN] and "verschoben" not in sm.LOST_TEXT[sm.LOST_UNKNOWN])
+for _wort in ("zu locker", "Fehler", "Mangel", "leider", "nicht ausreich"):
+    ok(f"lost: kein gesperrtes Wort ({_wort})", all(_wort not in t for t in sm.LOST_TEXT.values()))
+
+# Die markierten Abschnitte mit ihrer Dauer, aus dem Anker - nur fuer die Anzeige.
+_d = importer.empty_data("i1")
+sm.set_mark(_d, "L3", "2026-09-10", "endurance", 600, _LAPS)
+check("Abschnitte: Start und Dauer aus dem Anker",
+      sm.marked_sections(sm.entry_for(_d, "L3"), "endurance"), [{"start_index": 600, "seconds": 600}])
+check("Abschnitte: eine fremde Familie liefert nichts",
+      sm.marked_sections(sm.entry_for(_d, "L3"), "vo2max"), [])
+
 print(f"test_section_marks: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

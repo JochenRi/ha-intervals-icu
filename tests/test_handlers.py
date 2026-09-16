@@ -231,6 +231,14 @@ aus, an = marks_payload(False), marks_payload(True)
 check("A1 Fixture-Beweis: beide Stellungen liefern Verschiedenes", aus != an)
 check("A1: Schalter aus - der Kurvensatz steht da", bool(aus.get("curve")))
 check("A1: Schalter an - der Kurvensatz ist fort", "curve" not in an)
+_sm_payload = FakeConn()
+ws._pick = lambda hass, athlete_id: FakeCoordinator(importer.empty_data("i1"))
+ws.websocket_section_marks(None, _sm_payload, {"id": 1})
+_lost = ((_sm_payload.results or [{}])[0]).get("lost_text") or {}
+eq("lost: die Payload traegt je Verwerfungsgrund einen Satz",
+      sorted(_lost), sorted(["changed", "moved", "version", "unknown"]))
+eq("lost: die Saetze kommen aus dem Modul",
+      _lost, dict(sys.modules["iv.section_marks"].LOST_TEXT))
 check("A1: der Blocksatz steht in beiden Stellungen",
       bool(aus.get("blocks")) and bool(an.get("blocks")))
 

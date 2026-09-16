@@ -623,6 +623,126 @@ check("Gegenstellung: der Schalter steht danach unveraendert",
 _basis["settings"] = {fatigue.CURVE_SWITCH: False}
 
 
+# --- DIE FAHRTENLISTE: wer traegt, und warum die anderen nicht ---------------
+# Bis 0.56.1 zaehlten Fahrten ohne einen einzigen Wert als tragend („17 Fahrten
+# tragen die Kurve", fuenf davon ohne Punkt), und `not_measured` fasste „nie
+# gemessen" und „Messung verworfen" zusammen (§7).
+print("\n=== Fahrtenliste: tragende Fahrten und getrennte Gruende ===")
+
+
+def _eintrag(day, measure=None, measured_at=None, lost=None, family="endurance"):
+    row = {"date": day, "marks": {family: [0]},
+           "anchor": {"laps": 1, "sections": [{"i": 0, "s": 5400}]},
+           "measure": measure or {}, "reason": "", "measured_at": measured_at,
+           "set_at": day, "v": marks_lib.MEASURE_VERSION}
+    if lost:
+        row["lost"] = lost
+    return row
+
+
+_fl = bestand([
+    ("w1", "2026-08-01", "volumen", [160.0, 150.0], VOLUMEN, 150),
+    ("w2", "2026-08-02", "volumen", [158.0, 149.0], VOLUMEN, 150),
+])
+_leer = [{"hour": 1, "p075": None}, {"hour": 2, "p075": None}]
+for _k, _tag in (("n0", "2026-08-03"), ("nie", "2026-08-04"), ("umg", "2026-08-05"),
+                 ("ver", "2026-08-06"), ("vsp", "2026-08-07"), ("unb", "2026-08-08"),
+                 ("feh", "2026-08-09"), ("vo", "2026-08-10")):
+    _fl["activities"][_k] = {"start_date_local": f"{_tag}T09:00:00", "name": _k,
+                             "type": "Ride", "moving_time": 5400}
+_fl["section_marks"] = {
+    "w1": _eintrag("2026-08-01", {"endurance": {"hours": [{"hour": 1, "p075": 160.0},
+                                                         {"hour": 2, "p075": 150.0}]}}, "2026-08-11"),
+    "w2": _eintrag("2026-08-02", {"endurance": {"hours": [{"hour": 1, "p075": 158.0},
+                                                         {"hour": 2, "p075": 149.0}]}}, "2026-08-11"),
+    "n0": _eintrag("2026-08-03", {"endurance": {"hours": list(_leer)}}, "2026-08-11"),
+    "nie": _eintrag("2026-08-04"),
+    "umg": _eintrag("2026-08-05", measured_at="2026-08-11", lost=marks_lib.LOST_CHANGED),
+    "ver": _eintrag("2026-08-06", measured_at="2026-08-11", lost=marks_lib.LOST_MOVED),
+    "vsp": _eintrag("2026-08-07", measured_at="2026-08-11", lost=marks_lib.LOST_VERSION),
+    "unb": _eintrag("2026-08-08", measured_at="2026-08-11"),
+    "feh": _eintrag("2026-08-09", {"endurance": {"hours": None, "reason": "kein DFA-Strom"}}),
+    "vo": _eintrag("2026-08-10", {"vo2max": {"blocks": [{"start_index": 0, "alpha": 0.4}]}},
+                   "2026-08-11", family="vo2max"),
+}
+_fl["settings"] = {fatigue.CURVE_SWITCH: True}
+_c = fatigue.curve(_fl)
+_grund = {r.get("activity_id"): reason for reason, items in (_c.get("dropped") or {}).items()
+          for r in items}
+_soll = {"n0": fatigue.NO_VALUE_REASON, "nie": fatigue.NOT_MEASURED_REASON,
+         "umg": "remeasure_changed", "ver": "remeasure_moved", "vsp": "remeasure_version",
+         "unb": "remeasure_unknown", "feh": fatigue.MEASURE_FAILED_REASON}
+# TREFFERZUSICHERUNG: jede Lage steht GENAU EINMAL in der Fixture, und jeder
+# Grund ist verschieden - sonst prueft die Trennung zwei gleiche Faelle.
+check("Fahrtenliste Fixture: sieben Lagen, sieben verschiedene Gruende",
+      len(set(_soll.values())), 7)
+for _k, _r in sorted(_soll.items()):
+    check(f"Fahrtenliste: {_k} steht unter seinem Grund", _grund.get(_k), _r)
+check("Fahrtenliste: TRAGEND sind nur die Fahrten mit Wert", _c.get("rides_used"), 2)
+check("Fahrtenliste: und genau sie stehen in der Liste",
+      sorted(r.get("activity_id") for r in (_c.get("used") or [])), ["w1", "w2"])
+check("Fahrtenliste: die Stunden mit Wert je Fahrt",
+      [r.get("hours_with_value") for r in (_c.get("used") or [])], [[1, 2], [1, 2]])
+check("Fahrtenliste: die markierten Abschnitte reisen mit",
+      (_c.get("used") or [{}])[0].get("sections"), [{"start_index": 0, "seconds": 5400}])
+check("Fahrtenliste: der Messgrund steht an der Fahrt",
+      [r.get("detail") for r in (_c.get("dropped") or {}).get(fatigue.MEASURE_FAILED_REASON, [])],
+      ["kein DFA-Strom"])
+check("Fahrtenliste: die fremde Familie steht nirgends",
+      "vo" in _grund or any(r.get("activity_id") == "vo" for r in (_c.get("used") or [])), False)
+check("Fahrtenliste: Zaehlfeld gleich Liste je Grund",
+      {k: len(v) for k, v in (_c.get("dropped") or {}).items()}, _c.get("dropped_counts"))
+ok("Fahrtenliste: jeder vergebene Grund hat ein Wort",
+   set(_c.get("dropped") or {}) <= set(_c.get("dropped_words") or {}))
+ok("Fahrtenliste: keine Stundenreihen in den Ausschlusszeilen",
+   all("hours" not in r for items in (_c.get("dropped") or {}).values() for r in items))
+
+# DIE ZAHLEN BLEIBEN: die Null-Wert-Fahrt geht in keinen Median und keinen
+# Schritt ein. Gerechnet wird weiter auf der vollen Auswahl; getrennt wird nur
+# in der Meldung.
+_ohne = copy.deepcopy(_fl)
+del _ohne["section_marks"]["n0"]
+_c2 = fatigue.curve(_ohne)
+ok("Fahrtenliste Fixture: ohne die Null-Wert-Fahrt verschwindet ihr Grund",
+   fatigue.NO_VALUE_REASON not in (_c2.get("dropped") or {}))
+for _feld in ("measured", "plan", "paired", "occupancy_rising", "literature", "anchor_watts"):
+    check(f"Fahrtenliste: {_feld} unberuehrt von der Null-Wert-Fahrt", _c.get(_feld), _c2.get(_feld))
+
+# DER RANDFALL, an dem sie es NICHT war: traegt nur EINE Fahrt die Kurve, lieferte
+# die Herausnahme der Null-Wert-Fahrt eine Verschiebung von 0,0 - Verhaeltnis 0,
+# Linie „gemessen". Eine einzelne Fahrt kann keine Weglassprobe bestehen.
+_eins = copy.deepcopy(_fl)
+for _k in ("w2", "nie", "umg", "ver", "vsp", "unb", "feh", "vo"):
+    _eins["section_marks"].pop(_k, None)
+_e_mit = fatigue.curve(_eins)
+_e_ohne = copy.deepcopy(_eins); _e_ohne["section_marks"].pop("n0")
+_e_ohne = fatigue.curve(_e_ohne)
+check("Randfall Fixture: genau eine Fahrt traegt, eine liefert keinen Wert",
+      (_e_mit.get("rides_used"), len((_e_mit.get("dropped") or {}).get(fatigue.NO_VALUE_REASON, []))), (1, 1))
+check("Randfall: eine einzelne Fahrt ist keine bestandene Weglassprobe",
+      [r.get("loo_shift") for r in _e_mit.get("plan", [])], [None, None])
+check("Randfall: und die Linie ist nicht durchgezogen", _e_mit.get("plan_solid_until_hours"), None)
+check("Randfall: mit und ohne Null-Wert-Fahrt dieselbe Leitzahl samt Grenze",
+      _e_mit.get("plan"), _e_ohne.get("plan"))
+
+# BEIDE STELLUNGEN: „tragen" heisst in der Namenserkennung dasselbe.
+_fl["settings"] = {fatigue.CURVE_SWITCH: False}
+_fl["activities"]["n1"] = {"start_date_local": "2026-08-12T09:00:00", "name": "volumen",
+                           "type": "Ride", "moving_time": 150 * 60, "icu_zone_times": VOLUMEN,
+                           "icu_average_watts": 150, "icu_weighted_avg_watts": 155}
+_fl["dfa"]["n1"] = {"hours": list(_leer)}
+_ca = fatigue.curve(_fl)
+ok("Fahrtenliste AUS Fixture: die Null-Wert-Fahrt passiert die Namenserkennung",
+   any(r.get("activity_id") == "n1" for r in fatigue.rides(_fl).get("used", [])))
+check("Fahrtenliste AUS: die Null-Wert-Fahrt steht unter ihrem Grund",
+      [r.get("activity_id") for r in (_ca.get("dropped") or {}).get(fatigue.NO_VALUE_REASON, [])],
+      ["n1"])
+check("Fahrtenliste AUS: und traegt nicht", "n1" in [r.get("activity_id") for r in (_ca.get("used") or [])], False)
+check("Fahrtenliste AUS: Zaehlfeld gleich Liste",
+      _ca.get("rides_used"), len(_ca.get("used") or []))
+_fl["settings"] = {fatigue.CURVE_SWITCH: True}
+
+
 print(f"\ntest_fatigue: {CHECKS} Prüfungen, {len(failures)} Fehler")
 print("FEHLER:", failures if failures else "keine")
 sys.exit(1 if failures else 0)

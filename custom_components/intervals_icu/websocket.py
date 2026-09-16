@@ -1228,6 +1228,10 @@ def websocket_section_marks(hass, connection, msg) -> None:
         # derselben Quelle wie der Zustand selbst (fuenfte Bauregel) - eine
         # Fassung im Frontend waere die zweite Wahrheit aus 0.52.0.
         "remeasure": marks_lib.REMEASURE,
+        # WARUM eine Messung fort ist, je Grund ein Satz. Der Eintrag traegt
+        # den Grund als Feld (`lost`); ohne ihn ist der Grund unbekannt, und
+        # die Kachel sagt das, statt „Auswahl geaendert" zu erfinden.
+        "lost_text": marks_lib.LOST_TEXT,
         # Die Zahlen fuer die Erklaerung je Familie reisen MIT: eine Schwelle,
         # die das Panel als Literal fuehrt, ist eine zweite Wahrheit (fuenfte
         # Bauregel), und der Dublettenwaechter meldet sie zu Recht.

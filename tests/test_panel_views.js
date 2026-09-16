@@ -2322,6 +2322,43 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   ok(!/von 3/.test(ohneMin), "quellen: ohne Mindestzahl in der Payload steht eine 3 aus dem Quelltext");
   ok(/von 4/.test(mitMin), "quellen: die Mindestzahl aus der Payload wird nicht gezeigt");
 
+  // ── DIE FAHRTENLISTE unter dem Kurvenschalter ─────────────────────────
+  // Welche Fahrten die Kurve tragen, klickbar, mit Abschnitten und Stunden —
+  // und die markierten, die NICHT drinstehen, mit ihrem Wort aus der Payload.
+  const fl = String(q.rQuellen(F.fatigue({ from_marks: true, plan_other: gegen,
+    rides_used: 2,
+    used: [{ activity_id: "u1", date: "2026-08-01", name: "Volumen <eins>",
+             sections: [{ start_index: 0, seconds: 5400 }], hours_with_value: [1, 2] },
+           { activity_id: "u2", date: "2026-08-02", name: "Volumen zwei",
+             sections: [{ start_index: 3600, seconds: 1800 }], hours_with_value: [3] }],
+    dropped: { remeasure_unknown: [{ activity_id: "d1", date: "2026-06-04", name: "Frühfahrt" }],
+               measure_failed: [{ activity_id: "d2", date: "2026-06-05", name: "Ohne Strom",
+                                  detail: "GRUND DER MESSUNG" }] },
+    dropped_counts: { remeasure_unknown: 1, measure_failed: 1 },
+    dropped_words: { remeasure_unknown: ["WORT UNBEKANNT", "SATZ UNBEKANNT"],
+                     measure_failed: ["WORT OHNE ERGEBNIS", "SATZ OHNE ERGEBNIS"] },
+  }), q._blocks));
+  ok(/Welche Fahrten die Kurve tragen/.test(fl), "fahrtenliste: die Liste fehlt");
+  ok(/data-act="gotoact"\s+data-id="u1"/.test(fl) && /data-act="gotoact"\s+data-id="u2"/.test(fl),
+     "fahrtenliste: die tragenden Fahrten sind nicht klickbar");
+  ok(/data-act="gotoact" data-id="d1"/.test(fl) && /data-act="gotoact" data-id="d2"/.test(fl),
+     "fahrtenliste: die ausgeschlossenen Fahrten sind nicht klickbar");
+  ok(/ab 1h00m, 30m/.test(fl), "fahrtenliste: Abschnittsbeginn und Dauer fehlen");
+  ok(/mit Wert: <b class="tn">1, 2<\/b>/.test(fl) && /Stunde\s+mit Wert: <b class="tn">3<\/b>/.test(fl),
+     "fahrtenliste: die Stunden mit Wert fehlen oder die Einzahl stimmt nicht");
+  ok(/WORT UNBEKANNT/.test(fl) && /WORT OHNE ERGEBNIS/.test(fl) && /GRUND DER MESSUNG/.test(fl),
+     "fahrtenliste: Wort oder Messgrund der ausgeschlossenen Fahrt fehlen");
+  ok(!/remeasure_unknown|measure_failed/.test(fl.replace(/data-[a-z]+="[^"]*"/g, "")),
+     "fahrtenliste: ein Rohschlüssel steht in der Anzeige");
+  ok(!/<eins>/.test(fl) && /&lt;eins&gt;/.test(fl), "fahrtenliste: der Fahrtname ist nicht maskiert");
+  // Die Zahl kommt aus dem ZÄHLFELD, nicht aus der Liste (sechste Bauregel):
+  // ein Zählfeld, das von der Listenlänge abweicht, wird als Zählfeld gezeigt.
+  const flZahl = String(q.rQuellen(F.fatigue({ from_marks: true, plan_other: gegen, rides_used: 7,
+    used: [{ activity_id: "u1", date: "2026-08-01", name: "x", hours_with_value: [1] }] }), q._blocks));
+  ok(/Welche Fahrten die Kurve tragen:\s*<b class="tn">7<\/b>/.test(flZahl),
+     "fahrtenliste: die Zahl kommt aus der Liste statt aus dem Zählfeld");
+  ok(q._curveRides(null) === "", "fahrtenliste: ohne Payload wird eine Liste gebaut");
+
   // DIE ZAHLEN BEIDER STELLUNGEN, nebeneinander.
   // BEIDE Reihen stehen da, und die Fixture macht sie unterscheidbar.
   ok(/153/.test(aus) && /161/.test(aus),
