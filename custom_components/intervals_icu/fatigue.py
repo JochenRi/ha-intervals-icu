@@ -201,6 +201,18 @@ SWITCH_NOTE = ("Umgelegt liest die Kurve NUR deine markierten Abschnitte — und
 NOT_MEASURED_REASON = "not_measured"
 
 
+def _flipped(data: dict[str, Any]) -> dict[str, Any]:
+    """Dieselben Daten, der Schalter andersherum - OHNE den Bestand anzufassen.
+
+    Eine flache Kopie mit ausgetauschtem `settings`: die Fahrten und Marken
+    bleiben dieselben Objekte, nur die Stellung ist eine andere. So kostet die
+    Gegenrechnung nichts und kann den Bestand auch nicht versehentlich aendern.
+    """
+    box = dict((data or {}).get("settings") or {})
+    box[CURVE_SWITCH] = not curve_from_marks(data)
+    return {**(data or {}), "settings": box}
+
+
 def curve_from_marks(data: dict[str, Any]) -> bool:
     """Steht der Kurvenschalter auf AN?"""
     box = (data or {}).get("settings")
@@ -495,6 +507,11 @@ def curve(data: dict[str, Any], aerobic_hr: float | None = None,
         # dem Modul, damit die Kachel es nennen kann, ohne es zu kennen.
         "from_marks": curve_from_marks(data),
         "switch_note": SWITCH_NOTE,
+        # DIE ANDERE SCHALTERSTELLUNG, gerechnet statt behauptet. Der Reiter
+        # soll beide Zahlenreihen nebeneinander zeigen, und die Gegenseite kann
+        # nur HIER entstehen - im Frontend waere sie ein Literal ohne Herkunft,
+        # das beim ersten Umbau falsch wird.
+        "plan_other": _plan_chain(rides(_flipped(data))["used"]),
         "axis_note": AXIS_NOTE,
         "literature": literature,
         "anchor_watts": anchor,

@@ -922,6 +922,7 @@ const acts = F.activities(), thr = F.thresholds();
     rRampTest: "trainer", rRampGap: "trainer",
     rHeute: "heute", rSignale: "signale", rFitness: "fitness",
     rAkt: "akt", rDfa: "dfa", rKalender: "kalender", rBelastung: "belastung",
+    rQuellen: "quellen",
   };
   const alle = (src.match(/\n  r[A-Z]\w*\(/g) || []).map((m) => m.trim().slice(0, -1));
   for (const name of alle) {

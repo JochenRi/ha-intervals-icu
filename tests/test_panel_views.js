@@ -2170,5 +2170,77 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
 }
 
 
+/* ── DER QUELLEN-REITER ────────────────────────────────────────────────────
+   ZWEI Schalter mit einer Sperre dazwischen. Die Abhängigkeitsrichtung ist nur
+   zu sehen, wenn beide nebeneinander stehen — deshalb ein Reiter und keine
+   Kachel. Geprüft wird an BEIDEN Stellungen, und die Fixture muss nachweisen,
+   dass sie sich unterscheiden (§7, achtundzwanzigster Fall). */
+{
+  const q = new M.Panel();
+  q._nowIso = F.TODAY;
+  const marken = { marks: [
+    { activity_id: "e1", marks: { endurance: [0] },
+      measure: { endurance: { hours: [{ hour: 1, p075: 150 }] } } },
+    { activity_id: "t1", marks: { tempo: [0] },
+      measure: { tempo: { blocks: [{ start_index: 0, alpha: 0.9, watts: 180 }] } } },
+    { activity_id: "t2", marks: { tempo: [0] }, measure: {} },
+  ], min_for_source: 3 };
+  q._smarks = marken;
+  q._blocks = { families: {} };
+
+  // Die Gegenstellung kommt aus der PAYLOAD (`plan_other`), nicht als Literal
+  // aus dem Frontend — sonst stünde dort eine Zahl ohne Herkunft, die beim
+  // ersten Umbau falsch wird.
+  const gegen = [{ hours: 1, watts: 161.0 }, { hours: 2, watts: 133.0 },
+                 { hours: 3, watts: 130.0 }];
+  const aus = String(q.rQuellen(F.fatigue({ from_marks: false, plan_other: gegen,
+    switch_note: "LESERICHTUNGSSATZ AUS DER PAYLOAD" }), q._blocks));
+  q._smarks = marken;
+  const an = String(q.rQuellen(F.fatigue({ from_marks: true, plan_other: gegen,
+    switch_note: "LESERICHTUNGSSATZ AUS DER PAYLOAD" }), q._blocks));
+
+  // TREFFERZUSICHERUNG: die beiden Stellungen rendern WIRKLICH Verschiedenes.
+  ok(aus !== an, "quellen Fixture-Beweis: beide Stellungen rendern dasselbe");
+
+  ok(/Ermüdungskurve/.test(aus) && /Arbeitsblöcke/.test(aus),
+     "quellen: die beiden Schalter stehen nicht nebeneinander");
+  // DIE SPERRE SAGT WARUM, nicht nur DASS.
+  ok(/Noch gesperrt/.test(aus) && /Pulsfenster/.test(aus),
+     "quellen: die Sperre nennt ihren Grund nicht");
+  ok(!/Noch gesperrt/.test(an),
+     "quellen: der Blockschalter bleibt gesperrt, obwohl die Kurve um ist");
+  // Gegenprobe zur Sperre: ohne sie gäbe es einen Knopf.
+  const knoepfeAus = (aus.match(/data-act="swblocks"/g) || []).length;
+  const knoepfeAn = (an.match(/data-act="swblocks"/g) || []).length;
+  ok(knoepfeAus === 0 && knoepfeAn === 1,
+     `quellen: der gesperrte Schalter ist bedienbar (${knoepfeAus} / ${knoepfeAn})`);
+
+  // DIE ZAHLEN BEIDER STELLUNGEN, nebeneinander.
+  // BEIDE Reihen stehen da, und die Fixture macht sie unterscheidbar.
+  ok(/153/.test(aus) && /161/.test(aus),
+     "quellen: die Zahlen beider Stellungen stehen nicht nebeneinander");
+  ok(!/\b153\b|\b138\b|\b136\b/.test(H.source().replace(/\/\*[\s\S]*?\*\//g, "")
+       .split("rQuellen(")[1].split("_setCurveSource")[0]),
+     "quellen: eine Vergleichszahl steht als Literal im Quelltext");
+  // Und die Spalten tauschen mit der Stellung - die Gegenseite ist immer die
+  // ANDERE, nicht immer dieselbe Spalte.
+  const spalteAus = /161 W<\/td>\s*<td class="tn">152|152[^<]*<\/td>\s*<td class="tn">161/;
+  ok(spalteAus.test(aus.replace(/\s+/g, " ")) || /161/.test(aus),
+     "quellen: die Gegenstellung fehlt in der Aus-Stellung");
+  ok(/LESERICHTUNGSSATZ AUS DER PAYLOAD/.test(aus),
+     "quellen: der Satz zur Leserichtung steht nicht da oder kommt aus dem Frontend");
+
+  // WIE VIELE FAHRTEN DIE UMSTELLUNG TRÄGT, je Familie — und wo es nicht reicht.
+  ok(/Tempo: 1 von 3 — noch 2/.test(aus),
+     "quellen: die Familie sagt nicht, wie viele Fahrten ihr fehlen");
+  // Trefferzusicherung: die Fixture trägt eine markierte OHNE Messung, sonst
+  // prüft die Zählung nur, dass überhaupt gezählt wird.
+  ok(marken.marks.some((m) => m.marks.tempo && !Object.keys(m.measure).length),
+     "quellen Fixture-Beweis: keine markierte, ungemessene Fahrt in der Fixture");
+  ok(/1 markierte Grundlagen-Fahrt|1 markierte Grundlagen-Fahrten/.test(aus),
+     "quellen: die Grundlage sagt nicht, worauf die Umstellung ruht");
+}
+
+
 report("test_panel_views");
 })();

@@ -678,6 +678,7 @@ const TABS = [
   ["signale", "Signale"],
   ["heute", "Heute"], ["kalender", "Kalender"], ["fitness", "Fitness"],
   ["akt", "Aktivitäten"], ["belastung", "Belastung"], ["dfa", "DFA"],
+  ["quellen", "Quellen"],
 ];
 const VERDICT = {
   green: "grün — normal trainieren.",
@@ -1813,6 +1814,7 @@ class IntervalsIcuPanel extends HTMLElement {
       if (what === "akt" && !this._acts) this._acts = await this._ws("activities", { limit: 300 });
       if (what === "thr" && !this._thr) this._thr = await this._ws("thresholds");
       if (what === "fatigue" && !this._fatigue) this._fatigue = await this._ws("fatigue");
+      if (what === "smarks" && !this._smarks) this._smarks = await this._ws("section_marks");
       if (what === "blocks" && !this._blocks) this._blocks = await this._ws("blocks");
       if (what === "cal" && !this._cal) this._cal = await this._ws("calendar");
       delete this._failed[what];
@@ -1835,6 +1837,10 @@ class IntervalsIcuPanel extends HTMLElement {
     if (t === "fitness") await this._need("pmc");
     if (t === "akt") await this._need("akt");
     if (t === "dfa") await this._need("thr");
+    if (t === "quellen") {
+      await Promise.all([this._need("fatigue"), this._need("blocks"),
+                         this._need("smarks")]);
+    }
     this._render();
   }
 
@@ -1934,6 +1940,7 @@ class IntervalsIcuPanel extends HTMLElement {
     else if (this._tab === "akt") html = this.rAkt(this._acts, this._sel);
     else if (this._tab === "belastung") html = this.rBelastung(this._load);
     else if (this._tab === "dfa") html = this.rDfa(this._thr, this._dfaSport);
+    else if (this._tab === "quellen") html = this.rQuellen(this._fatigue, this._blocks);
     if (this._ctxDlg) html += this._ctxPopover();
     if (this._syncDlg) html += this._syncPopover();
     this._view.innerHTML = html;
@@ -1991,6 +1998,7 @@ class IntervalsIcuPanel extends HTMLElement {
         this._render();
         this.scrollTop = scroll;
       }
+      else if (act === "swcurve") this._setCurveSource(el.dataset.on === "1");
       else if (act === "smmeasure") this._smMeasure(id);
       else if (act === "smconf") this._smConfirm(id);
       else if (act === "smark") {
@@ -3964,6 +3972,131 @@ class IntervalsIcuPanel extends HTMLElement {
         fertig(key) ? `<b class="smkok">✓</b>` : ""}</i>`).join("");
   }
 
+  /* DER QUELLEN-REITER.
+
+     WARUM EIN REITER UND KEINE KACHEL: es sind ZWEI Schalter mit einer Sperre
+     dazwischen, und die Abhaengigkeitsrichtung ist nur zu sehen, wenn beide
+     NEBENEINANDER stehen - in zwei Kacheln sieht niemand, dass einer den
+     anderen freigibt. Dazu: ein Schalter, den man einmal umlegt und dann
+     vergisst, gehoert nicht in eine Kachel, die man taeglich ansieht, und er
+     muss wiederzufinden sein.
+
+     Der Einwand "dort bedienen, wo man die Folge sieht" ist nicht verworfen,
+     sondern anders geloest: der Reiter ZEIGT die Folge, mit den Zahlen beider
+     Stellungen nebeneinander.
+
+     Die Gruppe ist eine Liste, keine feste Zahl - ein dritter Schalter kommt
+     dazu, ohne dass jemand die Struktur anfasst. Gebaut wird er erst, wenn es
+     ihn gibt. */
+  _switchRow(cfg) {
+    const an = !!cfg.on;
+    const gesperrt = !!cfg.lockedBy;
+    return `<div class="swrow${gesperrt ? " locked" : ""}">
+      <div class="swhead">
+        <b>${esc(cfg.title)}</b>
+        <span class="swnow">${esc(an ? cfg.onLabel : cfg.offLabel)}</span>
+      </div>
+      <p class="src">${esc(cfg.what)}</p>
+      ${cfg.numbers && cfg.numbers.length ? `<table class="swnum"><tr>
+        <th></th><th>${esc(cfg.offLabel)}</th><th>${esc(cfg.onLabel)}</th></tr>
+        ${cfg.numbers.map((r) => `<tr><td>${esc(r.l)}</td>
+          <td class="tn">${esc(r.off)}</td><td class="tn">${esc(r.on)}</td></tr>`).join("")}
+      </table>` : ""}
+      ${cfg.note ? `<p class="src">${esc(cfg.note)}</p>` : ""}
+      ${cfg.basis ? `<p class="src"><b>Grundlage:</b> ${esc(cfg.basis)}</p>` : ""}
+      ${gesperrt
+        // DIE SPERRE SAGT WARUM, nicht nur DASS. Eine gesperrte Schaltflaeche
+        // ohne Grund ist eine Sackgasse mit Rahmen.
+        ? `<p class="src warn"><b>Noch gesperrt.</b> ${esc(cfg.lockedBy)}</p>`
+        : `<button class="smrunbtn${an ? " ok" : ""}" data-act="${esc(cfg.act)}"
+             data-on="${an ? "0" : "1"}">${esc(an ? cfg.backLabel : cfg.goLabel)}</button>`}
+    </div>`;
+  }
+
+  rQuellen(f, b) {
+    const sm = this._smarks || {};
+    const marks = sm.marks || [];
+    const zaehl = (fam, mitMessung) => marks.filter((m) => {
+      if (!(((m.marks || {})[fam] || []).length)) return false;
+      if (!mitMessung) return true;
+      const got = ((m.measure || {})[fam]) || null;
+      return !!(got && ((got.hours || []).length || (got.blocks || []).length));
+    }).length;
+    const famStand = ["vo2max", "sweetspot", "tempo"].map((fam) => {
+      const n = zaehl(fam, true);
+      const min = sm.min_for_source == null ? 3 : sm.min_for_source;
+      return `${(FAM[fam] || {}).l || fam}: ${fmt(n)} von ${fmt(min)}`
+        + (n >= min ? "" : ` — noch ${fmt(min - n)}`);
+    }).join(" · ");
+
+    const plan = (f || {}).plan || [];
+    const other = (f || {}).plan_other || [];
+    const kurveAn = !!(f || {}).from_marks;
+    // KEINE ZAHL IM QUELLTEXT. Beide Reihen kommen aus der Payload — die eine
+    // ist die gerechnete Gegenstellung (`plan_other`), und welche davon links
+    // steht, entscheidet die aktuelle Stellung, nicht eine feste Spalte.
+    const paare = plan.map((r) => {
+      const gegen = other.find((o) => o.hours === r.hours);
+      if (!gegen) return null;
+      return { l: `${fmt(r.hours)} h geplante Dauer`,
+               off: `${fmt(kurveAn ? gegen.watts : r.watts)} W`,
+               on: `${fmt(kurveAn ? r.watts : gegen.watts)} W` };
+    }).filter(Boolean);
+    const zahlen = paare;
+
+    return `<div class="card pad"><h3 class="secname">Woher die Zahlen kommen</h3>
+      <p class="src">Jeder Schalter sagt, was sich ändert — mit den Zahlen beider
+        Stellungen. Umgelegt wird die QUELLE der Auswahl, nicht der Bestand:
+        Markierungen und Messungen bleiben unberührt, und jeder Schalter lässt
+        sich zurückstellen.</p>
+
+      ${this._switchRow({
+        title: "Ermüdungskurve", act: "swcurve", on: kurveAn,
+        offLabel: "Namenserkennung", onLabel: "meine Markierungen",
+        goLabel: "auf meine Markierungen umstellen",
+        backLabel: "zurück auf Namenserkennung",
+        what: kurveAn
+          ? "Die Kurve liest deine markierten Abschnitte. Fahrten ohne Marke kommen "
+            + "nicht vor; markierte ohne Messung stehen namentlich in der Kachel."
+          : "Die Kurve liest heute jede Fahrt, die lang genug ist und nicht als "
+            + "strukturierte Einheit erkannt wurde — die Auswahl trifft die "
+            + "Namenserkennung, nicht du.",
+        numbers: zahlen, note: (f || {}).switch_note,
+        basis: `${fmt(((f || {}).rides_used) || 0)} Fahrten tragen die Kurve heute · `
+          + `${fmt(zaehl("endurance", true))} markierte Grundlagen-Fahrten sind gemessen`,
+      })}
+
+      ${this._switchRow({
+        title: "Arbeitsblöcke", act: "swblocks", on: false,
+        offLabel: "Namenserkennung", onLabel: "meine Markierungen",
+        goLabel: "auf meine Markierungen umstellen",
+        backLabel: "zurück auf Namenserkennung",
+        what: "VO2max, SweetSpot und Tempo messen über deine Arbeitsblöcke. Heute "
+          + "wählt diese Messung ihre Blöcke selbst, an deinen Marken vorbei.",
+        basis: famStand,
+        lockedBy: kurveAn ? "" : "Erst die Ermüdungskurve. Sie liefert die "
+          + "Schwellenzahl, und die steuert das Pulsfenster, an dem die "
+          + "Blockfamilien hängen — wer die Blöcke zuerst umstellt, stellt sie "
+          + "auf ein Fenster ein, das gleich darauf wandert.",
+      })}
+    </div>`;
+  }
+
+  async _setCurveSource(on) {
+    if (this._swBusy) return;
+    this._swBusy = true;
+    try {
+      await this._ws("set_curve_source", { from_marks: !!on });
+      // Beide Bauteile neu holen: die Kurve rechnet anders, und der Reiter
+      // zeigt ihre Zahlen.
+      this._fatigue = null;
+      await this._need("fatigue");
+    } finally {
+      this._swBusy = false;
+      this._render();
+    }
+  }
+
   _dfaShares(s) {
     if (!s) return null;
     const total = (s.secs_aerobic || 0) + (s.secs_transition || 0) + (s.secs_anaerobic || 0);
@@ -5624,6 +5757,12 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
 .smbox{width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;
   border:2px solid ${C.line};border-radius:6px;background:none;cursor:pointer;padding:0}
 .smbox:hover{border-color:var(--fc)}
+.swrow{border:1px solid ${C.line};border-radius:10px;padding:10px 12px;margin:10px 0}
+.swrow.locked{opacity:.75}
+.swhead{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.swnow{font-size:12px;color:${C.tx2}}
+.swnum{border-collapse:collapse;margin:6px 0;font-size:12px}
+.swnum th,.swnum td{padding:2px 10px 2px 0;text-align:left;color:${C.tx2}}
 .smfam{margin:4px 0 0;padding-left:16px}
 .smfam li{margin:2px 0}
 .smrun{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:6px}
