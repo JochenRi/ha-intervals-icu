@@ -469,6 +469,29 @@ def curve(data: dict[str, Any], aerobic_hr: float | None = None,
             if all(abs(t - row["t"]) > 0.01 for row in measured):
                 literature.append(_point(t, None))
             t += 0.25
+        # KEINE ZAHL UNTERHALB DES BESTANDS. Das Feinraster begann fest bei
+        # 0,25 h, unabhaengig davon, wo die eigenen Daten anfangen - und dort
+        # unten stand eine Studienform-Zahl HOEHER als jede gemessene, in einem
+        # Zeitbereich, in dem nie gefahren wurde.
+        #
+        # Nach unten gelesen beantwortet die Form eine ANDERE Frage: sie laeuft
+        # auf den ausgeruhten Ausgangswert zu, und den gibt es schon - als
+        # `anchor_base`, beschriftet. Zwei Wege zu einer Groesse ist 0.46.0.
+        # Dazu traegt die Achse die Aussage dort nicht: "172 W ueber eine
+        # Viertelstunde" ist keine aerobe Schwelle mehr.
+        #
+        # Gestrichen statt gekennzeichnet: eine Kennzeichnung wuerde die Zahl
+        # RECHTFERTIGEN statt sie zu entfernen - dieselbe Entscheidung wie beim
+        # Messknopf, der fuer Blockfamilien lieber gar nichts rechnet.
+        #
+        # DIE GRENZE HAENGT AM ERSTEN PLAN-PUNKT, nicht am ersten gemessenen:
+        # `measured` traegt die Stundenmitte (t = 0,5), `plan` die geplante
+        # Dauer (t = 1,0), und der Zeiger liest die LEITZAHL. Eine Grenze bei
+        # 0,5 liesse genau den Punkt stehen, der keine Leitzahl hat und nur
+        # eine Studienform-Zahl zeigt - also das Problem.
+        floor_t = float(plan[0]["hours"]) if plan else None
+        if floor_t is not None:
+            literature = [row for row in literature if row["t"] >= floor_t - 0.01]
         literature.sort(key=lambda row: row["t"])
     else:
         base = None
@@ -523,6 +546,15 @@ def curve(data: dict[str, Any], aerobic_hr: float | None = None,
         "solid_until_hour": measured_solid,
         "thin_until_hour": thin_until,
         "rides_used": len(selection["used"]),
+        # WELCHE Fahrten es sind, nicht nur wie viele. Ohne diese Zeile ist der
+        # Schalter nicht ueberpruefbar: die Kachel nennt "10 Fahrten" und
+        # niemand kann nachsehen, ob es die richtigen sind. Schlank gehalten -
+        # die Stundenreihen selbst bleiben draussen, sie stehen an der Fahrt.
+        "used": [{"activity_id": row.get("activity_id"), "date": row.get("date"),
+                  "name": row.get("name"),
+                  "hours_with_value": sum(
+                      1 for h in (row.get("hours") or []) if (h or {}).get("p075") is not None)}
+                 for row in selection["used"]],
         "paired": paired,
         "occupancy_rising": rising,
         "min_pairs": FATIGUE_MIN_PAIRS,

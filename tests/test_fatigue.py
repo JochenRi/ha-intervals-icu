@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "custom_components"
 import copy  # noqa: E402
 import derive  # noqa: E402
 import fatigue  # noqa: E402
+from fatigue import rides  # noqa: E402
 import section_marks as marks_lib  # noqa: E402
 from const import FATIGUE_SOLID_MIN_RIDES, FATIGUE_THIN_MIN_RIDES  # noqa: E402
 
@@ -552,6 +553,40 @@ ok("Rueckfall: beide Bauteile stehen noch",
 # Die Kachel muss sagen, WAS sich aendert - und der wichtigste Teil sind nicht
 # die Zahlen, sondern die LESERICHTUNG.
 _p = fatigue.curve(_basis)
+# --- KEINE ZAHL UNTERHALB DES BESTANDS ---------------------------------------
+# Das Feinraster begann fest bei 0,25 h. Unterhalb der ersten Leitzahl stand
+# dort eine Studienform-Zahl HOEHER als jede gemessene - in einem Zeitbereich,
+# in dem nie gefahren wurde.
+_u = fatigue.curve(_basis)
+_erste = (_u.get("plan") or [{}])[0].get("hours")
+# TREFFERZUSICHERUNG: das Raster WUERDE ohne die Grenze dort Punkte erzeugen -
+# sonst prueft alles darunter nur, dass eine leere Liste leer ist.
+ok("Untergrenze Fixture-Beweis: das Feinraster beginnt gar nicht unter der ersten Leitzahl",
+   fatigue._plan_chain(rides(_basis)["used"]) and _erste is not None and _erste > 0.25)
+check("Untergrenze: kein Punkt unterhalb der ersten Leitzahl",
+      [row["t"] for row in _u.get("literature", []) if row["t"] < (_erste or 0) - 0.01], [])
+ok("Untergrenze: die Form beginnt GENAU dort",
+   abs(min(row["t"] for row in _u.get("literature", [])) - float(_erste)) < 0.02)
+# NACH OBEN unberuehrt: die Streichung gilt nur nach unten.
+ok("Untergrenze: der Anhaengepunkt nach oben ist unberuehrt",
+   (_u.get("literature_from_hours") or 0) >= float(_erste)
+   and any(row.get("beyond") for row in _u.get("literature", [])))
+ok("Untergrenze: und die Form reicht weiter als der Bestand",
+   max(row["t"] for row in _u.get("literature", []))
+   > max(r["hours"] for r in _u.get("plan", [])))
+
+# WELCHE Fahrten es sind, nicht nur wie viele - sonst ist der Schalter nicht
+# ueberpruefbar. `activity_id` muss ankommen, sonst ist die Liste nicht
+# klickbar (P6).
+check("Fahrtenliste: so viele Zeilen wie gezaehlte Fahrten",
+      len(_u.get("used") or []), _u.get("rides_used"))
+ok("Fahrtenliste: jede Zeile traegt ihre activity_id",
+   all(row.get("activity_id") for row in (_u.get("used") or [])))
+ok("Fahrtenliste: und Datum und Namen",
+   all("date" in row and "name" in row for row in (_u.get("used") or [])))
+check("Fahrtenliste: die Stundenreihen selbst bleiben draussen",
+      [row for row in (_u.get("used") or []) if "hours" in row], [])
+
 check("Schalter: die Quelle reist in der Payload mit", _p.get("from_marks"), False)
 _basis["settings"] = {fatigue.CURVE_SWITCH: True}
 check("Schalter: und sie folgt der Stellung",
