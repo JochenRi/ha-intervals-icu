@@ -4007,6 +4007,9 @@ class IntervalsIcuPanel extends HTMLElement {
              Blockschalter stand dann "Grundlage: VO2max: 0 von 3". Ein Wort,
              das in derselben Kachel zwei Dinge bedeutet, ist eines zu viel. */
         cfg.basis ? `<p class="src"><b>Worauf es steht:</b> ${esc(cfg.basis)}</p>` : ""}
+      ${(cfg.outside || []).length ? `<p class="src warn">
+        <b>Im Bereich nachgesehen:</b> ${cfg.outside.map(esc).join(" · ")}.
+        ${esc(cfg.outsideNote || "")}</p>` : ""}
       ${gesperrt
         // DIE SPERRE SAGT WARUM, nicht nur DASS. Eine gesperrte Schaltflaeche
         // ohne Grund ist eine Sackgasse mit Rahmen.
@@ -4031,6 +4034,21 @@ class IntervalsIcuPanel extends HTMLElement {
       return `${(FAM[fam] || {}).l || fam}: ${fmt(n)} von ${fmt(min)}`
         + (n >= min ? "" : ` — noch ${fmt(min - n)}`);
     }).join(" · ");
+    // DIE KORRIDOR-GEGENÜBERSTELLUNG. Keine Automatik: der Bereich steht fest,
+    // das alpha ist gemessen, verglichen werden zwei Zahlen. Kein Wort, das
+    // nach Mangel klingt — nur die Zahl und die FOLGE, und beides aus der
+    // Payload.
+    const korr = sm.corridor_state || {};
+    const grenzen = sm.corridors || {};
+    const draussen = ["vo2max", "sweetspot", "tempo"].map((fam) => {
+      const box = korr[fam];
+      const g = grenzen[fam];
+      if (!box || !(box.outside || []).length || !g) return "";
+      const werte = box.outside.map((o) => fmt(o.alpha, 2)).join(" · ");
+      return `${(FAM[fam] || {}).l || fam}: ${fmt(box.outside.length)} von `
+        + `${fmt(box.blocks)} Blöcken außerhalb des Bereichs `
+        + `(alpha ${werte}, Bereich ${fmt(g[0], 2)}–${fmt(g[1], 2)})`;
+    }).filter(Boolean);
 
     const plan = (f || {}).plan || [];
     const other = (f || {}).plan_other || [];
@@ -4077,6 +4095,7 @@ class IntervalsIcuPanel extends HTMLElement {
         what: "VO2max, SweetSpot und Tempo messen über deine Arbeitsblöcke. Heute "
           + "wählt diese Messung ihre Blöcke selbst, an deinen Marken vorbei.",
         basis: famStand,
+        outside: draussen, outsideNote: sm.outside_note,
         lockedBy: kurveAn ? "" : "Erst die Ermüdungskurve. Sie liefert die "
           + "Schwellenzahl, und die steuert das Pulsfenster, an dem die "
           + "Blockfamilien hängen — wer die Blöcke zuerst umstellt, stellt sie "

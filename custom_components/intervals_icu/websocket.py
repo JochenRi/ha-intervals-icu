@@ -1170,6 +1170,11 @@ def websocket_section_marks(hass, connection, msg) -> None:
         "not_active": {"blocks": marks_lib.NOT_ACTIVE_BLOCKS,
                        "curve": marks_lib.NOT_ACTIVE_CURVE},
         "no_value": marks_lib.NO_VALUE,
+        # Was der Regelkreis spaeter sieht, BEVOR er es tut: je Familie die
+        # Bloecke im und ausserhalb ihres Korridors.
+        "corridor_state": marks_lib.corridor_state(
+            data.get("section_marks") or {}, BLOCK_CORRIDORS),
+        "outside_note": marks_lib.OUTSIDE_NOTE,
         # Der ZWEITE Satz, fuer den, der schon einmal gemessen hat. Beide aus
         # derselben Quelle wie der Zustand selbst (fuenfte Bauregel) - eine
         # Fassung im Frontend waere die zweite Wahrheit aus 0.52.0.

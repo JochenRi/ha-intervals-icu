@@ -667,6 +667,53 @@ check("Oeffnen: und es fasst den vorhandenen Grund nicht an",
       sm.entry_for(dh, "f1").get("reason"), sm.STALE_REASON["section_moved"])
 
 
+# --- 12 · Der Korridor: zwei Zahlen gegenuebergestellt ------------------------
+print("\n=== 12 · Bloecke im und ausserhalb ihres Korridors ===")
+
+KORR = {"vo2max": (0.20, 0.50), "sweetspot": (0.50, 0.75), "tempo": (0.75, 1.00)}
+BESTAND = {
+    "k1": {"date": "2026-09-13", "marks": {"tempo": [727, 2256]},
+           "measure": {"tempo": {"blocks": [{"start_index": 727, "alpha": 1.346},
+                                            {"start_index": 2256, "alpha": 0.868}]}}},
+    "k2": {"date": "2026-08-20", "marks": {"tempo": [2388]},
+           "measure": {"tempo": {"blocks": [{"start_index": 2388, "alpha": 0.915}]}}},
+    "k3": {"date": "2026-09-01", "marks": {"vo2max": [875]},
+           "measure": {"vo2max": {"blocks": [{"start_index": 875, "alpha": 0.472}]}}},
+}
+st = sm.corridor_state(BESTAND, KORR)
+# TREFFERZUSICHERUNG: die Fixture enthaelt WIRKLICH einen Block ausserhalb UND
+# einen innerhalb derselben Familie. Ohne beides prueft die Gegenueberstellung
+# nichts (§7, achtundzwanzigster Fall).
+ok("Korridor Fixture-Beweis: die Fixture hat keinen Block ausserhalb",
+   any(b["alpha"] > KORR["tempo"][1] for b in
+       BESTAND["k1"]["measure"]["tempo"]["blocks"]))
+ok("Korridor Fixture-Beweis: und keinen innerhalb derselben Familie",
+   any(KORR["tempo"][0] <= b["alpha"] <= KORR["tempo"][1] for b in
+       BESTAND["k1"]["measure"]["tempo"]["blocks"]))
+
+check("Korridor: Tempo zaehlt drei Bloecke", st.get("tempo", {}).get("blocks"), 3)
+check("Korridor: einer davon liegt ausserhalb",
+      [row["alpha"] for row in st.get("tempo", {}).get("outside", [])], [1.346])
+check("Korridor: und er wird mit seinem Datum benannt",
+      [row["date"] for row in st.get("tempo", {}).get("outside", [])], ["2026-09-13"])
+check("Korridor: VO2max liegt vollstaendig drin",
+      st.get("vo2max", {}).get("outside"), [])
+check("Korridor: eine Familie ohne Messung kommt nicht vor",
+      "sweetspot" in st, False)
+check("Korridor: ohne Korridore gibt es nichts zu vergleichen",
+      sm.corridor_state(BESTAND, {}), {})
+check("Korridor: ohne Bestand ebenfalls nicht", sm.corridor_state({}, KORR), {})
+
+# KEIN VORWURFSTON - dieselbe Sperre wie beim Kein-Wert-Satz, hier eigens
+# geprueft, weil es ein anderer Text ist.
+for wort in ("fehlerhaft", "ungültig", "falsch", "Fehler", "Mangel", "zu locker"):
+    ok(f"Korridor-Satz: das Wort {wort!r} klingt nach Mangel",
+       wort not in sm.OUTSIDE_NOTE)
+ok("Korridor-Satz: er sagt nicht, WAS folgt", "Median" in sm.OUTSIDE_NOTE)
+ok("Korridor-Satz: er nennt den Regelkreis nicht",
+   "Regelkreis" in sm.OUTSIDE_NOTE and "Vorgabe" in sm.OUTSIDE_NOTE)
+
+
 print(f"test_section_marks: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

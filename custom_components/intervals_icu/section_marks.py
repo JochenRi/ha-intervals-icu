@@ -330,6 +330,53 @@ def anchor_of(laps: Any, indices: list[int]) -> dict[str, Any]:
     return {"laps": len(rows), "sections": sections}
 
 
+# WAS EIN BLOCK AUSSERHALB SEINES KORRIDORS BEDEUTET - und warum es den
+# Athleten angeht. Kein Vorwurfston: der Korridor steht fest, die alpha-Werte
+# sind gemessen, verglichen werden zwei Zahlen. Gesagt wird die FOLGE, nicht
+# nur die Feststellung.
+OUTSIDE_NOTE = ("Ein Block außerhalb des Bereichs zieht den Median seiner "
+                "Familie in seine Richtung — und der Regelkreis will die "
+                "Vorgabe daraufhin korrigieren. Die Zahl stimmt; sie beschreibt "
+                "dann nur einen anderen Abschnitt, als du steuern wolltest.")
+
+
+def _alpha(value: Any) -> float | None:
+    """Ein alpha-Wert, oder nichts. `_index` taugt nicht: alpha ist gebrochen."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
+
+
+def corridor_state(data: Any, corridors: Any) -> dict[str, Any]:
+    """Je Familie: wie viele gemessene Bloecke liegen im Korridor, wie viele nicht.
+
+    Eine reine GEGENUEBERSTELLUNG zweier Zahlen - der Korridor ist gesetzt, das
+    alpha ist gemessen. Entschieden wird nichts; angezeigt wird, was der
+    Regelkreis spaeter sieht, BEVOR er es tut.
+    """
+    out: dict[str, Any] = {}
+    bounds = corridors if isinstance(corridors, dict) else {}
+    for entry in (data or {}).values():
+        if not isinstance(entry, dict):
+            continue
+        for family, got in ((entry.get("measure") or {}).items()):
+            low_high = bounds.get(family)
+            if not isinstance(got, dict) or not isinstance(low_high, (list, tuple)):
+                continue
+            box = out.setdefault(family, {"blocks": 0, "outside": []})
+            for row in (got.get("blocks") or []):
+                alpha = _alpha(row.get("alpha") if isinstance(row, dict) else None)
+                if alpha is None:
+                    continue
+                box["blocks"] += 1
+                if not float(low_high[0]) <= alpha <= float(low_high[1]):
+                    box["outside"].append({"date": str(entry.get("date") or ""),
+                                           "alpha": round(alpha, 3)})
+    for box in out.values():
+        box["outside"].sort(key=lambda row: row["date"])
+    return out
+
+
 def mask_ranges(laps: Any, indices: Any) -> tuple[list[tuple[int, int]], list[int]]:
     """Aus markierten `start_index` die Stromstellen-Bereiche [start, end).
 

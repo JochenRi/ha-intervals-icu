@@ -2209,6 +2209,38 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   ok(/Worauf es steht:/.test(aus),
      "quellen: die Trägerzeile fehlt");
 
+  // DIE KORRIDOR-GEGENÜBERSTELLUNG am Blockschalter. Keine Automatik: der
+  // Bereich steht fest, das alpha ist gemessen, verglichen werden zwei Zahlen.
+  const qk = new M.Panel();
+  qk._smarks = { marks: [], families: Object.keys(M.FAM), min_for_source: 3,
+    corridors: { tempo: [0.75, 1.0] },
+    corridor_state: { tempo: { blocks: 3, outside: [{ date: "2026-09-13", alpha: 1.346 }] } },
+    outside_note: "FOLGESATZ AUS DER PAYLOAD." };
+  const mitK = String(qk.rQuellen(F.fatigue({ from_marks: true }), null));
+  // TREFFERZUSICHERUNG: die Fixture trägt einen Block AUSSERHALB und einen
+  // Bereich dazu - ohne beides prüft die Zeile nichts.
+  ok(qk._smarks.corridor_state.tempo.outside.length === 1
+     && qk._smarks.corridors.tempo[1] < qk._smarks.corridor_state.tempo.outside[0].alpha,
+     "korridor Fixture-Beweis: die Fixture hat keinen Block außerhalb");
+  ok(/1 von 3 Blöcken außerhalb des Bereichs/.test(mitK),
+     "korridor: die Gegenüberstellung fehlt");
+  ok(/alpha 1[.,]35/.test(mitK) && /0[.,]75–1[.,]00/.test(mitK),
+     "korridor: die Zahlen oder der Bereich fehlen");
+  ok(/FOLGESATZ AUS DER PAYLOAD\./.test(mitK),
+     "korridor: der Satz ist im Frontend eingebaut statt aus der Payload");
+  // KEIN VORWURFSTON an dieser Stelle.
+  const kzeile = (/Im Bereich nachgesehen:[\s\S]{0,260}/.exec(mitK) || [""])[0];
+  ok(kzeile !== "" && !/fehlerhaft|ungültig|falsch/i.test(kzeile),
+     `korridor: die Zeile klingt nach Mangel (${kzeile.slice(0, 120)})`);
+  // GEGENPROBE: ohne Block außerhalb steht die Zeile NICHT da.
+  const qo = new M.Panel();
+  qo._smarks = { marks: [], families: Object.keys(M.FAM), min_for_source: 3,
+    corridors: { tempo: [0.75, 1.0] },
+    corridor_state: { tempo: { blocks: 3, outside: [] } },
+    outside_note: "FOLGESATZ AUS DER PAYLOAD." };
+  ok(!/Im Bereich nachgesehen/.test(String(qo.rQuellen(F.fatigue({ from_marks: true }), null))),
+     "korridor: die Zeile steht auch ohne Block außerhalb da");
+
   ok(/Ermüdungskurve/.test(aus) && /Arbeitsblöcke/.test(aus),
      "quellen: die beiden Schalter stehen nicht nebeneinander");
   // DIE SPERRE SAGT WARUM, nicht nur DASS.
