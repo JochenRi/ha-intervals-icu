@@ -2,9 +2,9 @@
 
 ## AKTUELL — Stufentest-Rechenweg auf e1 (16.09.2026, spät). Zuerst lesen.
 
-**Schritt 1 GEBAUT auf `paket-b2-wip` (16.09.2026), nicht ausgeliefert.** Ausgeliefert
-bleibt 0.59.0. Prüfstand: **21 Dateien, 6.971 Prüfungen, 0 Fehler** (test_ramp 89→206,
-test_handlers 69→76). §10 Punkt 8 ist erledigt (Verzögerung bei Intervals).
+**Schritte 1 und 2 GEBAUT auf `paket-b2-wip` (16.09.2026), nicht ausgeliefert.** Ausgeliefert
+bleibt 0.59.0. Prüfstand: **21 Dateien, 6.995 Prüfungen, 0 Fehler** (test_ramp 89→206→229,
+test_handlers 69→76→77). §10 Punkt 8 ist erledigt (Verzögerung bei Intervals).
 
 ### Stand Schritt 1 — was gebaut ist und was die Übergabe korrigiert
 
@@ -33,6 +33,20 @@ test_handlers 69→76). §10 Punkt 8 ist erledigt (Verzögerung bei Intervals).
   Rampe 5,69, nicht 6,2. Das Einrollen ist nicht konstant 128 W: 128 W bis Minute 6, dann
   Stufe auf ~139 W. Die Grenze 2,5 trägt mit Faktor 2 nach beiden Seiten.
 - Nicht angefasst (Schritt 3): Docstring „Beide Arbeiten …", Quellenzuordnung, Karte.
+
+### Stand Schritt 2 — Widerspruchsprüfung
+
+- `result.contradiction`: `None`, oder `{code: "reached_without_hrvt2", below_from_s,
+  reason}` wenn der Boden im Segment gemessen ist und HRVT2 trotzdem leer bleibt. Die
+  Zahl wird NICHT nachgeliefert (kein Hochrechnen). Das Feld steht immer im Ergebnis.
+- Unter e1 nur mit einer konstruierten Mulde herstellbar (Abfall auf 0,40, 120 s gehalten,
+  Wiederanstieg auf 1,20 bis Lastende → Schnitt 0,5 bei 3056 s hinter dem Lastende 2399).
+  Gegenproben: sauberer Test, Abbruch 0,62, konvexer Abfall, echter Strom melden nichts.
+  6 Mutationen gezählt und benannt.
+- **Karte zeigt das Feld noch nicht** → Schritt 3 (Texte).
+- Nebenbefund, NICHT gebaut: dieselbe Mulde mit Wiederanstieg nur auf 0,9 liefert HRVT2 bei
+  2335 s, wo die Messung längst wieder über 0,5 lag — Grenze des Linearmodells. Unter
+  steigender Last keine Rampenform; nur notiert.
 
 ### Befund (am 1-Hz-Strom der Aktivität i187258578 belegt)
 

@@ -341,6 +341,8 @@ eq("Stufentest-Handler: echter Strom ohne Fehlermeldung", _ok_conn.errors, [])
 eq("Stufentest-Handler: echter Strom traegt HRVT2 1861 s",
    ((_ok_entry.get("result") or {}).get("hrvt2") or {}).get("seconds"), 1861)
 eq("Stufentest-Handler: echter Strom schreibt einen Grund", _ok_entry.get("reason"), "")
+check("Stufentest-Handler: das Widerspruchsfeld kommt nicht im Archiv an",
+      "contradiction" in (_ok_entry.get("result") or {}))
 # Derselbe Strom OHNE Einrollen: die ersten 15 Minuten abgeschnitten.
 _cut = 900
 _no_warm = (_REAL["alpha1"][_cut:], _REAL["watts"][_cut:], _REAL["heartrate"][_cut:])

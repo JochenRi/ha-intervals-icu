@@ -204,6 +204,9 @@ COOLDOWN_MISSING = "cooldown_missing"
 COOLDOWN_TOO_SHORT = "cooldown_too_short"
 COOLDOWN_TOO_LONG = "cooldown_too_long"
 NO_ALPHA = "no_alpha"
+# Kein Grund fuer ein LEERES Ergebnis, sondern ein Befund IM Ergebnis: der Boden
+# ist gemessen, die Gerade trifft 0,5 trotzdem nicht im Segment.
+REACHED_WITHOUT_HRVT2 = "reached_without_hrvt2"
 NO_FALL = "no_fall"
 TOO_FEW_POINTS = "too_few_points"
 
@@ -253,6 +256,10 @@ def _reason(code: str, facts: dict[str, Any]) -> str:
                  "höchste Wert liegt am Ende.",
         TOO_FEW_POINTS: f"Der Abfall von DFA a1 trägt weniger als {RAMP_MIN_POINTS} "
                         "Messpunkte — daraus wird keine Gerade gelegt.",
+        REACHED_WITHOUT_HRVT2: f"Unter 0,5 warst du — ab Sekunde {num('below_from_s')} "
+                               f"mindestens {RAMP_FLAT_S} s lang. Die Ausgleichsgerade "
+                               "durch den Abfall trifft 0,5 dort nur nicht, deshalb steht "
+                               "keine HRVT2.",
     }
     return texts[code]
 
@@ -369,17 +376,23 @@ def segment(dfa: list[Any] | None, first_index: int, last_index: int,
     # unter der HRVT2 genannt wird.
     flat_needed = max(1, RAMP_FLAT_S // step)
     reached = False
+    below_from: int | None = None
     run = 0
     for index in range(start, last_index + 1):
         value = smooth[index]
         if value is None:
             continue
-        run = run + 1 if value < DFA_ANAEROBIC else 0
+        if value < DFA_ANAEROBIC:
+            below_from = index if run == 0 else below_from
+            run += 1
+        else:
+            run = 0
         if run >= flat_needed:
             reached = True
             break
     return {"start_index": start, "end_index": last_index, "max_alpha_start": round(peak, 3),
-            "points": points, "reached_anaerobic": reached}
+            "points": points, "reached_anaerobic": reached,
+            "below_from_index": below_from if reached else None}
 
 
 def _fit(values: list[float | None], start: int, end: int, step: int) -> dict[str, float] | None:
@@ -494,6 +507,16 @@ def measure(dfa: list[Any] | None, watts: list[Any] | None = None,
                      "slope_share": RAMP_PROTOCOL_SLOPE_SHARE,
                      "cooldown_max_share": RAMP_COOLDOWN_MAX_SHARE},
     }
+    # WIDERSPRUCH MELDEN, nicht durchlassen: Boden gemessen, HRVT2 trotzdem
+    # leer. Unter e1 kaum noch erreichbar - genau deshalb ein Waechter statt
+    # einer Annahme. Die Zahl wird NICHT nachgeliefert (kein Hochrechnen), aber
+    # der Zustand steht mit Satz im Ergebnis, statt als "nicht erreicht" zu lesen.
+    out["contradiction"] = None
+    if seg["reached_anaerobic"] and out["hrvt2"] is None:
+        below_s = None if seg.get("below_from_index") is None else seg["below_from_index"] * step
+        out["contradiction"] = {"code": REACHED_WITHOUT_HRVT2, "below_from_s": below_s,
+                                "reason": _reason(REACHED_WITHOUT_HRVT2,
+                                                  {"below_from_s": below_s})}
     # Die Erholung setzt am LASTENDE an (seit e1) - `back_above_s` zaehlt also
     # ab dem Ende der Belastung, nicht mehr ab dem ersten Lauf unter 0,5.
     out["recovery"] = recovery(dfa, seg["end_index"], sample_secs)

@@ -579,6 +579,62 @@ near("Befund: und die Leistung dort ist nicht die flache des Einrollens",
      ramp._span_median(RW, (_rpeak or (0, 0))[0] - 30, (_rpeak or (0, 0))[0] + 30), 128, 3)
 
 
+# ── 13 Widerspruch: Boden gemessen, HRVT2 trotzdem leer - MELDEN ────────────
+# Unter e1 kaum noch erreichbar, deshalb eine Fixture, die ihn herstellt: eine
+# Mulde. Abfall auf 0,40, dort gehalten, dann Wiederanstieg bis zum Lastende -
+# die Gerade durch das ganze Segment faellt zu flach und trifft 0,5 erst weit
+# hinter dem Lastende.
+MULDE_DROP, MULDE_HOLD, MULDE_BOTTOM, MULDE_BACK = 600, 120, 0.40, 1.20
+mulde = list(DFA)
+_rise = DROP_S - MULDE_DROP - MULDE_HOLD
+for _t in range(DROP_S):
+    if _t < MULDE_DROP:
+        _v = PEAK + (MULDE_BOTTOM - PEAK) * _t / (MULDE_DROP - 1)
+    elif _t < MULDE_DROP + MULDE_HOLD:
+        _v = MULDE_BOTTOM
+    else:
+        _v = MULDE_BOTTOM + (MULDE_BACK - MULDE_BOTTOM) * (_t - MULDE_DROP - MULDE_HOLD) / (_rise - 1)
+    mulde[P0 + _t] = _v
+# Fixture-Beweise, unabhaengig von measure(): die Rohdaten liegen im Segment
+# laenger als die Flachstrecke unter 0,5, und die Gerade trifft 0,5 dahinter.
+ok("Widerspruch Fixture-Beweis: die Mulde liegt im Segment laenger als "
+   "RAMP_FLAT_S unter 0,5", sum(1 for v in mulde[P0:LOAD_END + 1] if v < DFA_ANAEROBIC) > 2 * RAMP_FLAT_S)
+_mf = ramp._fit(ramp._clean(mulde), P0, LOAD_END, 1) or {}
+_mcross = ((DFA_ANAEROBIC - _mf.get("intercept", 0.0)) / _mf.get("slope")) if (_mf.get("slope") or 0) < 0 else None
+ok("Widerspruch Fixture-Beweis: die Gerade faellt und trifft 0,5 erst HINTER dem Lastende",
+   _mcross is not None and _mcross > LOAD_END)
+_mm = ramp.measure(mulde, WATTS, HR)
+res_mulde = at(_mm, "result")
+check("Widerspruch: die Mulde wird nicht ausgewertet", at(_mm, "code"), None)
+check("Widerspruch Trefferzusicherung: der Boden gilt als erreicht",
+      at(res_mulde, "reached_anaerobic"), True)
+check("Widerspruch Trefferzusicherung: HRVT2 ist leer", at(res_mulde, "hrvt2"), None)
+_con = at(res_mulde, "contradiction")
+check("Widerspruch: der Zustand wird nicht gemeldet", at(_con, "code"), ramp.REACHED_WITHOUT_HRVT2)
+near("Widerspruch: die Stelle unter 0,5 stimmt nicht",
+     at(_con, "below_from_s"), P0 + (PEAK - DFA_ANAEROBIC) / (PEAK - MULDE_BOTTOM) * (MULDE_DROP - 1),
+     RAMP_SMOOTH_S)
+_ctext = at(_con, "reason") or ""
+ok("Widerspruch: der Satz sagt nicht, dass 0,5 erreicht war", "Unter 0,5 warst du" in _ctext)
+ok("Widerspruch: der Satz nennt die Sekunde nicht", str(at(_con, "below_from_s")) in _ctext)
+ok("Widerspruch: der Satz gleicht einem Grund fuer ein leeres Ergebnis",
+   _ctext not in REASONS.values())
+for _wort in ("zu locker", "Fehler", "Mangel", "leider", "nicht ausreich"):
+    ok(f"Widerspruch: gesperrtes Wort ({_wort})", _wort not in _ctext)
+ok("Widerspruch: der Satz ist laenger als das Archivfeld", 0 < len(_ctext) <= ramp_tests.NOTE_LIMIT)
+ok("Widerspruch: die Meldung verschluckt HRVT1 - das Ergebnis bleibt stehen",
+   at(res_mulde, "hrvt1") is not None)
+# GEGENPROBEN: melden darf NUR der Widerspruch, nicht jede leere HRVT2.
+ok("Widerspruch Payload: das Feld fehlt im sauberen Ergebnis - die Karte "
+   "koennte fehlend nicht von leer unterscheiden", isinstance(res, dict) and "contradiction" in res)
+check("Widerspruch Gegenprobe: der saubere Test meldet einen", at(res, "contradiction"), None)
+ok("Widerspruch Gegenprobe Trefferzusicherung: der Abbruch hat keine HRVT2 und keinen Boden",
+   at(abgebrochen, "hrvt2") is None and at(abgebrochen, "reached_anaerobic") is False)
+check("Widerspruch Gegenprobe: der Abbruch bei 0,62 meldet einen", at(abgebrochen, "contradiction"), None)
+check("Widerspruch Gegenprobe: der konvexe Abfall (nie unter 0,5) meldet einen",
+      at(res_konvex, "contradiction"), None)
+check("Widerspruch Gegenprobe: der echte Strom meldet einen", at(real, "contradiction"), None)
+
 print(f"\ntest_ramp: {CHECKS} Prüfungen, {len(failures)} Fehler")
 print("FEHLER:", failures if failures else "keine")
 sys.exit(1 if failures else 0)
