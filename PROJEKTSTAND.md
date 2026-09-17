@@ -1,6 +1,6 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 16.09.2026 · **Version:** 0.60.0 · **Status:** produktiv auf HEIMDALL,
+**Stand:** 18.09.2026 · **Version:** 0.61.0 · **Status:** produktiv auf HEIMDALL,
 Auslieferung über HACS aus `github.com/JochenRi/ha-intervals-icu`
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lokal

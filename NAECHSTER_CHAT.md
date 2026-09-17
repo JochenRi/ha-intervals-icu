@@ -1,10 +1,13 @@
 # ha-intervals-icu — Übergabe an den nächsten Chat
 
-## AKTUELL — Paket „Kreuzprobe klein": Steuerung v2 gebaut, hinter Schalter, NICHT ausgeliefert (18.09.2026). Zuerst lesen.
+## AKTUELL — 0.61.0 ausgeliefert: Steuerung v2 hinter dem Schalter, ab Werk AUS (18.09.2026). Zuerst lesen.
 
-**Branch `paket-steering-v2`** (auf `main` 7e15fe0 = 0.60.0), gepusht, **nicht** nach `main`
-gemergt und **keine** neue Version. Prüfstand **22 Dateien, 7.136 Prüfungen, 0 Fehler**
-(Basis war 21 / 7.048 / 0).
+**Ausgeliefert: 0.61.0** (Tag `v0.61.0`, `main` = `paket-steering-v2`). Prüfstand
+**22 Dateien, 7.159 Prüfungen, 0 Fehler** (Basis war 21 / 7.048 / 0). Johannes:
+HACS-Update, HA-Neustart, Browser hart neu laden. **Der Schalter startet AUS** — die
+Kacheln zeigen weiter die Zahlen von 0.60.0; in der Blockkachel steht die Parallelanzeige
+als Vorschau. Einschalten erst, wenn er sie über ein paar Einheiten gesehen hat
+(`intervals_icu/set_steering_source`, Knopf folgt in der Karte).
 
 **Was drin ist — alles hinter dem neuen Schalter `steering_v2` (`intervals_icu/set_steering_source`).
 Schalter aus = Verhalten von 0.60.0, bitgenau (im Prüfstand zugesichert):**
@@ -25,9 +28,9 @@ Schalter aus = Verhalten von 0.60.0, bitgenau (im Prüfstand zugesichert):**
    (ab 85 % der Spitzenleistung, Dauer ±35 % um den Median).
 7. `settings` steht jetzt im Archivskelett (`importer.empty_data`).
 
-**OFFEN, bewusst nicht geändert:** das **Rampenende hängt an Block 1** (`workouts.py` ~728):
-heute **307 W** (257 W + 50 W Reserve, 38 min), mit Regel 1 wären es **300 W** (250 W + 50 W,
-37 min). Entscheidung steht aus — siehe PROJEKTSTAND §10 Punkt 0.
+8. **Rampenende folgt der Vorgabe** statt Block 1: mit Schalter **300 W** (Vorgabe 250 W +
+   50 W Reserve, 37 min) gegen **307 W** ohne (Block 1 257 W, 38 min). Die Stufe `blocks`
+   bleibt als Rückfall stehen.
 
 **Die Rampen-Lesart bleibt OFFEN:** erste Unterschreitung 194 W gegen dauerhafte 217 W
 stehen nebeneinander (§7 Fall 39). Keine davon ist Vorgabe.
