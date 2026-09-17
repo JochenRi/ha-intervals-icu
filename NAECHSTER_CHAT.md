@@ -1,6 +1,40 @@
 # ha-intervals-icu — Übergabe an den nächsten Chat
 
-## AKTUELL — 0.60.0 ausgeliefert: Rechenweg e1, Stufentest steuert NICHTS (16.09.2026, Nacht). Zuerst lesen.
+## AKTUELL — Paket „Kreuzprobe klein": Steuerung v2 gebaut, hinter Schalter, NICHT ausgeliefert (18.09.2026). Zuerst lesen.
+
+**Branch `paket-steering-v2`** (auf `main` 7e15fe0 = 0.60.0), gepusht, **nicht** nach `main`
+gemergt und **keine** neue Version. Prüfstand **22 Dateien, 7.136 Prüfungen, 0 Fehler**
+(Basis war 21 / 7.048 / 0).
+
+**Was drin ist — alles hinter dem neuen Schalter `steering_v2` (`intervals_icu/set_steering_source`).
+Schalter aus = Verhalten von 0.60.0, bitgenau (im Prüfstand zugesichert):**
+1. **Block 1 steuert nicht** — für die Vorgabe zählt ab Block 2; Block 1 bleibt sichtbar.
+2. **Vorgabe statt „letzte Einheit"** (`steering.py`, neu): Startwert SweetSpot 190 W /
+   VO2max 250 W ab Stichtag **17.09.2026**, C6 bewegt sie um 5 W, wenn ≥ 2 der letzten 3
+   Einheiten derselben Familie auf derselben Seite außerhalb des Korridors liegen; unter
+   3 Einheiten bewegt sich nichts. **Nachgerechnet statt gespeichert** (Bauart B): kein
+   Schreibweg, kein sechster Archivblock, unabhängig von der Markierreihenfolge.
+3. **t-Band**, Breite aus dem Fenster der letzten 4 Einheiten, **zentriert auf die Vorgabe**:
+   SweetSpot 186 | 190 | 194 W, VO2max 235 | 250 | 265 W; Pulsfenster 159–174 bzw. 178–189.
+   Unter 3 Einheiten: „noch keine Toleranz".
+4. **Etiketten ehrlich:** `vo2_3030` und `vo2_3015` sagen jetzt FTP statt „blocks";
+   `vo2_5x4` nennt Block 5 als Rückfall, `vo2_4x8` die Streckung (gemessen an 4-min-Blöcken).
+5. **Parallelanzeige** in der Blockkachel: alt neben neu, mit Band — auch bei ausgeschaltetem
+   Schalter als Vorschau.
+6. Textfehler: `not_active.blocks` hängt am Schalter, „Blocköcke", EF-Satz am echten Filter
+   (ab 85 % der Spitzenleistung, Dauer ±35 % um den Median).
+7. `settings` steht jetzt im Archivskelett (`importer.empty_data`).
+
+**OFFEN, bewusst nicht geändert:** das **Rampenende hängt an Block 1** (`workouts.py` ~728):
+heute **307 W** (257 W + 50 W Reserve, 38 min), mit Regel 1 wären es **300 W** (250 W + 50 W,
+37 min). Entscheidung steht aus — siehe PROJEKTSTAND §10 Punkt 0.
+
+**Die Rampen-Lesart bleibt OFFEN:** erste Unterschreitung 194 W gegen dauerhafte 217 W
+stehen nebeneinander (§7 Fall 39). Keine davon ist Vorgabe.
+
+---
+
+## 0.60.0 ausgeliefert: Rechenweg e1, Stufentest steuert NICHTS (16.09.2026, Nacht).
 
 **Ausgeliefert: 0.60.0** (Tag `v0.60.0`, `main` = `paket-b2-wip`). Prüfstand **21 Dateien,
 7.048 Prüfungen, 0 Fehler**. Johannes: HACS-Update, HA-Neustart, Browser hart neu laden,

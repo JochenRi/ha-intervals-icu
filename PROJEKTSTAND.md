@@ -1992,6 +1992,28 @@ Vorbedingung nie eintritt, ist ungeprüft, auch wenn Tests ihn aufrufen — vor 
 steht.** Gefunden, weil vor der Auslieferung die Wirkung auf die Vorgaben gerechnet
 wurde, statt sie aus der Übergabe zu übernehmen.
 
+**Neununddreißigster Fall (Kreuzprobe, 17.09.2026, am gedünnten Strom gefunden): eine
+Gerade durch eine gebogene Kurve verschiebt die Schwelle — und die „direkte" Ablesung ist
+selbst nicht eindeutig.** *Was die Produktion tut:* `ramp._fit` legt eine Gerade α~Zeit
+durch den Abfall; `at()` liest dort 0,75 bei 1630 s = **213 W** und 0,5 bei 1861 s =
+**233 W** ab. *Die Kurve ist gebogen:* die Residuen je Drittel betragen
++0,050/−0,094/+0,044, am 20-s-Klassenmittel +0,045/−0,087/+0,045 — erst steil, dann flach.
+*Direkte Ablesung am 60-s-Median:* α=0,75 ERSTMALS unterschritten bei 1440–1450 s =
+**194 W** (mit 60 s Verzug 189–191 W); α=0,75 DAUERHAFT unterschritten bei 1640 s =
+**217 W** (mit Verzug 209 W) — nach der ersten Unterschreitung liegen noch 4 von 34 Klassen
+darüber; bei α=0,5 fallen erste und dauerhafte Unterschreitung zusammen (226–231 W, mit
+Verzug 221–225 W). *Formfits:* 20-s-Klassen linear R²=0,847 (211/233 W), hyperbolisch
+R²=0,865 (201/243 W), Boden R²=0,886 (204/233 W); 60-s-Median hyperbolisch R²=0,917
+(192/220 W), linear R²=0,851 (204/222 W). *Grenzen:* gedünnt (Stufe 4 s), EINE Rampe.
+*Folge:* der Konflikt „Blöcke ~183 W gegen Rampe 213 W bei α=0,75" ist NUR unter der Lesart
+„erste Unterschreitung" ein Ableseartefakt; unter „dauerhaft" bleibt er bestehen (217 W).
+Bei α=0,5 stimmen alle Lesarten überein. **Die Lesart ist ausdrücklich NICHT festgelegt**:
+die erste (194 W) und die dauerhafte (217 W) Unterschreitung stehen nebeneinander, bis
+Johannes eine Regel wählt. **Die Lehre: eine Ablesung ist eine Regel, kein Messwert. Wer
+eine Schwelle aus einem verrauschten Abfall liest, nennt die Regel — Gerade, erste oder
+dauerhafte Unterschreitung, Kurvenform — und stellt die Lesarten nebeneinander, statt eine
+zur Zahl zu machen.**
+
 ### Die drei Fehlerklassen, die sich durchziehen
 
 1. **Falsche Quelle statt falscher Anzeige.** FTP, Tageslast — beide standen in den Daten und
@@ -2185,6 +2207,21 @@ lässt sich je Familie eine Startleistung **ablesen** — die Leistung, bei der 
 Korridor der Familie lag. Kein Prozentsatz, keine FTP, keine Umrechnung; dieselbe Größe
 aus derselben Quelle. Die Rampe vom 16.09. geht von über 1,0 bis unter 0,5 und deckt damit
 die Korridore von Grundlage bis VO2max ab.
+
+*Stand 17.09.2026 (Kreuzprobe Runde 3):* Die Rampenablesung bei α=0,75 schwankt je Regel
+zwischen **189 und 217 W**; die Blockkreuzung liegt formübergreifend bei 174–188 W (ohne
+und mit Tempo-Punkt, mit Tempo ±0,1 bis 194 W). Bei α=0,5: Rampe 221–233 W, Blöcke
+224–233 W, Bänder 212–245 W. **Keine Ablesung wird Vorgabe, bevor eine Lesart festliegt**
+(§7 Fall 39) — die erste (194 W) und die dauerhafte (217 W) Unterschreitung bleiben
+nebeneinander stehen. Und: die personalisierte Schwelle (183 W) liegt bei α=1,081, nicht
+bei α=0,75; dass sie zu den Blöcken passt, belegt nichts für α=0,75.
+
+*Offen aus dem Paket „Kreuzprobe klein" (18.09.2026):* das **Rampenende hängt an Block 1**
+(`RAMP_END_CHAIN` Stufe `blocks`, `workouts.py` ~728: `first_watts` + Reserve). Mit der
+Regel „Block 1 steuert nicht" wäre es die Steuergröße statt der Verlaufsgröße. Gerechnet
+am Livebestand: heute **307 W** (Block 1 = 257 W + 50 W Reserve, Dauer 38 min), mit Regel 1
+**300 W** (Block-2-Median 250 W + 50 W, Dauer 37 min) — dieselbe Zahl wie mit der Vorgabe
+der Steuerung. **Nicht geändert**, weil es den Wert bewegt; die Entscheidung steht aus.
 
 *Zu prüfen, BEVOR gebaut wird:*
 1. **Trägt die Ablesung am Strom?** Je Korridor rechnen, bei welcher Leistung alpha dort
