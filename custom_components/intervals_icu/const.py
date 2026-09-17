@@ -181,6 +181,52 @@ BLOCK_MIN_FOR_SOURCE = 3
 # einen eigenen Schritt unter 0,05 (Median 0,038).
 BLOCK_ORDER_TOLERANCE = 0.05
 
+# ---------------------------------------------------------------------------
+# STEUERUNG v2 (Paket "Kreuzprobe klein"). Alles hier haengt am Schalter
+# STEERING_SWITCH; steht er aus, wird keine dieser Zahlen gelesen.
+# ---------------------------------------------------------------------------
+# BLOCK 1 STEUERT NICHT. Am eigenen Bestand gemessen: in 9 von 10 Einheiten
+# faellt alpha von Block 1 auf Block 2, im Median um 0,10 - der erste Block
+# traegt systematisch das hoehere alpha (PROJEKTSTAND §7, blocks.py Kopf).
+# Wer auf ihm regelt, regelt auf dem frischesten Moment statt auf der Einheit.
+# Er bleibt sichtbar und beschriftet, er zaehlt nur nicht mit.
+STEERING_FIRST_BLOCK_COUNTS = False
+# Die Startwerte. SweetSpot 190 W ist der Familienpunkt aus Block 2 der letzten
+# vier Einheiten (189/190/192/194 W), VO2max 250 W der bisherige Kachelwert.
+# Beide sind STARTWERTE, keine laufende Regel - ab hier bewegt sie nur C6.
+STEERING_ANCHOR_W = {"sweetspot": 190, "vo2max": 250}
+# Der Stichtag, ab dem die Regel laeuft. Er ist noetig, weil die Startwerte
+# AUS dem Bestand bis hierher gerechnet wurden: liesse man die Regel noch
+# einmal ueber dieselben Einheiten laufen, waere der Startwert doppelt
+# verrechnet. Und er haelt das Nachmarkieren alter Fahrten folgenlos fuer die
+# Vorgabe - simuliert: ohne Stichtag verschiebt ein Nachtrag die heutige
+# Vorgabe in 292 von 300 Laeufen, im Mittel um 9,2 W.
+STEERING_ANCHOR_DATE = "2026-09-17"
+# C6: ein Schritt von 5 W, und nur dann, wenn MINDESTENS ZWEI der letzten DREI
+# Einheiten derselben Familie auf DERSELBEN Seite ausserhalb des Korridors
+# liegen. Bezug ist die VORGABE, nicht die gefahrenen Watt.
+STEERING_STEP_W = 5
+STEERING_WINDOW = 3
+STEERING_NEED = 2
+# Und unter DREI Einheiten seit dem Startwert bewegt sich gar nichts, auch
+# wenn die ersten beiden beide dieselbe Seite zeigen: zwei Einheiten sind
+# kein Belegungsstand, sondern zwei Tage. Die Karte sagt es statt zu schweigen.
+STEERING_MIN_UNITS = 3
+# Nach einem Schritt faengt das Fenster neu an. Ohne das schieben dieselben
+# zwei Einheiten mehrfach: simuliert 6,0 statt 2,6 Bewegungen, die Vorgabe
+# wandert bis 210 statt 230 W. Eine Ratsche, kein Regelkreis.
+STEERING_CLEAR_AFTER_STEP = True
+# Das t-Band: Median +/- t(0,90; n-1) * s * sqrt(1 + 1/n), ab n = 3, ueber die
+# letzten vier Einheiten. Das ist das VORHERSAGEband fuer die naechste Einheit,
+# nicht das Band des Mittelwerts. MAD und Bootstrap NICHT: unter n = 10 decken
+# sie 50-75 % statt der genannten 80 % (Kreuzprobe K7, 40.000 Laeufe je Fall).
+STEERING_BAND_MIN_N = 3
+STEERING_BAND_WINDOW = 4
+# t(0,90; df) - einseitig 90 %, also zweiseitig 80 %. Nur df 1..8 werden je
+# gebraucht (Fenster 4), der Rest steht fuer den Fall, dass das Fenster waechst.
+STEERING_T90 = {1: 3.078, 2: 1.886, 3: 1.638, 4: 1.533, 5: 1.476,
+                6: 1.440, 7: 1.415, 8: 1.397, 9: 1.383, 10: 1.372}
+
 # Which sessions the durability tile may look at.
 DURABILITY_MIN_MINUTES = 45      # below this a decoupling reading is not usable
 DURABILITY_MAX_INTENSITY = 80    # interval sessions are a different question
