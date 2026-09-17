@@ -241,6 +241,17 @@ ok("5x4: und die Kachel nennt sich gemischt", _f5["steering_source"]["mixed"])
 _f30 = WK.scaled(WK.BY_KEY["vo2_3030"], 194, 146, blocks=_series, steering=_st)
 ok("3030: kein Abschnitt gemessen, und das steht da",
    "FTP" in str(_f30["steering_source"]["note_blocks"]))
+# WATT UND PULS AUS DERSELBEN QUELLE - der Gleichstandstest fuer die neue
+# Kette: faellt die Wattseite auf die FTP, faellt die Pulsseite mit.
+_hr_gemessen = (_st["vo2max"].get("hr_band") or {}).get("low")
+for _k in ("vo2_3030", "vo2_3015"):
+    _e = WK.scaled(WK.BY_KEY[_k], 194, 146, blocks=_series, steering=_st)
+    check(f"{_k}: FTP-Watt und KEIN gemessenes Pulsfenster",
+          (_e["watt_source"], (_e.get("hr_window") or (None,))[0] == _hr_gemessen),
+          ("ftp", False))
+_e44 = WK.scaled(WK.BY_KEY["vo2_4x4"], 194, 146, blocks=_series, steering=_st)
+check("Gegenprobe: wo gemessene Watt stehen, steht auch das gemessene Fenster",
+      (_e44["watt_source"], _e44["hr_window"][0]), ("steering", _hr_gemessen))
 ok("Pausen und Einrollen tauchen im Rueckfallsatz NICHT auf",
    "Pause" not in str(_f5["steering_source"]["note_blocks"])
    and "Einrollen" not in str(_f5["steering_source"]["note_blocks"]))

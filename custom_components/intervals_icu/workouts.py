@@ -951,7 +951,14 @@ def scaled(entry: dict[str, Any], ftp: float | None, aerobic_hr: int | None,
             "mixed": bool(got) and len(got) != len(sources),
             "note_blocks": _source_note(sources, steered.get("measured_minutes")),
         }
-        band = steered.get("hr_band")
+        # WATT UND PULS AUS DERSELBEN QUELLE. Faellt die Wattseite auf die FTP
+        # zurueck (vo2_3030, vo2_3015: kein Abschnitt bekommt die gemessene
+        # Zahl), dann muss die Pulsseite mitfallen - sonst steht ein gemessenes
+        # Fenster neben einer ungemessenen Zahl. Genau der Gleichstand, den
+        # test_workouts seit 0.51.0 fuer die alte Kette erzwingt.
+        band = steered.get("hr_band") if got else None
+        if not got:
+            _apply_hr_hint(out, entry, aerobic_hr, max_hr)
         if band:
             out["hr_window"] = (band["low"], band["high"])
             out["hr_source"] = {**band, "family": fam, "source": "steering"}
