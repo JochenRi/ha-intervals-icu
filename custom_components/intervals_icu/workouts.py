@@ -640,6 +640,10 @@ SOURCE_CHAIN: dict[str, tuple[str, ...]] = {
 # deshalb traegt AUCH der Rueckfall eine Beschriftung.
 SOURCE_LABEL: dict[str, str] = {
     "blocks": "gemessen an deinen Arbeitsblöcken",
+    # Dieselbe Messung, aber als VORGABE gefuehrt: die Zahl folgt nicht mehr
+    # der letzten Einheit, sondern dem Startwert plus den Schritten, die C6
+    # seither gerechnet hat.
+    "steering": "deine Vorgabe — Startwert plus gerechnete Schritte",
     "curve": "gemessen an deiner Ermüdungskurve",
     "ramp_hrvt2": "gemessen im Stufentest, zweite Schwelle",
     "ramp_hrvt1": "gemessen im Stufentest, erste Schwelle",
@@ -648,7 +652,10 @@ SOURCE_LABEL: dict[str, str] = {
 
 
 RAMP_START_CHAIN: tuple[str, ...] = ("curve", "ramp_hrvt1", "ftp")
-RAMP_END_CHAIN: tuple[str, ...] = ("blocks", "ramp_hrvt2", "ftp")
+# Die Steuerung steht VOR den Bloecken: sie ist dieselbe Messung, nur als
+# Vorgabe gefuehrt. Ohne Schalter ist ihre Stufe nicht erreichbar und die
+# Kette ist die von 0.60.0.
+RAMP_END_CHAIN: tuple[str, ...] = ("steering", "blocks", "ramp_hrvt2", "ftp")
 
 
 def _ramp_node(ramp: dict[str, Any] | None, which: str) -> dict[str, Any] | None:
@@ -659,7 +666,8 @@ def _ramp_node(ramp: dict[str, Any] | None, which: str) -> dict[str, Any] | None
 
 def ramp_protocol(ftp: float | None, curve: dict[str, Any] | None = None,
                   blocks: dict[str, Any] | None = None,
-                  ramp: dict[str, Any] | None = None) -> dict[str, Any] | None:
+                  ramp: dict[str, Any] | None = None,
+                  steering: dict[str, Any] | None = None) -> dict[str, Any] | None:
     """Start- und Endleistung des Stufentests - und die DARAUS gerechnete Dauer.
 
     N1 laesst genau drei feste Zahlen zu: Einrolldauer, Ausrolldauer und die
@@ -715,7 +723,20 @@ def ramp_protocol(ftp: float | None, curve: dict[str, Any] | None = None,
     # --- Ende: die eigene Leitzahl plus Reserve -------------------------------
     end, end_from, lead = None, "ftp", None
     for stage_name in RAMP_END_CHAIN:
-        if stage_name == "blocks":
+        if stage_name == "steering":
+            # DAS RAMPENENDE FOLGT DER VORGABE, nicht Block 1. Bis 0.60.0 hing
+            # es an `first_watts` - der VERLAUFSgroesse, dem frischesten
+            # Moment der letzten Einheit. Damit sprang das Ende mit jeder
+            # Einheit, und es widersprach der Regel, dass Block 1 nicht
+            # steuert. Gerechnet am Livebestand: 307 W (Block 1 257 W) gegen
+            # 300 W (Vorgabe 250 W), Dauer 38 gegen 37 min.
+            node = (steering or {}).get("vo2max") or {}
+            if node.get("watts"):
+                lead = {"watts": node["watts"], "alpha": None,
+                        "date": node.get("anchor_date"), "source": "steering"}
+                end, end_from = round(float(node["watts"]) + reserve), "steering"
+                break
+        elif stage_name == "blocks":
             fam = ((blocks or {}).get("families") or {}).get("vo2max") or {}
             latest = fam.get("latest") if fam.get("source_ok") else None
             if isinstance(latest, dict) and latest.get("first_watts"):
@@ -764,10 +785,78 @@ def ramp_protocol(ftp: float | None, curve: dict[str, Any] | None = None,
     }
 
 
+# Ab welchem Anteil der FTP ein Abschnitt als ARBEIT gilt, wenn die Kachel
+# ihre Quellen aufzaehlt. Am Katalog abgelesen, nicht gesetzt: Einrollen,
+# Pausen und Ausrollen liegen zwischen 45 und 68 %, jeder Abschnitt darueber
+# ist Arbeit - darunter fallen genau die Faelle, um die es hier geht (Satz 1-3
+# bei 105 bzw. 112 %, Block 5 bei 112 %).
+WORK_PCT_MIN = 80
+
+
+def _is_work_block(block: tuple) -> bool:
+    """Bekommt dieser Block die gemessene Vorgabe?
+
+    DIESELBE Bedingung wie im heutigen Zweig - ein zweiter Begriff von
+    "Arbeitsblock" waere die Klasse aus 0.42.2: zwei Bauarten fuer eine Sache
+    driften auseinander. Sie steht hier nur EINMAL, damit die Ehrlichkeitsregel
+    darunter dieselbe Auswahl beurteilt, die auch gerechnet wird.
+    """
+    return bool(len(block) > 3 and block[3]
+                or str(block[2]).lower().startswith(("block", "1", "2", "3", "4")))
+
+
+def _stage_from_measurement(entry: dict[str, Any], ftp: float | None, watts: int,
+                            minutes: float | None) -> tuple[list[tuple], list[dict[str, Any]]]:
+    """Die Wattliste - und je Block, WOHER seine Zahl kommt."""
+    staged: list[tuple] = []
+    sources: list[dict[str, Any]] = []
+    for block in entry["blocks"]:
+        work = _is_work_block(block)
+        if work:
+            staged.append((block[0], watts, block[2], *block[3:]))
+        else:
+            staged.append((block[0], round(ftp * block[1] / 100) if ftp else None,
+                           block[2], *block[3:]))
+        sources.append({
+            "label": block[2], "minutes": block[0], "pct": block[1],
+            "source": "steering" if work else "ftp",
+            # Woran gemessen wurde, gegen das, was hier gefahren wird. Ein
+            # Median aus 4-Minuten-Bloecken ist fuer einen 8-Minuten-Block
+            # keine Messung, sondern eine Uebertragung - und sie wird benannt,
+            # statt die Zahl stillschweigend zu tauschen.
+            "stretched": bool(work and minutes and float(block[0]) > minutes * 1.5),
+        })
+    return staged, sources
+
+
+def _source_note(sources: list[dict[str, Any]], minutes: float | None) -> str | None:
+    """Ein Satz, der sagt, was an dieser Kachel gemessen ist und was nicht."""
+    got = [x for x in sources if x["source"] == "steering"]
+    # NUR echte Arbeitsabschnitte werden als Rueckfall gemeldet. Einrollen,
+    # Pausen und Ausrollen stehen auf der FTP, weil sie dort hingehoeren - sie
+    # in denselben Satz zu schreiben, macht aus einer Meldung Rauschen.
+    fell = [x for x in sources
+            if x["source"] != "steering" and float(x.get("pct") or 0) >= WORK_PCT_MIN]
+    stretched = [x for x in got if x["stretched"]]
+    if not got:
+        return ("Kein Abschnitt dieser Einheit bekommt die gemessene Vorgabe — "
+                "die Zahlen stehen auf der FTP.")
+    parts = []
+    if stretched and minutes:
+        labels = " · ".join(str(x["label"]) for x in stretched)
+        parts.append(f"Gemessen wurde an {minutes:g}-Minuten-Blöcken; "
+                     f"{labels} dauert länger und bekommt dieselbe Zahl.")
+    if fell:
+        labels = " · ".join(str(x["label"]) for x in fell)
+        parts.append(f"{labels} fällt auf die FTP zurück.")
+    return " ".join(parts) or None
+
+
 def scaled(entry: dict[str, Any], ftp: float | None, aerobic_hr: int | None,
            max_hr: float | None = None, curve: dict[str, Any] | None = None,
            blocks: dict[str, Any] | None = None,
-           ramp: dict[str, Any] | None = None) -> dict[str, Any]:
+           ramp: dict[str, Any] | None = None,
+           steering: dict[str, Any] | None = None) -> dict[str, Any]:
     """Fill in the athlete's own numbers: watts from the MEASURED curve where
     it carries, from the FTP where it does not - and the origin travels with
     the session, so a changed number is explainable instead of surprising."""
@@ -789,7 +878,7 @@ def scaled(entry: dict[str, Any], ftp: float | None, aerobic_hr: int | None,
     # gemeinsame Mechanik unten kennt nur eine Quelle je Einheit und koennte
     # das nicht abbilden.
     if entry.get("key") == "ramp_test":
-        proto = ramp_protocol(ftp, curve, blocks, ramp)
+        proto = ramp_protocol(ftp, curve, blocks, ramp, steering)
         if proto:
             staged = [
                 (RAMP_WARMUP_MIN, proto["start_w"], "Einrollen, ruhig"),
@@ -848,6 +937,50 @@ def scaled(entry: dict[str, Any], ftp: float | None, aerobic_hr: int | None,
                 f"÷ {RAMP_STEP_W_PER_MIN} W/min. Gerechnet, nicht gesetzt.",
             ]
         _apply_hr_hint(out, entry, aerobic_hr, max_hr)
+        return out
+
+    # --- STEUERUNG v2, nur bei umgelegtem Schalter ---------------------------
+    # Steht der Schalter aus, ist `steering` None und der ganze Zweig
+    # existiert nicht - darunter laeuft das heutige Verhalten bitgenau weiter.
+    steered = (steering or {}).get(fam) if steering else None
+    if steered and steered.get("watts"):
+        staged, sources = _stage_from_measurement(entry, ftp, steered["watts"],
+                                                  steered.get("measured_minutes"))
+        out["blocks_w"] = staged
+        out["text_w"] = watts_text(staged) or out.get("text_w")
+        # EHRLICH: die Kachel traegt "gemessen" nur, wenn wirklich ein Block
+        # die gemessene Zahl bekommen hat. Bis 0.60.0 stand "blocks" auch dort,
+        # wo jeder Block auf die FTP zurueckfiel (vo2_3030, vo2_3015) - eine
+        # Zahl mit fremdem Etikett, genau die Klasse aus PROJEKTSTAND §7.
+        got = [x for x in sources if x["source"] == "steering"]
+        out["watt_source"] = "steering" if got else "ftp"
+        out["watt_sources"] = sources
+        out["steering_source"] = {
+            "watts": steered["watts"], "anchor_w": steered.get("anchor_w"),
+            "anchor_date": steered.get("anchor_date"),
+            "moves": steered.get("moves"), "n_since": steered.get("n_since"),
+            "band": steered.get("band"), "hr_band": steered.get("hr_band"),
+            "note": steered.get("note"), "band_note": steered.get("band_note"),
+            "measured_minutes": steered.get("measured_minutes"),
+            "n_units": steered.get("n_units"),
+            "single_block": steered.get("single_block"),
+            "family": fam,
+            "mixed": bool(got) and len(got) != len(sources),
+            "note_blocks": _source_note(sources, steered.get("measured_minutes")),
+        }
+        # WATT UND PULS AUS DERSELBEN QUELLE. Faellt die Wattseite auf die FTP
+        # zurueck (vo2_3030, vo2_3015: kein Abschnitt bekommt die gemessene
+        # Zahl), dann muss die Pulsseite mitfallen - sonst steht ein gemessenes
+        # Fenster neben einer ungemessenen Zahl. Genau der Gleichstand, den
+        # test_workouts seit 0.51.0 fuer die alte Kette erzwingt.
+        band = steered.get("hr_band") if got else None
+        if not got:
+            _apply_hr_hint(out, entry, aerobic_hr, max_hr)
+        if band:
+            out["hr_window"] = (band["low"], band["high"])
+            out["hr_source"] = {**band, "family": fam, "source": "steering"}
+        elif steered.get("hr_band_note"):
+            out["hr_window_note"] = steered["hr_band_note"]
         return out
 
     measured = ((blocks or {}).get("families") or {}).get(fam) if blocks else None
@@ -1381,7 +1514,8 @@ def suggest(state: str, ftp: float | None = None, aerobic_hr: int | None = None,
             recovery_offered: bool = False,
             curve: dict[str, Any] | None = None,
             blocks: dict[str, Any] | None = None,
-            ramp: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+            ramp: dict[str, Any] | None = None,
+            steering: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """One session per family, each judged for today - never filtered away.
 
     The earlier version filtered: in a rebound state everything hard vanished
@@ -1409,7 +1543,8 @@ def suggest(state: str, ftp: float | None = None, aerobic_hr: int | None = None,
             continue
 
         key = _variant(keys, state, ftp, budget, hard_days_last_7)
-        entry = dict(scaled(BY_KEY[key], ftp, aerobic_hr, max_hr, curve, blocks, ramp))
+        entry = dict(scaled(BY_KEY[key], ftp, aerobic_hr, max_hr, curve, blocks, ramp,
+                            steering))
         verdict, reason = fit_for(
             family_key, state, entry["intensity"],
             hard_days_last_7=hard_days_last_7, layoff_days=layoff_days,
@@ -1450,7 +1585,8 @@ def rate_sessions(sessions: list[dict[str, Any]], state: str,
                   max_hr: float | None = None,
                   curve: dict[str, Any] | None = None,
                   blocks: dict[str, Any] | None = None,
-                  ramp: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+                  ramp: dict[str, Any] | None = None,
+                  steering: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """Grade the planned sessions of the CURRENT week - a view, not a planner.
 
     Every session the plan produced carries a `workout` key into the catalogue.
@@ -1485,7 +1621,7 @@ def rate_sessions(sessions: list[dict[str, Any]], state: str,
             template["blocks"] = stretched
             template["minutes"] = sum(block[0] for block in stretched)
             template["text"] = steps_text(stretched, None)
-        full = scaled(template, ftp, aerobic_hr, max_hr, curve, blocks, ramp)
+        full = scaled(template, ftp, aerobic_hr, max_hr, curve, blocks, ramp, steering)
         if stretched and ftp:
             full["text_w"] = steps_text(stretched, ftp)
         load = session_load(entry, session.get("hours"))

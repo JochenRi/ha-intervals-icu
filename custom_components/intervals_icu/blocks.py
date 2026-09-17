@@ -197,6 +197,11 @@ def _session(key: str, activity: dict[str, Any], family: str,
         "median_watts": round(derive._median(powers)),
         "median_hr": round(derive._median(pulses)) if pulses else None,
         "block_hr": [b.get("hr") for b in work],
+        # Die DAUER je Block reist mit. Sie aendert nichts an der Auswahl -
+        # sie sagt der Kachel, WORAN gemessen wurde: ein Median aus
+        # 3-4-Minuten-Bloecken ist keine Vorgabe fuer einen 8-Minuten-Block,
+        # und ohne diese Zahl kann die Karte den Unterschied nicht benennen.
+        "block_minutes": [b.get("minutes") for b in work],
         "alpha_span": round(max(alphas) - min(alphas), 3),
     }
 
@@ -249,6 +254,7 @@ def series(data: dict[str, Any], with_other: bool = True) -> dict[str, Any]:
                 "n_blocks": row["n_blocks"],
                 "block_alphas": row["block_alphas"], "block_watts": row["block_watts"],
                 "block_watts_each": row["block_watts_each"],
+                "block_minutes": row["block_minutes"],
                 "alpha_span": row["alpha_span"],
                 # Verlaufsgröße
                 "first_alpha": row["first_alpha"], "first_watts": row["first_watts"],

@@ -1409,6 +1409,54 @@ class IntervalsIcuPanel extends HTMLElement {
   /* Paket M - ein Wert je Block, ueber die Zeit. Je Familie eine Karte:
      Leitzahl oben (die Leistung im ersten eingeschwungenen Block), darunter
      der Verlauf, dann der Vorschlag. NICHTS greift automatisch. */
+  /* DIE PARALLELANZEIGE. Solange die Steuerung laeuft, steht die alte Zahl
+     neben der neuen - dieselbe Kachel, zwei Spalten, damit ueber mehrere
+     Einheiten vergleichbar wird, was der Schalter tut. Beide Zahlen kommen
+     aus GERECHNETEN Reihen der Payload (`compare`, `steering`); im Quelltext
+     steht keine. Ist der Schalter aus, ist das hier eine Vorschau und sagt
+     das auch - eine Zahl, die schon wirkt, sieht sonst genauso aus wie eine,
+     die es noch nicht tut. */
+  _steering(b, key) {
+    const c = (b.compare || {})[key];
+    const st = (b.steering || {})[key];
+    if (!c || !st || !c.steered) return "";
+    const an = !!b.steering_on;
+    const band = c.new_band, hrb = c.new_hr_band;
+    const spanne = (x, u) => (x
+      ? `<span class="mut">${fmt(x.low)}</span> | <b class="tn">${fmt(x.median, 1)} ${u}</b>
+         <span class="mut">| ${fmt(x.high)}</span>`
+      : `<span class="mut">${esc(st.band_note || "")}</span>`);
+    return `<div class="card pad" style="margin:8px 0">
+      <h5 class="subsec">${an ? "Vorgabe — neu neben alt" : "Vorschau: was die Steuerung ergäbe"}</h5>
+      <table class="dfatab"><thead><tr><th></th><th>heute</th><th>Steuerung</th></tr></thead>
+        <tbody>
+          <tr><td>Watt</td>
+            <td class="tn">${c.old_watts == null ? "–" : fmt(c.old_watts) + " W"}</td>
+            <td class="tn">${fmt(c.new_watts)} W${c.delta == null || !c.delta ? "" :
+              ` <span class="mut">(${sign(c.delta)} W)</span>`}</td></tr>
+          <tr><td>Puls</td>
+            <td class="tn">${c.old_hr_low == null ? "–"
+              : fmt(c.old_hr_low) + "–" + fmt(c.old_hr_high)}</td>
+            <td class="tn">${hrb ? fmt(hrb.low) + "–" + fmt(hrb.high)
+              : `<span class="mut">${esc(st.hr_band_note || "")}</span>`}</td></tr>
+          <tr><td>Band Watt</td><td class="mut">–</td><td>${spanne(band, "W")}</td></tr>
+        </tbody></table>
+      <p class="hint">${ico("info", C.blue, 13)} Die neue Zahl ist der Startwert
+        <b class="tn">${fmt(st.anchor_w)} W</b> vom ${dMed(st.anchor_date)} plus
+        <b>${fmt(st.moves)}</b> gerechnete ${st.moves === 1 ? "Bewegung" : "Bewegungen"} aus
+        <b>${fmt(st.n_since)}</b> ${st.n_since === 1 ? "Einheit" : "Einheiten"} seither.
+        ${st.note ? esc(st.note) + "." : ""}
+        ${!st.first_block_counts ? "Block 1 zählt dabei nicht mit — er trägt regelmäßig das höhere alpha." : ""}
+        ${(st.single_block || []).length ? `<br>${fmt(st.single_block.length)}
+          ${st.single_block.length === 1 ? "Einheit hat" : "Einheiten haben"} nach dem Wegfall
+          von Block 1 keinen Block mehr — ohne Vorgabe.` : ""}
+        ${band ? `<br>Das Band ist die Spanne, in der die nächste Einheit erwartet wird:
+          Median über ${fmt(band.n)} von ${fmt(band.window)} Einheiten, Streuung
+          ${fmt(band.sd, 2)}.` : ""}
+        ${an ? "" : " <b>Der Schalter steht aus</b> — deine Kacheln zeigen weiter die linke Spalte."}</p>
+    </div>`;
+  }
+
   rBlocks(b) {
     if (!b) return this._dataGap("blocks", "Die Blockmessung");
     const fam = b.families || {};
@@ -1488,6 +1536,7 @@ class IntervalsIcuPanel extends HTMLElement {
           <span class="mut">bei alpha ${fmt(l.first_alpha, 2)} · ${dMed(l.date)} ·
             ${fmt(f.sessions)} ${f.sessions === 1 ? "Einheit" : "Einheiten"} von
             ${dMed(f.from)} bis ${dMed(f.to)}</span></div></div>
+        ${this._steering(b, key)}
         ${f.first_is_weak ? `<p class="hint">${ico("warn", C.amber, 13)} <b>Der erste
           Arbeitsabschnitt dieser Einheit trägt weniger Leistung als die folgenden</b> — das
           Gerät hat dort vermutlich einen lockeren Abschnitt als Arbeit etikettiert. Die
@@ -4491,7 +4540,7 @@ class IntervalsIcuPanel extends HTMLElement {
         // einer mit achtzehn Minuten — und niemand sieht es.
         const rest = bl.map((b) => (b || {}).points).filter((v) => v != null);
         satz = bl.length
-          ? `${bl.length} Block${bl.length === 1 ? "" : "öcke"}`
+          ? `${bl.length} ${bl.length === 1 ? "Block" : "Blöcke"}`
             + (a == null ? "" : `, alpha-Median ${fmt(a, 2)}`)
             + (w == null ? "" : `, ${fmt(w)} W`)
             + (rest.length ? ` · nach dem Anlauf ${rest.map((v) => fmt(v)).join(" · ")} s` : "")
@@ -4847,12 +4896,17 @@ class IntervalsIcuPanel extends HTMLElement {
     // the hard blocks, at similar power and similar duration. Everything
     // else - warm-up, recoveries, roll-outs - is excluded from the verdict
     // but still shown in the table.
+    // Die beiden Grenzen stehen EINMAL - der Satz unter dem Urteil liest
+    // dieselben Zahlen, aus denen gefiltert wurde. Bis 0.60.0 sagte er "bei
+    // gleicher äußerer Last"; gefiltert wurde aber auf ÄHNLICHE Last und
+    // ähnliche Dauer, und der Unterschied ist genau der, auf den es ankommt.
+    const EF_PEAK_SHARE = 0.85, EF_DUR_TOL = 0.35;
     const powered = laps.filter((l) => (l.avg_watts || 0) > 0 && (l.moving_time || 0) >= 60);
     const peak = Math.max(0, ...powered.map((l) => l.avg_watts || 0));
-    let work = powered.filter((l) => (l.avg_watts || 0) >= peak * 0.85);
+    let work = powered.filter((l) => (l.avg_watts || 0) >= peak * EF_PEAK_SHARE);
     const durs = work.map((l) => l.moving_time || 0);
     const medDur = median(durs) || 0;
-    work = work.filter((l) => medDur > 0 && Math.abs((l.moving_time || 0) - medDur) <= medDur * 0.35);
+    work = work.filter((l) => medDur > 0 && Math.abs((l.moving_time || 0) - medDur) <= medDur * EF_DUR_TOL);
     const efs = work.map((l) => l.ef).filter((v) => v != null);
     const efMax = Math.max(1e-9, ...efs);
     const dfas = laps.map((l) => l.dfa_a1).filter((v) => v != null);
@@ -4863,7 +4917,10 @@ class IntervalsIcuPanel extends HTMLElement {
       const st = drop > 8 ? "red" : drop > 3 ? "amber" : "green";
       verdict = `<div class="lapverdict">${badge(st, `${sign(-Math.round(drop * 10) / 10, 1)} % Watt pro Herzschlag über ${efs.length} vergleichbare Abschnitte`)}
         <span class="mut">${drop > 3
-          ? "die Leistung je Herzschlag fällt — bei gleicher äußerer Last ist das Ermüdung"
+          ? `die Leistung je Herzschlag fällt — verglichen werden nur die harten Abschnitte
+             (ab ${fmt(EF_PEAK_SHARE * 100)} % der Spitzenleistung, Dauer höchstens
+             ${fmt(EF_DUR_TOL * 100)} % neben ihrem Median). Die äußere Last ist damit
+             ähnlich, nicht gleich; unter dieser Einschränkung spricht der Abfall für Ermüdung`
           : "die Leistung je Herzschlag bleibt stehen — die Serie war verkraftbar"}</span></div>`;
     }
     // DIE ZUORDNUNGSSPALTE. Sie steht fuer sich, mit eigener Kopfzeile, und

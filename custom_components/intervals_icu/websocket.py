@@ -14,7 +14,7 @@ from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.util import dt as dt_util
 
-from . import analytics, blocks as blocks_lib, coach as coach_module, day_context as day_context_lib, derive, fatigue, importer, plan as plan_lib, ramp, ramp_tests as ramp_lib, reconcile as reconcile_lib, section_marks as marks_lib, workouts as workout_lib
+from . import analytics, blocks as blocks_lib, coach as coach_module, day_context as day_context_lib, derive, fatigue, importer, plan as plan_lib, ramp, ramp_tests as ramp_lib, reconcile as reconcile_lib, section_marks as marks_lib, steering as steering_lib, workouts as workout_lib
 from .api import IntervalsError
 from .const import (
     BLOCK_CORRIDORS,
@@ -117,6 +117,7 @@ def async_register(hass: HomeAssistant) -> None:
         websocket_measure_section_marks,
         websocket_set_curve_source,
         websocket_set_block_source,
+        websocket_set_steering_source,
         websocket_reconcile,
     ):
         websocket_api.async_register_command(hass, handler)
@@ -323,6 +324,15 @@ def websocket_blocks(hass, connection, msg) -> None:
     # waere dort eine Blockzahl, die sich als Vorgabe ausgibt.
     result["feeds_watts"] = sorted(fam for fam, chain in workout_lib.SOURCE_CHAIN.items()
                                    if "blocks" in chain)
+    # DIE STEUERUNG UND IHRE PARALLELANZEIGE. `steering` ist die neue Reihe
+    # (Startwert, Schritte, Baender), `compare` stellt ALT neben NEU - beide
+    # Zahlen aus gerechneten Reihen, keine im Frontend geschaetzt. Sie reisen
+    # AUCH bei ausgeschaltetem Schalter mit, denn sonst koennte die Karte den
+    # Vergleich nicht zeigen, ohne dass er schon wirkt.
+    result["steering_on"] = steering_lib.steering_on(data)
+    result["steering"] = steering_lib.state(result)
+    result["compare"] = steering_lib.compare(result)
+    result["steering_anchor_date"] = steering_lib.STEERING_ANCHOR_DATE
     stats = importer.archive_stats(data)
     result["progress"] = {
         "done": stats["dfa_done"], "pending": stats["dfa_pending"],
@@ -534,6 +544,39 @@ async def websocket_set_block_source(hass, connection, msg) -> None:
         box[blocks_lib.BLOCK_SWITCH] = want
         await coordinator.archive.async_save_now()
     connection.send_result(msg["id"], {"from_marks": blocks_lib.blocks_from_marks(data)})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "intervals_icu/set_steering_source",
+        vol.Required("on"): bool,
+        vol.Optional("athlete_id"): str,
+    }
+)
+@websocket_api.async_response
+async def websocket_set_steering_source(hass, connection, msg) -> None:
+    """Die Steuerung v2 einschalten - und zurueck.
+
+    Dritter Schalter derselben Bauart (Kurve, Bloecke, Steuerung): er steht im
+    Archiv neben den anderen, gespeichert wird nur im AENDERUNGSFALL (J7,
+    zweite Auflage), und ausgeschaltet bleibt das heutige Verhalten bitgenau.
+    Umgelegt aendert er die QUELLE der Vorgabe, nicht den Bestand: Marken,
+    Messungen und Bloecke werden nicht angefasst.
+    """
+    coordinator = _pick(hass, msg.get("athlete_id"))
+    if coordinator is None:
+        connection.send_error(msg["id"], "not_found", "no Intervals.icu athlete loaded")
+        return
+    data = coordinator.archive.data
+    box = data.get("settings")
+    if not isinstance(box, dict):
+        box = {}
+        data["settings"] = box
+    want = bool(msg["on"])
+    if bool(box.get(steering_lib.STEERING_SWITCH)) != want:
+        box[steering_lib.STEERING_SWITCH] = want
+        await coordinator.archive.async_save_now()
+    connection.send_result(msg["id"], {"on": steering_lib.steering_on(data)})
 
 
 @websocket_api.websocket_command(
@@ -876,6 +919,7 @@ def websocket_workouts(hass, connection, msg) -> None:
         # Kurve, die die Kachel zeigt.
         curve=inputs["curve"],
         blocks=inputs["blocks"],
+        steering=inputs["steering"],
         # Der Stufentest als naechste Stufe der Quellenkette (N2). Er wird
         # IMMER mitgegeben; ob er greift, entscheidet SOURCE_CHAIN je Familie -
         # und ohne markierten Test ist er None und aendert nichts.
@@ -939,7 +983,7 @@ async def websocket_plan_workout(hass, connection, msg) -> None:
     entry = workout_lib.scaled(
         template, inputs["ftp"], inputs["anchors"].get("aerobic_hr"),
         max_hr=inputs["max_hr"], curve=inputs["curve"], blocks=inputs["blocks"],
-        ramp=inputs["ramp"],
+        ramp=inputs["ramp"], steering=inputs["steering"],
     )
     payload = workout_lib.to_event(
         entry, str(msg["date"]), str(msg.get("sport") or "Ride"),
@@ -1027,6 +1071,7 @@ def _session_inputs(data: dict[str, Any]) -> dict[str, Any]:
                 break
     if ftp is None:
         ftp = anchors.get("ftp")
+    series = blocks_lib.series(data)
     return {
         "anchors": anchors,
         "ftp": ftp,
@@ -1036,8 +1081,14 @@ def _session_inputs(data: dict[str, Any]) -> dict[str, Any]:
         # Kurve, die die Kachel zeigt.
         "curve": fatigue.curve(data, aerobic_hr=anchors.get("aerobic_hr"),
                                aerobic_power=anchors.get("aerobic_power")),
-        "blocks": blocks_lib.series(data),
+        "blocks": series,
         "ramp": ramp_lib.latest(data),
+        # DIE STEUERUNG NUR BEI UMGELEGTEM SCHALTER. Steht er aus, ist der
+        # Wert None - und `scaled()` betritt den neuen Zweig gar nicht erst,
+        # statt ihn zu betreten und dort dasselbe zu tun wie vorher. Ein
+        # Schalter, der die alte Rechnung nachbaut, ist kein Rueckweg.
+        "steering": (steering_lib.state(series)
+                     if steering_lib.steering_on(data) else None),
     }
 
 def _latest_ftp(data: dict[str, Any]) -> float | None:
@@ -1266,7 +1317,12 @@ def websocket_section_marks(hass, connection, msg) -> None:
         # Der Kurvensatz haengt an der SCHALTERSTELLUNG. In 0.56.0 stand er
         # bedingungslos da und sagte bei umgelegtem Schalter, die Kurve lese
         # die Marken nicht - das Gegenteil dessen, was sie tat (§7).
-        "not_active": {"blocks": marks_lib.NOT_ACTIVE_BLOCKS,
+        # Der Blocksatz haengt jetzt am STEUERUNGSSCHALTER - bis 0.60.0 stand
+        # er bedingungslos da und sagte auch dann, die Blockmessung gehe an
+        # den Marken vorbei, wenn sie laengst auf ihnen rechnete. Dieselbe
+        # Klasse wie der Kurvensatz in 0.56.0 (§7).
+        "not_active": {**({} if steering_lib.steering_on(data)
+                          else {"blocks": marks_lib.NOT_ACTIVE_BLOCKS}),
                        **({} if fatigue.curve_from_marks(data)
                           else {"curve": marks_lib.NOT_ACTIVE_CURVE})},
         "no_value": marks_lib.NO_VALUE,
