@@ -105,6 +105,13 @@ def empty_data(athlete_id: str) -> dict[str, Any]:
         # ramp_tests - und das fuenfte Mal, dass sich hier sonst dieselbe
         # Luecke oeffnet.
         "section_marks": {},
+        # Die Schalterstellungen (Kurve, Bloecke, Steuerung). SECHSTER Block
+        # mit diesem Eintrag - und der erste, der ihn nachtraegt: bis 0.60.0
+        # stand `settings` NICHT im Skelett und wurde nur im Schreibweg bei
+        # Bedarf angelegt. Das ist dieselbe Luecke, die 0.35.0 geschlossen hat,
+        # nur eine Ebene tiefer harmlos: ein fehlender Schalter liest sich als
+        # False. Harmlos ist kein Grund, die Auflage auszulassen.
+        "settings": {},
         "last_import": None,
         "full_import_done": False,
         "dfa_version": DFA_ALGO_VERSION,

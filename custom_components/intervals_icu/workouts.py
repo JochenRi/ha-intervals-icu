@@ -1490,7 +1490,8 @@ def suggest(state: str, ftp: float | None = None, aerobic_hr: int | None = None,
             recovery_offered: bool = False,
             curve: dict[str, Any] | None = None,
             blocks: dict[str, Any] | None = None,
-            ramp: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+            ramp: dict[str, Any] | None = None,
+            steering: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """One session per family, each judged for today - never filtered away.
 
     The earlier version filtered: in a rebound state everything hard vanished
@@ -1518,7 +1519,8 @@ def suggest(state: str, ftp: float | None = None, aerobic_hr: int | None = None,
             continue
 
         key = _variant(keys, state, ftp, budget, hard_days_last_7)
-        entry = dict(scaled(BY_KEY[key], ftp, aerobic_hr, max_hr, curve, blocks, ramp))
+        entry = dict(scaled(BY_KEY[key], ftp, aerobic_hr, max_hr, curve, blocks, ramp,
+                            steering))
         verdict, reason = fit_for(
             family_key, state, entry["intensity"],
             hard_days_last_7=hard_days_last_7, layoff_days=layoff_days,
@@ -1559,7 +1561,8 @@ def rate_sessions(sessions: list[dict[str, Any]], state: str,
                   max_hr: float | None = None,
                   curve: dict[str, Any] | None = None,
                   blocks: dict[str, Any] | None = None,
-                  ramp: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+                  ramp: dict[str, Any] | None = None,
+                  steering: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """Grade the planned sessions of the CURRENT week - a view, not a planner.
 
     Every session the plan produced carries a `workout` key into the catalogue.
@@ -1594,7 +1597,7 @@ def rate_sessions(sessions: list[dict[str, Any]], state: str,
             template["blocks"] = stretched
             template["minutes"] = sum(block[0] for block in stretched)
             template["text"] = steps_text(stretched, None)
-        full = scaled(template, ftp, aerobic_hr, max_hr, curve, blocks, ramp)
+        full = scaled(template, ftp, aerobic_hr, max_hr, curve, blocks, ramp, steering)
         if stretched and ftp:
             full["text_w"] = steps_text(stretched, ftp)
         load = session_load(entry, session.get("hours"))
