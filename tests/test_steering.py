@@ -255,10 +255,102 @@ ok("beide Baender reisen mit", bool(_cmp["new_band"] and _cmp["new_hr_band"]))
 ok("die Steuerung sagt, worauf sie ruht", _cmp["steered"])
 
 print("\n=== 8. DER RUECKWEG AM ECHTEN ARCHIV ===")
-ARCHIV = {"settings": {}, "activities": {}, "dfa": {}, "section_marks": {}}
-check("ohne Schalter kein Zustand im Archiv", steering.steering_on(ARCHIV), False)
+import copy  # noqa: E402
+import importlib.util  # noqa: E402
+import types  # noqa: E402
+
+import section_marks as SM  # noqa: E402
+
+# `importer` haengt an relativen Importen und laesst sich nicht flach laden -
+# dieselbe Huelse wie in test_section_marks.py, damit das ARCHIVSKELETT hier
+# das echte ist und kein Nachbau.
+_COMP = Path(__file__).resolve().parents[1] / "custom_components" / "intervals_icu"
+_pkg = types.ModuleType("iv")
+_pkg.__path__ = [str(_COMP)]
+sys.modules["iv"] = _pkg
+
+
+def _load(name):
+    spec = importlib.util.spec_from_file_location(f"iv.{name}", _COMP / f"{name}.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[f"iv.{name}"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+_load("const")
+_load("derive")
+importer = _load("importer")
+
 check("und `state` auf einer leeren Reihe ist leer", steering.state({"families": {}}), {})
 ok("compare ebenfalls", steering.compare({"families": {}}) == {})
+
+
+def _blk(start, alpha, watts, hr, label="WORK"):
+    return {"label": label, "start_index": start, "alpha": alpha, "watts": watts,
+            "hr": hr, "lap_alpha": alpha + 0.2, "minutes": 4.0}
+
+
+def _mark(day, fams):
+    return {"date": day, "marks": {f: [b["start_index"] for b in bl] for f, bl in fams.items()},
+            "anchor": {"laps": 9, "sections": []},
+            "measure": {f: {"hours": None, "blocks": bl, "reason": ""} for f, bl in fams.items()},
+            "reason": "", "measured_at": day, "set_at": day, "v": SM.MEASURE_VERSION}
+
+
+# EIN ECHTES ARCHIV: vier markierte und gemessene VO2max-Einheiten NACH dem
+# Stichtag, je zwei Bloecke - Block 1 hoch, Block 2 unter dem Korridor.
+ARCHIV = importer.empty_data("test")
+ARCHIV["settings"] = {"blocks_from_marks": True}
+for _i, _tag in enumerate(("2026-09-20", "2026-09-27", "2026-10-04", "2026-10-11")):
+    _key = f"vo{_i}"
+    ARCHIV["activities"][_key] = {"name": f"VO2max {_i}", "start_date_local": _tag + "T09:00:00"}
+    _b = [_blk(600, 0.90, 258, 180), _blk(1400, 0.18, 250, 184)]
+    ARCHIV["dfa"][_key] = {"blocks": _b}
+    ARCHIV["section_marks"][_key] = _mark(_tag, {"vo2max": _b})
+
+check("das Archivskelett kennt `settings`", "settings" in importer.empty_data("test"), True)
+_alt_archiv = {k: v for k, v in ARCHIV.items() if k != "settings"}
+_migriert = {**importer.empty_data("test"), **_alt_archiv}
+check("Migration: ein Archiv OHNE `settings` bekommt den Schluessel beim Laden",
+      isinstance(_migriert.get("settings"), dict), True)
+check("und liest sich als AUS, nicht als an", steering.steering_on(_migriert), False)
+ok("Gegenprobe: dasselbe Archiv MIT gesetztem Schalter liest sich als an",
+   steering.steering_on({**_migriert, "settings": {steering.STEERING_SWITCH: True}}))
+
+_reihe = blocks.series(ARCHIV)
+_zustand = steering.state(_reihe)["vo2max"]
+check("am echten Archiv: vier Einheiten seit dem Stichtag", _zustand["n_since"], 4)
+# Vier Einheiten unter dem Korridor geben ZWEI Schritte: nach der zweiten
+# greift die Regel (zwei von drei auf derselben Seite), das Fenster wird
+# geleert, nach der vierten greift sie erneut.
+check("und die Vorgabe steht zwei Schritte tiefer",
+      (_zustand["watts"], _zustand["moves"]),
+      (STEERING_ANCHOR_W["vo2max"] - 2 * STEERING_STEP_W, 2))
+check("Block 1 blieb draussen (alpha der Zeilen)",
+      [r["alpha"] for r in _zustand["rows"]], [0.18] * 4)
+
+# SCHALTER AUS -> AN -> AUS am echten Archiv, mit allen drei Zusicherungen.
+_marks_vorher = copy.deepcopy(ARCHIV["section_marks"])
+_vo4x4_e = WK.BY_KEY["vo2_4x4"]
+_aus1 = WK.scaled(_vo4x4_e, 194, 146, blocks=_reihe, steering=None)
+ARCHIV["settings"][steering.STEERING_SWITCH] = True
+_an = WK.scaled(_vo4x4_e, 194, 146, blocks=_reihe,
+                steering=(steering.state(_reihe) if steering.steering_on(ARCHIV) else None))
+ARCHIV["settings"][steering.STEERING_SWITCH] = False
+_aus2 = WK.scaled(_vo4x4_e, 194, 146, blocks=_reihe,
+                  steering=(steering.state(_reihe) if steering.steering_on(ARCHIV) else None))
+check("Rueckweg 1: ausgeschaltet ist die Einheit bit-identisch", _aus2, _aus1)
+check("Rueckweg 2: dieselben Watt und dasselbe Pulsfenster",
+      (_aus2.get("blocks_w"), _aus2.get("hr_window")),
+      (_aus1.get("blocks_w"), _aus1.get("hr_window")))
+check("Rueckweg 3: Marken und Messungen unberuehrt", ARCHIV["section_marks"], _marks_vorher)
+ok("Trefferzusicherung: umgelegt aendern sich Watt UND Pulsfenster wirklich",
+   _an.get("blocks_w") != _aus1.get("blocks_w")
+   and _an.get("hr_window") != _aus1.get("hr_window"))
+ok("und die Blockreihe selbst bleibt in beiden Stellungen dieselbe",
+   blocks.series(ARCHIV)["families"]["vo2max"]["points"]
+   == _reihe["families"]["vo2max"]["points"])
 
 print(f"\ntest_steering: {CHECKS} Prüfungen, {len(failures)} Fehler")
 print("FEHLER:", failures if failures else "keine")
