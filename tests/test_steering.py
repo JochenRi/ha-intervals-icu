@@ -40,7 +40,10 @@ def point(date, alphas, watts, hrs, minutes=None):
             "block_hr": list(hrs),
             "block_minutes": list(minutes or [4.0] * len(alphas)),
             "median_alpha": sorted(alphas)[len(alphas) // 2],
-            "median_watts": sorted(watts)[len(watts) // 2]}
+            "median_watts": sorted(watts)[len(watts) // 2],
+            # Die VERLAUFSgroesse - sie bleibt in der Zeile stehen, auch wenn
+            # sie nicht mehr steuert. Das Rampenende hing bis 0.60.0 an ihr.
+            "first_watts": watts[0], "first_alpha": alphas[0]}
 
 
 # ---------------------------------------------------------------------------
@@ -199,6 +202,8 @@ print("\n=== 5. DER SCHALTER ===")
 DATA_AUS = {"settings": {}}
 DATA_AN = {"settings": {steering.STEERING_SWITCH: True}}
 check("aus ist aus", steering.steering_on(DATA_AUS), False)
+check("und ein FRISCHES Archiv startet aus - niemand wird umgeschaltet, ohne es zu wollen",
+      steering.steering_on({}), False)
 check("an ist an", steering.steering_on(DATA_AN), True)
 _series = {"families": {"vo2max": {"points": VO_REAL, "source_ok": True,
                                    "latest": VO_REAL[-1], "sessions": len(VO_REAL),
@@ -255,6 +260,40 @@ check("Gegenprobe: wo gemessene Watt stehen, steht auch das gemessene Fenster",
 ok("Pausen und Einrollen tauchen im Rueckfallsatz NICHT auf",
    "Pause" not in str(_f5["steering_source"]["note_blocks"])
    and "Einrollen" not in str(_f5["steering_source"]["note_blocks"]))
+
+print("\n=== 6b. DAS RAMPENENDE FOLGT DER VORGABE ===")
+_res = WK.RAMP_END_RESERVE_MIN * WK.RAMP_STEP_W_PER_MIN
+_p_aus = WK.ramp_protocol(194, None, _series, None)
+_p_an = WK.ramp_protocol(194, None, _series, None, _st)
+check("aus: das Ende haengt an Block 1 der letzten Einheit (wie 0.60.0)",
+      (_p_aus["end_source"]["kind"], _p_aus["end_source"]["lead"]["watts"]),
+      ("blocks", VO_REAL[-1]["block_watts_each"][0]))
+check("an: das Ende haengt an der VORGABE",
+      (_p_an["end_source"]["kind"], _p_an["end_source"]["lead"]["watts"]),
+      ("steering", _st["vo2max"]["watts"]))
+check("und es ist Vorgabe plus Reserve", _p_an["end_w"], _st["vo2max"]["watts"] + _res)
+ok("die beiden Enden unterscheiden sich wirklich (Trefferzusicherung)",
+   _p_an["end_w"] != _p_aus["end_w"])
+# GEGENPROBE 1: ein anderer Block 1 bewegt das Ende nicht mehr.
+_anders = [dict(p) for p in VO_REAL]
+_anders[-1] = dict(_anders[-1], block_watts_each=[299] + list(_anders[-1]["block_watts_each"][1:]),
+                   first_watts=299)
+_ser2 = {"families": {"vo2max": {**_series["families"]["vo2max"], "points": _anders,
+                                 "latest": _anders[-1]}}}
+_st2 = steering.state(_ser2)
+check("Gegenprobe: Block 1 um 42 W hoeher aendert das gesteuerte Ende NICHT",
+      WK.ramp_protocol(194, None, _ser2, None, _st2)["end_w"], _p_an["end_w"])
+ok("Gegenprobe-Zusicherung: ohne Schalter haette derselbe Block 1 es sehr wohl bewegt",
+   WK.ramp_protocol(194, None, _ser2, None)["end_w"] != _p_aus["end_w"])
+# GEGENPROBE 2: bewegt sich die Vorgabe, bewegt sich das Ende mit.
+_tief = VO_REAL + [point(d, [0.9, 0.17, 0.18], [250, 250, 248], [180, 184, 186])
+                   for d in ("2026-09-20", "2026-09-27", "2026-10-04")]
+_st3 = {"vo2max": steering.family_state(_tief, "vo2max")}
+check("die Vorgabe sinkt um einen Schritt - das Ende sinkt mit",
+      WK.ramp_protocol(194, None, _series, None, _st3)["end_w"],
+      _p_an["end_w"] - STEERING_STEP_W)
+check("ohne Vorgabe faellt die Kette zurueck auf Block 1",
+      WK.ramp_protocol(194, None, _series, None, {})["end_source"]["kind"], "blocks")
 
 print("\n=== 7. PARALLELANZEIGE ===")
 _cmp = steering.compare(_series)["vo2max"]

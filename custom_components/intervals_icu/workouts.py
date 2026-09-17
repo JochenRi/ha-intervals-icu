@@ -652,7 +652,10 @@ SOURCE_LABEL: dict[str, str] = {
 
 
 RAMP_START_CHAIN: tuple[str, ...] = ("curve", "ramp_hrvt1", "ftp")
-RAMP_END_CHAIN: tuple[str, ...] = ("blocks", "ramp_hrvt2", "ftp")
+# Die Steuerung steht VOR den Bloecken: sie ist dieselbe Messung, nur als
+# Vorgabe gefuehrt. Ohne Schalter ist ihre Stufe nicht erreichbar und die
+# Kette ist die von 0.60.0.
+RAMP_END_CHAIN: tuple[str, ...] = ("steering", "blocks", "ramp_hrvt2", "ftp")
 
 
 def _ramp_node(ramp: dict[str, Any] | None, which: str) -> dict[str, Any] | None:
@@ -663,7 +666,8 @@ def _ramp_node(ramp: dict[str, Any] | None, which: str) -> dict[str, Any] | None
 
 def ramp_protocol(ftp: float | None, curve: dict[str, Any] | None = None,
                   blocks: dict[str, Any] | None = None,
-                  ramp: dict[str, Any] | None = None) -> dict[str, Any] | None:
+                  ramp: dict[str, Any] | None = None,
+                  steering: dict[str, Any] | None = None) -> dict[str, Any] | None:
     """Start- und Endleistung des Stufentests - und die DARAUS gerechnete Dauer.
 
     N1 laesst genau drei feste Zahlen zu: Einrolldauer, Ausrolldauer und die
@@ -719,7 +723,20 @@ def ramp_protocol(ftp: float | None, curve: dict[str, Any] | None = None,
     # --- Ende: die eigene Leitzahl plus Reserve -------------------------------
     end, end_from, lead = None, "ftp", None
     for stage_name in RAMP_END_CHAIN:
-        if stage_name == "blocks":
+        if stage_name == "steering":
+            # DAS RAMPENENDE FOLGT DER VORGABE, nicht Block 1. Bis 0.60.0 hing
+            # es an `first_watts` - der VERLAUFSgroesse, dem frischesten
+            # Moment der letzten Einheit. Damit sprang das Ende mit jeder
+            # Einheit, und es widersprach der Regel, dass Block 1 nicht
+            # steuert. Gerechnet am Livebestand: 307 W (Block 1 257 W) gegen
+            # 300 W (Vorgabe 250 W), Dauer 38 gegen 37 min.
+            node = (steering or {}).get("vo2max") or {}
+            if node.get("watts"):
+                lead = {"watts": node["watts"], "alpha": None,
+                        "date": node.get("anchor_date"), "source": "steering"}
+                end, end_from = round(float(node["watts"]) + reserve), "steering"
+                break
+        elif stage_name == "blocks":
             fam = ((blocks or {}).get("families") or {}).get("vo2max") or {}
             latest = fam.get("latest") if fam.get("source_ok") else None
             if isinstance(latest, dict) and latest.get("first_watts"):
@@ -861,7 +878,7 @@ def scaled(entry: dict[str, Any], ftp: float | None, aerobic_hr: int | None,
     # gemeinsame Mechanik unten kennt nur eine Quelle je Einheit und koennte
     # das nicht abbilden.
     if entry.get("key") == "ramp_test":
-        proto = ramp_protocol(ftp, curve, blocks, ramp)
+        proto = ramp_protocol(ftp, curve, blocks, ramp, steering)
         if proto:
             staged = [
                 (RAMP_WARMUP_MIN, proto["start_w"], "Einrollen, ruhig"),
