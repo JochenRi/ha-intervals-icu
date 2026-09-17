@@ -2,12 +2,13 @@
 
 ## AKTUELL — 0.61.0 ausgeliefert: Steuerung v2 hinter dem Schalter, ab Werk AUS (18.09.2026). Zuerst lesen.
 
-**Ausgeliefert: 0.61.0** (Tag `v0.61.0`, `main` = `paket-steering-v2`). Prüfstand
-**22 Dateien, 7.159 Prüfungen, 0 Fehler** (Basis war 21 / 7.048 / 0). Johannes:
+**Ausgeliefert: 0.61.1** (Tag `v0.61.1`). Prüfstand
+**22 Dateien, 7.183 Prüfungen, 0 Fehler** (Basis war 21 / 7.048 / 0). Johannes:
 HACS-Update, HA-Neustart, Browser hart neu laden. **Der Schalter startet AUS** — die
 Kacheln zeigen weiter die Zahlen von 0.60.0; in der Blockkachel steht die Parallelanzeige
-als Vorschau. Einschalten erst, wenn er sie über ein paar Einheiten gesehen hat
-(`intervals_icu/set_steering_source`, Knopf folgt in der Karte).
+als Vorschau. Einschalten erst, wenn er sie über ein paar Einheiten gesehen hat: Reiter „Woher die
+Zahlen kommen“, dritter Schalter „Wattvorgabe“. Welche Stellung gilt, steht auch oben
+an der Blockkachel.
 
 **Was drin ist — alles hinter dem neuen Schalter `steering_v2` (`intervals_icu/set_steering_source`).
 Schalter aus = Verhalten von 0.60.0, bitgenau (im Prüfstand zugesichert):**

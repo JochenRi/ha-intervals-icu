@@ -333,6 +333,14 @@ def websocket_blocks(hass, connection, msg) -> None:
     result["steering"] = steering_lib.state(result)
     result["compare"] = steering_lib.compare(result)
     result["steering_anchor_date"] = steering_lib.STEERING_ANCHOR_DATE
+    # Die Saetze zum Schalter kommen AUS DEM MODUL - eine Fassung im Frontend
+    # waere die zweite Wahrheit aus 0.52.0, und die Versionsangabe darin stuende
+    # dann an zwei Stellen.
+    result["steering_words"] = {
+        "on_note": steering_lib.SWITCH_ON_NOTE, "off_note": steering_lib.SWITCH_OFF_NOTE,
+        "off_label": steering_lib.SWITCH_OFF_LABEL, "on_label": steering_lib.SWITCH_ON_LABEL,
+        "go_label": steering_lib.SWITCH_GO_LABEL, "back_label": steering_lib.SWITCH_BACK_LABEL,
+    }
     stats = importer.archive_stats(data)
     result["progress"] = {
         "done": stats["dfa_done"], "pending": stats["dfa_pending"],

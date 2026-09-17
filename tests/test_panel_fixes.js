@@ -2084,5 +2084,127 @@ const acts = F.activities(), thr = F.thresholds();
      "der satz: der allgemeine Satz steht neben dem echten Grund");
 }
 
+// ── DER UMSCHALT-KNOPF DER WATTVORGABE (0.61.1) ──────────────────────────
+// Am simulierten Klick: schickt er das richtige Kommando mit dem richtigen
+// Wert, in BEIDEN Stellungen - und sagt die Kachel, welche gerade gilt?
+{
+  const q = new M.Panel();
+  const words = {
+    on_note: "Deine Wattzahl ist eine Vorgabe.", off_note: "Wert deiner letzten Einheit.",
+    off_label: "wie bisher", on_label: "mit Vorgabe",
+    go_label: "auf die Vorgabe umstellen", back_label: "zurück auf die letzte Einheit",
+  };
+  const payload = (an) => ({
+    families: { vo2max: {
+      corridor: [0.2, 0.5], sessions: 4, spread: 0.05, trend: false, min_for_trend: 6,
+      from: "2026-07-19", to: "2026-09-01", source_ok: true, first_is_weak: false,
+      order_conflicts: [], min_for_source: 3, hr_window: { low: 174, high: 186 },
+      first_block_watts: [258], points: [{
+        date: "2026-09-01", name: "VO2max", n_blocks: 2, block_alphas: [0.9, 0.4],
+        block_watts: [258, 250], block_watts_each: [258, 250], block_hr: [180, 184],
+        block_minutes: [4, 4], alpha_span: 0.5, first_alpha: 0.9, first_watts: 258,
+        median_alpha: 0.4, median_watts: 254, median_hr: 182,
+        step_pct: 0, step_gap: 0, step_where: "inside", suggested_watts: 254,
+      }],
+      latest: { date: "2026-09-01", name: "VO2max", n_blocks: 2, block_alphas: [0.9, 0.4],
+        block_watts_each: [258, 250], block_hr: [180, 184], alpha_span: 0.5,
+        first_alpha: 0.9, first_watts: 258, median_alpha: 0.4, median_watts: 254,
+        median_hr: 182, step_pct: 0, step_gap: 0, step_where: "inside",
+        suggested_watts: 254 },
+    } },
+    steering_on: an, steering_words: words,
+    steering: { vo2max: { anchor_w: 250, anchor_date: "2026-09-17", n_since: 0, moves: 0,
+                          band_note: null, hr_band_note: null, first_block_counts: false,
+                          single_block: [] } },
+    compare: { vo2max: { steered: true, old_watts: 254, new_watts: 250, delta: -4,
+                         old_hr_low: 174, old_hr_high: 186,
+                         new_band: { low: 235, high: 265, median: 250, n: 4, sd: 7.97, window: 4 },
+                         new_hr_band: { low: 178, high: 189 } } },
+    progress: {}, feeds_watts: ["vo2max", "sweetspot"], discarded_s: 120,
+    step_near_pct: 5, step_far_pct: 10, selection: "marks", from_marks: true,
+  });
+  q._smarks = { marks: [], corridor_state: {}, outside_note: "" };
+  q._fatigue = null;
+  q._render = () => {};
+  q._attach();
+  const onClick = q.shadowRoot._listeners.click;
+  const fire = (dataset) => onClick({ target: { closest: (sel) => (sel === "[data-act]" ? { dataset } : null) } });
+  const attrsOf = (html, needle) => {
+    const re = new RegExp("<button[^>]*" + needle + "[^>]*>");
+    const tag = re.exec(html);
+    if (!tag) return null;
+    const out = {};
+    for (const m of tag[0].matchAll(/data-([a-z]+)="([^"]*)"/g)) out[m[1]] = m[2];
+    return out;
+  };
+
+  // AUS-Stellung: der Knopf bietet das Umlegen an und schickt on=true
+  q._blocks = payload(false);
+  const aus = q._steeringSwitch(q._blocks);
+  ok(aus.includes(words.go_label), "vorgabe-schalter: die Aus-Stellung bietet das Umlegen nicht an");
+  ok(aus.includes(words.off_note), "vorgabe-schalter: der Satz zur Aus-Stellung fehlt");
+  ok(/0\.60\.0|letzten Einheit/.test(aus), "vorgabe-schalter: die Aus-Stellung sagt nicht, was sie bedeutet");
+  const knopfAus = attrsOf(aus, 'data-act="swsteering"');
+  ok(knopfAus !== null, "vorgabe-schalter: kein Knopf gerendert");
+  ok(knopfAus && knopfAus.on === "1",
+     `vorgabe-schalter: die Aus-Stellung schickt on=${knopfAus && knopfAus.on} statt 1`);
+  const sent = [];
+  q._ws = (cmd, args) => { sent.push([cmd, args]); return Promise.resolve({}); };
+  q._need = () => Promise.resolve();
+  fire(knopfAus || {});
+  ok(sent.length === 1, `vorgabe-schalter: der Klick schickt nichts (${sent.length})`);
+  ok(sent[0] && sent[0][0] === "set_steering_source",
+     `vorgabe-schalter: falsches Kommando (${sent[0] && sent[0][0]})`);
+  ok(sent[0] && sent[0][1] && sent[0][1].on === true,
+     `vorgabe-schalter: falscher Wert (${JSON.stringify(sent[0] && sent[0][1])})`);
+
+  // AN-Stellung: derselbe Knopf bietet den Rückweg und schickt on=false
+  q._blocks = payload(true);
+  const an = q._steeringSwitch(q._blocks);
+  ok(an.includes(words.back_label), "vorgabe-schalter: die An-Stellung bietet keinen Rückweg");
+  ok(an.includes(words.on_note), "vorgabe-schalter: der Satz zur An-Stellung fehlt");
+  const knopfAn = attrsOf(an, 'data-act="swsteering"');
+  ok(knopfAn && knopfAn.on === "0",
+     `vorgabe-schalter: die An-Stellung schickt on=${knopfAn && knopfAn.on} statt 0`);
+  const sent2 = [];
+  q._ws = (cmd, args) => { sent2.push([cmd, args]); return Promise.resolve({}); };
+  // Der erste Klick läuft noch (die Sperre fällt erst im `finally` nach dem
+  // await) - ein zweiter fiele sonst aus. Dass sie das TUT, ist die Prüfung
+  // direkt darunter; hier wird sie für den Rückweg zurückgesetzt.
+  fire(knopfAn || {});
+  ok(sent2.length === 0, "vorgabe-schalter: ein zweiter Klick während des Schreibens fällt nicht aus");
+  q._swBusy = false;
+  fire(knopfAn || {});
+  ok(sent2[0] && sent2[0][1] && sent2[0][1].on === false,
+     `vorgabe-schalter: der Rückweg schickt ${JSON.stringify(sent2[0] && sent2[0][1])}`);
+  // TREFFERZUSICHERUNG: die beiden Stellungen unterscheiden sich wirklich -
+  // sonst prüfen die vier Zusicherungen oben dieselbe Zeichenkette zweimal.
+  ok(aus !== an, "vorgabe-schalter: beide Stellungen rendern dasselbe");
+  ok((knopfAus || {}).on !== (knopfAn || {}).on,
+     "vorgabe-schalter: beide Stellungen schicken denselben Wert");
+
+  // KEINE ZAHL IM QUELLTEXT: beide Zahlenspalten kommen aus der Payload.
+  ok(an.includes("250") && an.includes("254"),
+     "vorgabe-schalter: die Zahlen beider Stellungen stehen nicht nebeneinander");
+  ok(an.includes("235") && an.includes("265"),
+     "vorgabe-schalter: die erwartete Spanne fehlt");
+  const srcSw = (H.source().match(/_steeringSwitch\(b\) \{[\s\S]*?\n  \}/) || [""])[0];
+  ok(srcSw.length > 0, "vorgabe-schalter: der Baustein ist im Quelltext nicht auffindbar");
+  ok(!/\b(?:190|250|254|235|265|186|194)\b/.test(srcSw),
+     "vorgabe-schalter: eine Wattzahl steht im Quelltext statt in der Payload");
+
+  // DIE STELLUNG STEHT AN DER KACHEL, nicht nur im Quellen-Reiter.
+  const kachelAus = q.rBlocks(payload(false));
+  const kachelAn = q.rBlocks(payload(true));
+  ok(kachelAus.includes(words.off_label),
+     "vorgabe-schalter: die Kachel nennt die Aus-Stellung nicht");
+  ok(kachelAn.includes(words.on_label),
+     "vorgabe-schalter: die Kachel nennt die An-Stellung nicht");
+  ok(!kachelAus.includes(words.on_label) || !kachelAn.includes(words.off_label),
+     "vorgabe-schalter: die Kachel zeigt beide Stellungen gleichzeitig");
+  ok(/Woher die Zahlen kommen/.test(kachelAn),
+     "vorgabe-schalter: die Kachel sagt nicht, wo umgestellt wird");
+}
+
 report("test_panel_fixes");
 })();

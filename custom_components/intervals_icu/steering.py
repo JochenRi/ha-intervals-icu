@@ -81,6 +81,22 @@ TOO_FEW_NOTE = "noch keine Toleranz"
 NO_UNITS_NOTE = ("noch keine Einheit seit dem Startwert — die Vorgabe steht "
                  "auf ihm")
 
+# DIE SAETZE ZUM SCHALTER - aus dem Modul, nicht aus dem Frontend (fuenfte
+# Bauregel). Zwei Fassungen, weil die beiden Lagen verschieden sind, und beide
+# sagen nur, was der Code auch tut.
+SWITCH_ON_NOTE = ("Deine Wattzahl ist eine Vorgabe: sie startet auf einem festen "
+                  "Wert und bewegt sich erst, wenn mehrere Einheiten "
+                  "nacheinander daneben liegen. Der erste Block einer Einheit "
+                  "zählt dabei nicht mit. Neben jeder Zahl steht eine Spanne, "
+                  "in der die nächste Einheit erwartet wird.")
+SWITCH_OFF_NOTE = ("Deine Wattzahl ist der Wert deiner letzten Einheit und "
+                   "springt mit jeder neuen Messung mit. Das ist das Verhalten "
+                   "von 0.60.0 — ausgeschaltet ändert dieses Paket nichts.")
+SWITCH_OFF_LABEL = "wie bisher"
+SWITCH_ON_LABEL = "mit Vorgabe"
+SWITCH_GO_LABEL = "auf die Vorgabe umstellen"
+SWITCH_BACK_LABEL = "zurück auf die letzte Einheit"
+
 
 def steering_on(data: dict[str, Any]) -> bool:
     """Steht der Steuerungsschalter auf AN?"""

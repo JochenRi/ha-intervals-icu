@@ -1578,7 +1578,19 @@ class IntervalsIcuPanel extends HTMLElement {
             <tbody>${zeilen}</tbody></table></details>
       </div>`;
     }).join("");
+    // WELCHE STELLUNG GERADE GILT, an der Kachel selbst: sonst muesste man in
+    // den Quellen-Reiter wechseln, um zu wissen, woher die Zahl daneben kommt.
+    // Das Wort kommt aus der Payload, wie am Schalter.
+    const stw = b.steering_words || {};
+    const stAn = !!b.steering_on;
+    const stZeile = Object.keys(b.steering || {}).length
+      ? `<p class="hint">${ico("info", C.blue, 13)} <b>Wattvorgabe:
+          ${esc(stAn ? (stw.on_label || "") : (stw.off_label || ""))}</b> —
+          ${esc(stAn ? (stw.on_note || "") : (stw.off_note || ""))}
+          Umstellen im Reiter „Woher die Zahlen kommen".</p>`
+      : "";
     return `<h3 class="secname">Leistung je Block</h3>
+      ${stZeile}
       ${karten}
       <p class="hint">${ico("warn", C.amber, 13)} <b>Diese Zahlen gelten für diese Einheiten auf
         der Rolle</b>, nicht für dieselbe Familie draußen: derselbe alpha-Wert steht je nach
@@ -2180,6 +2192,7 @@ class IntervalsIcuPanel extends HTMLElement {
       }
       else if (act === "swcurve") this._setCurveSource(el.dataset.on === "1");
       else if (act === "swblocks") this._setBlockSource(el.dataset.on === "1");
+      else if (act === "swsteering") this._setSteeringSource(el.dataset.on === "1");
       else if (act === "smmeasure") this._smMeasure(id);
       else if (act === "smconf") this._smConfirm(id);
       else if (act === "smark") {
@@ -4283,7 +4296,51 @@ class IntervalsIcuPanel extends HTMLElement {
         basis: famStand,
         outside: draussen, outsideNote: sm.outside_note,
       })}
+
+      ${this._steeringSwitch(b)}
     </div>`;
+  }
+
+  /* DER DRITTE SCHALTER, derselbe Baustein wie die beiden darueber. Alle
+     Woerter kommen aus der Payload (`steering_words`), alle Zahlen aus den
+     gerechneten Reihen (`compare`) - im Quelltext steht keine. */
+  _steeringSwitch(b) {
+    const w = (b || {}).steering_words;
+    const cmp = (b || {}).compare || {};
+    const st = (b || {}).steering || {};
+    if (!w || !Object.keys(st).length) return "";
+    const an = !!(b || {}).steering_on;
+    const zahlen = [];
+    for (const fam of ["vo2max", "sweetspot", "tempo"]) {
+      const c = cmp[fam];
+      if (!c || !c.steered) continue;
+      const l = (FAM[fam] || {}).l || fam;
+      zahlen.push({ l: `${l}: Wattzahl`,
+        off: c.old_watts != null ? `${fmt(c.old_watts)} W` : "–",
+        on: c.new_watts != null ? `${fmt(c.new_watts)} W` : "–" });
+      zahlen.push({ l: `${l}: Pulsfenster`,
+        off: c.old_hr_low != null ? `${fmt(c.old_hr_low)}–${fmt(c.old_hr_high)}` : "–",
+        on: c.new_hr_band ? `${fmt(c.new_hr_band.low)}–${fmt(c.new_hr_band.high)}` : "–" });
+      if (c.new_band) {
+        zahlen.push({ l: `${l}: erwartete Spanne`, off: "–",
+          on: `${fmt(c.new_band.low)}–${fmt(c.new_band.high)} W` });
+      }
+    }
+    const fams = Object.keys(st);
+    const seit = fams.map((fam) => {
+      const x = st[fam] || {};
+      const l = (FAM[fam] || {}).l || fam;
+      return `${l}: Startwert ${fmt(x.anchor_w)} W vom ${dMed(x.anchor_date)}, `
+        + `${fmt(x.n_since)} ${x.n_since === 1 ? "Einheit" : "Einheiten"} seither, `
+        + `${fmt(x.moves)} ${x.moves === 1 ? "Bewegung" : "Bewegungen"}`;
+    }).join(" · ");
+    return this._switchRow({
+      title: "Wattvorgabe", act: "swsteering", on: an,
+      offLabel: w.off_label, onLabel: w.on_label,
+      goLabel: w.go_label, backLabel: w.back_label,
+      what: an ? w.on_note : w.off_note,
+      numbers: zahlen, basis: seit,
+    });
   }
 
   async _setBlockSource(on) {
@@ -4293,6 +4350,21 @@ class IntervalsIcuPanel extends HTMLElement {
       await this._ws("set_block_source", { from_marks: !!on });
       // Die Blockreihe speist Einheiten, Stufentest und Wochenplan — alle drei
       // neu holen, sonst steht eine Karte auf der alten Auswahl.
+      this._blocks = null; this._workouts = null; this._goal = null;
+      await this._need("blocks");
+    } finally {
+      this._swBusy = false;
+      this._render();
+    }
+  }
+
+  async _setSteeringSource(on) {
+    if (this._swBusy) return;
+    this._swBusy = true;
+    try {
+      await this._ws("set_steering_source", { on: !!on });
+      // Die Vorgabe speist Einheiten, Stufentest und Wochenplan - dieselben
+      // drei wie beim Blockschalter, aus demselben Grund.
       this._blocks = null; this._workouts = null; this._goal = null;
       await this._need("blocks");
     } finally {
