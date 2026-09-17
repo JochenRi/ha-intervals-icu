@@ -137,6 +137,11 @@ def unit_rows(points: list[dict[str, Any]], family: str) -> list[dict[str, Any]]
             "n_blocks": point.get("n_blocks"),
             "alpha": round(derive._median(alphas), 3),
             "watts": round(derive._median(watts)),
+            # UNGERUNDET fuer das Band. Der Median zweier Bloecke ist oft eine
+            # halbe Zahl (237,5 W); rundet man ihn vor der Streuung, wandert
+            # die Bandbreite um bis zu 1 W - genug, um das Band gegen die
+            # nachgerechneten Zahlen zu verfehlen.
+            "watts_raw": round(derive._median(watts), 2),
             "hr": round(derive._median(pulses)) if pulses else None,
             "minutes": (round(derive._median(_steering_minutes(point)), 1)
                         if _steering_minutes(point) else None),
@@ -184,7 +189,8 @@ def c6(rows: list[dict[str, Any]], family: str) -> dict[str, Any]:
     }
 
 
-def t_band(values: list[float], digits: int = 0) -> dict[str, Any] | None:
+def t_band(values: list[float], digits: int = 0,
+           center: float | None = None) -> dict[str, Any] | None:
     """Median +/- t(0,90; n-1) * s * sqrt(1 + 1/n) ueber die letzten Einheiten.
 
     Das VORHERSAGEband fuer die naechste Einheit - deshalb die Wurzel mit dem
@@ -196,7 +202,12 @@ def t_band(values: list[float], digits: int = 0) -> dict[str, Any] | None:
     n = len(used)
     if n < STEERING_BAND_MIN_N:
         return None
-    mid = derive._median(used)
+    # DIE MITTE IST DIE VORGABE, wo es eine gibt. Ein Band um den Median der
+    # letzten vier Einheiten liegt sonst NEBEN der Zahl, die in der Kachel
+    # steht - VO2max zeigte 250 W und ein Band 230|244|258, in dem 250 nicht
+    # die Mitte war. Die BREITE kommt weiter aus dem Fenster; nur ihr
+    # Aufhaengepunkt ist die Vorgabe.
+    mid = derive._median(used) if center is None else float(center)
     mean = sum(used) / n
     # Stichprobenstreuung (n-1), passend zum t-Quantil.
     sd = (sum((x - mean) ** 2 for x in used) / (n - 1)) ** 0.5
@@ -205,7 +216,9 @@ def t_band(values: list[float], digits: int = 0) -> dict[str, Any] | None:
     return {
         "low": round(mid - half, digits) if digits else round(mid - half),
         "high": round(mid + half, digits) if digits else round(mid + half),
-        "median": round(mid, 1), "sd": round(sd, 2), "t": t, "n": n,
+        "median": round(mid, 1), "centered_on": "target" if center is not None else "median",
+        "unit_median": round(derive._median(used), 1),
+        "half": round(half, 2), "sd": round(sd, 2), "t": t, "n": n,
         "window": STEERING_BAND_WINDOW, "min_n": STEERING_BAND_MIN_N,
     }
 
@@ -218,7 +231,8 @@ def family_state(points: list[dict[str, Any]], family: str) -> dict[str, Any]:
     state["rows"] = rows
     state["n_units"] = len(usable)
     state["single_block"] = [r["date"] for r in rows if not r.get("usable")]
-    state["band"] = t_band([r["watts"] for r in usable])
+    state["band"] = t_band([r.get("watts_raw", r["watts"]) for r in usable],
+                          center=state["watts"])
     state["hr_band"] = t_band([r["hr"] for r in usable if r.get("hr")])
     state["band_note"] = None if state["band"] else TOO_FEW_NOTE
     state["hr_band_note"] = None if state["hr_band"] else TOO_FEW_NOTE
