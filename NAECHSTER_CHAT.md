@@ -1,5 +1,67 @@
 # ha-intervals-icu — Übergabe an den nächsten Chat
 
+## AKTUELL — Rampen-Lesart ENTSCHIEDEN, Rechenwege belegt (18.09.2026, abends). Zuerst lesen.
+
+**Kein Code, keine Version, kein Release.** Reiner Doku-Commit auf `main`; der Stand bleibt
+**0.62.2**, der Prüfstand **22 Dateien / 7.241 Prüfungen / 0 Fehler** — vorher wie nachher
+gefahren und unverändert.
+
+**1 · Die Rampen-Lesart ist entschieden (Johannes): die DAUERHAFTE Unterschreitung.**
+Die erste Schwelle des Stufentests ist damit **213 W / 178 bpm**. Begründung, und sie ist
+eine **SETZUNG**: die Ausgleichsgerade trifft die dauerhafte Unterschreitung auf 1 s und
+0 W (1630 gegen 1631 s, beide 213 W), während die erste bei 1447 s / 193 W liegt und alpha
+danach noch mehrfach über 0,75 zurückkehrt. **Aus der Literatur folgt das nicht** — keine
+gelesene Arbeit liest an Unterschreitungen ab. Es ist allein die Feststellung, dass unsere
+beiden eigenen Verfahren dasselbe sagen. Siehe §7 Fall 39 und `docs/rechenwege.md` K1.4.
+
+**Was sich dadurch NICHT ändert:** nichts an der Produktion. `ramp.at()` liest weiter an
+der Geraden ab, `RAMP_FLAT_S` bleibt 60 s, keine Konstante angefasst. Die Entscheidung
+betrifft den **Prüfstein**, gegen den die Gerade gehalten wird.
+
+**2 · Die nächste offene Frage steht jetzt sauber da.** Der Abstand zwischen Rampe (213 W)
+und Blöcken (174–194 W) ist **nicht mehr durch die Ableseregel erklärbar** — unter der
+verworfenen Lesart wäre er verschwunden, unter der entschiedenen bleibt er: rund **20 bis
+40 W**. Das ist die nächste Frage (§10 Punkt 0).
+
+**3 · `docs/rechenwege.md` ist neu** — der belegte Rechenweg für alle vier Ableseverfahren
+(Stufentest · Blockmessung · Ermüdungskurve · Anker), je Verfahren vier Spalten mit Quelle,
+Lesestand, Code-Zeile, bezifferter Abweichung und Urteil. **Vollständig gerechnet ist nur
+K1**; `tests/data/ramp_i187258578.json` reicht dafür, HEIMDALL wird nicht gebraucht.
+
+**Der schwerste Befund daraus:** `derive.py` Z. 467–480 kennt **keine R²-Schranke** für
+`p075`. Andriolo 2024 (Volltext) verwendet den Fit nur bei R² > 0,75; bei uns wird `r2`
+berechnet und von niemandem gelesen. Wenn die Zählung aus §10 stimmt (27 Fahrtstunden,
+14 mit positiver Steigung, keine ≥ 0,75), steht die Ermüdungskurve auf Fits, die die Quelle
+verworfen hätte. **Das ist die erste Zahl, die nachzurechnen ist.**
+
+**4 · Was die Liste NICHT leistet — als Auftrag für den nächsten Chat:**
+- **K2, K3, K4 sind nicht am Livebestand gerechnet.** Der Container trägt nur die
+  Rampen-Fixture. Jede Zahl steht am Code oder als NICHT PRÜFBAR — keine ohne Deckung.
+  *Abhilfe:* `tests/data/` um den 1-Hz-Strom einer SweetSpot-Fahrt erweitern, dann läuft
+  K2 wie K1 im Container.
+- **Zwei Literaturfragen sind nicht gesucht worden:** Drift von alpha und Puls in
+  10-min-Blöcken nahe der zweiten Schwelle · Vorhersagebänder bei n < 10. **OFFEN**, nicht
+  „nicht dokumentiert".
+- **Sechs zitierte Arbeiten sind nicht gegen ihre Zitatstelle gehalten worden:**
+  Fleitas-Paniagua 2023/24, Sempere-Ruiz 2024, Gronwald 2019/2024, Ajayi 2025,
+  Van Hooren 2023, Gallo 2024. Auch Rogers 2021 (Front Sports Act Living), die Quelle der
+  120-s-Anlaufregel, ist nicht nachgeschlagen — das Zitat steht nur im Code.
+- **Rogers 2024** (personalisierte Schwelle) liegt weiterhin **nur als Abstract** vor,
+  **Olieslagers 2026** nur als Ausschnitt des Methodenteils.
+
+**5 · Zwei Doku-Widersprüche berichtigt, beide mit diesem Commit:**
+(a) §10 Punkt 10c stand als offen („1649 gegen 1705 s klären"), während **diese Übergabe
+die Frage schon am 16.09. als geklärt führte** (Zeitachsenversatz von 56 s, Z. 229–232
+weiter unten). Zwei Dokumente, eine Frage, zwei Stände.
+(b) Die Quellenketten-Tabelle weiter unten nannte `ramp_hrvt1/2` als Stufen — **die es im
+Code seit 0.60.0 nicht mehr gibt** (`workouts.SOURCE_CHAIN` Z. 629–636). Berichtigt.
+
+**6 · Persönlich, und es steht seit Wochen da:** der GitHub-Token liegt weiterhin im
+Klartext in einer Projektdatei (`GIT_Intervals.txt`). **Widerrufen.** Er wird nicht
+gebraucht — das Repo ist öffentlich lesbar, jeder Klon in diesen Sitzungen lief ohne ihn.
+
+---
+
 ## AKTUELL — 0.62.2 ausgeliefert: Steuerung v2 hinter dem Schalter (ab Werk AUS), Blockkachel neu dargestellt (18.09.2026). Zuerst lesen.
 
 **Ausgeliefert: 0.62.2** (Tag `v0.62.2`, GitHub-Release als „latest“ markiert). Prüfstand
@@ -54,8 +116,9 @@ Schalter aus = Verhalten von 0.60.0, bitgenau (im Prüfstand zugesichert):**
    50 W Reserve, 37 min) gegen **307 W** ohne (Block 1 257 W, 38 min). Die Stufe `blocks`
    bleibt als Rückfall stehen.
 
-**Die Rampen-Lesart bleibt OFFEN:** erste Unterschreitung 194 W gegen dauerhafte 217 W
-stehen nebeneinander (§7 Fall 39). Keine davon ist Vorgabe.
+~~**Die Rampen-Lesart bleibt OFFEN:** erste Unterschreitung 194 W gegen dauerhafte 217 W
+stehen nebeneinander (§7 Fall 39). Keine davon ist Vorgabe.~~ **ENTSCHIEDEN am 18.09.2026:
+die DAUERHAFTE Unterschreitung, erste Schwelle 213 W / 178 bpm. Siehe AKTUELL oben.**
 
 ---
 
@@ -475,11 +538,17 @@ Prüfstand ohne HA-Instanz gegen echte und konstruierte Datensätze.
 
 **Quellenkette je Familie** (`workouts.SOURCE_CHAIN`, eine Tabelle, ein Wächter):
 
-| Familie | 1. | 2. | 3. |
-|---|---|---|---|
-| vo2max, sweetspot | blocks | ramp_hrvt2 | ftp |
-| tempo, threshold | ramp_hrvt2 | ftp | — |
-| endurance, long | curve | ramp_hrvt1 | ftp |
+| Familie | 1. | 2. |
+|---|---|---|
+| vo2max, sweetspot | blocks | ftp |
+| tempo, threshold | ftp | — |
+| endurance, long | curve | ftp |
+
+**BERICHTIGT 18.09.2026.** Diese Tabelle nannte bis hierher `ramp_hrvt2` und `ramp_hrvt1`
+als Stufen. **Die gibt es im Code nicht** — seit 0.60.0 steht der Stufentest in keiner
+Kette (§7 Fall 38, §10 Punkt 0). Am Code nachgesehen: `workouts.SOURCE_CHAIN` Z. 629–636.
+Wer nur diese Übergabe las, hielt den Stufentest für eine Quelle. Er ist keine.
+Gefunden in `docs/rechenwege.md`, K4.
 
 **Tempo hat keine Blockquelle.** Seine Watt kommen bauartbedingt nie aus den
 Blöcken; der Blockschalter bewegt sie nicht.

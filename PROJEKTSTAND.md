@@ -2007,12 +2007,30 @@ R²=0,865 (201/243 W), Boden R²=0,886 (204/233 W); 60-s-Median hyperbolisch R²
 (192/220 W), linear R²=0,851 (204/222 W). *Grenzen:* gedünnt (Stufe 4 s), EINE Rampe.
 *Folge:* der Konflikt „Blöcke ~183 W gegen Rampe 213 W bei α=0,75" ist NUR unter der Lesart
 „erste Unterschreitung" ein Ableseartefakt; unter „dauerhaft" bleibt er bestehen (217 W).
-Bei α=0,5 stimmen alle Lesarten überein. **Die Lesart ist ausdrücklich NICHT festgelegt**:
-die erste (194 W) und die dauerhafte (217 W) Unterschreitung stehen nebeneinander, bis
-Johannes eine Regel wählt. **Die Lehre: eine Ablesung ist eine Regel, kein Messwert. Wer
+Bei α=0,5 stimmen alle Lesarten überein. **ENTSCHIEDEN (Johannes, 18.09.2026): der Prüfstein ist die
+DAUERHAFTE Unterschreitung.** *Begründung, und sie ist eine SETZUNG:* die Ausgleichsgerade
+trifft die dauerhafte Unterschreitung auf **1 s und 0 W** (1630 gegen 1631 s, beide 213 W),
+während die erste bei 1447 s / 193 W liegt und alpha danach noch mehrfach über 0,75
+zurückkehrt. **Aus der Literatur folgt das nicht** — keine der gelesenen Arbeiten liest an
+Unterschreitungen ab, alle legen eine Gerade und schneiden (docs/rechenwege.md, K1.4). Es
+ist allein die Feststellung, dass unsere beiden eigenen Verfahren dasselbe sagen, sobald
+die erste Unterschreitung nicht als Messwert genommen wird. *Die Entscheidung betrifft den
+PRÜFSTEIN, nicht die Produktion:* `ramp.at()` liest weiter an der Geraden ab, `RAMP_FLAT_S`
+bleibt bei 60 s, es ist keine Zeile Code geändert worden.
+
+**Die 217 W dieses Falls und die 213 W der Liste widersprechen sich nicht — sie stehen auf
+verschiedenen Strömen** (nachgerechnet 18.09., docs/rechenwege.md K1.4): dieser Fall rechnet
+am **gedünnten** Strom (Stufe 4 s) über 20-s-Klassen, dort liegt die letzte Klasse über 0,75
+bei 1640 s und die dauerhafte Unterschreitung ab 1660 s = **216 W**. Am **ungedünnten**
+1-Hz-Strom mit 30-s-Glättung liegt sie bei 1631 s = **213 W**. Die **4 W sind Auflösung,
+nicht Lesart.** Und: bei 30 s Glättung fallen die beiden denkbaren Definitionen von
+„dauerhaft" — 60 s ununterbrochen darunter (`RAMP_FLAT_S`) und letzte Rückkehr darüber —
+auf dieselbe Sekunde; bei 60 s Glättung tun sie es nicht (1447 gegen 1645 s). **Die
+Glättungsbreite entscheidet mit, und sie ist eine Setzung.**
+
+**Die Lehre bleibt unverändert gültig: eine Ablesung ist eine Regel, kein Messwert. Wer
 eine Schwelle aus einem verrauschten Abfall liest, nennt die Regel — Gerade, erste oder
-dauerhafte Unterschreitung, Kurvenform — und stellt die Lesarten nebeneinander, statt eine
-zur Zahl zu machen.**
+dauerhafte Unterschreitung, Kurvenform — und nennt den Strom, auf dem sie steht.**
 
 ### Die drei Fehlerklassen, die sich durchziehen
 
@@ -2208,13 +2226,26 @@ Korridor der Familie lag. Kein Prozentsatz, keine FTP, keine Umrechnung; dieselb
 aus derselben Quelle. Die Rampe vom 16.09. geht von über 1,0 bis unter 0,5 und deckt damit
 die Korridore von Grundlage bis VO2max ab.
 
-*Stand 17.09.2026 (Kreuzprobe Runde 3):* Die Rampenablesung bei α=0,75 schwankt je Regel
-zwischen **189 und 217 W**; die Blockkreuzung liegt formübergreifend bei 174–188 W (ohne
-und mit Tempo-Punkt, mit Tempo ±0,1 bis 194 W). Bei α=0,5: Rampe 221–233 W, Blöcke
-224–233 W, Bänder 212–245 W. **Keine Ablesung wird Vorgabe, bevor eine Lesart festliegt**
-(§7 Fall 39) — die erste (194 W) und die dauerhafte (217 W) Unterschreitung bleiben
-nebeneinander stehen. Und: die personalisierte Schwelle (183 W) liegt bei α=1,081, nicht
-bei α=0,75; dass sie zu den Blöcken passt, belegt nichts für α=0,75.
+*Stand 18.09.2026 (Lesart entschieden, §7 Fall 39):* **Die erste Schwelle des Stufentests
+ist 213 W / 178 bpm.** Das ist der Schnitt der Geraden mit α=0,75 (`ramp.at()`, t=1630 s am
+ungedünnten 1-Hz-Strom) und zugleich die **dauerhafte** Unterschreitung (t=1631 s, dieselben
+213 W) — die beiden Verfahren sagen dasselbe. Die erste Unterschreitung (1447 s / 193 W)
+ist damit als Prüfstein verworfen; die Begründung steht in §7 Fall 39 und ist eine SETZUNG,
+keine Ableitung aus der Literatur. Bei α=0,5: Gerade 233 W, gemessen 226 W.
+
+**Damit ist der Unterschied zu den Blöcken NICHT mehr durch die Ableseregel erklärbar.** Die
+Blockkreuzung liegt formübergreifend bei **174–194 W**, die Rampe bei **213 W** — rund
+**20 bis 40 W** Abstand, der unter der entschiedenen Lesart bestehen bleibt. Unter der
+verworfenen Lesart („erste Unterschreitung", 193 W) wäre er verschwunden; genau deshalb war
+die Lesart zuerst zu entscheiden. **Der Abstand ist jetzt die nächste Frage, und er ist
+offen.** Eine Spur aus der Literatur, kein Beleg: die Autoren von Andriolo 2024 berichten im
+eigenen Blog, dass Rampenerkennung Schwellen in manchen Fällen überschätzt, während
+Cluster-Ablesungen (unserem Blockverfahren ähnlich) besser übereinstimmen — dieselbe
+Richtung wie hier, aber kein begutachteter Befund (docs/rechenwege.md, Quellenliste).
+
+Und weiterhin gültig: die personalisierte Schwelle (183 W) liegt bei α=1,081, nicht bei
+α=0,75; dass sie zu den Blöcken passt, belegt nichts für α=0,75. Bei α=0,5 stimmen alle
+Lesarten überein.
 
 *Entschieden im Paket „Kreuzprobe klein" (18.09.2026):* das **Rampenende folgt der Vorgabe**
 statt Block 1. `RAMP_END_CHAIN` beginnt jetzt mit der Stufe `steering`; die Stufe `blocks`
@@ -2327,8 +2358,15 @@ Block 1 nicht steuert.
    Grundlagenfahrten würde dritte Stufe. Entscheidung, sobald der Test im Archiv ist.
    Vorrechnung in docs/ausbau.md, „B2b-3 · Vorrechnung".
 
-10. **Stufentest 16.09.2026: `reached_anaerobic: true`, aber `hrvt2: null` — die Kachel
-    sagt „nicht erreicht". Falschaussage über die Fahrt, NICHT gebaut.** (Punkt 8 ist
+10. **ERLEDIGT durch Rechenweg e1 (nachgerechnet 18.09.2026, docs/rechenwege.md K1.5/K1.6).**
+    Der Produktionslauf von 0.62.2 am echten Strom liefert Segment **1058 → 2134 s**,
+    Hochpunkt **1,662**, Gefälle **−0,0649/min**, r² **0,815**, HRVT1 **1630 s / 213 W /
+    178 bpm**, HRVT2 **1861 s / 233 W / 186 bpm**, `contradiction` = None. Der unten
+    beschriebene Widerspruch tritt nicht mehr auf, und die unten genannten Zahlen stammen
+    sämtlich aus der Fassung VOR e1. Der Absatz bleibt als Fallgeschichte stehen.
+
+    *Ursprünglicher Befund (vor e1):* **`reached_anaerobic: true`, aber `hrvt2: null` — die
+    Kachel sagt „nicht erreicht". Falschaussage über die Fahrt.** (Punkt 8 ist
     erledigt: es war Verzögerung bei Intervals.) Johannes' Nachrechnung: Segment
     224 → 1807 s, Hochpunkt 1,731, Gefälle −0,0413/min, r² 0,716, Gerade am Segmentende
     0,641, Schnitt 0,75 bei 1649 s (gemeldet 1705 — ungeklärt), Schnitt 0,5 bei 2012 s
@@ -2358,15 +2396,58 @@ Block 1 nicht steuert.
     gemeinsam MELDET statt durchlässt. **GEBAUT auf `paket-b2-wip` (e1 Schritt 2):**
     `result.contradiction` mit Code, Sekunde und Satz; unter e1 nur noch mit einer
     Mulden-Fixture herstellbar, deshalb als Wächter.
-    (c) Die 1649-gegen-1705-s-Abweichung klären, bevor irgendetwas umgestellt wird.
+    (c) **ERLEDIGT, und zwar zweimal — der Punkt war schon geschlossen, als er hier noch
+    offen stand.** Erstens inhaltlich: `NAECHSTER_CHAT.md` hält seit dem 16.09. fest, dass
+    1705,2 s der Schnitt der GERADEN ist und Johannes' Nachrechnung in BEIDEN Schnitten um
+    konstant 56 s verschoben war (1649/1705,2 und 2012/2068,7) bei gleicher Steigung — ein
+    Zeitachsenversatz, keine Ablesemethode; die Ursache des Versatzes bleibt unbelegt.
+    Zweitens gegenstandslos: unter e1 liegt der Schnitt mit 0,75 bei **1630 s**, weder bei
+    1649 noch bei 1705, weil das Segment ein anderes ist. **Dass dieser Satz hier stehen
+    blieb, während die Übergabe ihn bereits als geklärt führte, ist selbst der Befund** —
+    zwei Dokumente, eine Frage, zwei Stände (docs/rechenwege.md, K1.5).
 
-11. **Belegter Rechenweg für ALLE Ableseverfahren — Auftrag zur LISTE, nicht zum Bau.**
-    Je Verfahren (Stufentest, Blockmessung, Ermüdungskurve, Anker): was die Quelle macht,
-    was wir machen, wo wir abweichen; Setzung als Setzung beschriften, Versehen
-    korrigieren. Bekannt vorab: Stufentest siehe Punkt 10; Anker: Ganzfahrt-Regression
-    wendet die Rampenmethode auf Fahrten ohne Rampe an (docs/ausbau.md, B2b-3);
-    Blockmessung: Median je Block nach 120 s Anlauf (Rogers 2021, am Bestand bestätigt);
-    Ermüdungskurve: Repräsentantenmethode je Stunde nach Andriolo 2024.
+11. **Belegter Rechenweg für ALLE Ableseverfahren — ERSTE FASSUNG in
+    `docs/rechenwege.md` (18.09.2026).** Je Verfahren eine Vier-Spalten-Tabelle (Quelle mit
+    Lesestand · unser Code mit Zeile · bezifferte Abweichung · Urteil), darunter die
+    Simulationen. **Vollständig gerechnet ist nur K1** (Stufentest) — `tests/data/ramp_i187258578.json`
+    trägt den 1-Hz-Strom, der Container reicht, HEIMDALL wird nicht gebraucht. K2/K3/K4 stehen
+    am Code belegt, ihre Watt-Zahlen als NICHT PRÜFBAR mit Grund.
+
+    **Die drei schwersten Befunde:**
+
+    (a) **`derive.py` Z. 467–480 kennt keine R²-Schranke für `p075`.** Andriolo 2024
+    (Volltext gelesen) verwendet den Fit nur bei R² > 0,75. `row["r2"]` wird berechnet und
+    von niemandem gelesen — `grep` über alle Verbraucher findet keinen Vergleich. Wenn die
+    Zählung aus Punkt 0 stimmt (27 Fahrtstunden, 14 mit positiver Steigung, keine ≥ 0,75),
+    steht die ganze Ermüdungskurve auf Fits, die die Quelle verworfen hätte. **Erste
+    nachzurechnende Zahl.** Dieselbe Klasse wie Punkt 7 und §7 Fall 13.
+
+    (b) **Der Fit-Bereich kostet +8 W bei α = 0,75** (213 gegen 205 W am Livestrom), die
+    Fit-Achse weitere −8 W; Rogers-treu zusammen **199 statt 213 W**. Die Begründung aus
+    Punkt 10 („Plateau im Fit → Gerade zu flach") ist **widerlegt**: der Hochpunkt-Start macht
+    die Gerade steiler und r² besser. Die Abweichung besteht trotzdem — Synthetik über 30
+    Läufe zeigt bei **konvexem** Abfall +53 s Fehler, und der echte Abfall **ist** konvex
+    (c₂ = +1,01 × 10⁻⁶; erstes Drittel −0,117/min gegen letztes −0,027/min).
+
+    (c) **Die Lesart ist entschieden** (§7 Fall 39, Johannes, 18.09.): dauerhafte
+    Unterschreitung, als SETZUNG beschriftet. Der Widerspruch aus Punkt 10 und die
+    1649-gegen-1705-Frage sind erledigt — letztere war in `NAECHSTER_CHAT.md` bereits am
+    16.09. geklärt, während sie hier noch als offen stand.
+
+    **Zu Punkt 0, Schritt 2 beantwortet:** die DFA-Literatur gibt Trainingsbereiche **weder
+    als alpha-Korridore je Familie noch als Anteil einer Schwelle** — sie gibt zwei Grenzen
+    (0,75 / 0,50) und drei Zonen. Unsere Korridore sind eine Setzung und in `const.py` Z. 147
+    korrekt so beschriftet. **Nicht beschriftet** ist der Zuschnitt vier Familien in drei
+    Zonen, besonders „Tempo" bei 0,75–1,00: ein alpha ÜBER 0,75 heißt eine Intensität
+    UNTER der aeroben Schwelle — also Zone 1, die Grundlagenzone. Die Familie heißt Tempo
+    und liegt physiologisch in der Grundlage.
+
+    **Offen geblieben, ehrlich benannt:** zwei der drei neu zu suchenden Literaturfragen
+    (Drift von alpha und Puls in 10-min-Blöcken nahe der zweiten Schwelle · Vorhersagebänder
+    bei n < 10) sind **nicht gesucht** worden; sechs zitierte Arbeiten (Fleitas-Paniagua,
+    Sempere-Ruiz, Gronwald 2019/2024, Ajayi, Van Hooren, Gallo) **nicht gegen ihre Zitatstelle
+    gehalten**; K2/K3/K4 **nicht am Livebestand gerechnet**. Das steht als OFFEN in der Liste,
+    nicht als „nicht dokumentiert".
 
 **Funktional offen:**
 - Webhooks statt Polling
