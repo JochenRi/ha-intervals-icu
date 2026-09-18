@@ -1,14 +1,17 @@
 # ha-intervals-icu — Übergabe an den nächsten Chat
 
-## AKTUELL — 0.61.0 ausgeliefert: Steuerung v2 hinter dem Schalter, ab Werk AUS (18.09.2026). Zuerst lesen.
+## AKTUELL — 0.62.0 ausgeliefert: Steuerung v2 hinter dem Schalter (ab Werk AUS), Blockkachel neu dargestellt (18.09.2026). Zuerst lesen.
 
-**Ausgeliefert: 0.61.1** (Tag `v0.61.1`). Prüfstand
-**22 Dateien, 7.183 Prüfungen, 0 Fehler** (Basis war 21 / 7.048 / 0). Johannes:
+**Ausgeliefert: 0.62.0** (Tag `v0.62.0`, GitHub-Release als „latest“ markiert). Prüfstand
+**22 Dateien, 7.226 Prüfungen, 0 Fehler** (Basis war 21 / 7.048 / 0). Johannes:
 HACS-Update, HA-Neustart, Browser hart neu laden. **Der Schalter startet AUS** — die
-Kacheln zeigen weiter die Zahlen von 0.60.0; in der Blockkachel steht die Parallelanzeige
-als Vorschau. Einschalten erst, wenn er sie über ein paar Einheiten gesehen hat: Reiter „Woher die
-Zahlen kommen“, dritter Schalter „Wattvorgabe“. Welche Stellung gilt, steht auch oben
-an der Blockkachel.
+Kacheln zeigen weiter die Zahlen von 0.60.0, aber im neuen Aufbau. Einschalten erst, wenn er
+das über ein paar Einheiten gesehen hat: Reiter „Woher die Zahlen kommen“, dritter
+Schalter „Wattvorgabe“. Welche Stellung gilt, steht auch oben an der Blockkachel.
+
+**AUFLAGE für jede Auslieferung:** ein Tag genügt NICHT. Jede Version braucht ein echtes
+GitHub-Release, `prerelease: false`, ausdrücklich als `make_latest` — sonst bietet HACS das
+Update nicht an. Danach `/releases/latest` abfragen und den Tag als Beleg melden.
 
 **Was drin ist — alles hinter dem neuen Schalter `steering_v2` (`intervals_icu/set_steering_source`).
 Schalter aus = Verhalten von 0.60.0, bitgenau (im Prüfstand zugesichert):**
@@ -23,8 +26,14 @@ Schalter aus = Verhalten von 0.60.0, bitgenau (im Prüfstand zugesichert):**
    Unter 3 Einheiten: „noch keine Toleranz".
 4. **Etiketten ehrlich:** `vo2_3030` und `vo2_3015` sagen jetzt FTP statt „blocks";
    `vo2_5x4` nennt Block 5 als Rückfall, `vo2_4x8` die Streckung (gemessen an 4-min-Blöcken).
-5. **Parallelanzeige** in der Blockkachel: alt neben neu, mit Band — auch bei ausgeschaltetem
-   Schalter als Vorschau.
+5. **Die Blockkachel ist neu aufgebaut** (0.62.0, nur Anzeige): Zustandsschildchen,
+   Familienname, große Zahl in Panel-Blau, Toleranzzeile (± Spanne · von–bis · 8 von 10
+   Einheiten), Bullet-Streifen nach Few, zwei Sätze aus dem Modul, Verlauf der Watt **ab
+   Block 2** (Band als Streifen, Vorgabe gestrichelt), Rechenweg zugeklappt zuletzt. Die
+   Tabelle „neu neben alt“ ist fort: **gezeigt wird nur die Zahl, die GILT** — mit Schalter
+   die Vorgabe, ohne ihn die alte Rechnung, dann ohne Band, ohne Rechenweg und ohne den alten
+   Vorschlagssatz. Gilt für alle Blockfamilien; Tempo bekommt Zeilen und Verlauf, aber keine
+   Vorgabe, und sagt das. Der alte Verlauf (Block 1) und seine Ableseleiste sind ersetzt.
 6. Textfehler: `not_active.blocks` hängt am Schalter, „Blocköcke", EF-Satz am echten Filter
    (ab 85 % der Spitzenleistung, Dauer ±35 % um den Median).
 7. `settings` steht jetzt im Archivskelett (`importer.empty_data`).
