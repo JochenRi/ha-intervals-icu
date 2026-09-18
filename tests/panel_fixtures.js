@@ -324,6 +324,71 @@ function blocks(over) {
     },
     discarded_s: 120, step_near_pct: 5, step_far_pct: 10, scope: "rolle",
     progress: { done: 58, pending: 0, total: 58, batch: 25, importing: false },
+    // DIE STEUERUNG REIST IMMER MIT (seit 0.61.0 setzt der Handler sie
+    // unbedingt, in beiden Schalterstellungen). Die Kachel liest ihre Zahlen
+    // von hier - die Fixture bildet deshalb dieselben Schluessel ab.
+    steering_on: false,
+    steering_anchor_date: "2026-09-17",
+    steering_words: {
+      on_note: "Deine Wattzahl ist eine Vorgabe.",
+      off_note: "Wert deiner letzten Einheit.",
+      off_label: "wie bisher", on_label: "mit Vorgabe",
+      go_label: "auf die Vorgabe umstellen", back_label: "zurück auf die letzte Einheit",
+      tile_ride: "Fahr die {watts} W.",
+      tile_inside: "Landet deine nächste Einheit zwischen {low} und {high} W, ist alles "
+        + "normal — die Vorgabe bleibt stehen. Erst wenn {need} von {window} Einheiten "
+        + "daneben liegen, bewegt sie sich um {step} W.",
+      tile_no_band: "Für eine Spanne braucht es {min_n} gemessene Einheiten; solange "
+        + "steht die Vorgabe allein.",
+      tile_band_means: "Die Spanne ist keine Grenze, sondern das Messrauschen: {share} "
+        + "von 10 Einheiten landen erfahrungsgemäß darin.",
+      tile_first_block: "Block 1 bleibt in der Blockreihe sichtbar, er trägt nur "
+        + "regelmäßig das höhere alpha und steuert deshalb nicht mit.",
+      tile_off: "Die Steuerung ist aus — diese Zahl ist der Wert deiner letzten Einheit. "
+        + "Einschalten im Reiter „Woher die Zahlen kommen“, Schalter „Wattvorgabe“.",
+      tile_no_target: "Für diese Familie wird keine Vorgabe geführt — ihre Zahl kommt "
+        + "aus der FTP.",
+      band_share: 8, step_w: 5, need: 2, window: 3, min_units: 3,
+      band_min_n: 3, band_window: 4,
+    },
+    steering: {
+      vo2max: { watts: 250, anchor_w: 250, anchor_date: "2026-09-17", n_since: 0, moves: 0,
+                n_units: vo.length, min_units: 3, note: null, band_note: null,
+                hr_band_note: null, first_block_counts: false, single_block: [],
+                corridor: [0.2, 0.5], measured_minutes: 4,
+                band: { low: 235, high: 265, median: 250, half: 14.6, sd: 7.97, t: 1.638,
+                        n: 4, window: 4, min_n: 3, centered_on: "target", unit_median: 243.8 },
+                hr_band: { low: 178, high: 189, median: 183.5, half: 5.4, sd: 2.89,
+                           t: 1.638, n: 4, window: 4, min_n: 3, centered_on: "median",
+                           unit_median: 183.5 },
+                rows: vo.map((x, i) => ({ date: x.date, name: x.name, usable: true,
+                  n_blocks: x.n_blocks, alpha: x.block_alphas[1], watts: x.median_watts,
+                  watts_raw: x.median_watts, hr: 180 + i, minutes: 4, side: 0 })) },
+      sweetspot: { watts: 190, anchor_w: 190, anchor_date: "2026-09-17", n_since: 0, moves: 0,
+                   n_units: ss.length, min_units: 3, note: null, band_note: null,
+                   hr_band_note: null, first_block_counts: false, single_block: [],
+                   corridor: [0.5, 0.75], measured_minutes: 20,
+                   band: { low: 186, high: 194, median: 190, half: 4.06, sd: 2.22, t: 1.638,
+                           n: 4, window: 4, min_n: 3, centered_on: "target", unit_median: 191 },
+                   hr_band: { low: 159, high: 174, median: 166.5, half: 7.4, sd: 4.27,
+                              t: 1.638, n: 4, window: 4, min_n: 3, centered_on: "median",
+                              unit_median: 166.5 },
+                   rows: ss.map((x, i) => ({ date: x.date, name: x.name, usable: true,
+                     n_blocks: x.n_blocks, alpha: x.block_alphas[1], watts: x.median_watts,
+                     watts_raw: x.median_watts, hr: 160 + i, minutes: 20, side: 0 })) },
+    },
+    compare: {
+      vo2max: { old_watts: vo[vo.length - 1].median_watts, new_watts: 250, delta: -2,
+                old_hr_low: 174, old_hr_high: 186, old_source: "blocks", steered: true,
+                new_band: { low: 235, high: 265, median: 250, half: 14.6, sd: 7.97,
+                            t: 1.638, n: 4, window: 4, min_n: 3 },
+                new_hr_band: { low: 178, high: 189 }, new_note: null },
+      sweetspot: { old_watts: ss[ss.length - 1].median_watts, new_watts: 190, delta: -6,
+                   old_hr_low: 161, old_hr_high: 173, old_source: "blocks", steered: true,
+                   new_band: { low: 186, high: 194, median: 190, half: 4.06, sd: 2.22,
+                               t: 1.638, n: 4, window: 4, min_n: 3 },
+                   new_hr_band: { low: 159, high: 174 }, new_note: null },
+    },
   }, over || {});
 }
 

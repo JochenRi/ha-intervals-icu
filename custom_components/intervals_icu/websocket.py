@@ -19,6 +19,12 @@ from .api import IntervalsError
 from .const import (
     BLOCK_CORRIDORS,
     BLOCK_MIN_FOR_SOURCE,
+    STEERING_BAND_MIN_N,
+    STEERING_BAND_WINDOW,
+    STEERING_MIN_UNITS,
+    STEERING_NEED,
+    STEERING_STEP_W,
+    STEERING_WINDOW,
     BLOCK_MIN_SECONDS,
     BLOCK_WARMUP_DISCARD_S,
     DECOUPLING_GOOD,
@@ -340,6 +346,18 @@ def websocket_blocks(hass, connection, msg) -> None:
         "on_note": steering_lib.SWITCH_ON_NOTE, "off_note": steering_lib.SWITCH_OFF_NOTE,
         "off_label": steering_lib.SWITCH_OFF_LABEL, "on_label": steering_lib.SWITCH_ON_LABEL,
         "go_label": steering_lib.SWITCH_GO_LABEL, "back_label": steering_lib.SWITCH_BACK_LABEL,
+        # Die Saetze der KACHEL. Sie tragen Platzhalter ({watts}, {low} ...),
+        # die das Frontend mit den Zahlen derselben Payload fuellt - so steht
+        # der Satz an einer Stelle und die Zahl kommt trotzdem aus der Rechnung.
+        "tile_ride": steering_lib.TILE_RIDE, "tile_inside": steering_lib.TILE_INSIDE,
+        "tile_no_band": steering_lib.TILE_NO_BAND,
+        "tile_band_means": steering_lib.TILE_BAND_MEANS,
+        "tile_first_block": steering_lib.TILE_FIRST_BLOCK,
+        "tile_off": steering_lib.TILE_OFF, "tile_no_target": steering_lib.TILE_NO_TARGET,
+        "band_share": steering_lib.TILE_BAND_SHARE,
+        "step_w": STEERING_STEP_W, "need": STEERING_NEED, "window": STEERING_WINDOW,
+        "min_units": STEERING_MIN_UNITS, "band_min_n": STEERING_BAND_MIN_N,
+        "band_window": STEERING_BAND_WINDOW,
     }
     stats = importer.archive_stats(data)
     result["progress"] = {

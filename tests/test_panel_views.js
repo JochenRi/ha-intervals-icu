@@ -935,8 +935,19 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   // Zeilenumbrueche im Template sind Formatierung, kein Inhalt.
   const flat = html.replace(/\s+/g, " ");
 
-  // Leitzahl ist die VERLAUFSgroesse (erster Block), nicht die Steuergroesse
-  ok(/262 <span class="unit">W<\/span>/.test(html), "M: die Leitzahl ist nicht der erste Block");
+  // DIE GROSSE ZAHL IST DIE, DIE GILT. Bis 0.61.1 stand hier die
+  // Verlaufsgroesse (erster Block, 262 W) - eine Zahl, nach der niemand faehrt.
+  // Schalter AUS: die alte Rechnung, also der Median der letzten Einheit.
+  ok(/252<\/b>\s*<span class="unit">W<\/span>/.test(html),
+     "M: die grosse Zahl ist nicht die geltende (Median der letzten Einheit)");
+  ok(!/262<\/b>\s*<span class="unit">W<\/span>/.test(html),
+     "M: die Verlaufsgroesse steht wieder als Leitzahl da");
+  // GEGENPROBE: mit Schalter zeigt dieselbe Kachel die VORGABE.
+  const mitStg = String(q.rBlocks(F.blocks({ steering_on: true })));
+  ok(/250<\/b>\s*<span class="unit">W<\/span>/.test(mitStg),
+     "M: mit Schalter steht nicht die Vorgabe oben");
+  ok(!/252<\/b>\s*<span class="unit">W<\/span>/.test(mitStg),
+     "M: mit Schalter steht weiter die alte Zahl oben");
   // Die Steuerung ruht sichtbar auf ihren Einzelwerten - nicht geglaettet
   contains(html, "Die Steuerung ruht auf", "M: es steht nicht da, worauf die Steuerung ruht");
   ok(/0,45 und 0,41 und 0,38 und 0,40/.test(html) || /0,45 und 0,41/.test(html),
@@ -965,6 +976,106 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
     ...b.families.sweetspot, latest: b.families.sweetspot.points[2] } } })));
   ok(/Spanne von 0,21 ist groß/.test(zwei.replace(/\s+/g, " ")),
      "M: eine große Spanne wird verschwiegen");
+
+  // ── DER NEUE KACHELWERT (0.62.0): AUFBAU UND REIHENFOLGE ───────────────
+  {
+    const an = String(q.rBlocks(F.blocks({ steering_on: true }))).replace(/\s+/g, " ");
+    const aus = String(q.rBlocks(F.blocks({ steering_on: false }))).replace(/\s+/g, " ");
+    // Reihenfolge von oben: Schildchen, Familie, grosse Zahl, Toleranzzeile,
+    // Streifen, Saetze, Verlauf, Rechenweg.
+    const folge = ["class=\"state\"", "class=\"fam\"", "class=\"bigval\"", "class=\"tol\"",
+                   "class=\"bstrip\"", "class=\"info\"", "Verlauf — Watt ab Block 2",
+                   "mehr anzeigen"];
+    // NUR INNERHALB EINER KARTE. Ueber beide Familien hinweg gesucht, faende
+    // die Reihenfolge ihre Stuecke auch dann noch, wenn sie in der ersten
+    // Karte vertauscht waeren - der Streifen der ZWEITEN Karte stuende ja
+    // hinter der Toleranzzeile der ersten. Die Luecke ist beim Mutieren
+    // aufgefallen, nicht beim Schreiben.
+    const eineKarte = an.slice(an.indexOf('data-grp="blk_vo2max"'),
+                               an.indexOf('data-grp="blk_sweetspot"'));
+    ok(eineKarte.length > 200, "kachel: die erste Familienkarte ist nicht auffindbar");
+    let pos = -1, heil = true;
+    for (const stueck of folge) {
+      const p2 = eineKarte.indexOf(stueck, pos + 1);
+      if (p2 <= pos) heil = false;
+      pos = p2;
+    }
+    ok(heil, "kachel: die Reihenfolge von oben nach unten stimmt nicht");
+    // Die Toleranzzeile: Spanne, von-bis, wie viele von zehn
+    ok(/± 4,1 W · <b class="tn">186 – 194 W<\/b> · 8 von 10 Einheiten/.test(an),
+       "kachel: die Toleranzzeile steht nicht in der verlangten Form");
+    // Der Bullet-Streifen: Balken, Marker, VIER Zahlen an der Achse
+    const strip = an.slice(an.indexOf("bstrip"), an.indexOf("bleg"));
+    ok(/class="brange"/.test(strip) && /class="bmark"/.test(strip),
+       "kachel: Spanne oder Vorgabestrich fehlen im Streifen");
+    ok((strip.match(/<i[^>]*>\d/g) || []).length === 4,
+       "kachel: an der Achse stehen nicht genau vier Zahlen");
+    ok(!/#fbbf24|#f87171|#34d399/.test(strip), "kachel: der Streifen benutzt Ampelfarben");
+    // Die zwei Saetze - aus dem Modul, mit eingesetzten Zahlen
+    ok(/Fahr die 190 W\./.test(an), "kachel: der Fahr-Satz fehlt oder rechnet falsch");
+    ok(/zwischen 186 und 194 W/.test(an) && /2 von 3 Einheiten/.test(an) && /um 5 W/.test(an),
+       "kachel: der Satz, wann sich die Vorgabe bewegt, fehlt");
+    // Der Rechenweg, zugeklappt, MIT EINHEITEN
+    ok(/<details class="more"> <summary>mehr anzeigen|<details class="more"><summary>mehr anzeigen/.test(an),
+       "kachel: der Rechenweg ist nicht zugeklappt");
+    for (const zeile of ["Startwert", "Einheiten seither", "Bewegungen seither", "Vorgabe heute",
+                         "Messfenster", "ab Block 2", "Streuung s", "Faktor t(0,90", "Spanne =",
+                         "alpha ab Block 2", "Pulsfenster"]) {
+      contains(an, zeile, `kachel: im Rechenweg fehlt „${zeile}“`);
+    }
+    ok(/2,22 W/.test(an) && /± 4,1 W/.test(an) && /159 – 174 bpm/.test(an),
+       "kachel: dem Rechenweg fehlen die Einheiten an den Zahlen");
+    ok(/Messrauschen/.test(an) && /höhere alpha/.test(an),
+       "kachel: die zwei Sätze unter dem Rechenweg fehlen");
+
+    // HARTE REGEL: Schalter AUS zeigt die alte Rechnung - ohne Band, ohne
+    // Rechenweg, mit dem Satz, wo man einschaltet.
+    ok(!/class="bstrip"/.test(aus), "kachel aus: der Streifen zeigt ein Band, das nicht gilt");
+    ok(!/mehr anzeigen/.test(aus), "kachel aus: der Rechenweg einer Rechnung, die nicht läuft");
+    ok(!/186 – 194 W/.test(aus), "kachel aus: die Spanne der Steuerung steht da");
+    contains(aus, "Woher die Zahlen kommen", "kachel aus: es steht nicht da, wo man einschaltet");
+    contains(aus, "wie bisher", "kachel aus: das Schildchen nennt die Stellung nicht");
+    contains(an, "mit Vorgabe", "kachel an: das Schildchen nennt die Stellung nicht");
+    // Der alte Vorschlagssatz beschreibt die alte Rechnung - mit Schalter weg.
+    ok(/Das System schlägt vor/.test(aus) && !/Das System schlägt vor/.test(an),
+       "kachel: der alte Vorschlag steht auch mit Schalter noch da");
+    // Der Verlauf traegt Band und Vorgabe nur, wenn sie gelten.
+    ok(/gestrichelt = Vorgabe 250 W/.test(an), "kachel: der Verlauf nennt die Vorgabe nicht");
+    ok(!/gestrichelt/.test(aus), "kachel aus: der Verlauf zeigt eine Vorgabe, die nicht gilt");
+
+    // RANDFALL: zu wenige Einheiten -> „noch keine Toleranz“, kein Streifen
+    const duenn = F.blocks({ steering_on: true });
+    duenn.steering.sweetspot = { ...duenn.steering.sweetspot, band: null,
+      band_note: "noch keine Toleranz", hr_band: null, hr_band_note: "noch keine Toleranz" };
+    duenn.compare.sweetspot = { ...duenn.compare.sweetspot, new_band: null, new_hr_band: null };
+    const dHtml = String(q.rBlocks(duenn)).replace(/\s+/g, " ");
+    const ssTeil2 = dHtml.slice(dHtml.indexOf("SweetSpot"));
+    contains(ssTeil2, "noch keine Toleranz", "randfall: die dünne Kachel sagt es nicht");
+    ok(!/186 – 194 W/.test(ssTeil2), "randfall: sie zeigt trotzdem eine Spanne");
+    ok(/Für eine Spanne braucht es 3 gemessene Einheiten/.test(ssTeil2),
+       "randfall: der Satz zur fehlenden Spanne fehlt");
+
+    // RANDFALL: Familie mit nur EINEM Block -> keine Zeilen, kein Verlauf
+    const einer = F.blocks({ steering_on: true });
+    einer.steering.sweetspot = { ...einer.steering.sweetspot, watts: 190, rows: [],
+      n_units: 0, single_block: ["2026-08-24"], band: null, band_note: "noch keine Toleranz" };
+    einer.compare.sweetspot = { ...einer.compare.sweetspot, new_band: null };
+    const eHtml = String(q.rBlocks(einer)).replace(/\s+/g, " ");
+    const ssTeil3 = eHtml.slice(eHtml.indexOf("SweetSpot"));
+    ok(!/Verlauf — Watt ab Block 2[\s\S]{0,400}SweetSpot/.test(ssTeil3 + "SweetSpot")
+       || !/svg/.test(ssTeil3.slice(0, 600)),
+       "randfall: die Ein-Block-Familie bekommt trotzdem einen Verlauf");
+    contains(ssTeil3, "190", "randfall: die Ein-Block-Familie zeigt ihre Vorgabe nicht");
+
+    // KEINE ZAHL IM QUELLTEXT: die Bausteine tragen keine Wattwerte.
+    const src = H.source();
+    for (const name of ["_famValue", "_famTrend", "_famMore"]) {
+      const baustein = (new RegExp(name + "\\(b, key\\) \\{[\\s\\S]*?\\n  \\}")).exec(src);
+      ok(baustein !== null, `kachel: der Baustein ${name} ist im Quelltext nicht auffindbar`);
+      ok(baustein && !/\b(?:186|190|194|235|250|265|252|262)\b/.test(baustein[0]),
+         `kachel: in ${name} steht eine Wattzahl statt eines Werts aus der Payload`);
+    }
+  }
 
   // Leerer und rechnender Zustand
   const leer = String(q.rBlocks(F.blocks({ families: {} })));

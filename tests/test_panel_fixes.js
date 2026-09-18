@@ -1147,22 +1147,22 @@ const acts = F.activities(), thr = F.thresholds();
   const s = stripVo._s;
   ok(s.x.includes(M.dMed(vo[iWant].date)), `zeiger block: das Datum fehlt (${s.x})`);
   ok(s.x.includes(vo[iWant].name), `zeiger block: die Einheit wird nicht genannt (${s.x})`);
-  ok(s.h.includes(M.fmt(vo[iWant].first_watts)), "zeiger block: die Leistung fehlt in der Leiste");
-  ok(s.h.includes(M.fmt(vo[iWant].first_alpha, 2)),
-     `zeiger block: der alpha des aufgetragenen Blocks fehlt (${s.h})`);
-  ok(s.h.includes(String(vo[iWant].n_blocks)), "zeiger block: die Zahl der Bloecke fehlt");
-
-  // Die Verwechslung, gegen die es gebaut ist: aufgetragen ist der ERSTE
-  // Block, also steht dort SEIN alpha - nicht der Median, der die Steuergroesse
-  // ist und als eigene Zeile daneben steht.
-  ok(M.fmt(vo[iWant].first_alpha, 2) !== M.fmt(vo[iWant].median_alpha, 2),
-     "zeiger block Fixture-Beweis: erster alpha und Median sind gleich - die Verwechslung waere unsichtbar");
-  const zeile = /alpha dort[\s\S]{0,120}?<\/span>/.exec(s.h);
-  ok(zeile !== null, "zeiger block: die Zeile 'alpha dort' fehlt");
-  ok(zeile && !zeile[0].includes(M.fmt(vo[iWant].median_alpha, 2)),
-     "zeiger block: neben dem aufgetragenen Punkt steht der Median statt seines eigenen alpha");
-  ok(s.h.includes("Median alpha") && s.h.includes(M.fmt(vo[iWant].median_alpha, 3)),
-     "zeiger block: die Steuergroesse fehlt als eigene Zeile");
+  // Seit 0.62.0 traegt der Verlauf die STEUERgroesse: Watt ab Block 2. Die
+  // Leiste liest dieselbe Reihe, aus der die Punkte kommen - nicht mehr den
+  // ersten Block, nach dem niemand faehrt.
+  const stgRows = F.blocks().steering.vo2max.rows;
+  ok(s.h.includes(M.fmt(stgRows[iWant].watts)),
+     `zeiger block: die aufgetragene Leistung (ab Block 2) fehlt in der Leiste (${s.h})`);
+  ok(s.h.includes(M.fmt(stgRows[iWant].alpha, 3)),
+     `zeiger block: der alpha ab Block 2 fehlt (${s.h})`);
+  ok(s.h.includes("Watt ab Block 2") && s.h.includes("alpha ab Block 2"),
+     "zeiger block: die Leiste benennt nicht, worauf sie sich bezieht");
+  // FIXTURE-BEWEIS: die beiden Groessen sind verschieden - sonst waere die
+  // Verwechslung unsichtbar und die Zusicherung wertlos.
+  ok(M.fmt(stgRows[iWant].watts) !== M.fmt(vo[iWant].first_watts),
+     "zeiger block Fixture-Beweis: Watt ab Block 2 und erster Block sind gleich");
+  ok(!s.h.includes("alpha dort") && !s.h.includes("erster Block"),
+     "zeiger block: die alte Leiste (erster Block) steht noch da");
 
   // Die Leitzahl der Block-Karte bleibt stehen: sie wird nicht einmal gesucht.
   ok(!asked.some((sel) => /data-lead/.test(sel)),

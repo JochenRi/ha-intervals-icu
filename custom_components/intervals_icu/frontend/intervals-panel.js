@@ -385,6 +385,17 @@ function chart(o) {
           g += `<circle class="pickring" cx="${at}" cy="${Y(p.v)}" r="${r + 4}" fill="none" stroke="${p.c || s.c}" stroke-width="1.8" opacity="0.95"/>`;
         }
       }
+    } else if (s.t === "hband") {
+      // EIN WAAGERECHTER STREIFEN ueber die volle Breite - die erwartete
+      // Spanne, gegen die die Punkte gelesen werden. Eigener Zweig neben
+      // `xyband`, weil der ueber die stetige Achse laeuft; dieser haengt an
+      // zwei y-Werten und ruehrt die eingefrorenen Zweige nicht an.
+      if (s.lo != null && s.hi != null) {
+        const yt = Y(s.hi), yb = Y(s.lo);
+        g += `<rect x="${padL}" y="${Math.min(yt, yb).toFixed(1)}" width="${pw}"
+               height="${Math.abs(yb - yt).toFixed(1)}" fill="${s.c || C.tx3}"
+               opacity="${s.op == null ? 0.14 : s.op}"/>`;
+      }
     } else if (s.t === "xyband") {
       // Das Unsicherheitsband: eine FLAECHE ZWISCHEN ZWEI KURVEN ueber der
       // stetigen Achse. Eigener Zweig, kein erweitertes `area` - `area` fuellt
@@ -1409,51 +1420,155 @@ class IntervalsIcuPanel extends HTMLElement {
   /* Paket M - ein Wert je Block, ueber die Zeit. Je Familie eine Karte:
      Leitzahl oben (die Leistung im ersten eingeschwungenen Block), darunter
      der Verlauf, dann der Vorschlag. NICHTS greift automatisch. */
-  /* DIE PARALLELANZEIGE. Solange die Steuerung laeuft, steht die alte Zahl
-     neben der neuen - dieselbe Kachel, zwei Spalten, damit ueber mehrere
-     Einheiten vergleichbar wird, was der Schalter tut. Beide Zahlen kommen
-     aus GERECHNETEN Reihen der Payload (`compare`, `steering`); im Quelltext
-     steht keine. Ist der Schalter aus, ist das hier eine Vorschau und sagt
-     das auch - eine Zahl, die schon wirkt, sieht sonst genauso aus wie eine,
-     die es noch nicht tut. */
-  _steering(b, key) {
-    const c = (b.compare || {})[key];
-    const st = (b.steering || {})[key];
-    if (!c || !st || !c.steered) return "";
+  /* DER KACHELWERT. Er zeigt IMMER die Zahl, die gerade gilt: mit Schalter
+     die Vorgabe, ohne ihn die alte Rechnung. Kein Nebeneinander mehr - eine
+     Kachel, die zwei Zahlen gleich gross zeigt, laesst offen, welche wirkt.
+     Aufbau von oben: Zustand, Familie, grosse Zahl, Toleranzzeile,
+     Bullet-Streifen (Few), zwei Saetze, und der Rechenweg erst auf Klick.
+     Alle Zahlen kommen aus der Payload, alle Saetze aus dem Modul. */
+  _famValue(b, key) {
+    const c = (b.compare || {})[key] || {};
+    const st = (b.steering || {})[key] || {};
+    const w = b.steering_words || {};
     const an = !!b.steering_on;
-    const band = c.new_band, hrb = c.new_hr_band;
-    const spanne = (x, u) => (x
-      ? `<span class="mut">${fmt(x.low)}</span> | <b class="tn">${fmt(x.median, 1)} ${u}</b>
-         <span class="mut">| ${fmt(x.high)}</span>`
-      : `<span class="mut">${esc(st.band_note || "")}</span>`);
-    return `<div class="card pad" style="margin:8px 0">
-      <h5 class="subsec">${an ? "Vorgabe — neu neben alt" : "Vorschau: was die Steuerung ergäbe"}</h5>
-      <table class="dfatab"><thead><tr><th></th><th>heute</th><th>Steuerung</th></tr></thead>
-        <tbody>
-          <tr><td>Watt</td>
-            <td class="tn">${c.old_watts == null ? "–" : fmt(c.old_watts) + " W"}</td>
-            <td class="tn">${fmt(c.new_watts)} W${c.delta == null || !c.delta ? "" :
-              ` <span class="mut">(${sign(c.delta)} W)</span>`}</td></tr>
-          <tr><td>Puls</td>
-            <td class="tn">${c.old_hr_low == null ? "–"
-              : fmt(c.old_hr_low) + "–" + fmt(c.old_hr_high)}</td>
-            <td class="tn">${hrb ? fmt(hrb.low) + "–" + fmt(hrb.high)
-              : `<span class="mut">${esc(st.hr_band_note || "")}</span>`}</td></tr>
-          <tr><td>Band Watt</td><td class="mut">–</td><td>${spanne(band, "W")}</td></tr>
-        </tbody></table>
-      <p class="hint">${ico("info", C.blue, 13)} Die neue Zahl ist der Startwert
-        <b class="tn">${fmt(st.anchor_w)} W</b> vom ${dMed(st.anchor_date)} plus
-        <b>${fmt(st.moves)}</b> gerechnete ${st.moves === 1 ? "Bewegung" : "Bewegungen"} aus
-        <b>${fmt(st.n_since)}</b> ${st.n_since === 1 ? "Einheit" : "Einheiten"} seither.
-        ${st.note ? esc(st.note) + "." : ""}
-        ${!st.first_block_counts ? "Block 1 zählt dabei nicht mit — er trägt regelmäßig das höhere alpha." : ""}
-        ${(st.single_block || []).length ? `<br>${fmt(st.single_block.length)}
-          ${st.single_block.length === 1 ? "Einheit hat" : "Einheiten haben"} nach dem Wegfall
-          von Block 1 keinen Block mehr — ohne Vorgabe.` : ""}
-        ${band ? `<br>Das Band ist die Spanne, in der die nächste Einheit erwartet wird:
-          Median über ${fmt(band.n)} von ${fmt(band.window)} Einheiten, Streuung
-          ${fmt(band.sd, 2)}.` : ""}
-        ${an ? "" : " <b>Der Schalter steht aus</b> — deine Kacheln zeigen weiter die linke Spalte."}</p>
+    const band = an ? c.new_band : null;
+    const watts = an && c.new_watts != null ? c.new_watts : c.old_watts;
+    if (watts == null && !Object.keys(st).length) return "";
+    const NAME = { vo2max: "VO2max", sweetspot: "SweetSpot", tempo: "Tempo" };
+    const satz = (vorlage, werte) => String(vorlage || "").replace(
+      /\{(\w+)\}/g, (_, k) => (werte[k] == null ? "" : fmt(werte[k])));
+
+    // Die Achse des Streifens: die Spanne fuellt die mittleren zwei Fuenftel.
+    // Das ist eine LAYOUTwahl und keine Kennzahl - die vier Zahlen darunter
+    // sind gerechnet, nicht gesetzt.
+    let streifen = "";
+    if (band) {
+      const halb = (band.high - band.low) / 2;
+      const a0 = watts - halb * 2.5, a1 = watts + halb * 2.5;
+      const pos = (v) => ((v - a0) / ((a1 - a0) || 1)) * 100;
+      streifen = `<div class="bstrip">
+        <div class="bbar">
+          <i class="brange" style="left:${pos(band.low).toFixed(1)}%;
+             right:${(100 - pos(band.high)).toFixed(1)}%"></i>
+          <i class="bmark" style="left:${pos(watts).toFixed(1)}%"></i>
+        </div>
+        <div class="bticks"><i>${fmt(Math.round(a0))}</i>
+          <i class="edge">${fmt(band.low)}</i><i class="edge">${fmt(band.high)}</i>
+          <i>${fmt(Math.round(a1))}</i></div>
+        <p class="bleg">heller Bereich = erwartete Spanne der nächsten Einheit ·
+          Strich = Vorgabe</p></div>`;
+    }
+
+    const saetze = an
+      ? `${esc(satz(w.tile_ride, { watts }))} ${band
+          ? esc(satz(w.tile_inside, { low: band.low, high: band.high, need: w.need,
+                                      window: w.window, step: w.step_w }))
+          : esc(satz(w.tile_no_band, { min_n: w.band_min_n }))}
+         ${st.note ? esc(st.note) + "." : ""}
+         ${st.no_target ? esc(w.tile_no_target || "") : ""}`
+      : esc(w.tile_off || "");
+
+    return `<div class="famval">
+      <span class="state">${esc(an ? (w.on_label || "") : (w.off_label || ""))}</span>
+      <div class="fam">${esc(NAME[key] || key)}</div>
+      <div class="bigval"><b class="tn" style="color:${ROLE.series}">${watts == null ? "–" : fmt(watts)}</b>
+        <span class="unit">W</span></div>
+      ${band ? `<div class="tol">± ${fmt(band.half, 1)} W ·
+        <b class="tn">${fmt(band.low)} – ${fmt(band.high)} W</b> ·
+        ${fmt(w.band_share)} von 10 Einheiten</div>`
+        : `<div class="tol mut">${esc(an ? (st.band_note || "") : "")}</div>`}
+      ${streifen}
+      <p class="info">${saetze}</p>
+    </div>`;
+  }
+
+  /* DER RECHENWEG, zugeklappt - und UNTER dem Verlauf, nicht darueber. Er ist
+     die Antwort auf „woher kommt die Zahl", und die stellt sich erst, wenn man
+     Zahl und Verlauf gesehen hat. */
+  _famMore(b, key) {
+    const c = (b.compare || {})[key] || {};
+    const st = (b.steering || {})[key] || {};
+    const w = b.steering_words || {};
+    const an = !!b.steering_on;
+    if (!an || !Object.keys(st).length) return "";
+    const band = c.new_band;
+    const watts = c.new_watts;
+    const satz = (vorlage, werte) => String(vorlage || "").replace(
+      /\{(\w+)\}/g, (_, k) => (werte[k] == null ? "" : fmt(werte[k])));
+    const alphas = (st.rows || []).filter((r) => r.alpha != null).map((r) => r.alpha);
+    const rechenweg = `<details class="more">
+      <summary>mehr anzeigen — Aufbau und Rechenweg</summary>
+      <table class="dfatab kv"><tbody>
+        ${st.anchor_w == null ? "" : `<tr><td>Startwert (${dMed(st.anchor_date)})</td>
+          <td class="tn">${fmt(st.anchor_w)} W</td></tr>`}
+        <tr><td>Einheiten seither</td><td class="tn">${fmt(st.n_since)}</td></tr>
+        <tr><td>Bewegungen seither</td>
+          <td class="tn">${fmt(st.moves)} × ${fmt(w.step_w)} W</td></tr>
+        ${watts == null ? "" : `<tr><td>Vorgabe heute</td>
+          <td class="tn">${fmt(watts)} W</td></tr>`}
+        ${band ? `<tr><td>Messfenster</td>
+          <td class="tn">letzte ${fmt(band.window)} Einheiten</td></tr>
+        <tr><td>Blöcke je Einheit</td><td class="tn">ab Block 2 (Block 1 zählt nicht)</td></tr>
+        <tr><td>Streuung s</td><td class="tn">${fmt(band.sd, 2)} W</td></tr>
+        <tr><td>Faktor t(0,90; n−1) · √(1+1/n)</td>
+          <td class="tn">${fmt(band.t, 2)} · ${fmt(Math.sqrt(1 + 1 / band.n), 2)} =
+            ${fmt(band.half / (band.sd || 1), 2)}</td></tr>
+        <tr><td>Spanne = Vorgabe ± Faktor · s</td>
+          <td class="tn">± ${fmt(band.half, 1)} W</td></tr>` : ""}
+        ${(st.corridor || []).length && alphas.length ? `<tr>
+          <td>alpha ab Block 2 (Korridor ${fmt(st.corridor[0], 2)} – ${fmt(st.corridor[1], 2)})</td>
+          <td class="tn">${fmt(Math.min(...alphas), 3)} – ${fmt(Math.max(...alphas), 3)}</td></tr>` : ""}
+        ${st.hr_band ? `<tr><td>Pulsfenster</td>
+          <td class="tn">${fmt(st.hr_band.low)} – ${fmt(st.hr_band.high)} bpm</td></tr>` : ""}
+      </tbody></table>
+      <p class="hint">${band ? esc(satz(w.tile_band_means, { share: w.band_share })) : ""}
+        ${st.first_block_counts === false ? esc(w.tile_first_block || "") : ""}</p>
+    </details>`;
+    return rechenweg;
+  }
+
+  /* DER VERLAUF - die Watt AB BLOCK 2 je Einheit, also die Groesse, die
+     steuert. Bis 0.61.1 stand hier Block 1: die Verlaufsgroesse, die mit
+     jeder Einheit springt. Band und Vorgabe liegen als Streifen und
+     gestrichelte Linie darunter, damit die Punkte gegen etwas gelesen werden. */
+  _famTrend(b, key) {
+    const st = (b.steering || {})[key] || {};
+    const reihen = (st.rows || []).filter((r) => r.usable && r.watts != null);
+    if (reihen.length < 2) return "";
+    const an = !!b.steering_on;
+    const band = an ? ((b.compare || {})[key] || {}).new_band : null;
+    const ziel = an ? st.watts : null;
+    const werte = reihen.map((r) => r.watts);
+    const unten = Math.min(...werte, band ? band.low : Infinity, ziel || Infinity);
+    const oben = Math.max(...werte, band ? band.high : -Infinity, ziel || -Infinity);
+    const grp = "blk_" + key;
+    this._grp[grp] = {
+      n: reihen.length,
+      xl: (i) => (reihen[i].name || "ohne Namen") + " · " + dMed(reihen[i].date),
+      rows: [
+        { l: "Watt ab Block 2", c: ROLE.series, u: "W", dec: 0, vals: werte },
+        { l: "alpha ab Block 2", c: C.tx2, u: "", dec: 3, vals: reihen.map((r) => r.alpha) },
+      ],
+    };
+    return `<div class="trend">
+      <h5 class="subsec">Verlauf — Watt ab Block 2</h5>
+      <p class="mut">gefahrene Leistung je Einheit${band
+        ? " · heller Streifen = erwartete Spanne" : ""}${ziel == null ? ""
+        : ` · gestrichelt = Vorgabe ${fmt(ziel)} W`}</p>
+      ${readout(grp)}
+      ${chart({
+        h: 170, n: reihen.length, grp,
+        y0: Math.floor(unten / 10) * 10 - 5, y1: Math.ceil(oben / 10) * 10 + 5,
+        xt: reihen.map((r, i) => ({ i, t: dShort(r.date) })),
+        label: "Leistung ab Block 2 (W)", labelc: ROLE.series,
+        s: [
+          ...(band ? [{ t: "hband", lo: band.low, hi: band.high, c: ROLE.series, op: 0.13 }] : []),
+          ...(ziel == null ? [] : [{ t: "line", c: ROLE.series, w: 1.4, d: "4 3", lop: 0.85,
+                                     v: reihen.map(() => ziel) }]),
+          { t: "line", v: werte, c: ROLE.series, w: 2.4 },
+          { t: "dots", c: ROLE.series, p: reihen.map((r, i) => ({ i, v: r.watts, r: 4.2 })) },
+        ],
+      })}
     </div>`;
   }
 
@@ -1488,38 +1603,9 @@ class IntervalsIcuPanel extends HTMLElement {
       // Ermuedungskurve - `closest` nimmt die naechste, also diese. Ohne sie
       // fing der aeussere Wrapper den Zeiger ab und schrieb einen Wert der
       // Kurve in ihre Leiste (PROJEKTSTAND §7, zehnter Fall).
+      // Die Zeigergruppe meldet jetzt der VERLAUF an (_famTrend): eine Gruppe
+      // je Karte, und sie traegt die Groesse, die auch gezeichnet wird.
       const grp = "blk_" + key;
-      if (punkte.length > 1) {
-        this._grp[grp] = {
-          n: punkte.length,
-          xl: (i) => (punkte[i].name || "ohne Namen") + " · " + dMed(punkte[i].date),
-          rows: [
-            // Aufgetragen ist der ERSTE eingeschwungene Block - also steht hier
-            // sein eigener alpha, nicht der Median. Verlaufsgroesse gegen
-            // Steuergroesse: derselbe Unterschied, den test_blocks.py erzwingt.
-            { l: "erster Block", c: ROLE.series, u: "W", dec: 0, vals: punkte.map((q) => q.first_watts) },
-            { l: "alpha dort", c: ROLE.series, u: "", dec: 2, vals: punkte.map((q) => q.first_alpha) },
-            { l: "Median alpha", c: C.tx2, u: "", dec: 3, vals: punkte.map((q) => q.median_alpha) },
-            { l: "Blöcke", c: C.tx2, u: "", dec: 0, vals: punkte.map((q) => q.n_blocks) },
-          ],
-          // KEIN `lead`: die Leitzahl dieser Karte ist die Leistung im ersten
-          // eingeschwungenen Block und bleibt stehen, waehrend der Zeiger
-          // ueber die Punkte faehrt. Sie ist eine Steuergroesse, keine
-          // Ablesung - anders als in der Ermuedungskachel, und das ist
-          // zugesichert statt zufaellig.
-        };
-      }
-      const graph = punkte.length > 1 ? chart({
-        h: 170, n: punkte.length, grp,
-        y0: Math.floor(Math.min(...punkte.map((p) => p.first_watts)) / 10) * 10 - 10,
-        y1: Math.ceil(Math.max(...punkte.map((p) => p.first_watts)) / 10) * 10 + 10,
-        xt: punkte.map((p, i) => ({ i, t: dShort(p.date) })),
-        label: "Leistung im ersten eingeschwungenen Block (W)", labelc: ROLE.series,
-        s: [
-          ...(f.trend ? [{ t: "line", v: punkte.map((p) => p.first_watts), c: ROLE.series, w: 2.4 }] : []),
-          { t: "dots", c: ROLE.series, p: punkte.map((p, i) => ({ i, v: p.first_watts, r: 4.2 })) },
-        ],
-      }) : "";
       const zeilen = punkte.slice(-8).reverse().map((p) => `<tr>
         <td>${dMed(p.date)}</td>
         <td class="tn">${fmt(p.first_watts)} W</td>
@@ -1529,14 +1615,11 @@ class IntervalsIcuPanel extends HTMLElement {
           ? badge("green", "im Korridor")
           : badge("amber", (p.step_pct > 0 ? "+" : "") + fmt(p.step_pct) + " %")}</td></tr>`).join("");
       return `<div class="card pad" data-grp="${grp}">
-        <h4 class="subsec">${NAME[key] || key}</h4>
-        <div class="statgrid lead"><div class="stat wide">
-          <small>Leistung im ersten eingeschwungenen Block</small>
-          <b class="tn lead1" style="color:${ROLE.series}">${fmt(l.first_watts)} <span class="unit">W</span></b>
-          <span class="mut">bei alpha ${fmt(l.first_alpha, 2)} · ${dMed(l.date)} ·
-            ${fmt(f.sessions)} ${f.sessions === 1 ? "Einheit" : "Einheiten"} von
-            ${dMed(f.from)} bis ${dMed(f.to)}</span></div></div>
-        ${this._steering(b, key)}
+        ${this._famValue(b, key)}
+        <p class="mut">${fmt(f.sessions)} ${f.sessions === 1 ? "Einheit" : "Einheiten"} von
+          ${dMed(f.from)} bis ${dMed(f.to)} · zuletzt ${dMed(l.date)}</p>
+        ${this._famTrend(b, key)}
+        ${this._famMore(b, key)}
         ${f.first_is_weak ? `<p class="hint">${ico("warn", C.amber, 13)} <b>Der erste
           Arbeitsabschnitt dieser Einheit trägt weniger Leistung als die folgenden</b> — das
           Gerät hat dort vermutlich einen lockeren Abschnitt als Arbeit etikettiert. Die
@@ -1551,14 +1634,12 @@ class IntervalsIcuPanel extends HTMLElement {
           <b>Die Prüfung schlägt derzeit auch bei sauberen Ausschnitten an</b>; ihre Toleranz
           wird noch an den Daten bestimmt. Bis dahin: ein Hinweis zum Nachsehen, keine
           Fehlermeldung.</p>` : ""}
-        ${graph ? readout(grp) : ""}
-        ${graph}
         ${wenig ? `<p class="hint">${ico("info", C.blue, 13)} <b>${fmt(f.sessions)}
           ${f.sessions === 1 ? "Einheit" : "Einheiten"}</b> — unter ${fmt(f.min_for_trend)} wird
           keine Verlaufslinie gezeichnet. ${f.sessions < 3
             ? "Zwei Messungen sind kein Verlauf."
             : "Die Zahl steht, die Richtung nicht."}</p>` : ""}
-        <p class="hint">${ico("info", C.blue, 13)} <b>Vorschlag fürs nächste Mal:
+        ${b.steering_on ? "" : `<p class="hint">${ico("info", C.blue, 13)} <b>Vorschlag fürs nächste Mal:
           ${fmt(l.suggested_watts)} W</b>${l.step_pct === 0
             ? ` — unverändert, dein alpha lag mit ${fmt(l.median_alpha, 3)} im Korridor
                 ${fmt(lo, 2)}–${fmt(hi, 2)}.`
@@ -1566,7 +1647,7 @@ class IntervalsIcuPanel extends HTMLElement {
                 ${fmt(l.median_alpha, 3)} ${l.step_where === "above" ? "über" : "unter"} dem
                 Korridor ${fmt(lo, 2)}–${fmt(hi, 2)}, um ${fmt(l.step_gap, 3)}.`}
           <b>Das System schlägt vor, du entscheidest</b> — und misst beim nächsten Mal ohnehin,
-          was du tatsächlich gefahren bist.</p>
+          was du tatsächlich gefahren bist.</p>`}
         <p class="hint">Die Steuerung ruht auf <b>${fmt(l.n_blocks)}
           ${l.n_blocks === 1 ? "Block" : "Blöcken"}</b>: ${l.block_alphas.map((a) => fmt(a, 2)).join(" und ")},
           Median ${fmt(l.median_alpha, 3)}${l.alpha_span >= 0.15
@@ -5934,6 +6015,30 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
 .sigref{font-size:13px;color:${C.tx3};margin-top:1px}
 .dstamp{color:${C.tx2};letter-spacing:0;text-transform:none;font-weight:600}
 .statgrid.lead{display:grid;grid-template-columns:minmax(260px,1fr) 2fr;gap:22px;align-items:center}
+/* DER KACHELWERT (0.62.0). Groessen und Toene aus dem Bestand: die grosse Zahl
+   nimmt das Mass von .lead1, das Schildchen das der Marken-Kacheln, der
+   Streifen die Kartenflaeche .card2 mit der Serienfarbe darauf. Eine Farbe in
+   Abstufungen - keine Ampel, weil hier nichts bewertet wird. */
+.famval{margin-bottom:6px}
+.famval .state{display:inline-block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+  color:${C.tx3};border:1px solid ${C.line};border-radius:999px;padding:2px 9px;margin-bottom:10px}
+.famval .fam{font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:${C.tx2};margin-bottom:2px}
+.famval .bigval{display:flex;align-items:baseline;gap:8px;margin:0 0 4px}
+.famval .bigval b{font-size:46px;line-height:1.05;font-weight:600;letter-spacing:-.02em}
+.famval .bigval .unit{font-size:18px;color:${C.tx2};font-weight:500}
+.famval .tol{font-size:13px;color:${C.tx2};margin-bottom:14px}
+.famval .info{font-size:13.5px;color:${C.tx2};margin:12px 0 0;border-top:1px solid ${C.line};padding-top:10px}
+.bstrip{margin:6px 0 2px}
+.bbar{position:relative;height:26px;border-radius:5px;background:${C.card2};overflow:hidden}
+.bbar .brange{position:absolute;top:0;bottom:0;background:${ROLE.series};opacity:.22;border-radius:3px}
+.bbar .bmark{position:absolute;top:-2px;bottom:-2px;width:3px;margin-left:-1.5px;border-radius:2px;background:${ROLE.series}}
+.bticks{display:flex;justify-content:space-between;font-size:11px;color:${C.tx3};margin-top:6px;
+  font-variant-numeric:tabular-nums}
+.bticks i{font-style:normal}
+.bticks .edge{color:${C.tx2}}
+.bleg{font-size:12px;color:${C.tx3};margin:8px 0 0}
+.trend{margin-top:14px;border-top:1px solid ${C.line};padding-top:10px}
+.dfatab.kv td:last-child{text-align:right}
 .stat.wide .lead1{font-size:46px;line-height:1.05;display:block}
 .sidestats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:16px}
 .small2{font-size:19px}

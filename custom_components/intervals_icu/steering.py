@@ -92,6 +92,28 @@ SWITCH_ON_NOTE = ("Deine Wattzahl ist eine Vorgabe: sie startet auf einem festen
 SWITCH_OFF_NOTE = ("Deine Wattzahl ist der Wert deiner letzten Einheit und "
                    "springt mit jeder neuen Messung mit. Das ist das Verhalten "
                    "von 0.60.0 — ausgeschaltet ändert dieses Paket nichts.")
+# DIE SAETZE DER KACHEL. Auch sie stehen hier und nicht im Frontend: die
+# Kachel sagt damit dasselbe wie der Schalter, aus einer Quelle.
+TILE_RIDE = "Fahr die {watts} W."
+TILE_INSIDE = ("Landet deine nächste Einheit zwischen {low} und {high} W, ist alles "
+               "normal — die Vorgabe bleibt stehen. Erst wenn {need} von {window} "
+               "Einheiten daneben liegen, bewegt sie sich um {step} W.")
+TILE_NO_BAND = ("Für eine Spanne braucht es {min_n} gemessene Einheiten; solange "
+                "steht die Vorgabe allein.")
+TILE_BAND_MEANS = ("Die Spanne ist keine Grenze, sondern das Messrauschen: {share} "
+                   "von 10 Einheiten landen erfahrungsgemäß darin.")
+TILE_FIRST_BLOCK = ("Block 1 bleibt in der Blockreihe sichtbar, er trägt nur "
+                    "regelmäßig das höhere alpha und steuert deshalb nicht mit.")
+TILE_OFF = ("Die Steuerung ist aus — diese Zahl ist der Wert deiner letzten "
+            "Einheit. Einschalten im Reiter „Woher die Zahlen kommen“, Schalter "
+            "„Wattvorgabe“.")
+TILE_NO_TARGET = ("Für diese Familie wird keine Vorgabe geführt — ihre Zahl kommt "
+                  "aus der FTP.")
+# Wie viele von zehn Einheiten das Band erfahrungsgemaess trifft. Das ist die
+# Deckung des t-Bandes bei 80 % zweiseitig, nicht gerundetes Bauchgefuehl:
+# t(0,90; n-1) laesst je 10 % nach oben und unten draussen.
+TILE_BAND_SHARE = 8
+
 SWITCH_OFF_LABEL = "wie bisher"
 SWITCH_ON_LABEL = "mit Vorgabe"
 SWITCH_GO_LABEL = "auf die Vorgabe umstellen"
@@ -173,7 +195,17 @@ def c6(rows: list[dict[str, Any]], family: str) -> dict[str, Any]:
     auf die gefahrenen Watt. Ohne diesen Bezug faellt die Vorgabe bei
     geregelten Einheiten mit den gefahrenen Watt ab (Kreuzprobe, -18 W).
     """
-    anchor = STEERING_ANCHOR_W[family]
+    # Familien OHNE Startwert (Tempo) bekommen keine Vorgabe - ihre Zeilen
+    # werden trotzdem gerechnet, damit der Verlauf ab Block 2 fuer jede
+    # Blockfamilie gezeichnet werden kann.
+    anchor = STEERING_ANCHOR_W.get(family)
+    if anchor is None:
+        since_only = [r for r in rows if r.get("usable")
+                      and str(r.get("date") or "") > STEERING_ANCHOR_DATE]
+        return {"watts": None, "anchor_w": None, "anchor_date": STEERING_ANCHOR_DATE,
+                "n_since": len(since_only), "min_units": STEERING_MIN_UNITS,
+                "steps": [], "moves": 0, "sides": [], "note": None,
+                "no_target": True}
     since = [r for r in rows if r.get("usable") and str(r.get("date") or "") > STEERING_ANCHOR_DATE]
     target = anchor
     steps: list[dict[str, Any]] = []
@@ -247,8 +279,8 @@ def family_state(points: list[dict[str, Any]], family: str) -> dict[str, Any]:
     state["rows"] = rows
     state["n_units"] = len(usable)
     state["single_block"] = [r["date"] for r in rows if not r.get("usable")]
-    state["band"] = t_band([r.get("watts_raw", r["watts"]) for r in usable],
-                          center=state["watts"])
+    state["band"] = (t_band([r.get("watts_raw", r["watts"]) for r in usable],
+                            center=state["watts"]) if state.get("watts") else None)
     state["hr_band"] = t_band([r["hr"] for r in usable if r.get("hr")])
     state["band_note"] = None if state["band"] else TOO_FEW_NOTE
     state["hr_band_note"] = None if state["hr_band"] else TOO_FEW_NOTE
@@ -263,9 +295,8 @@ def state(series: dict[str, Any]) -> dict[str, Any]:
     """Je Familie die neue Vorgabe - gerechnet aus der Blockreihe."""
     families = (series or {}).get("families") or {}
     out: dict[str, Any] = {}
-    for family in STEERING_FAMILIES:
-        box = families.get(family)
-        if not box:
+    for family, box in families.items():
+        if family not in BLOCK_CORRIDORS:
             continue
         out[family] = family_state(box.get("points") or [], family)
     return out
