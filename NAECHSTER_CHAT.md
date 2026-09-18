@@ -1,9 +1,9 @@
 # ha-intervals-icu — Übergabe an den nächsten Chat
 
-## AKTUELL — 0.62.1 ausgeliefert: Steuerung v2 hinter dem Schalter (ab Werk AUS), Blockkachel neu dargestellt (18.09.2026). Zuerst lesen.
+## AKTUELL — 0.62.2 ausgeliefert: Steuerung v2 hinter dem Schalter (ab Werk AUS), Blockkachel neu dargestellt (18.09.2026). Zuerst lesen.
 
-**Ausgeliefert: 0.62.1** (Tag `v0.62.1`, GitHub-Release als „latest“ markiert). Prüfstand
-**22 Dateien, 7.236 Prüfungen, 0 Fehler** (Basis war 21 / 7.048 / 0). Johannes:
+**Ausgeliefert: 0.62.2** (Tag `v0.62.2`, GitHub-Release als „latest“ markiert). Prüfstand
+**22 Dateien, 7.241 Prüfungen, 0 Fehler** (Basis war 21 / 7.048 / 0). Johannes:
 HACS-Update, HA-Neustart, Browser hart neu laden. **Der Schalter startet AUS** — die
 Kacheln zeigen weiter die Zahlen von 0.60.0, aber im neuen Aufbau. Einschalten erst, wenn er
 das über ein paar Einheiten gesehen hat: Reiter „Woher die Zahlen kommen“, dritter
@@ -39,17 +39,13 @@ Schalter aus = Verhalten von 0.60.0, bitgenau (im Prüfstand zugesichert):**
    Formelzeile „Spanne = 190 W ± 1,83 · 2,22 W = ± 4,1 W“ (scrollt statt umzubrechen), drei
    Chips (alpha + Korridor, Puls, „Block 1 zählt nicht mit“).
 
-**ZWEI BEFUNDE, gemeldet und NICHT geändert (Entscheidung steht aus):**
-- **Die Zeigerleiste des Verlaufs führt „alpha ab Block 2“**, obwohl keine alpha-Linie
-  gezeichnet wird. Das ist kein Rest, sondern die Leiste-Zeile, die `_famTrend` anmeldet
-  (`intervals-panel.js`, `rows:`); die alte Leiste trug ebenso „Median alpha“ ohne eigene
-  Linie. Frage an Johannes: bleiben oder raus?
-- **„5 Einheiten — unter 6 wird keine Verlaufslinie gezeichnet“ steht unter einer
-  gezeichneten Linie.** Ursache: der Satz hängt an `f.trend` (`blocks.py`,
-  `BLOCK_MIN_FOR_TREND` = 6), der ALTE Verlauf zeichnete die Linie auch nur bei `f.trend`.
-  Der neue `_famTrend` zeichnet ab zwei Punkten und hat die Bedingung beim Umbau in 0.62.0
-  nicht übernommen. Zwei Wege: Linie erst ab 6 Einheiten (alt), oder Satz streichen und die
-  dünne Belegung anders benennen.
+**DIE ZWEI BEFUNDE SIND ENTSCHIEDEN (0.62.2):**
+- **Die alpha-Zeile in der Zeigerleiste bleibt.** Sie ist kein Rest, sondern die Leisten-Zeile,
+  die `_famTrend` anmeldet — wie früher „Median alpha“ ohne eigene Linie.
+- **Die Linie wird ab zwei Punkten gezeichnet**, die Schwelle `BLOCK_MIN_FOR_TREND` = 6 gilt
+  weiter, aber für die AUSSAGEKRAFT statt fürs Zeichnen. Der Satz lautet jetzt „5 Einheiten —
+  die Richtung ist noch nicht gesichert. Ab 6 Einheiten trägt sie.“ Im Prüfstand festgeschrieben:
+  kein Satz ohne Bild, und kein Satz, der das Gegenteil des Bildes behauptet.
 6. Textfehler: `not_active.blocks` hängt am Schalter, „Blocköcke", EF-Satz am echten Filter
    (ab 85 % der Spitzenleistung, Dauer ±35 % um den Median).
 7. `settings` steht jetzt im Archivskelett (`importer.empty_data`).

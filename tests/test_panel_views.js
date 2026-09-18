@@ -964,8 +964,27 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
 
   // BELEGUNG: SweetSpot hat vier Einheiten -> keine Linie, aber der Satz.
   const ssTeil = flat.slice(flat.indexOf("SweetSpot"));
-  ok(/4 Einheiten<\/b> — unter 6 wird keine Verlaufslinie/.test(ssTeil),
+  // SATZ UND BILD GEHEN ZUSAMMEN (seit 0.62.2). Die Linie wird ab zwei
+  // Punkten gezeichnet; die Schwelle 6 gilt fuer die AUSSAGEKRAFT.
+  ok(/4 Einheiten<\/b> — die Richtung ist noch nicht gesichert/.test(ssTeil),
      "M: die dünne Belegung wird nicht benannt");
+  ok(!/keine Verlaufslinie/.test(ssTeil),
+     "M: der Satz behauptet, es werde keine Linie gezeichnet — sie steht aber da");
+  ok(/Ab 6 Einheiten trägt sie/.test(ssTeil),
+     "M: die Schwelle wird nicht mehr genannt");
+  // KEIN SATZ OHNE BILD und kein Bild ohne Satz, solange die Belegung duenn
+  // ist: der SweetSpot (4 Einheiten) traegt beides, VO2max (6) keines von
+  // beiden Zeichen des Mangels.
+  ok(/stroke-width="2.4"/.test(ssTeil),
+     "M: die dünn belegte Familie bekommt gar keine Linie mehr");
+  const ohneLinie = String(q.rBlocks(F.blocks({ steering: { ...b.steering,
+    sweetspot: { ...b.steering.sweetspot, rows: b.steering.sweetspot.rows.slice(0, 1) } } })));
+  const ssOhne = ohneLinie.replace(/\s+/g, " ");
+  const teilOhne = ssOhne.slice(ssOhne.indexOf('data-grp="blk_sweetspot"'));
+  ok(!/Verlauf — Watt ab Block 2/.test(teilOhne),
+     "M: ein einzelner Punkt bekommt trotzdem einen Verlauf");
+  ok(!/die Richtung ist noch nicht gesichert/.test(teilOhne),
+     "M: der Satz zur Richtung steht da, obwohl gar kein Bild gezeichnet wurde");
   // GEGENFALL, gezaehlt und benannt: VO2max hat sechs -> Linie, kein Satz.
   const voTeil = flat.slice(flat.indexOf("VO2max"), flat.indexOf("SweetSpot"));
   ok(!/keine Verlaufslinie/.test(voTeil),

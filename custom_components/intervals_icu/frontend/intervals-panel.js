@@ -1623,6 +1623,9 @@ class IntervalsIcuPanel extends HTMLElement {
       // Die Zeigergruppe meldet jetzt der VERLAUF an (_famTrend): eine Gruppe
       // je Karte, und sie traegt die Groesse, die auch gezeichnet wird.
       const grp = "blk_" + key;
+      // EINMAL rendern, zweimal gebraucht: das Bild selbst und der Satz
+      // darunter, der sich auf das Bild bezieht.
+      const verlauf = this._famTrend(b, key);
       const zeilen = punkte.slice(-8).reverse().map((p) => `<tr>
         <td>${dMed(p.date)}</td>
         <td class="tn">${fmt(p.first_watts)} W</td>
@@ -1635,7 +1638,7 @@ class IntervalsIcuPanel extends HTMLElement {
         ${this._famValue(b, key)}
         <p class="mut">${fmt(f.sessions)} ${f.sessions === 1 ? "Einheit" : "Einheiten"} von
           ${dMed(f.from)} bis ${dMed(f.to)} · zuletzt ${dMed(l.date)}</p>
-        ${this._famTrend(b, key)}
+        ${verlauf}
         ${this._famMore(b, key)}
         ${f.first_is_weak ? `<p class="hint">${ico("warn", C.amber, 13)} <b>Der erste
           Arbeitsabschnitt dieser Einheit trägt weniger Leistung als die folgenden</b> — das
@@ -1651,11 +1654,16 @@ class IntervalsIcuPanel extends HTMLElement {
           <b>Die Prüfung schlägt derzeit auch bei sauberen Ausschnitten an</b>; ihre Toleranz
           wird noch an den Daten bestimmt. Bis dahin: ein Hinweis zum Nachsehen, keine
           Fehlermeldung.</p>` : ""}
-        ${wenig ? `<p class="hint">${ico("info", C.blue, 13)} <b>${fmt(f.sessions)}
-          ${f.sessions === 1 ? "Einheit" : "Einheiten"}</b> — unter ${fmt(f.min_for_trend)} wird
-          keine Verlaufslinie gezeichnet. ${f.sessions < 3
+        ${/* SATZ UND BILD MUESSEN ZUSAMMENPASSEN. Bis 0.62.1 stand hier „unter
+             sechs wird keine Verlaufslinie gezeichnet" - unter einer
+             gezeichneten Linie: der alte Verlauf hing an `f.trend`, der neue
+             zeichnet ab zwei Punkten, und der Satz blieb stehen. Die Schwelle
+             gilt weiter, aber fuer die AUSSAGEKRAFT, nicht fuers Zeichnen. */
+          wenig && verlauf ? `<p class="hint">${ico("info", C.blue, 13)} <b>${fmt(f.sessions)}
+          ${f.sessions === 1 ? "Einheit" : "Einheiten"}</b> — die Richtung ist noch nicht
+          gesichert. ${f.sessions < 3
             ? "Zwei Messungen sind kein Verlauf."
-            : "Die Zahl steht, die Richtung nicht."}</p>` : ""}
+            : `Ab ${fmt(f.min_for_trend)} Einheiten trägt sie.`}</p>` : ""}
         ${b.steering_on ? "" : `<p class="hint">${ico("info", C.blue, 13)} <b>Vorschlag fürs nächste Mal:
           ${fmt(l.suggested_watts)} W</b>${l.step_pct === 0
             ? ` — unverändert, dein alpha lag mit ${fmt(l.median_alpha, 3)} im Korridor
