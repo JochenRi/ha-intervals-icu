@@ -1,9 +1,9 @@
 # ha-intervals-icu — Übergabe an den nächsten Chat
 
-## AKTUELL — 0.62.0 ausgeliefert: Steuerung v2 hinter dem Schalter (ab Werk AUS), Blockkachel neu dargestellt (18.09.2026). Zuerst lesen.
+## AKTUELL — 0.62.1 ausgeliefert: Steuerung v2 hinter dem Schalter (ab Werk AUS), Blockkachel neu dargestellt (18.09.2026). Zuerst lesen.
 
-**Ausgeliefert: 0.62.0** (Tag `v0.62.0`, GitHub-Release als „latest“ markiert). Prüfstand
-**22 Dateien, 7.226 Prüfungen, 0 Fehler** (Basis war 21 / 7.048 / 0). Johannes:
+**Ausgeliefert: 0.62.1** (Tag `v0.62.1`, GitHub-Release als „latest“ markiert). Prüfstand
+**22 Dateien, 7.236 Prüfungen, 0 Fehler** (Basis war 21 / 7.048 / 0). Johannes:
 HACS-Update, HA-Neustart, Browser hart neu laden. **Der Schalter startet AUS** — die
 Kacheln zeigen weiter die Zahlen von 0.60.0, aber im neuen Aufbau. Einschalten erst, wenn er
 das über ein paar Einheiten gesehen hat: Reiter „Woher die Zahlen kommen“, dritter
@@ -34,6 +34,22 @@ Schalter aus = Verhalten von 0.60.0, bitgenau (im Prüfstand zugesichert):**
    die Vorgabe, ohne ihn die alte Rechnung, dann ohne Band, ohne Rechenweg und ohne den alten
    Vorschlagssatz. Gilt für alle Blockfamilien; Tempo bekommt Zeilen und Verlauf, aber keine
    Vorgabe, und sagt das. Der alte Verlauf (Block 1) und seine Ableseleiste sind ersetzt.
+   **0.62.1:** der Aufklappteil „mehr anzeigen“ ist keine Tabelle mehr (sie brach im schmalen
+   Container in Wortfetzen): ein Herkunftssatz mit eingebetteten Zahlen, eine abgesetzte
+   Formelzeile „Spanne = 190 W ± 1,83 · 2,22 W = ± 4,1 W“ (scrollt statt umzubrechen), drei
+   Chips (alpha + Korridor, Puls, „Block 1 zählt nicht mit“).
+
+**ZWEI BEFUNDE, gemeldet und NICHT geändert (Entscheidung steht aus):**
+- **Die Zeigerleiste des Verlaufs führt „alpha ab Block 2“**, obwohl keine alpha-Linie
+  gezeichnet wird. Das ist kein Rest, sondern die Leiste-Zeile, die `_famTrend` anmeldet
+  (`intervals-panel.js`, `rows:`); die alte Leiste trug ebenso „Median alpha“ ohne eigene
+  Linie. Frage an Johannes: bleiben oder raus?
+- **„5 Einheiten — unter 6 wird keine Verlaufslinie gezeichnet“ steht unter einer
+  gezeichneten Linie.** Ursache: der Satz hängt an `f.trend` (`blocks.py`,
+  `BLOCK_MIN_FOR_TREND` = 6), der ALTE Verlauf zeichnete die Linie auch nur bei `f.trend`.
+  Der neue `_famTrend` zeichnet ab zwei Punkten und hat die Bedingung beim Umbau in 0.62.0
+  nicht übernommen. Zwei Wege: Linie erst ab 6 Einheiten (alt), oder Satz streichen und die
+  dünne Belegung anders benennen.
 6. Textfehler: `not_active.blocks` hängt am Schalter, „Blocköcke", EF-Satz am echten Filter
    (ab 85 % der Spitzenleistung, Dauer ±35 % um den Median).
 7. `settings` steht jetzt im Archivskelett (`importer.empty_data`).

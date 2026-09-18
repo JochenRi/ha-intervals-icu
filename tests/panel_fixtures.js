@@ -350,6 +350,19 @@ function blocks(over) {
         + "aus der FTP.",
       band_share: 8, step_w: 5, need: 2, window: 3, min_units: 3,
       band_min_n: 3, band_window: 4,
+      more_origin: "Die Vorgabe ist der Startwert {anchor} W vom {date}. Seither {verb} "
+        + "{n} {units} dazugekommen, daraus {verb2} {moves} {moveword} à {step} W — die "
+        + "Vorgabe steht heute auf {watts} W.",
+      more_words: { unit_one: "Einheit", unit_many: "Einheiten", move_one: "Bewegung",
+        move_many: "Bewegungen", verb_one: "ist", verb_many: "sind",
+        verb2_one: "wurde", verb2_many: "wurden" },
+      more_formula_label: "Spanne",
+      more_formula_cap: "{factor} = t(0,90; n−1) · √(1+1/n) · Streuung {sd} W aus den "
+        + "letzten {n} Einheiten, jeweils ab Block 2",
+      more_measured: "Gemessen wurde:",
+      chip_alpha: "alpha {low} – {high} · Korridor {clow} – {chigh}",
+      chip_hr: "Puls {low} – {high} bpm",
+      chip_first_block: "Block 1 zählt nicht mit",
     },
     steering: {
       vo2max: { watts: 250, anchor_w: 250, anchor_date: "2026-09-17", n_since: 0, moves: 0,

@@ -1015,18 +1015,78 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
     ok(/Fahr die 190 W\./.test(an), "kachel: der Fahr-Satz fehlt oder rechnet falsch");
     ok(/zwischen 186 und 194 W/.test(an) && /2 von 3 Einheiten/.test(an) && /um 5 W/.test(an),
        "kachel: der Satz, wann sich die Vorgabe bewegt, fehlt");
-    // Der Rechenweg, zugeklappt, MIT EINHEITEN
+    // ── DER AUFKLAPPTEIL (0.62.1): drei Teile statt Tabelle ──────────────
     ok(/<details class="more"> <summary>mehr anzeigen|<details class="more"><summary>mehr anzeigen/.test(an),
        "kachel: der Rechenweg ist nicht zugeklappt");
-    for (const zeile of ["Startwert", "Einheiten seither", "Bewegungen seither", "Vorgabe heute",
-                         "Messfenster", "ab Block 2", "Streuung s", "Faktor t(0,90", "Spanne =",
-                         "alpha ab Block 2", "Pulsfenster"]) {
-      contains(an, zeile, `kachel: im Rechenweg fehlt „${zeile}“`);
-    }
-    ok(/2,22 W/.test(an) && /± 4,1 W/.test(an) && /159 – 174 bpm/.test(an),
-       "kachel: dem Rechenweg fehlen die Einheiten an den Zahlen");
-    ok(/Messrauschen/.test(an) && /höhere alpha/.test(an),
-       "kachel: die zwei Sätze unter dem Rechenweg fehlen");
+    // KEINE TABELLE mehr: sie brach im schmalen Container in Wortfetzen.
+    const aufklapp = an.slice(an.indexOf("mehr anzeigen"), an.indexOf("</details>"));
+    ok(!/<table/.test(aufklapp), "aufklapp: die Tabelle steht wieder da");
+    ok(!/Einheiten seither<\/td>|Messfenster<\/td>|Streuung s<\/td>/.test(an),
+       "aufklapp: Reste der alten Tabellenzeilen");
+    // TEIL 1: EIN Satz, Zahlen fett im Fliesstext
+    ok(/class="rsatz">Die Vorgabe ist der Startwert <b class="tn">190<\/b> W vom/.test(an),
+       "aufklapp: der Herkunftssatz fehlt oder trägt die Zahl nicht fett");
+    ok(/Seither sind <b class="tn">0<\/b> Einheiten dazugekommen/.test(an),
+       "aufklapp: Zahl und Wortform der Einheiten stimmen nicht");
+    ok(/daraus wurden <b class="tn">0<\/b> Bewegungen à 5 W/.test(an),
+       "aufklapp: die Bewegungen fehlen im Satz");
+    ok(/steht heute auf <b class="tn">190<\/b> W/.test(an),
+       "aufklapp: der Satz endet nicht auf der geltenden Vorgabe");
+    // SINGULAR und PLURAL - beide Formen, an derselben Kachel geprüft
+    const eins = F.blocks({ steering_on: true });
+    eins.steering.sweetspot = { ...eins.steering.sweetspot, n_since: 1, moves: 1 };
+    const eHtml2 = String(q.rBlocks(eins)).replace(/\s+/g, " ");
+    ok(/Seither ist <b class="tn">1<\/b> Einheit dazugekommen/.test(eHtml2),
+       "aufklapp: bei einer Einheit steht der Plural");
+    ok(/daraus wurde <b class="tn">1<\/b> Bewegung à/.test(eHtml2),
+       "aufklapp: bei einer Bewegung steht der Plural");
+    ok(!/1 Einheiten|1 Bewegungen/.test(eHtml2), "aufklapp: „1 Einheiten“ im Text");
+    // TEIL 2: die Formelzeile - eine Kette, abgesetzt, nicht umbrechend
+    ok(/class="formel">Spanne = 190 W ± <b>1,83<\/b> · <b>2,22 W<\/b> = <b>± 4,1 W<\/b>/.test(an),
+       "aufklapp: die Formelzeile steht nicht als durchgehende Kette da");
+    ok(/class="fcap">1,83 = t\(0,90; n−1\) · √\(1\+1\/n\) · Streuung 2,22 W aus den letzten 4 Einheiten/.test(an),
+       "aufklapp: die Erklärzeile unter der Formel fehlt");
+    // Die CSS-Regeln enthalten Platzhalter mit geschweiften Klammern
+    // (${C.card2}), eine Zeichenklasse [^}] bricht daran ab - deshalb wird
+    // der Regelblock ueber seine Grenzen ausgeschnitten.
+    const cssQ = H.source();
+    const regel = (name) => {
+      const i = cssQ.indexOf("\n" + name + "{");
+      return i < 0 ? "" : cssQ.slice(i, cssQ.indexOf("}\n", i) + 1);
+    };
+    const rFormel = regel(".formel");
+    ok(rFormel.includes("white-space:nowrap") && rFormel.includes("overflow-x:auto"),
+       "aufklapp: die Formelzeile darf umbrechen statt zu scrollen (schmaler Schirm)");
+    ok(regel(".rchip").includes("white-space:nowrap"), "aufklapp: die Chips brechen mitten im Wort");
+    ok(regel(".rchips").includes("flex-wrap:wrap"), "aufklapp: die Chips laufen aus dem Container");
+    // TEIL 3: drei Chips
+    const chipTeil = an.slice(an.indexOf('class="rchips"'), an.indexOf("</div>", an.indexOf('class="rchips"')));
+    ok((chipTeil.match(/class="rchip"/g) || []).length === 3,
+       "aufklapp: es sind nicht genau drei Chips");
+    // Die erste Karte ist VO2max - dort stehen ihre Zahlen, nicht die des
+    // SweetSpots.
+    contains(chipTeil, "alpha 0,360 – 0,580 · Korridor 0,20 – 0,50", "aufklapp: der alpha-Chip stimmt nicht");
+    contains(chipTeil, "Puls 178 – 189 bpm", "aufklapp: der Puls-Chip fehlt");
+    contains(chipTeil, "Block 1 zählt nicht mit", "aufklapp: der Block-1-Chip fehlt");
+    ok(/Messrauschen/.test(an), "kachel: der Satz zur Bedeutung der Spanne fehlt");
+    // REIHENFOLGE im Aufklappteil: Satz, dann Formel, dann Chips.
+    const rf = ["class=\"rsatz\"", "class=\"formel\"", "class=\"fcap\"", "class=\"rchips\""];
+    let rp = -1, rheil = true;
+    for (const t of rf) { const i2 = aufklapp.indexOf(t, rp + 1); if (i2 <= rp) rheil = false; rp = i2; }
+    ok(rheil, "aufklapp: Satz, Formel und Chips stehen nicht in dieser Reihenfolge");
+    // DIE ZAHLEN FOLGEN DER PAYLOAD - reaktiv geprüft statt nur im Quelltext
+    // gesucht: eine andere Spanne muss in Zeile UND Formel durchschlagen.
+    // Ein fester Wert im Template faellt hier auf, auch wenn er im
+    // Zahlen-Waechter oben nicht gelistet ist (beim Mutieren aufgefallen).
+    const anders = F.blocks({ steering_on: true });
+    anders.compare.sweetspot = { ...anders.compare.sweetspot,
+      new_band: { ...anders.compare.sweetspot.new_band, low: 180, high: 200, half: 9.9, sd: 5.4 } };
+    const aHtml = String(q.rBlocks(anders)).replace(/\s+/g, " ");
+    const ssAuf = aHtml.slice(aHtml.indexOf('data-grp="blk_sweetspot"'));
+    ok(/± <b>1,83<\/b> · <b>5,40 W<\/b> = <b>± 9,9 W<\/b>/.test(ssAuf),
+       "aufklapp: die Formelzeile folgt der Payload nicht");
+    ok(/180 – 200 W/.test(ssAuf), "aufklapp: die Toleranzzeile folgt der Payload nicht");
+    ok(!/± 4,1 W/.test(ssAuf), "aufklapp: die alte Spanne steht noch da (fester Wert im Template)");
 
     // HARTE REGEL: Schalter AUS zeigt die alte Rechnung - ohne Band, ohne
     // Rechenweg, mit dem Satz, wo man einschaltet.

@@ -114,6 +114,30 @@ TILE_NO_TARGET = ("Für diese Familie wird keine Vorgabe geführt — ihre Zahl 
 # t(0,90; n-1) laesst je 10 % nach oben und unten draussen.
 TILE_BAND_SHARE = 8
 
+# DER AUFKLAPPTEIL. Er war bis 0.62.0 eine zweispaltige Tabelle - ein Format
+# fuer den Vergleich ZWISCHEN Zeilen. Hier vergleicht niemand die Streuung mit
+# dem Pulsfenster: es sind zusammenhaengende Angaben zu EINER Zahl, und im
+# schmalen Container zerfiel die Tabelle in Wortfetzen. Jetzt: ein Satz mit
+# eingebetteten Zahlen, eine abgesetzte Formelzeile, drei Chips.
+MORE_ORIGIN = ("Die Vorgabe ist der Startwert {anchor} W vom {date}. Seither "
+               "{verb} {n} {units} dazugekommen, daraus {verb2} {moves} "
+               "{moveword} à {step} W — die Vorgabe steht heute auf {watts} W.")
+# Die Wortformen stehen HIER, nicht im Frontend: „0 Einheiten" gegen „1 Einheit"
+# ist Sprache, keine Darstellung. Das Frontend waehlt nur nach der Zahl aus.
+MORE_WORDS = {
+    "unit_one": "Einheit", "unit_many": "Einheiten",
+    "move_one": "Bewegung", "move_many": "Bewegungen",
+    "verb_one": "ist", "verb_many": "sind",
+    "verb2_one": "wurde", "verb2_many": "wurden",
+}
+MORE_FORMULA_LABEL = "Spanne"
+MORE_FORMULA_CAP = ("{factor} = t(0,90; n−1) · √(1+1/n) · Streuung {sd} W aus den "
+                    "letzten {n} Einheiten, jeweils ab Block 2")
+MORE_MEASURED = "Gemessen wurde:"
+CHIP_ALPHA = "alpha {low} – {high} · Korridor {clow} – {chigh}"
+CHIP_HR = "Puls {low} – {high} bpm"
+CHIP_FIRST_BLOCK = "Block 1 zählt nicht mit"
+
 SWITCH_OFF_LABEL = "wie bisher"
 SWITCH_ON_LABEL = "mit Vorgabe"
 SWITCH_GO_LABEL = "auf die Vorgabe umstellen"

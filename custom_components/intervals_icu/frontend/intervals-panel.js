@@ -1482,51 +1482,6 @@ class IntervalsIcuPanel extends HTMLElement {
     </div>`;
   }
 
-  /* DER RECHENWEG, zugeklappt - und UNTER dem Verlauf, nicht darueber. Er ist
-     die Antwort auf „woher kommt die Zahl", und die stellt sich erst, wenn man
-     Zahl und Verlauf gesehen hat. */
-  _famMore(b, key) {
-    const c = (b.compare || {})[key] || {};
-    const st = (b.steering || {})[key] || {};
-    const w = b.steering_words || {};
-    const an = !!b.steering_on;
-    if (!an || !Object.keys(st).length) return "";
-    const band = c.new_band;
-    const watts = c.new_watts;
-    const satz = (vorlage, werte) => String(vorlage || "").replace(
-      /\{(\w+)\}/g, (_, k) => (werte[k] == null ? "" : fmt(werte[k])));
-    const alphas = (st.rows || []).filter((r) => r.alpha != null).map((r) => r.alpha);
-    const rechenweg = `<details class="more">
-      <summary>mehr anzeigen — Aufbau und Rechenweg</summary>
-      <table class="dfatab kv"><tbody>
-        ${st.anchor_w == null ? "" : `<tr><td>Startwert (${dMed(st.anchor_date)})</td>
-          <td class="tn">${fmt(st.anchor_w)} W</td></tr>`}
-        <tr><td>Einheiten seither</td><td class="tn">${fmt(st.n_since)}</td></tr>
-        <tr><td>Bewegungen seither</td>
-          <td class="tn">${fmt(st.moves)} × ${fmt(w.step_w)} W</td></tr>
-        ${watts == null ? "" : `<tr><td>Vorgabe heute</td>
-          <td class="tn">${fmt(watts)} W</td></tr>`}
-        ${band ? `<tr><td>Messfenster</td>
-          <td class="tn">letzte ${fmt(band.window)} Einheiten</td></tr>
-        <tr><td>Blöcke je Einheit</td><td class="tn">ab Block 2 (Block 1 zählt nicht)</td></tr>
-        <tr><td>Streuung s</td><td class="tn">${fmt(band.sd, 2)} W</td></tr>
-        <tr><td>Faktor t(0,90; n−1) · √(1+1/n)</td>
-          <td class="tn">${fmt(band.t, 2)} · ${fmt(Math.sqrt(1 + 1 / band.n), 2)} =
-            ${fmt(band.half / (band.sd || 1), 2)}</td></tr>
-        <tr><td>Spanne = Vorgabe ± Faktor · s</td>
-          <td class="tn">± ${fmt(band.half, 1)} W</td></tr>` : ""}
-        ${(st.corridor || []).length && alphas.length ? `<tr>
-          <td>alpha ab Block 2 (Korridor ${fmt(st.corridor[0], 2)} – ${fmt(st.corridor[1], 2)})</td>
-          <td class="tn">${fmt(Math.min(...alphas), 3)} – ${fmt(Math.max(...alphas), 3)}</td></tr>` : ""}
-        ${st.hr_band ? `<tr><td>Pulsfenster</td>
-          <td class="tn">${fmt(st.hr_band.low)} – ${fmt(st.hr_band.high)} bpm</td></tr>` : ""}
-      </tbody></table>
-      <p class="hint">${band ? esc(satz(w.tile_band_means, { share: w.band_share })) : ""}
-        ${st.first_block_counts === false ? esc(w.tile_first_block || "") : ""}</p>
-    </details>`;
-    return rechenweg;
-  }
-
   /* DER VERLAUF - die Watt AB BLOCK 2 je Einheit, also die Groesse, die
      steuert. Bis 0.61.1 stand hier Block 1: die Verlaufsgroesse, die mit
      jeder Einheit springt. Band und Vorgabe liegen als Streifen und
@@ -1570,6 +1525,68 @@ class IntervalsIcuPanel extends HTMLElement {
         ],
       })}
     </div>`;
+  }
+
+  /* DER RECHENWEG, zugeklappt und UNTER dem Verlauf. Kein Tabellenraster mehr:
+     eine zweispaltige Tabelle dient dem Vergleich ZWISCHEN Zeilen, und hier
+     vergleicht niemand die Streuung mit dem Pulsfenster - es sind Angaben zu
+     EINER Zahl. Im schmalen Container zerfiel sie ausserdem in Wortfetzen.
+     Stattdessen: ein Satz mit eingebetteten Zahlen, eine abgesetzte
+     Formelzeile, die nicht umbricht (sie scrollt lieber), und drei Chips. */
+  _famMore(b, key) {
+    const c = (b.compare || {})[key] || {};
+    const st = (b.steering || {})[key] || {};
+    const w = b.steering_words || {};
+    const an = !!b.steering_on;
+    if (!an || !Object.keys(st).length) return "";
+    const band = c.new_band;
+    const watts = c.new_watts;
+    const mw = w.more_words || {};
+    const satz = (vorlage, werte) => String(vorlage || "").replace(
+      /\{(\w+)\}/g, (_, k) => (werte[k] == null ? "" : String(werte[k])));
+    const alphas = (st.rows || []).filter((r) => r.alpha != null).map((r) => r.alpha);
+    // Singular und Plural entscheidet die ZAHL, die Woerter kommen aus dem
+    // Modul - „0 Einheiten" gegen „1 Einheit" ist Sprache, nicht Darstellung.
+    const form = (n, eins, viele) => (n === 1 ? mw[eins] : mw[viele]) || "";
+    const herkunft = st.anchor_w == null ? "" : satz(w.more_origin, {
+      anchor: `<b class="tn">${fmt(st.anchor_w)}</b>`,
+      date: `<b class="tn">${dMed(st.anchor_date)}</b>`,
+      verb: form(st.n_since, "verb_one", "verb_many"),
+      n: `<b class="tn">${fmt(st.n_since)}</b>`,
+      units: form(st.n_since, "unit_one", "unit_many"),
+      verb2: form(st.moves, "verb2_one", "verb2_many"),
+      moves: `<b class="tn">${fmt(st.moves)}</b>`,
+      moveword: form(st.moves, "move_one", "move_many"),
+      step: fmt(w.step_w), watts: `<b class="tn">${fmt(watts)}</b>`,
+    });
+
+    // Die Formelzeile: Operanden und Rechenschritt in EINER Kette, so wie ein
+    // Pruefwerkzeug sie zeigt - nachrechenbar, ohne die Zahlen zu suchen.
+    const faktor = band ? band.half / (band.sd || 1) : null;
+    const formel = band ? `<div class="formel">${esc(w.more_formula_label || "")} =
+      ${fmt(watts)} W ± <b>${fmt(faktor, 2)}</b> · <b>${fmt(band.sd, 2)} W</b>
+      = <b>± ${fmt(band.half, 1)} W</b></div>
+      <p class="fcap">${esc(satz(w.more_formula_cap, {
+        factor: fmt(faktor, 2), sd: fmt(band.sd, 2), n: fmt(band.window),
+      }))}</p>` : "";
+
+    const chips = [
+      alphas.length && (st.corridor || []).length
+        ? satz(w.chip_alpha, { low: fmt(Math.min(...alphas), 3), high: fmt(Math.max(...alphas), 3),
+                               clow: fmt(st.corridor[0], 2), chigh: fmt(st.corridor[1], 2) })
+        : "",
+      st.hr_band ? satz(w.chip_hr, { low: fmt(st.hr_band.low), high: fmt(st.hr_band.high) }) : "",
+      st.first_block_counts === false ? (w.chip_first_block || "") : "",
+    ].filter(Boolean);
+
+    return `<details class="more">
+      <summary>mehr anzeigen — Aufbau und Rechenweg</summary>
+      ${herkunft ? `<p class="rsatz">${herkunft}</p>` : ""}
+      ${formel}
+      ${chips.length ? `<p class="rsatz">${esc(w.more_measured || "")}</p>
+        <div class="rchips">${chips.map((x) => `<span class="rchip">${esc(x)}</span>`).join("")}</div>` : ""}
+      <p class="hint">${band ? esc(satz(w.tile_band_means, { share: fmt(w.band_share) })) : ""}</p>
+    </details>`;
   }
 
   rBlocks(b) {
@@ -6039,6 +6056,19 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
 .bleg{font-size:12px;color:${C.tx3};margin:8px 0 0}
 .trend{margin-top:14px;border-top:1px solid ${C.line};padding-top:10px}
 .dfatab.kv td:last-child{text-align:right}
+/* Der Aufklappteil (0.62.1): Fliesstext mit eingebetteten Zahlen, eine
+   abgesetzte Formelzeile und Chips. Die Formelzeile bricht NICHT um - auf
+   schmalem Schirm scrollt sie waagerecht, statt die Rechnung zu zerhacken. */
+.rsatz{font-size:13.5px;color:${C.tx2};margin:10px 0 0}
+.rsatz b{color:${C.tx};font-weight:600}
+.formel{margin:12px 0 4px;padding:10px 12px;border-radius:8px;background:${C.card2};
+  border:1px solid ${C.line};font-size:14px;color:${C.tx};font-variant-numeric:tabular-nums;
+  overflow-x:auto;white-space:nowrap}
+.formel b{color:${ROLE.series};font-weight:600}
+.fcap{font-size:11.5px;color:${C.tx3};margin:0 0 12px}
+.rchips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.rchip{font-size:11.5px;color:${C.tx2};border:1px solid ${C.line};border-radius:999px;
+  padding:3px 10px;white-space:nowrap;font-variant-numeric:tabular-nums;min-width:0}
 .stat.wide .lead1{font-size:46px;line-height:1.05;display:block}
 .sidestats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:16px}
 .small2{font-size:19px}
