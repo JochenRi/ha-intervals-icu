@@ -298,20 +298,25 @@ function fatigue(over) {
  * Stunde 4 haengt an EINER Fahrt und traegt deshalb KEIN Band: das ist der
  * Fall, in dem die Toleranzzeile ganz verschwinden muss. */
 function fatigueV2Block(over) {
-  const m = (hours, watts, form_watts, alpha, n, band) => ({
-    hours, watts, form_watts, alpha, n, band, measured: true, lower: null });
-  // Jenseits des Bestands: KEIN Band, KEINE Belegung, KEIN alpha - und `lower`
-  // sagt, welche der beiden Zahlen die tiefere ist.
+  // Die Umkehrung (0.64.0): je Stunde gehaltene Last + (alpha - 1,0) * 101,2.
+  // NACHRECHENBAR gebaut, damit die Formelzeile gegen die Zahl gehalten werden
+  // kann; Stunde 4 traegt DREI Fahrten und deshalb KEINE Spanne.
+  const m = (hours, watts, load_w, alpha, n, form_watts, band) => ({
+    hours, watts, load_w, alpha, n, form_watts, band, measured: true, lower: null });
   const g = (hours, watts, form_watts) => ({
-    hours, watts, form_watts, alpha: null, n: 0, band: null, measured: false,
-    lower: form_watts <= watts ? "form" : "chain" });
+    hours, watts, form_watts, load_w: null, alpha: null, n: 0, band: null,
+    measured: false, lower: form_watts <= watts ? "form" : "chain" });
   const plan = [
-    m(1, 156.6, 156.6, 1.30, 18, { half: 5.1, from_spread: 4.8, from_bridge: 1.7, n: 18 }),
-    m(2, 154.2, 152.1, 1.27, 13, { half: 7.4, from_spread: 6.2, from_bridge: 4.1, n: 13 }),
-    m(3, 151.8, 145.8, 1.20, 4, { half: 11.9, from_spread: 9.1, from_bridge: 7.7, n: 4 }),
-    // Stunde 4 haengt an EINER Fahrt: gemessen, aber ohne Band.
-    m(4, 149.4, 137.5, 1.05, 1, null),
-    g(5, 147.0, 127.4), g(6, 144.7, 115.4), g(7, 142.3, 101.6), g(8, 139.9, 85.8),
+    m(1, 172.7, 139.6, 1.327, 17, 172.7,
+      { half: 25.5, from_spread: 25.2, from_bridge: 3.4, n: 17 }),
+    m(2, 166.1, 140.2, 1.256, 14, 167.7,
+      { half: 35.6, from_spread: 35.5, from_bridge: 2.7, n: 14 }),
+    m(3, 150.6, 139.8, 1.107, 4, 160.7,
+      { half: 18.8, from_spread: 18.8, from_bridge: 1.1, n: 4 }),
+    // Drei Fahrten: unter der Mindestbelegung, also KEIN Band.
+    m(4, 146.6, 138.7, 1.078, 3, 151.6, null),
+    m(5, 130.0, 146.8, 0.834, 1, 140.5, null),
+    g(6, 121.7, 127.3), g(7, 111.2, 112.0), g(8, 100.7, 94.7),
   ];
   return Object.assign({
     on: true,
@@ -323,6 +328,31 @@ function fatigueV2Block(over) {
     plan,
     covered_until_hours: 4,
     horizon_hours: 8,
+    reversal: {
+      plan, covered_until_hours: 5, alpha_floor: 1.0, floor_step: 0.1,
+      floor_step_watts: 10.1, min_rides_for_band: 4, slope_per_hour: -10.5,
+      bridges: { ramp: 90.6, ladder: 111.7, mid: 101.2, spread: 21.1,
+                 sources: ["Stufentest", "Blockleiter"] },
+      rides: [
+        { activity_id: "r1", date: "2026-08-08", name: "volumen", virtual: false,
+          minutes: 260, load_w: 146.8, alpha_from: 1.234, alpha_to: 0.834,
+          hours: 5, carries: true },
+        { activity_id: "r2", date: "2026-08-03", name: "volumen", virtual: false,
+          minutes: 196, load_w: 138.7, alpha_from: 1.248, alpha_to: 1.078,
+          hours: 4, carries: true },
+        { activity_id: "r3", date: "2026-07-20", name: "rolle", virtual: true,
+          minutes: 71, load_w: 150.2, alpha_from: 1.541, alpha_to: 1.541,
+          hours: 1, carries: false },
+      ],
+    },
+    reversal_words: {
+      state: "aus gemessenem alpha", lead: "F\u00fcr eine Fahrt von",
+      unit_note: "so lange bleibst du \u00fcber alpha {floor}",
+      band_share: "8 von 10 Fahrten", no_band: "unter {min} Fahrten keine Spanne",
+      mean: "BEDEUTUNGSSATZ AUS DEM MODUL {floor}.", form: "FORMSATZ AUS DEM MODUL.",
+      rides: "FAHRTENSATZ AUS DEM MODUL.", others: "MESSUNGSSATZ AUS DEM MODUL.",
+      why: "WARUMSATZ AUS DEM MODUL.",
+    },
     estimate_words: {
       state: "gesch\u00e4tzt, keine Messung",
       lead: "Fortschreibung aus deinen Fahrten",

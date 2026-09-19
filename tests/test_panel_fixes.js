@@ -649,11 +649,11 @@ const acts = F.activities(), thr = F.thresholds();
   const fv2 = (/rFatigueV2\(f, v2\) \{[\s\S]*?\n  \}/.exec(src) || [""])[0];
   ok(fv2.length > 0, "Wächter: rFatigueV2 nicht gefunden");
   for (const [name, re] of [["Anker", /156[.,]6/],
-                            ["Schritt", /2[.,]39/],
-                            ["Bandbreite", /\b5[.,]1\b/],
-                            ["Bruecken", /0[.,]92|7[.,]70?\b/],
+                            ["Umrechnung", /101[.,]2|90[.,]6|111[.,]7/],
+                            ["Bandbreite", /\b25[.,]5\b/],
+                            ["Steigung", /10[.,]5\b/],
                             ["Alphawert", /\b1[.,][0-9]{2}\b/],
-                            ["Verlauf", /0[.,]080/],
+                            ["Grenze", /alpha 1[.,]0\b/],
                             ["Lastfenster", /±\s*5\s*W/],
                             ["Fensterbreite", /\b120\s*(s|Sekunden)/]]) {
     ok(!re.test(fv2), `Wächter: ${name} steht als Zahl in rFatigueV2 statt in der Payload`);
@@ -661,18 +661,21 @@ const acts = F.activities(), thr = F.thresholds();
   // GEGENPROBE, gezaehlt und benannt: die acht Nullen oben pruefen sonst nur,
   // dass die Ausdruecke nie greifen.
   for (const [planted, re] of [["der Anker 156,6 W", /156[.,]6/],
-                               ["Schritt 2,39 W", /2[.,]39/],
-                               ["± 5,1 W", /\b5[.,]1\b/],
-                               ["zwischen 0,92 und 7,70", /0[.,]92|7[.,]70?\b/],
+                               ["101,2 W je alpha", /101[.,]2|90[.,]6|111[.,]7/],
+                               ["± 25,5 W", /\b25[.,]5\b/],
+                               ["-10,5 W je Stunde", /10[.,]5\b/],
                                ["alpha 1,30", /\b1[.,][0-9]{2}\b/],
-                               ["−0,080 alpha", /0[.,]080/],
+                               ["über alpha 1,0 bleiben", /alpha 1[.,]0\b/],
                                ["Lastfenster ± 5 W", /±\s*5\s*W/],
                                ["über 120 s gemittelt", /\b120\s*(s|Sekunden)/]]) {
     ok(re.test(planted), `Wächter Gegenprobe: "${planted}" wird NICHT gefunden — der Wächter ist blind`);
   }
-  for (const key of ["v2.anchor_watts", "v2.step_watts", "v2.bridges", "v2.settings",
-                     "v2.band_share_words", "v2.load_band_w", "v2.watt_window_s",
-                     "v2.min_hours_for_trend", "v2.covered_until_hours", "v2.state_label"]) {
+  // 0.64.0: die Kachel fragt umgekehrt, also liest sie andere Felder. Die
+  // REGEL bleibt dieselbe - jede Zahl kommt aus der Payload.
+  for (const key of ["v2.reversal", "v2.reversal_words", "v2.settings", "v2.load_band_w",
+                     "v2.watt_window_s", "v2.min_hours_for_trend", "v2.estimate_words",
+                     "rv.alpha_floor", "rv.min_rides_for_band", "rv.slope_per_hour",
+                     "rv.floor_step", "rv.floor_step_watts", "br.mid"]) {
     ok(fv2.includes(key), `Wächter: rFatigueV2 liest ${key} nicht aus der Payload`);
   }
 

@@ -355,7 +355,14 @@ check("Gruppen: je Fahrt steht alpha von und bis da",
 
 # ---------------------------------------------------------------------------
 # DIE SETZUNGEN stehen woertlich da und werden nicht stillschweigend weniger.
-check("Setzungen: alle sechs stehen in der Liste", len(v2.SETTINGS_NOTE), 6)
+# 0.64.0: die Grenze alpha 1,0 kommt als siebte dazu. Gezaehlt wird gegen
+# die Liste selbst, nicht gegen eine Zahl im Test.
+check("Setzungen: jede traegt einen Satz",
+      all(isinstance(x, str) and x.strip() for x in v2.SETTINGS_NOTE), True)
+check("Setzungen: sie sind paarweise verschieden",
+      len(set(v2.SETTINGS_NOTE)), len(v2.SETTINGS_NOTE))
+check("Setzungen: die Grenze der Umkehrung steht darin",
+      any("alpha 1,0" in x for x in v2.SETTINGS_NOTE), True)
 check("Setzungen: der Stundenschnitt ist als quellenlos benannt",
       any("keine Quelle" in line for line in v2.SETTINGS_NOTE), True)
 check("Setzungen: die Umrechnung steht mit ihrer Spanne da",
@@ -364,6 +371,35 @@ check("Setzungen: die quadratische Zusammenlegung ist benannt",
       any("quadratisch" in line for line in v2.SETTINGS_NOTE), True)
 
 print()
+# ---------------------------------------------------------------------------
+# DIE UMKEHRUNG (0.64.0): die Mindestbelegung und die Zusammensetzung des Bands.
+# Beides sind Entscheidungen, keine Nebenwirkungen - also werden sie geprueft.
+# Gerechnet wird mit der PRODUKTIONSFUNKTION, nicht mit einem Nachbau im Test -
+# sonst prueft die Suite ihre eigene Kopie und nicht das, was ausgeliefert wird
+# (die Regel aus 0.41.0).
+def _kette(n_je_stunde, spread=21.1):
+    return [(h, len(al), v2.reversal_band(al, 101.2, spread))
+            for h, al in sorted(n_je_stunde.items())]
+check("Umkehrung: die Mindestbelegung steht auf vier", v2.MIN_RIDES_FOR_BAND, 4)
+check("Umkehrung: die Grenze steht auf 1,0", v2.ALPHA_FLOOR, 1.0)
+_roh = _kette({3: [1.20, 1.25, 1.30], 4: [1.20, 1.25, 1.30, 1.35]})
+check("Umkehrung: drei Fahrten tragen KEIN Band", _roh[0][2], None)
+check("Umkehrung Gegenprobe: vier Fahrten tragen eines", _roh[1][2] is not None, True)
+# DAS BAND HAT ZWEI ANTEILE, und sie stehen getrennt. Der aus der Umrechnung
+# ist klein - aber er ist nicht null, und er verschwindet nicht.
+_b = _roh[1][2]
+check("Umkehrung Band: Streuung und Umrechnung sind beide darin",
+      (_b["from_spread"] > 0, _b["from_bridge"] > 0), (True, True))
+check("Umkehrung Band: quadratisch zusammengelegt, nicht nur die Streuung",
+      _b["half"] > _b["from_spread"], True)
+check("Umkehrung Band: die Streuung traegt den groessten Teil", _b["from_spread"] > _b["from_bridge"], True)
+# Trefferzusicherung: ohne den Brueckenanteil kaeme etwas ANDERES heraus -
+# sonst prueft die Zeile oben nur, dass eine Zahl groesser als sie selbst ist.
+_ohne = _kette({4: [1.20, 1.25, 1.30, 1.35]}, spread=0.0)[0][2]
+check("Umkehrung Band Fixture-Beweis: ohne Umrechnungsanteil ist es schmaler",
+      _ohne["half"] < _b["half"], True)
+
+
 # ---------------------------------------------------------------------------
 # DER TROCKENLAUF. Er rechnet beide Wattachsen aus denselben Stroemen und
 # fasst das Archiv NICHT an - das ist die eine Zusicherung, die er geben muss,

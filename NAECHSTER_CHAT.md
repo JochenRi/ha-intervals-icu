@@ -1,5 +1,94 @@
 # ha-intervals-icu — Übergabe an den nächsten Chat
 
+## AKTUELL — 0.64.0: die Kachel fragt umgekehrt (19.09.2026). Zuerst lesen.
+
+**Ausgeliefert: 0.64.0.** Prüfstand **23 Dateien, 7.543 Prüfungen, 0 Fehler** (Basis 7.551 —
+die Zahl SINKT, weil die alten Kachelprüfungen durch neue ersetzt wurden, nicht ergänzt).
+**Der Rechenschalter wurde NICHT umgelegt, nichts neu eingelesen, kein `set_*`.**
+
+### Die Entscheidung, auf der alles steht
+
+Die Kachel beantwortet nicht mehr **„wo liegt meine Schwelle"** — das ist aus
+Grundlagenfahrten **nicht bestimmbar** und seit dem 19.09. belegt: Johannes' Lastfenster ist
+29 W breit, sichtbar wäre der Effekt erst ab rund 150 W, und unterhalb davon kann die Probe
+„kein Zusammenhang" nicht von „zu schmal" unterscheiden (Synthetik, beide Welten liefern
+r ≈ 0).
+
+Sondern: **„bei wieviel Watt bleibe ich über alpha 1,0 — für eine Fahrt von X Stunden."**
+Gerechnet aus **Gemessenem**: gehaltene Last der Stunde + (alpha dort − 1,0) × Umrechnung.
+**Warum das geht, wo das andere nicht ging:** der Weg ist kurz (0,07 bis 0,33 alpha), und über
+diese Strecke liegen Stufentest und Blockleiter nur **1,6 bis 6,9 W** auseinander — bei der
+alten Frage waren es 65 W.
+
+### Die Zahlen, Schalter AN (Fixture = Livestand vom 19.09.)
+
+| h | W | Toleranzzeile |
+|---|---|---|
+| 1 | **173** | ± 26 W · 147–198 W · 8 von 10 Fahrten · 17 Fahrten |
+| 2 | **166** | ± 36 W · 131–202 W · 14 Fahrten |
+| 3 | **151** | ± 19 W · 132–169 W · 4 Fahrten |
+| 4 | **147** | *unter 4 Fahrten keine Spanne* · 3 Fahrten |
+| 5 | **130** | *unter 4 Fahrten keine Spanne* · 1 Fahrt |
+| 6–8 | 122 / 111 / 101 | geschätzt, fortgeschrieben mit −10,5 W je Stunde |
+
+Studienform daneben: 127 / 112 / **95** W bei 6/7/8 h — **bei 7 h laufen beide auf 1 W
+zusammen.** Das war bei der alten Frage nie so (dort 54 W Abstand bei 8 h).
+
+Mit Schalter AUS: Kopfzahl **153 W**, 12.487 Zeichen, **bitgenau die Kachel von 0.63.3**.
+
+### Phase 1: was gekippt ist und korrigiert wurde
+
+- **Das Band.** Der Entwurf zeigte ±16/21/18 — das ist **eine Standardabweichung**. Richtig
+  ist das t-Vorhersageband wie bei den Blockkacheln: **±25,5 / ±35,6 / ±18,8**. Der
+  Weglass-Rückblick belegt es: 82 % (Stunde 1) und 85 % (Stunde 2) Trefferquote, Zusage 80 %.
+  **88 bis 99 % des Bandes kommen aus der Streuung zwischen den Fahrten**, der Rest aus der
+  Umrechnung — beide reisen getrennt mit.
+- **Die Fortschreibung.** −10,5 W je Stunde statt −4,3; bei 8 h 101 statt 129 W.
+- **Die Fahrtenliste.** 15 tragend / 2 stützend, nicht 14/3.
+- **Bestätigt:** die Kette (172,7/166,1/150,6/146,6/130,0), die Umrechnung (101,2 W je alpha
+  aus Stufentest 90,6 und Leiter 111,7), die Studienform (94,7 bei 8 h), die Grenze als
+  Setzung (**±10,1 W je 0,1 alpha, in jeder Stunde gleich**).
+
+### Was gebaut ist
+
+- `fatigue_v2.reversal(data)` — die Kette, aus `reading_rows`; `bridges_alpha(data)` holt die
+  Umrechnung aus **Stufentest und Blockleiter am Bestand**, nie aus den Stundenfits (die sind
+  20-mal flacher, Median-R² 0,32 — Rauschen, das als Gerade gelesen wird).
+- `reversal_band(alphas, mid, spread)` als **eigene Funktion**, damit sie prüfbar ist.
+- Panel: `rFatigueV2` neu. **Sichtbar sieben Stücke**, dahinter fünf Aufklappteile in fester
+  Reihenfolge. Graph mit grauem Ribbon, Studienform, gestrichelter Fortschreibung,
+  Punktgröße nach Belegung und dünnem Ring bei n < 2. Sechs Felder folgen dem Zeiger.
+- **Die siebte Setzung** („die Grenze alpha 1,0 …") steht wörtlich auf der Kachel.
+
+### Prüfstand und Mutation
+
+`test_fatigue_v2.py` 100 → **110** · `test_panel_views.js` 1546 → **1525** (ersetzt, nicht
+ergänzt) · `test_panel_fixes.js` 854 → **857**.
+**Mutation über Dateikopie: 9 von 9 gefangen** — Spanne trotz zu weniger Fahrten ·
+Mindestbelegung ausgehebelt · Formelzeile mit falscher Umrechnung · Grenze fest im Template ·
+Aufklappteil sichtbar · Zeigerfelder tot · GA-Fits als Brücke · Band nur aus der Streuung ·
+Setzung der Grenze fällt weg.
+
+**Drei rutschten im ersten Lauf durch, und der Grund ist derselbe wie oft:** die Prüfung
+rechnete im Testcode nach, statt die Produktionsfunktion zu rufen. Deshalb gibt es
+`reversal_band` jetzt als eigene Funktion. **Merkposten: eine Prüfung, die die Rechnung
+nachbaut, prüft ihre eigene Kopie.**
+
+### OFFEN
+
+0. **Der Schalter ist weiter AUS.** Umlegen kostet 60 Neuabrufe und die Neumessung der
+   17 markierten Fahrten (Fensterbreite `w` passt dann nicht mehr) — der Trockenlauf
+   (`intervals_icu/fatigue_dry_run`) zeigt die Zahlen vorher.
+1. **`bridges_alpha` ist am Livebestand noch nicht gelaufen** — die Zahlen oben stammen aus
+   der Fixture, die den Livestand nachbildet. Erster Trockenlauf nach dem Update prüft das.
+2. Die Felder `alpha_window_*`, `alpha_mad`, `watt_mad` (K27/K29/K30 hängen daran).
+3. Die **unbelegte Rolle/draußen-Beschriftung** an drei Code-Stellen (`blocks.py:335`,
+   `panel:1997`, `fatigue.py:64` meint etwas anderes).
+4. Trockenlauf ohne Oberfläche · Aufräum-Release, wenn die Rechenschalter fallen.
+5. **Der GitHub-Token liegt weiterhin im Klartext in `GIT_Intervals.txt`. Widerrufen.**
+
+---
+
 ## AKTUELL — 0.63.3: die Auslieferung, die Messungen gelöscht hat, ist zurückgenommen (19.09.2026). Zuerst lesen.
 
 **Ausgeliefert: 0.63.3.** Prüfstand **23 Dateien, 7.551 Prüfungen, 0 Fehler** (Basis 7.532).

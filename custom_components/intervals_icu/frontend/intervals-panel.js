@@ -1369,80 +1369,62 @@ class IntervalsIcuPanel extends HTMLElement {
   }
 
 
-  /* ── Die Ermuedungsrechnung v2: die Ablesestelle statt des Kreuzungspunkts ──
-     AUFBAU UND REIHENFOLGE wie beim Kachelwert der Bloecke (0.62.0/0.62.1), und
-     aus DENSELBEN Bausteinen - Zustandsschildchen, Zeile, grosse Zahl,
-     Toleranzzeile, Bullet-Streifen nach Few, Satz, Verlauf, Rechenweg zuletzt.
-     Zwei Kacheln, die dasselbe zeigen, sollen auch gleich aussehen; Farben und
-     Masse stehen deshalb schon im Stylesheet und werden hier nicht wiederholt.
+  /* ── Die Ermuedungskachel, umgekehrt gefragt (0.64.0) ───────────────────────
+     NICHT MEHR "wo liegt meine Schwelle" - das ist aus Grundlagenfahrten nicht
+     bestimmbar (Lastfenster 29 W, noetig waeren rund 150). SONDERN: "bei
+     wieviel Watt bleibe ich ueber alpha 1,0, fuer eine Fahrt von X Stunden".
+     Gerechnet aus der gehaltenen Last und dem dort gemessenen alpha; die
+     einzige Umrechnung ist die kurze Strecke zur Grenze, und ueber die sind
+     sich Stufentest und Blockleiter auf 1,6 bis 6,9 W einig.
 
-     SECHS FELDER FOLGEN DEM ZEIGER: Dauer, Zahl, Toleranzzeile, Streifen, Satz
-     und die FORMELZEILE. Die letzte ist der Grund, warum das an der
-     lead-Mechanik haengt und nicht an einem zweiten Zeiger: eine Formel, die
-     eine andere Zahl ergibt als die daruebersteht, ist schlimmer als keine.
+     SICHTBAR ist wenig und ABSICHTLICH: Schildchen, Dauer, Zahl,
+     Toleranzzeile, Streifen, EIN Satz, das Bild. Alles andere klappt auf, in
+     der Reihenfolge, in der gefragt wird. Eine Textwand auf der Kachel wird
+     nicht gelesen - die Erklaerungen stehen je in einem Satz im Aufklappteil.
 
-     KEINE ZAHL STEHT HIER. Anker, Schritt, Bruecken, alpha, Spanne, Belegung,
-     Lastfenster, Fensterbreite und die sechs Setzungen kommen aus `f.v2`. */
+     KEINE ZAHL STEHT HIER: Grenze, Umrechnung, Band, Steigung, Belegung und
+     die Setzungen kommen aus `f.v2`. */
   rFatigueV2(f, v2) {
-    const plan = v2.plan || [];
+    const rv = v2.reversal || {};
+    const plan = rv.plan || [];
+    const rw = v2.reversal_words || {};
+    const br = rv.bridges || {};
+    const ew = v2.estimate_words || {};
     if (!plan.length) {
-      // Der Schalter steht an, aber die Ablesestelle traegt nichts: das ist
-      // kein Defekt und keine leere Kachel, sondern eine Auskunft.
-      return `<div class="card pad"><h3 class="secname">Ermüdungskurve der aeroben Schwelle</h3>
-        <p>Die neue Rechnung liest alpha an deiner eigenen gehaltenen Last ab —
-        ± ${fmt(v2.load_band_w, 0)} W um die Leistung, die du wirklich getreten hast.
-        Bisher trägt keine Fahrtstunde genug Punkte in diesem Fenster.</p>
+      return `<div class="card pad"><h3 class="secname">Leistung über der Fahrtdauer</h3>
+        ${this._fatigueIncomplete(f)}
+        <p>Für diese Kachel braucht es eine Ablesestelle: mindestens
+        ${fmt(v2.load_band_w, 0)} W um die Leistung, die du gehalten hast, mit genug
+        Punkten darin — und mindestens eine eigene Messung für die Umrechnung
+        alpha → Watt. Eines von beidem fehlt noch.</p>
         ${this._fatigueDropped(f)}</div>`;
     }
-
-    // Die Studienform kommt seit 0.63.0 aus DERSELBEN Kette wie die Messung
-    // (`form_watts` je Zeile) und nicht mehr aus `f.literature`: zwei Reihen,
-    // eine Quelle. Eine zweite Herleitung im Panel waere eine zweite Wahrheit.
-    const dec = v2.decline || {};
-    const ew = v2.estimate_words || {};
-    const br = v2.bridges || {};
-    const gr = v2.groups || {};
-    const covered = v2.covered_until_hours;
-    // i == null heisst "Ruhezustand", und der ist die erste Stunde: dort steht
-    // der Anker, auf dem die ganze Kette sitzt.
     const at = (i) => plan[i == null ? 0 : i] || plan[0];
-    const stunden = (h) => (h === 1 ? "eine Stunde" : fmt(h) + " Stunden");
     const fahrten = (n) => fmt(n) + (n === 1 ? " Fahrt" : " Fahrten");
+    const covered = rv.covered_until_hours;
 
-    // ── die sechs Felder, je als EINE Funktion. Sie werden zweimal gebraucht:
-    //    fuer den Ruhezustand beim Rendern und fuer jede Zeigerstellung.
-    const fDauer = (i) => `Leistung für eine Fahrt von ${fmt(at(i).hours, 2)} h`;
+    // ── die sechs Felder, die dem Zeiger folgen. Je EINE Funktion, zweimal
+    //    gebraucht: fuer den Ruhezustand und fuer jede Zeigerstellung.
+    const fDauer = (i) => `${esc(rw.lead || "")} ${fmt(at(i).hours, 2)} h`;
     const fWatt = (i) => fmt(at(i).watts);
-    // NEBEN der grossen Zahl steht die Gegenrechnung - aber NUR jenseits des
-    // Bestands. Gemessen ist gemessen; dort hat die Studienform nichts neben
-    // der Zahl zu suchen, sie liegt als graue Linie im Bild.
-    const fNeben = (i) => {
-      const r = at(i);
-      if (r.measured) return "";
-      return `<span class="side"><b class="tn">${fmt(r.form_watts)}</b> W ·
-        ${esc(ew.form || "")}</span>`;
-    };
-    // OHNE BAND KEINE TOLERANZZEILE - sie verschwindet GANZ statt als leere
-    // Huelse dazustehen. Eine Stunde, an der eine einzige Fahrt haengt, hat
-    // keine Spanne; "± – W" waere eine Behauptung ueber nichts.
     const fTol = (i) => {
       const r = at(i);
-      // JENSEITS DES BESTANDS: eine ZUSTANDSZEILE statt einer Toleranzzeile.
-      // Ein Band hinter dem letzten gemessenen Punkt waere eine Streuung ueber
-      // null Fahrten - genau die Behauptung, die diese Kachel nicht macht.
       if (!r.measured) {
-        return `<b>${esc(ew.state || "")}</b> · ${esc(ew.lead || "")} ·
-          <b class="tn">${esc(ew.rides || "")}</b>`;
+        return `<b>${esc(ew.state || "")}</b> · ${esc(ew.rides || "")}`;
       }
-      if (!r.band) return "";
-      return `± ${fmt(r.band.half, 1)} W · <b class="tn">${fmt(r.watts - r.band.half)} –
-        ${fmt(r.watts + r.band.half)} W</b> · ${esc(v2.band_share_words)} · ${fahrten(r.n)}`;
+      // UNTER DER MINDESTBELEGUNG VERSCHWINDET DIE ZEILE GANZ. Am Bestand
+      // ergaebe Stunde 4 (drei Fahrten) ein Band von ± 92 W - das ist keine
+      // Auskunft, sondern ein Eingestaendnis mit Zahlen.
+      if (!r.band) {
+        return `<span class="mut">${esc((rw.no_band || "")
+          .replace("{min}", fmt(rv.min_rides_for_band)))} · ${fahrten(r.n)}</span>`;
+      }
+      return `± ${fmt(r.band.half)} W · <b class="tn">${fmt(r.watts - r.band.half)} –
+        ${fmt(r.watts + r.band.half)} W</b> · ${esc(rw.band_share || "")} · ${fahrten(r.n)}`;
     };
     const fStreifen = (i) => {
       const r = at(i);
       if (!r.band) return "";
-      // Die Spanne fuellt die mittleren zwei Fuenftel - dieselbe LAYOUTwahl wie
-      // am Kachelwert der Bloecke, damit beide Streifen gleich zu lesen sind.
       const a0 = r.watts - r.band.half * 2.5, a1 = r.watts + r.band.half * 2.5;
       const pos = (v) => ((v - a0) / ((a1 - a0) || 1)) * 100;
       return `<div class="bbar">
@@ -1453,46 +1435,35 @@ class IntervalsIcuPanel extends HTMLElement {
         <div class="bticks"><i>${fmt(Math.round(a0))}</i>
           <i class="edge">${fmt(r.watts - r.band.half)}</i>
           <i class="edge">${fmt(r.watts + r.band.half)}</i>
-          <i>${fmt(Math.round(a1))}</i></div>
-        <p class="bleg">heller Bereich = Spanne dieser Stunde · Strich = die Zahl oben</p>`;
+          <i>${fmt(Math.round(a1))}</i></div>`;
     };
+    // EIN Satz. Was er nicht sagt, steht im Aufklappteil darunter.
     const fSatz = (i) => {
       const r = at(i);
-      // WELCHE DER BEIDEN ZAHLEN DIE VORSICHTIGE IST, entscheidet die Payload
-      // (`lower`) und nicht dieser Text: wird der eigene Abfall einmal steiler
-      // als die Studie, kippt der Satz mit, ohne dass jemand ihn umschreibt.
       if (!r.measured) {
-        return `Für ${stunden(r.hours)} hast du noch keine Fahrt.
-          ${esc(r.lower === "chain" ? (ew.steep || "") : (ew.flat || ""))}
+        return `Für diese Länge hast du noch keine Fahrt — die Zahl ist fortgeschrieben.
           ${esc(ew.first_ride || "")}`;
       }
-      const kopf = `Für ${stunden(r.hours)} am Stück: fahr die <b class="tn">${fmt(r.watts)} W</b>.`;
-      if (!r.band) {
-        return `${kopf} Dein alpha lag bei dieser Last bei
-          <b class="tn">${fmt(r.alpha, 2)}</b> — gemessen an ${fahrten(r.n)}, und damit
-          <b>ohne Spanne</b>: eine einzelne Fahrt sagt, wo es liegt, nicht wie breit es streut.`;
-      }
-      return `${kopf} Dein alpha lag bei dieser Last im Mittel bei
-        <b class="tn">${fmt(r.alpha, 2)}</b>, gemessen an <b class="tn">${fahrten(r.n)}</b>.`;
+      return `${esc((rw.unit_note || "").replace("{floor}", fmt(rv.alpha_floor, 1)))} —
+        gemessen an <b class="tn">${fahrten(r.n)}</b>, die im Mittel
+        <b class="tn">${fmt(r.load_w)} W</b> gehalten haben.`;
     };
-    // DIE FORMELZEILE MUSS DIE ZAHL ERGEBEN, die darueber steht. Stunde 1 ist
-    // der Anker selbst, jede weitere ist Anker minus Schritt mal Stunden.
+    // DIE FORMELZEILE MUSS DIE ZAHL ERGEBEN, die oben steht.
     const fFormel = (i) => {
       const r = at(i);
-      const spanne = r.band ? ` &nbsp;·&nbsp; Spanne <b>± ${fmt(r.band.half, 1)} W</b>`
-        : (r.measured ? "" : ` &nbsp;·&nbsp; ${esc(ew.state || "")}, ${esc(ew.rides || "")}`
-          + ` &nbsp;·&nbsp; ${esc(ew.form || "")} ${fmt(r.form_watts)} W`);
-      return r.hours === 1
-        ? `${fmt(r.hours)} h = <b>${fmt(v2.anchor_watts, 1)} W</b> gemessen${spanne}`
-        : `${fmt(r.hours)} h = ${fmt(v2.anchor_watts, 1)} W − ${fmt(r.hours - 1)} ·
-           <b>${fmt(v2.step_watts, 2)} W</b> = <b>${fmt(r.watts, 1)} W</b>${spanne}`;
+      if (!r.measured) {
+        return `${fmt(r.hours)} h = fortgeschrieben mit <b>${fmt(rv.slope_per_hour, 1)} W</b>
+          je Stunde &nbsp;·&nbsp; ${esc(ew.form || "")} <b>${fmt(r.form_watts)} W</b>`;
+      }
+      return `${fmt(r.hours)} h = ${fmt(r.load_w)} W gehalten + (${fmt(r.alpha, 3)} −
+        ${fmt(rv.alpha_floor, 1)}) · <b>${fmt(br.mid, 1)} W</b> =
+        <b>${fmt(r.watts)} W</b>${r.band
+          ? ` &nbsp;·&nbsp; Spanne <b>± ${fmt(r.band.half)} W</b>` : ""}`;
     };
 
-    // ── das Bild. Setzung hinten, Messung vorn - dieselbe Ordnung wie bisher.
-    //    BEIDE REIHEN kommen aus `plan`: `watts` ist die eigene Kette, `form_watts`
-    //    die Studienform. Der durchgezogene Zug endet am Bestand, die
-    //    Fortschreibung laeuft gestrichelt weiter - eine durchgezogene Linie
-    //    ueber Stunden, in denen nie gefahren wurde, behauptet Sicherheit.
+    // ── das Bild: blau die gemessenen Stunden, graues BAND als Streuung
+    //    zwischen den Fahrten, duenn und grau die Studienform, gestrichelt die
+    //    Fortschreibung. Punktgroesse nach Belegung, duenner Ring wo n < 2.
     const ist = plan.filter((r) => r.measured);
     const schaetz = plan.filter((r) => !r.measured);
     const brueck = ist.length ? [ist[ist.length - 1]] : [];
@@ -1505,43 +1476,33 @@ class IntervalsIcuPanel extends HTMLElement {
       y0: Math.floor(Math.min(...lows) / 10) * 10 - 5,
       y1: Math.ceil(Math.max(...his) / 10) * 10 + 5,
       grp: "fatv2", yf: (v) => fmt(v),
-      label: "Schwellenleistung (W) über der Fahrtdauer", labelc: ROLE.series,
+      label: "Leistung (W) über der Fahrtdauer", labelc: ROLE.series,
       s: [
-        { t: "xyline", p: plan.map((r) => ({ x: r.hours, v: r.form_watts })),
-          c: C.slate, w: 2, lop: 0.9 },
-        // DIE SPANNE IST DIE EIGENE, nicht die der Studienform: sie waechst mit
-        // der Stunde, weil die Umrechnung mitwaechst - und sie hoert auf, wo
-        // die Messung aufhoert.
         { t: "xyband", p: ist.filter((r) => r.band).map((r) => ({
             x: r.hours, lo: r.watts - r.band.half, hi: r.watts + r.band.half })),
-          c: ROLE.series, op: 0.13 },
+          c: C.slate, op: 0.16 },
+        { t: "xyline", p: plan.map((r) => ({ x: r.hours, v: r.form_watts })),
+          c: C.slate, w: 1.4, lop: 0.8 },
         { t: "xyline", p: ist.map((r) => ({ x: r.hours, v: r.watts })), c: ROLE.series, w: 2.6 },
         { t: "xyline", p: [...brueck, ...schaetz].map((r) => ({ x: r.hours, v: r.watts })),
           c: ROLE.series, w: 1.6, d: "3 3", lop: 0.75 },
         { t: "dots", c: ROLE.series, p: plan.map((r) => ({
-            x: r.hours, v: r.watts, r: r.measured ? 5.4 : 3.2,
-            op: r.measured ? 1 : 0.6 })) },
+            x: r.hours, v: r.watts,
+            r: r.n >= 2 ? Math.min(7, 3.4 + r.n * 0.22) : 3.2,
+            op: r.n >= 2 ? 1 : 0.45 })) },
       ],
     });
 
-    // ── die Zeigergruppe. Das Raster ist die KETTE, nicht das Literaturraster:
-    //    die Kachel beantwortet "welche Leistung ueber eine Fahrt von X Stunden",
-    //    und die Antwort gibt es genau auf den Stunden, die gelesen wurden.
     this._grp.fatv2 = {
       xy: true, n: plan.length,
       pts: plan.map((r) => ({ x: r.hours, y: r.watts })),
-      xl: (i) => fmt(plan[i].hours, 2) + " h geplante Dauer"
-        + (!plan[i].measured ? " — " + (ew.state || "")
-          : (plan[i].band ? "" : " — eine Fahrt, keine Spanne")),
+      xl: (i) => fmt(plan[i].hours, 2) + " h Fahrtdauer"
+        + (plan[i].measured ? "" : " — " + (ew.state || "")),
       lead: {
         base: fWatt(null), baseColor: ROLE.series, baseLabel: fDauer(null),
         baseNote: "", note: () => "",
         label: (i) => fDauer(i), val: (i) => fWatt(i), color: () => ROLE.series,
-        // MEHR ALS DREI FELDER, dieselbe Mechanik: die Kachel sagt an, welche
-        // Stellen mitlaufen, `_fillLead` schreibt sie. Wer dafuer einen
-        // zweiten Zeiger baut, bekommt zwei Fassungen derselben Ablesung.
         html: {
-          '[data-v2="neben"]': fNeben,
           '[data-v2="tol"]': fTol,
           '[data-v2="strip"]': fStreifen,
           '[data-v2="satz"]': fSatz,
@@ -1550,89 +1511,83 @@ class IntervalsIcuPanel extends HTMLElement {
       },
       rows: [
         { l: "Leistung", c: ROLE.series, u: "W", dec: 0, vals: plan.map((r) => r.watts) },
-        { l: "alpha bei eigener Last", c: C.tx2, u: "", dec: 2, vals: plan.map((r) => r.alpha) },
-        { l: "Spanne", c: C.slate, u: "W",
-          vals: plan.map((r) => (r.band
-            ? fmt(r.watts - r.band.half) + "–" + fmt(r.watts + r.band.half) : null)) },
+        { l: "gehaltene Last", c: C.tx2, u: "W", dec: 0, vals: plan.map((r) => r.load_w) },
+        { l: "alpha dort", c: C.tx2, u: "", dec: 3, vals: plan.map((r) => r.alpha) },
         { l: "Studienform", c: C.slate, u: "W", dec: 0, vals: plan.map((r) => r.form_watts) },
-        { l: "Belegung", c: C.tx2, u: "", dec: 0, vals: plan.map((r) => r.n) },
+        { l: "Fahrten", c: C.tx2, u: "", dec: 0, vals: plan.map((r) => r.n) },
       ],
     };
 
     const liste = (rides) => `<ul class="rides">${rides.map((r) => `<li>
-      <span>${dMed(r.date)}</span>
-      <span class="r">${fmt(r.hours)} ${r.hours === 1 ? "Stunde" : "Stunden"} ·
-        alpha ${fmt(r.alpha_from, 2)} → ${fmt(r.alpha_to, 2)}</span></li>`).join("")}</ul>`;
+      <span>${dMed(r.date)} · ${r.virtual ? "Rolle" : "draußen"} · ${fmt(r.minutes)} min</span>
+      <span class="r">${fmt(r.load_w)} W · alpha ${fmt(r.alpha_from, 2)} →
+        ${fmt(r.alpha_to, 2)} · ${fahrten(r.hours).replace("Fahrt", "Stunde")
+          .replace("Fahrten", "Stunden")}</span></li>`).join("")}</ul>`;
+    const traegt = (rv.rides || []).filter((r) => r.carries);
+    const stuetzt = (rv.rides || []).filter((r) => !r.carries);
 
     return `<div class="card pad" data-grp="fatv2" data-lead="fatv2">
-      <h3 class="secname">Ermüdungskurve der aeroben Schwelle</h3>
+      <h3 class="secname">Leistung über der Fahrtdauer</h3>
       ${this._fatigueIncomplete(f)}
       <div class="famval">
-        <span class="state">${esc(v2.state_label || "")}</span>
+        <span class="state">${esc(rw.state || "")}</span>
         <div class="fam"><span class="ldl">${fDauer(null)}</span></div>
         <div class="bigval"><b class="tn ldv" style="color:${ROLE.series}">${fWatt(null)}</b>
-          <span class="unit">W</span><span data-v2="neben">${fNeben(null)}</span></div>
+          <span class="unit">W</span></div>
         <div class="tol" data-v2="tol">${fTol(null)}</div>
         <div class="bstrip" data-v2="strip">${fStreifen(null)}</div>
         <p class="info" data-v2="satz">${fSatz(null)}</p>
       </div>
 
-      <details class="more"><summary>Warum die Spanne so breit ist</summary>
-        <p class="rsatz">Dieselbe Wattzahl fühlt sich nicht jeden Tag gleich an. Wärme,
-          Verpflegung, Schlaf und Stimmung verschieben, wie stark dein alpha bei dieser Last
-          nachgibt — und damit, wo du in der Spanne landest.</p>
-        <p class="rsatz">Faustregel für unterwegs: warm, schlecht gegessen oder müde → fahr die
-          <b>untere</b> Zahl. Kühl, ausgeruht, gut gegessen → die <b>obere</b> geht.</p>
-        <div class="rchips">
-          <span class="rchip">Streuung zwischen deinen Fahrten</span>
-          <span class="rchip">Umrechnung alpha → Watt</span>
-          <span class="rchip">${esc(v2.band_share_words)} landen in der Spanne</span>
-        </div></details>
-
       <div class="trend">
-        <h5 class="subsec">Schwellenleistung (W) über der Fahrtdauer</h5>
-        <p class="mut">dick und farbig ist gemessen · gestrichelt ist dein eigener Schritt
-          fortgeschrieben · dünn und grau ist die Studienform, an Stunde ${fmt(plan[0].hours)}
-          verankert · ab Stunde ${fmt((covered || 0) + 1)} ${esc(ew.state || "")}</p>
         ${readout("fatv2")}
         ${graph}
       </div>
 
-      <details class="more"><summary>mehr anzeigen — Aufbau und Rechenweg</summary>
-        <p class="rsatz">Die Höhe kommt aus deinen Fahrten: <b class="tn">${fmt(v2.anchor_watts, 1)} W</b>
-          in Stunde ${fmt(plan[0].hours)}, gemessen an <b class="tn">${fahrten(plan[0].n)}</b>.
-          Der Verlauf kommt aus der Verschiebung deines alpha bei der Last, die du gefahren bist:
-          <b class="tn">${fmt(dec.alpha_per_hour, 3)} alpha</b> je Stunde, über
-          <b class="tn">${fahrten(dec.n)}</b>, davon fallen <b class="tn">${fmt(dec.falling)}</b>.</p>
+      <details class="more"><summary>Was die Zahl bedeutet</summary>
+        <p class="rsatz">${esc(rw.mean || "").replace("{floor}", fmt(rv.alpha_floor, 1))}</p>
+        <p class="rsatz">${esc(rw.why || "")}</p></details>
+
+      <details class="more"><summary>Im Vergleich zur Studienform</summary>
+        <p class="rsatz">${esc(rw.form || "")}</p>
+        <p class="fcap">ab Stunde ${fmt((covered || 0) + 1)} ${esc(ew.state || "")}:
+          fortgeschrieben mit ${fmt(rv.slope_per_hour, 1)} W je Stunde, daneben die
+          Studienform.</p></details>
+
+      <details class="more"><summary>Welche Fahrten zählen</summary>
+        <p class="rsatz">${esc(rw.rides || "")}</p>
+        <div class="fgrp"><i>●</i><span><b>${fahrten(traegt.length)} tragen den
+          Verlauf</b> — mindestens ${fmt(v2.min_hours_for_trend)} Stunden mit
+          Ablesestelle</span></div>
+        ${traegt.length ? liste(traegt) : ""}
+        ${stuetzt.length ? `<div class="fgrp"><i>◐</i><span><b>${fahrten(stuetzt.length)}
+          stützen nur die Höhe</b> — eine Stunde mit Ablesestelle</span></div>
+          ${liste(stuetzt)}` : ""}</details>
+
+      <details class="more"><summary>Wattzahlen aus anderen Messungen</summary>
+        <p class="rsatz">${esc(rw.others || "")}</p>
+        <div class="rchips">
+          ${br.ramp != null ? `<span class="rchip">Stufentest ${fmt(br.ramp, 1)} W je alpha</span>` : ""}
+          ${br.ladder != null ? `<span class="rchip">Blockleiter ${fmt(br.ladder, 1)} W je alpha</span>` : ""}
+          <span class="rchip">verwendet ${fmt(br.mid, 1)} W je alpha</span>
+        </div></details>
+
+      <details class="more"><summary>Rechenweg</summary>
+        <p class="rsatz">Gehaltene Last der Stunde, plus der Weg von dem alpha, das dabei
+          gemessen wurde, bis zur Grenze — mal der Umrechnung.</p>
         <div class="formel" data-v2="formel">${fFormel(null)}</div>
-        <p class="fcap">${fmt(v2.step_watts, 2)} W je Stunde = ${fmt(dec.alpha_per_hour, 3)} alpha ×
-          Umrechnung. Die Umrechnung liegt je nach Verfahren zwischen ${fmt(br.global, 2)} und
-          ${fmt(br.local, 2)} W je Stunde — diese Unsicherheit steckt in der Spanne.</p>
+        <p class="fcap">Das Band kommt zum größten Teil aus der Streuung zwischen deinen
+          Fahrten und nur zum Rest aus der Umrechnung; beide stehen getrennt, damit nicht
+          zwei Unsicherheiten als eine erscheinen.</p>
         <div class="rchips">
           <span class="rchip">alpha bei eigener Last, ± ${fmt(v2.load_band_w, 0)} W</span>
           <span class="rchip">Watt über ${fmt(v2.watt_window_s)} s gemittelt</span>
-          <span class="rchip">Anker Stunde ${fmt(plan[0].hours)}</span>
+          <span class="rchip">${fmt(rv.floor_step, 1)} alpha ≈ ${fmt(rv.floor_step_watts)} W</span>
         </div>
-
-        <div class="fgrp"><i>●</i><span><b>${fahrten((gr.carries || []).length)} tragen den
-          Verlauf</b> — mindestens ${fmt(v2.min_hours_for_trend)} Stunden mit genug Punkten</span></div>
-        ${(gr.carries || []).length ? `<details><summary>Fahrten anzeigen</summary>
-          ${liste(gr.carries)}</details>` : ""}
-        <div class="fgrp"><i>◐</i><span><b>${fahrten((gr.supports || []).length)} stützen nur die
-          Höhe</b> — kürzer, sie zählen für Stunde ${fmt(plan[0].hours)}</span></div>
-        ${(gr.supports || []).length ? `<details><summary>Fahrten anzeigen</summary>
-          ${liste(gr.supports)}</details>` : ""}
-        <div class="fgrp"><i>○</i><span><b>ab Stunde ${fmt((covered || 0) + 1)}
-          ${esc(ew.state || "")}</b> — ${esc(ew.rides || "")}, dort liegt keine Ablesestelle
-          mehr. Die Kachel zeigt bis Stunde ${fmt(v2.horizon_hours)} weiter:
-          ${esc(ew.lead || "")} groß, ${esc(ew.form || "")} daneben.</span></div>
-
         <p class="setz"><b>Gesetzt, nicht gemessen:</b>
           ${(v2.settings || []).map((x) => esc(x)).join(" · ")}.</p>
-        ${this._fatigueDropped(f)}
-      </details></div>`;
+        ${this._fatigueDropped(f)}</details></div>`;
   }
-
   /* SOLANGE FAHRTEN FEHLEN, SAGT DIE KARTE DAS - und zwar oben, nicht im
      Rechenweg. Ein ausgefallener Stromabruf nimmt der Fahrt ihre DFA-Zeile,
      und damit auch dem Anker, dem DFA-Reiter und den Belastungsansichten, die

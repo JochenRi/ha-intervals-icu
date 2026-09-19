@@ -214,6 +214,13 @@ def reading_rows(data: dict[str, Any]) -> list[dict[str, Any]]:
         hours.sort(key=lambda item: item["hour"] or 0)
         out.append({"activity_id": ride.get("activity_id"),
                     "date": ride.get("date"),
+                    # Name, Umgebung und Dauer reisen seit 0.64.0 mit: die
+                    # Fahrtenliste der Umkehrung zeigt sie, und sie nachtraeglich
+                    # aus `activities` zu holen waere ein zweiter Weg zu
+                    # denselben Feldern.
+                    "name": ride.get("name"),
+                    "virtual": bool(ride.get("virtual")),
+                    "minutes": ride.get("minutes"),
                     "load_w": hours[0].get("load_w"),
                     "hours": hours,
                     "first": hours[0]["alpha"],
@@ -387,6 +394,10 @@ def curve(data: dict[str, Any]) -> dict[str, Any]:
             "horizon_hours": PLAN_HORIZON_HOURS,
             "estimate_words": ESTIMATE_WORDS,
             "switch_words": SWITCH_WORDS,
+            # DIE UMKEHRUNG (0.64.0). Sie reist im selben Block mit, weil
+            # sie dieselbe Ablesestelle liest - nur die Frage ist gedreht.
+            "reversal": reversal(data),
+            "reversal_words": REVERSAL_WORDS,
             "band_share_words": BAND_SHARE_WORDS,
             "min_hours_for_trend": MIN_HOURS_FOR_TREND,
             "load_band_w": derive.DFA_LOAD_BAND_W,
@@ -402,6 +413,10 @@ SETTINGS_NOTE = [
     "die Umrechnung alpha → Watt (je nach Verfahren 0,9 bis 7,7 W je Stunde)",
     "die Spanne quadratisch aus Streuung und Umrechnung zusammengelegt",
     "die Studienform hinter dem belegten Bereich, verankert an Stunde 1",
+    # 0.64.0: die Grenze der Umkehrung. Der Ausschlag ist GERECHNET und in
+    # jeder Stunde gleich, weil die Grenze linear ueber dieselbe Umrechnung
+    # eingeht - deshalb steht er als eine Zahl da und nicht als Spanne.
+    "die Grenze alpha 1,0 (0,1 alpha mehr oder weniger sind rund 10 W)",
 ]
 
 
@@ -514,3 +529,231 @@ def _shadow(data: dict[str, Any], hours_by_key: dict[str, Any],
     box[V2_SWITCH] = bool(window_s)
     return {**data, "dfa": {**(data.get("dfa") or {}), **dfa},
             "section_marks": marks, "settings": box}
+
+
+# --- DIE UMKEHRUNG (0.64.0) ---------------------------------------------------
+# DIE FRAGE IST GEDREHT. Nicht mehr "bei welcher Leistung liegt meine Schwelle"
+# - das ist aus Grundlagenfahrten NICHT bestimmbar und seit dem 19.09. belegt:
+# Johannes' Lastfenster ist 29 W breit, sichtbar waere der Effekt erst ab rund
+# 150 W, und unterhalb davon kann die Probe "kein Zusammenhang" nicht von "zu
+# schmal" unterscheiden. Sondern: "bei wieviel Watt bleibe ich ueber alpha 1,0,
+# fuer eine Fahrt von X Stunden".
+#
+# WARUM DAS GEHT, WO DAS ANDERE NICHT GING: gerechnet wird aus Gemessenem, und
+# der Weg ist kurz. Johannes faehrt bei alpha 1,33; bis 1,00 sind es 0,33.
+# Ueber diese Strecke liegen Stufentest und Leiter nur 1,6 bis 6,9 W
+# auseinander - bei der alten Frage (Weg 0,58 hinaus aus dem Datenbereich)
+# waren es 65 W. Dieselben zwei Bruecken, zwei Groessenordnungen Unterschied:
+# das ist der ganze Grund, warum diese Kachel eine Zahl nennen darf.
+ALPHA_FLOOR = 1.0
+
+# DIE WOERTER DER KACHEL. Sie stehen hier, nicht im Panel - wie bei den
+# Setzungen und den Schalterwoertern. Sichtbar ist EIN Satz; alles andere
+# klappt auf, und zwar in der Reihenfolge, in der gefragt wird.
+REVERSAL_WORDS = {
+    "state": "aus gemessenem alpha",
+    "lead": "Für eine Fahrt von",
+    "unit_note": "so lange bleibst du über alpha {floor}",
+    "band_share": "8 von 10 Fahrten",
+    "no_band": "unter {min} Fahrten keine Spanne",
+    "mean": ("Die Zahl ist keine Schwelle. Sie sagt: über eine Fahrt dieser Länge "
+             "bleibt dein alpha im Mittel über {floor} — also im Bereich, in dem "
+             "dein Herzschlag noch geordnet läuft. Gerechnet aus der Last, die du "
+             "wirklich gehalten hast, und dem alpha, das dabei gemessen wurde."),
+    "form": ("Die Studienform ist an deine erste Stunde gehängt und zeigt, wie eine "
+             "Arbeit mit anderem Kollektiv den Abfall beschreibt. Bei dieser Frage "
+             "laufen beide fast zusammen — das war bei der alten Frage nie so."),
+    "rides": ("Es zählen nur Fahrten mit einer Ablesestelle: mindestens 20 Punkte im "
+              "Lastfenster um die Leistung, die du gehalten hast. Ohne die gibt es "
+              "keine Zahl, und die Stunde fehlt."),
+    "others": ("Zwei eigene Messungen sagen, wieviel Watt ein Schritt von 1,0 alpha "
+               "wert ist. Sie werden gemittelt; ihr Abstand steckt im Band."),
+    "why": ("Warum diese Frage und nicht „wo liegt meine Schwelle“: die alte Zahl "
+            "musste von deinem alpha weit hinaus gerechnet werden, hier ist der Weg "
+            "kurz. Über diese kurze Strecke sind sich die beiden Messungen fast "
+            "einig, über die lange nicht."),
+}
+
+# Wie stark die Zahl an dieser Setzung haengt - GERECHNET, nicht behauptet, und
+# sie steht in den Setzungen der Kachel: die Grenze geht linear ueber dieselbe
+# Umrechnung ein, also ist der Ausschlag in JEDER Stunde gleich.
+ALPHA_FLOOR_STEP = 0.1
+
+# UNTER VIER FAHRTEN KEINE SPANNE. Am Bestand ergibt Stunde 4 (n=3, s=0,270)
+# ein Band von +-92 W - das ist keine Auskunft, sondern ein Eingestaendnis mit
+# Zahlen. Die Zeile verschwindet dann ganz, wie an der Stunde ohne Band.
+MIN_RIDES_FOR_BAND = 4
+
+
+def bridges_alpha(data: dict[str, Any]) -> dict[str, Any]:
+    """Die Umrechnung alpha -> Watt, aus ZWEI eigenen Messungen.
+
+    Nicht aus den Stundenfits: die sind mit Median-R2 0,32 zwanzigmal flacher
+    als beide Messungen und behaupten umgerechnet 1,89 alpha je 10 W, wo
+    Stufentest und Leiter 0,009 sagen. Das ist Rauschen, das als Gerade
+    gelesen wird, und es wird hier ausdruecklich NICHT benutzt.
+
+    `ramp` kommt aus dem eigenen Stufentest (zwei Ablesungen in EINER Fahrt),
+    `ladder` aus den eingeschwungenen Bloecken zweier Familien. Beide werden
+    am Bestand gerechnet; fehlt eine, traegt die andere allein, fehlen beide,
+    gibt es keine Umrechnung und damit keine Wattzahl.
+    """
+    # SPAET geladen und in BEIDEN Formen - dasselbe Muster wie im Importblock
+    # oben: im Paket relativ, im Pruefstand flach. Spaet, weil `blocks` seinen
+    # eigenen Weg zu `section_marks` hat und ein Import oben einen Ring baut.
+    try:
+        from . import blocks as blocks_lib
+        from . import ramp_tests
+    except ImportError:
+        import blocks as blocks_lib  # type: ignore[no-redef]
+        import ramp_tests  # type: ignore[no-redef]
+
+    out: dict[str, Any] = {"ramp": None, "ladder": None, "mid": None, "sources": []}
+    got = (ramp_tests.latest(data) or {}).get("result") or {}
+    eins, pers = got.get("hrvt1") or {}, got.get("hrvt1_pers") or {}
+    wa, wb = eins.get("watts"), pers.get("watts")
+    aa, ab = eins.get("alpha"), pers.get("alpha")
+    if None not in (wa, wb, aa, ab) and abs(ab - aa) > 1e-6:
+        out["ramp"] = round(abs((wa - wb) / (ab - aa)), 1)
+        out["sources"].append("Stufentest")
+
+    fams = (blocks_lib.series(data, with_other=False) or {}).get("families") or {}
+    sprossen = []
+    for box in fams.values():
+        alphas, watts = [], []
+        for point in box.get("points") or []:
+            # AB BLOCK 2 - der erste Block ist noch nicht eingeschwungen, das
+            # ist die Regel der Blockkacheln und sie gilt hier genauso.
+            alphas += list((point.get("block_alphas") or [])[1:])
+            watts += list((point.get("block_watts") or [])[1:])
+        if alphas and watts:
+            sprossen.append((derive._median(alphas), derive._median(watts)))
+    sprossen.sort()
+    if len(sprossen) >= 2:
+        # Die beiden Sprossen, die ALPHA_FLOOR am naechsten liegen: ueber eine
+        # kurze Strecke gemessen ist besser als ueber die ganze Leiter, weil
+        # die Beziehung nicht gerade ist.
+        naechste = sorted(sprossen, key=lambda s: abs(s[0] - ALPHA_FLOOR))[:2]
+        (a1, w1), (a2, w2) = sorted(naechste)
+        if abs(a2 - a1) > 1e-6:
+            out["ladder"] = round(abs((w2 - w1) / (a2 - a1)), 1)
+            out["sources"].append("Blockleiter")
+
+    beide = [v for v in (out["ramp"], out["ladder"]) if v is not None]
+    if beide:
+        out["mid"] = round(sum(beide) / len(beide), 1)
+        out["spread"] = round(max(beide) - min(beide), 1)
+    return out
+
+
+def reversal_band(alphas: list[float], mid: float, spread: float) -> dict[str, Any] | None:
+    """Das Band einer Stunde - EIGENE Funktion, damit sie geprueft werden kann.
+
+    Unter MIN_RIDES_FOR_BAND gibt es KEINES: am Bestand ergaebe Stunde 4 (drei
+    Fahrten, s = 0,270) ein Band von +-92 W, und das ist keine Auskunft.
+
+    Zwei Anteile, quadratisch zusammengelegt und GETRENNT ausgewiesen: die
+    Streuung zwischen den Fahrten (sie traegt 88 bis 99 %) und der Abstand der
+    beiden Umrechnungen. Wer sie zusammenwirft, laesst zwei Unsicherheiten wie
+    eine aussehen - und die kleinere ist die, um die vier Runden lang
+    gestritten wurde.
+    """
+    n = len(alphas)
+    if n < MIN_RIDES_FOR_BAND:
+        return None
+    mean = sum(alphas) / n
+    sd = (sum((a - mean) ** 2 for a in alphas) / (n - 1)) ** 0.5
+    t = STEERING_T90.get(n - 1, STEERING_T90[max(STEERING_T90)])
+    aus_streuung = t * sd * (1 + 1 / n) ** 0.5 * mid
+    aus_bruecke = abs(derive._median(alphas) - ALPHA_FLOOR) * (spread or 0.0) / 2
+    return {"half": round((aus_streuung ** 2 + aus_bruecke ** 2) ** 0.5, 1),
+            "from_spread": round(aus_streuung, 1),
+            "from_bridge": round(aus_bruecke, 1), "n": n}
+
+
+def reversal(data: dict[str, Any]) -> dict[str, Any]:
+    """Die Kette der Umkehrung: je Stunde die Watt, bei denen alpha 1,0 bleibt.
+
+    Gerechnet aus der GEHALTENEN Last der Stunde und dem dort GEMESSENEN alpha
+    - beides steht in der Stundenzeile, nichts wird gefittet und nichts
+    extrapoliert. Die einzige Umrechnung ist die kurze Strecke von alpha zur
+    Grenze, und die traegt zwei eigene Messungen.
+
+    Das BAND kommt zu 88 bis 99 % aus der Streuung zwischen den Fahrten und nur
+    zum Rest aus der Umrechnung; beide Anteile reisen getrennt mit, damit nicht
+    zwei Unsicherheiten als eine erscheinen. Gerechnet wie bei den
+    Blockkacheln - t(0,90; n-1) mal s mal Wurzel(1+1/n) -, und der Rueckhalt
+    dafuer ist gemessen: im Weglass-Rueckblick trifft das Band 82 % (Stunde 1)
+    und 85 % (Stunde 2) der weggelassenen Fahrten.
+    """
+    br = bridges_alpha(data)
+    mid = br.get("mid")
+    rows = reading_rows(data)
+    je_stunde: dict[int, list[tuple[float, float]]] = {}
+    for row in rows:
+        for hour in row.get("hours") or []:
+            alpha, last = hour.get("alpha"), hour.get("load_w")
+            if alpha is None or last is None:
+                continue
+            je_stunde.setdefault(int(hour.get("hour") or 0), []).append((float(last), float(alpha)))
+    je_stunde.pop(0, None)
+    if not je_stunde or mid is None:
+        return {"plan": [], "bridges": br, "alpha_floor": ALPHA_FLOOR,
+                "floor_step": ALPHA_FLOOR_STEP, "floor_step_watts": None,
+                "min_rides_for_band": MIN_RIDES_FOR_BAND, "covered_until_hours": 0,
+                "slope_per_hour": None, "rides": []}
+
+    spanne = br.get("spread") or 0.0
+    plan = []
+    for hour in sorted(je_stunde):
+        paare = je_stunde[hour]
+        n = len(paare)
+        last = derive._median([w for w, _ in paare])
+        alpha = derive._median([a for _, a in paare])
+        watts = last + (alpha - ALPHA_FLOOR) * mid
+        band = reversal_band([a for _, a in paare], mid, spanne)
+        plan.append({"hours": hour, "watts": round(watts, 1),
+                     "load_w": round(last, 1), "alpha": round(alpha, 3),
+                     "n": n, "band": band, "measured": True, "lower": None,
+                     "form_watts": None})
+
+    # Die Fortschreibung: eine Gerade durch die gemessenen Stunden. Daneben die
+    # Studienform, an Stunde 1 verankert. KEINE ist die Wahrheit - und an
+    # diesem Bestand laufen sie fast zusammen (bei sieben Stunden 0,8 W
+    # auseinander), was bei der alten Frage nie der Fall war.
+    xs = [row["hours"] for row in plan]
+    ys = [row["watts"] for row in plan]
+    steigung = None
+    if len(xs) >= 2:
+        mx, my = sum(xs) / len(xs), sum(ys) / len(ys)
+        nenner = sum((x - mx) ** 2 for x in xs)
+        if nenner:
+            steigung = sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / nenner
+    basis = ys[0] / fatigue.literature_factor(1.0)
+    for row in plan:
+        row["form_watts"] = round(basis * fatigue.literature_factor(float(row["hours"])), 1)
+    covered = max(xs)
+    if steigung is not None:
+        achse = (sum(ys) / len(ys)) - steigung * (sum(xs) / len(xs))
+        for hour in range(covered + 1, PLAN_HORIZON_HOURS + 1):
+            gerade = round(achse + steigung * hour, 1)
+            form = round(basis * fatigue.literature_factor(float(hour)), 1)
+            plan.append({"hours": hour, "watts": gerade, "form_watts": form,
+                         "load_w": None, "alpha": None, "n": 0, "band": None,
+                         "measured": False,
+                         "lower": "form" if form <= gerade else "chain"})
+    return {"plan": plan, "bridges": br, "alpha_floor": ALPHA_FLOOR,
+            "floor_step": ALPHA_FLOOR_STEP,
+            "floor_step_watts": round(mid * ALPHA_FLOOR_STEP, 1),
+            "min_rides_for_band": MIN_RIDES_FOR_BAND,
+            "covered_until_hours": covered,
+            "slope_per_hour": None if steigung is None else round(steigung, 1),
+            "rides": [{"activity_id": row.get("activity_id"), "date": row.get("date"),
+                       "name": row.get("name"), "virtual": bool(row.get("virtual")),
+                       "minutes": row.get("minutes"),
+                       "load_w": derive._median([h["load_w"] for h in (row.get("hours") or [])
+                                          if h.get("load_w") is not None] or [0]),
+                       "alpha_from": row.get("first"), "alpha_to": row.get("last"),
+                       "hours": len(row.get("hours") or []),
+                       "carries": bool(row.get("carries_trend"))}
+                      for row in rows]}
