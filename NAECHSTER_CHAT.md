@@ -1,5 +1,64 @@
 # ha-intervals-icu — Übergabe an den nächsten Chat
 
+## AKTUELL — 0.64.1: der Trockenlauf zeigt jetzt die Kachel (19.09.2026). Zuerst lesen.
+
+**Ausgeliefert: 0.64.1.** Prüfstand **23 Dateien, 7.562 Prüfungen, 0 Fehler** (Basis 7.543).
+**Nicht umgelegt, nichts neu eingelesen, kein `set_*`.**
+
+### Der Befund, der behoben ist
+
+`intervals_icu/fatigue_dry_run` trug nach dem Umbau auf die Umkehrung **weiter die alte
+Kette** (147,6 / 146,3 / … , step_watts 1,28). `reversal()` wird in `curve()` gerufen, der
+Trockenlauf aber baute sich seine **eigene Liste** der Kachelzahlen. **Damit zeigte genau das
+Werkzeug, das vor dem Umlegen absichern soll, den Stand von vorgestern.** Dieselbe Klasse wie
+der fehlende Schalter-Knopf in 0.63.0: gebaut, aber ein Weg dorthin vergessen.
+
+**Behoben durch EINE Stelle:** `fatigue_v2.tile_numbers(data)` sagt, was die Kachel zeigt —
+alte Kette, Umkehrung (Band, Studienform, Reichweite, Fortschreibung, Umrechnung, Gruppen,
+Fahrtenliste) und die Ablesestelle. Der Trockenlauf ruft sie für beide Stellungen. Wer der
+Kachel eine Zahl hinzufügt, fügt sie dort hinzu — und sie steht im Trockenlauf, ohne dass
+jemand daran denken muss.
+
+### Die Lücke, die das durchgelassen hat
+
+Eine Prüfung hält die Ausgabe des Trockenlaufs **Feld für Feld gegen einen direkten Aufruf**
+von `tile_numbers` auf demselben Schattenbestand, je Stellung — mit Trefferzusicherung, dass
+die beiden Stellungen sich wirklich unterscheiden. Dazu eine Zeile je Feld, das die Kachel
+liest (`alpha_floor`, `floor_step_watts`, `min_rides_for_band`, `covered_until_hours`,
+`slope_per_hour`, `bridges`, `plan`, `groups`, `rides`).
+
+**Mutation über Dateikopie, beide gefangen:**
+- der Trockenlauf baut sich wieder seine eigene Liste → **17 Prüfungen fallen**
+- eine Kachelzahl (`slope_per_hour`) fällt aus `tile_numbers` → **die Zeile dafür fällt**
+
+### Zwei Randfälle, die dabei sichtbar wurden und jetzt geprüft sind
+
+- **Ohne Brücke keine Wattzahl.** Ein Bestand ohne Stufentest und ohne Blöcke liefert eine
+  leere Kette, statt eine Umrechnung zu erfinden.
+- **Eine einzige gemessene Stunde wird nicht fortgeschrieben.** Eine Gerade durch einen Punkt
+  gibt es nicht; `slope_per_hour` bleibt None und die Kette endet dort.
+
+### Der Livebestand
+
+Johannes' Nachrechnung aus den Rohwerten deckt sich mit der Fixture: Stunde 1 Median-Last
+**139,6 W bei alpha 1,327 → 172,7 W**, Stunde 2 → **~166 W**. **Die Umkehrung hält am
+Livebestand.** Nach diesem Update zeigt der Trockenlauf dieselben Zahlen — das ist der Beleg,
+der vor dem Umlegen fehlte.
+
+### OFFEN
+
+0. **Jetzt den Trockenlauf erneut fahren.** Er zeigt ab 0.64.1 beide Stellungen der Kachel.
+   Erst danach ist das Umlegen belegt statt geraten.
+1. **`bridges_alpha` am Livebestand** — ob Stufentest UND Blockleiter beide anspringen, ist
+   noch nicht gesehen; die Fixture nimmt beide an.
+2. Umlegen kostet 60 Neuabrufe und die Neumessung der 17 markierten Fahrten.
+3. Die Felder `alpha_window_*`, `alpha_mad`, `watt_mad`.
+4. Die **unbelegte Rolle/draußen-Beschriftung** an drei Code-Stellen.
+5. Trockenlauf ohne Oberfläche · Aufräum-Release.
+6. **Der GitHub-Token liegt weiterhin im Klartext in `GIT_Intervals.txt`. Widerrufen.**
+
+---
+
 ## AKTUELL — 0.64.0: die Kachel fragt umgekehrt (19.09.2026). Zuerst lesen.
 
 **Ausgeliefert: 0.64.0.** Prüfstand **23 Dateien, 7.543 Prüfungen, 0 Fehler** (Basis 7.551 —

@@ -453,6 +453,55 @@ def dry_hours(dfa: Any, watts: Any, heartrate: Any, keep: Any = None,
     return out
 
 
+def tile_numbers(data: dict[str, Any]) -> dict[str, Any]:
+    """WAS DIE KACHEL ZEIGT - an EINER Stelle, fuer alle, die es brauchen.
+
+    Der Trockenlauf hatte bis 0.64.0 seine EIGENE Liste davon und trug deshalb
+    nach dem Umbau auf die Umkehrung weiter die alte Kette: das Werkzeug, das
+    vor dem Umlegen absichern soll, zeigte den Stand von vorgestern. Dieselbe
+    Klasse wie der fehlende Schalter-Knopf in 0.63.0 - gebaut, aber ein Weg
+    dorthin vergessen.
+
+    Seitdem gibt es diese Funktion, und der Trockenlauf ruft sie. Wer der
+    Kachel eine Zahl hinzufuegt, fuegt sie hier hinzu - und sie steht in
+    beiden Stellungen des Trockenlaufs, ohne dass jemand daran denken muss.
+    """
+    alt = fatigue.curve(data) or {}
+    neu = curve(data) or {}
+    rv = neu.get("reversal") or {}
+    return {
+        # Die ALTE Kette, damit der Vergleich zwischen den Stellungen bleibt.
+        "anchor_watts": alt.get("anchor_watts"), "anchor_n": alt.get("anchor_n"),
+        "rides_used": alt.get("rides_used"),
+        "plan": [{k: row.get(k) for k in ("hours", "watts", "n", "step", "band")}
+                 for row in (alt.get("plan") or [])],
+        "solid_until_hours": alt.get("plan_solid_until_hours"),
+        "thin_until_hours": alt.get("plan_thin_until_hours"),
+        # DIE UMKEHRUNG - was die Kachel seit 0.64.0 wirklich zeigt: je Stunde
+        # die Zahl mit Band, daneben die Studienform, dazu Reichweite,
+        # Fortschreibung, Umrechnung und die Gruppen der Fahrtenliste.
+        "reversal": {
+            "alpha_floor": rv.get("alpha_floor"),
+            "floor_step": rv.get("floor_step"),
+            "floor_step_watts": rv.get("floor_step_watts"),
+            "min_rides_for_band": rv.get("min_rides_for_band"),
+            "covered_until_hours": rv.get("covered_until_hours"),
+            "slope_per_hour": rv.get("slope_per_hour"),
+            "bridges": rv.get("bridges"),
+            "plan": [{k: row.get(k) for k in ("hours", "watts", "load_w", "alpha",
+                                              "n", "band", "form_watts", "measured")}
+                     for row in (rv.get("plan") or [])],
+            "groups": {"carries": sum(1 for r in (rv.get("rides") or []) if r.get("carries")),
+                       "supports": sum(1 for r in (rv.get("rides") or [])
+                                       if not r.get("carries"))},
+            "rides": rv.get("rides") or [],
+        },
+        # Die Ablesestelle selbst, unveraendert: sie traegt den Verlauf.
+        "v2": {"decline": neu.get("decline"), "rides_used": neu.get("rides_used"),
+               "covered_until_hours": neu.get("covered_until_hours")},
+    }
+
+
 def dry_run(data: dict[str, Any], streams: dict[str, Any],
             window_s: int | None = None) -> dict[str, Any]:
     """Beide Stellungen an EINEM Bestand - Stundenwerte UND Kachelzahlen.
@@ -480,28 +529,8 @@ def dry_run(data: dict[str, Any], streams: dict[str, Any],
 
     kacheln: dict[str, Any] = {}
     for name, w in (("off", 0), ("on", breite)):
-        schein = _shadow(data, schatten[w], w)
-        alt = fatigue.curve(schein) or {}
-        neu = curve(schein)
-        kacheln[name] = {
-            "window_s": w,
-            "anchor_watts": alt.get("anchor_watts"), "anchor_n": alt.get("anchor_n"),
-            "rides_used": alt.get("rides_used"),
-            "plan": [{k: row.get(k) for k in ("hours", "watts", "n", "step", "band")}
-                     for row in (alt.get("plan") or [])],
-            "solid_until_hours": alt.get("plan_solid_until_hours"),
-            "thin_until_hours": alt.get("plan_thin_until_hours"),
-            "v2": {"anchor_watts": neu.get("anchor_watts"),
-                   "step_watts": neu.get("step_watts"),
-                   "decline": neu.get("decline"),
-                   "covered_until_hours": neu.get("covered_until_hours"),
-                   "rides_used": neu.get("rides_used"),
-                   "groups": {"carries": len((neu.get("groups") or {}).get("carries") or []),
-                              "supports": len((neu.get("groups") or {}).get("supports") or [])},
-                   "plan": [{k: row.get(k) for k in
-                             ("hours", "watts", "form_watts", "alpha", "n", "measured", "band")}
-                            for row in (neu.get("plan") or [])]},
-        }
+        kacheln[name] = tile_numbers(_shadow(data, schatten[w], w))
+        kacheln[name]["window_s"] = w
     return {"window_s": breite, "rides": je_fahrt, "tiles": kacheln,
             "fields": list(DRY_FIELDS)}
 

@@ -426,9 +426,59 @@ check("Trockenlauf: die Breiten stehen dran",
       (0, derive.DFA_WATT_WINDOW_S))
 check("Trockenlauf: die Kopfzahl der Kurve unterscheidet sich zwischen beiden",
       _erg["tiles"]["off"]["anchor_watts"] != _erg["tiles"]["on"]["anchor_watts"], True)
-check("Trockenlauf: die v2-Kette reicht in beiden Seiten bis zum Horizont",
-      [len(_erg["tiles"][k]["v2"]["plan"]) for k in ("off", "on")],
-      [v2.PLAN_HORIZON_HOURS, v2.PLAN_HORIZON_HOURS])
+# 0.64.0/0.64.1: der Trockenlauf zeigt, was die KACHEL zeigt - die Umkehrung.
+check("Trockenlauf: beide Seiten tragen die Umkehrung",
+      [("reversal" in _erg["tiles"][k]) for k in ("off", "on")], [True, True])
+# OHNE BRUECKE KEINE WATTZAHL. Dieser Bestand hat weder Stufentest noch
+# Bloecke - dann bleibt die Kette leer, statt eine Umrechnung zu erfinden.
+check("Trockenlauf ohne Bruecke: keine Kette",
+      [len((_erg["tiles"][k].get("reversal") or {}).get("plan") or []) for k in ("off", "on")], [0, 0])
+check("Trockenlauf ohne Bruecke: und keine Umrechnung",
+      ((_erg["tiles"]["on"].get("reversal") or {}).get("bridges") or {}).get("mid"), None)
+# MIT Stufentest entsteht sie. Die Kette reicht dann bis zum Horizont.
+_MIT = {**_TROCKEN, "ramp_tests": {"T1": {
+    "activity_id": "T1", "date": "2026-09-16", "set_at": "2026-09-16", "v": 2,
+    "result": {"hrvt1": {"alpha": 0.75, "watts": 213.0},
+               "hrvt1_pers": {"alpha": 1.081, "watts": 183.0}}}}}
+_ergM = v2.dry_run(_MIT, {"T1": {"dfa_a1": _A, "watts": _W, "heartrate": _H}})
+_rvM = _ergM["tiles"]["on"].get("reversal") or {}
+check("Trockenlauf mit Bruecke: die Umrechnung steht da",
+      (_rvM.get("bridges") or {}).get("ramp"), round(abs((213.0 - 183.0) / (1.081 - 0.75)), 1))
+check("Trockenlauf mit Bruecke: die gemessene Stunde traegt eine Zahl",
+      (len(_rvM.get("plan") or []), (_rvM.get("plan") or [{}])[0].get("hours"),
+       (_rvM.get("plan") or [{}])[0].get("measured")),
+      (1, 1, True))
+check("Trockenlauf mit Bruecke: die Zahl ergibt sich aus Last, alpha und Umrechnung",
+      (_rvM.get("plan") or [{}])[0].get("watts"),
+      round((_rvM.get("plan") or [{"load_w": 0, "alpha": 1.0}])[0]["load_w"]
+            + ((_rvM["plan"][0]["alpha"] - v2.ALPHA_FLOOR)
+               * (_rvM.get("bridges") or {}).get("mid", 0)), 1) if _rvM.get("plan") else None)
+# EINE STUNDE TRAEGT KEINE FORTSCHREIBUNG. Eine Gerade durch einen Punkt gibt
+# es nicht, also endet die Kette dort - statt eine Richtung zu erfinden.
+check("Trockenlauf: eine einzige Stunde wird nicht fortgeschrieben",
+      (_rvM.get("slope_per_hour"), _rvM.get("covered_until_hours")), (None, 1))
+check("Trockenlauf mit Bruecke: die Studienform steht auch an der einen Zeile",
+      bool(_rvM.get("plan")) and _rvM["plan"][0]["form_watts"] is not None, True)
+# DIE LUECKE VON 0.64.0, geschlossen: der Trockenlauf hatte seine eigene Liste
+# der Kachelzahlen und trug deshalb nach dem Umbau weiter die alte Kette. Jetzt
+# ruft er `tile_numbers`, und diese Pruefung haelt seine Ausgabe GEGEN einen
+# direkten Aufruf auf demselben Bestand - Feld fuer Feld.
+for _seite, _w in (("off", 0), ("on", derive.DFA_WATT_WINDOW_S)):
+    _schein = v2._shadow(_TROCKEN, {"T1": derive.dfa_hours(_A, _W, _H, watt_window_s=_w)}, _w)
+    _direkt = v2.tile_numbers(_schein)
+    _direkt["window_s"] = _w
+    check(f"Trockenlauf {_seite}: dieselben Kachelzahlen wie ein direkter Aufruf",
+          _erg["tiles"][_seite], _direkt)
+# Trefferzusicherung: die beiden Seiten sind NICHT gleich - sonst prueft die
+# Zeile oben nur, dass zweimal dasselbe herauskommt.
+check("Trockenlauf Fixture-Beweis: die Stellungen unterscheiden sich",
+      _erg["tiles"]["off"] != _erg["tiles"]["on"], True)
+# Und jedes Feld, das die Kachel liest, ist auch da.
+for _feld in ("alpha_floor", "floor_step_watts", "min_rides_for_band",
+              "covered_until_hours", "slope_per_hour", "bridges", "plan",
+              "groups", "rides"):
+    check(f"Trockenlauf: die Umkehrung traegt '{_feld}'",
+          _feld in (_erg["tiles"]["on"].get("reversal") or {}), True)
 # Er haengt NICHT am Schalter: derselbe Bestand mit umgelegtem Schalter gibt
 # dieselben zwei Spalten. Sonst waere er nach dem Wegfall der Schalter nutzlos.
 _erg2 = v2.dry_run({**_TROCKEN, "settings": {v2.V2_SWITCH: True}},
