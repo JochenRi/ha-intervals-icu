@@ -696,6 +696,39 @@ check(any("watt_window" in str(a.get("watt_window_s")) for _, a in _PRODUKTIV),
       "die Pruefung greift ins Leere")
 
 
+# ---------------------------------------------------------------------------
+# DER MESSWEG SCHREIBT JE FAHRT ALLE MARKIERTEN FAMILIEN (0.65.1). Am
+# Syntaxbaum, weil der Livebefund genau hier haette auffallen muessen: eine
+# Fahrt mit SweetSpot- UND Grundlagen-Marken darf nicht mit einer Messung
+# zurueckbleiben. Der Handler tut es richtig - geprueft war es nie.
+_ws_quelle = (Path(__file__).resolve().parents[1] / "custom_components"
+              / "intervals_icu" / "websocket.py").read_text(encoding="utf-8")
+_ws_baum = ast.parse(_ws_quelle)
+_mess = next((n for n in ast.walk(_ws_baum)
+              if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+              and n.name == "websocket_measure_section_marks"), None)
+check(_mess is not None, "Messweg: der Handler ist nicht zu finden")
+_schleifen = [n for n in ast.walk(_mess) if isinstance(n, ast.For)] if _mess else []
+_ueber_familien = [n for n in _schleifen
+                   if "FAMILIES" in ast.dump(n.iter)]
+check(len(_ueber_familien) == 1,
+      f"Messweg: {len(_ueber_familien)} Schleifen ueber FAMILIES statt einer")
+_in_schleife = [n for n in ast.walk(_ueber_familien[0])
+                if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                and n.func.attr == "set_measurement"] if _ueber_familien else []
+_gesamt = [n for n in ast.walk(_mess)
+           if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+           and n.func.attr == "set_measurement"] if _mess else []
+check(len(_gesamt) == 1 and len(_in_schleife) == 1,
+      f"Messweg: {len(_gesamt)} Aufrufe von set_measurement, davon {len(_in_schleife)} "
+      "in der Familienschleife - er schriebe sonst nur fuer eine Familie")
+# Trefferzusicherung: es gibt wirklich mehr als eine Familie, sonst prueft die
+# Schleife oben nichts.
+check(len(sys.modules["iv.section_marks"].FAMILIES) > 1
+      if "iv.section_marks" in sys.modules else True,
+      "Messweg Fixture-Beweis: es gibt nur eine Familie")
+
+
 print(f"test_websocket_registration: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

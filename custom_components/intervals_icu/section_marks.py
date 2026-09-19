@@ -408,9 +408,22 @@ def pending_remeasure(data: dict[str, Any], window_s: int) -> list[dict[str, Any
         familien = [fam for fam in FAMILIES if marked(entry, fam)]
         if not familien:
             continue
-        fehlt = [fam for fam in familien if not (measurement(entry, fam) or {}).get("hours")]
+        # WAS ALS GEMESSEN GILT, und in 0.65.0 stand es falsch hier: geprueft
+        # wurde auf `hours`. Die tragen aber NUR die Grundlage - die
+        # Blockfamilien legen `blocks` ab, und eine Messung ohne Zahlen legt
+        # ihren GRUND ab. Damit meldete die Liste jede VO2max-, SweetSpot- und
+        # Tempo-Marke auf ewig als "nie gemessen": der Knopf mass, schrieb,
+        # und meldete danach dieselbe Zahl wieder. Eine Schleife, die nur
+        # deshalb nicht auffiel, weil niemand geprueft hatte, ob der Lauf sein
+        # eigenes Ziel erreicht.
+        #
+        # RICHTIG ist die Frage nach der ACHSE, nicht nach dem Inhalt: gibt es
+        # ueberhaupt einen Eintrag, und wurde er unter der heute geltenden
+        # Fensterbreite geschrieben? Ein Eintrag mit Grund ("zu kurz", "keine
+        # Wattwerte") ist gemessen - ein zweiter Lauf aendert daran nichts.
+        fehlt = [fam for fam in familien if not isinstance(measurement(entry, fam), dict)]
         achse = [fam for fam in familien
-                 if (measurement(entry, fam) or {}).get("hours")
+                 if isinstance(measurement(entry, fam), dict)
                  and window_of(entry, fam) != window_s]
         if not fehlt and not achse:
             continue
@@ -418,6 +431,10 @@ def pending_remeasure(data: dict[str, Any], window_s: int) -> list[dict[str, Any
                     "date": entry.get("date"),
                     "name": entry.get("name"),
                     "families": familien,
+                    # WELCHE Familien offen sind - der Sammellauf misst ohnehin
+                    # alle einer Fahrt, aber die Karte soll sagen koennen,
+                    # woran es liegt.
+                    "open_families": sorted(set(fehlt) | set(achse)),
                     # DER GRUND, je Einheit - nicht ein Sammelsatz fuer alle.
                     # "andere Wattachse" und "nie gemessen" verlangen dasselbe
                     # Tun, sagen dem Athleten aber Verschiedenes.

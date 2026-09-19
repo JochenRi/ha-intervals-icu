@@ -816,28 +816,80 @@ def _bestand(eintraege):
     return {"section_marks": {k: {**_BASIS, **v} for k, v in eintraege.items()}}
 _std = {"endurance": {"hours": [{"hour": 1}], sm.MEASURE_WINDOW_KEY: 0}}
 _neu = {"endurance": {"hours": [{"hour": 1}], sm.MEASURE_WINDOW_KEY: 120}}
+# Eine BLOCKFAMILIE legt `blocks` ab, nie `hours` - und eine Messung ohne
+# Zahlen legt ihren GRUND ab. Beides ist GEMESSEN; ein zweiter Lauf aendert
+# daran nichts. Bis 0.65.0 pruefte die Liste auf `hours` und meldete deshalb
+# jede Block-Marke auf ewig als offen: der Knopf mass, schrieb, und meldete
+# dieselbe Zahl wieder.
+_block = {"sweetspot": {"blocks": [{"start_index": 0}], sm.MEASURE_WINDOW_KEY: 120}}
+_ohne = {"vo2max": {"hours": None, "blocks": None, "reason": "zu kurz",
+                    sm.MEASURE_WINDOW_KEY: 120}}
+def _bestand(eintraege):
+    return {"section_marks": {k: {**_BASIS, **v} for k, v in eintraege.items()}}
 _d = _bestand({
     "A": {"marks": {"endurance": [0]}, "measure": _std},        # alte Achse
     "B": {"marks": {"endurance": [0]}, "measure": _neu},        # passt
     "C": {"marks": {"endurance": [0]}, "measure": {}},          # nie gemessen
     "D": {"marks": {}, "measure": {}},                          # NICHT markiert
+    "E": {"marks": {"sweetspot": [0]}, "measure": _block},      # Block, gemessen
+    "F": {"marks": {"vo2max": [0]}, "measure": _ohne},          # gemessen, ohne Zahlen
+    # Die gemischte Fahrt: ZWEI Familien, nur eine gemessen.
+    "G": {"marks": {"sweetspot": [0], "endurance": [1]}, "measure": _neu},
 })
 _offen = sm.pending_remeasure(_d, 120)
 ok("neu messen: nur die, die nicht passen",
-   [r["activity_id"] for r in _offen] == ["A", "C"])
+   [r["activity_id"] for r in _offen] == ["A", "C", "G"])
 ok("neu messen: eine nicht markierte Fahrt steht NIE darin",
    all(r["activity_id"] != "D" for r in _offen))
+# DIE KERNPRUEFUNG NACH 0.65.0: eine Blockfamilie mit `blocks` ist GEMESSEN.
+ok("neu messen: eine Blockmessung zaehlt als gemessen",
+   all(r["activity_id"] != "E" for r in _offen))
+ok("neu messen: eine Messung mit Grund zaehlt auch als gemessen",
+   all(r["activity_id"] != "F" for r in _offen))
+# UND DIE GEMISCHTE FAHRT steht drin, weil EINE ihrer Familien fehlt.
+_g = [r for r in _offen if r["activity_id"] == "G"]
+ok("neu messen: eine Fahrt mit zwei Familien, von denen eine fehlt, ist offen", len(_g) == 1)
+ok("neu messen: und sie sagt, WELCHE Familie offen ist",
+   _g and _g[0]["open_families"] == ["sweetspot"])
 ok("neu messen: der Grund steht je Einheit dabei",
-   [r["reason"] for r in _offen] == ["window", "missing"])
-# GEGENPROBE: in der ANDEREN Schalterstellung kehrt sich A und B um - die
-# Liste haengt an der Achse und nicht an einem Merker.
+   [r["reason"] for r in _offen] == ["window", "missing", "missing"])
+# Drei Familien an einer Fahrt, zwei davon gemessen.
+_drei = sm.pending_remeasure(_bestand({"H": {
+    "marks": {"vo2max": [0], "sweetspot": [1], "endurance": [2]},
+    "measure": {**_neu, **_block}}}), 120)
+ok("neu messen Randfall: drei Familien, eine fehlt",
+   len(_drei) == 1 and _drei[0]["open_families"] == ["vo2max"])
+# GEGENPROBE: in der ANDEREN Schalterstellung kehrt sich A und B um.
 _aus = sm.pending_remeasure(_d, 0)
 ok("neu messen Gegenprobe: bei der anderen Achse ist es umgekehrt",
-   [r["activity_id"] for r in _aus] == ["B", "C"])
+   [r["activity_id"] for r in _aus] == ["B", "C", "E", "F", "G"])
 ok("neu messen: passt alles, ist die Liste leer",
    sm.pending_remeasure(_bestand({"B": {"marks": {"endurance": [0]}, "measure": _neu}}), 120) == [])
 ok("neu messen: eine einzige Einheit ist auch eine Liste",
    len(sm.pending_remeasure(_bestand({"A": {"marks": {"endurance": [0]}, "measure": _std}}), 120)) == 1)
+# DIE ZUSICHERUNG, DIE GEFEHLT HAT: nach einem vollstaendigen Lauf muss die
+# Liste LEER sein. Der Lauf wird hier nachgestellt, wie der Messweg ihn macht -
+# je Fahrt ALLE markierten Familien, mit der heutigen Fensterbreite.
+_lauf = _bestand({
+    "A": {"marks": {"endurance": [0]}, "measure": _std},
+    "G": {"marks": {"sweetspot": [0], "endurance": [1]}, "measure": _neu},
+    "H": {"marks": {"vo2max": [0], "sweetspot": [1], "tempo": [2]}, "measure": {}},
+})
+ok("neu messen Fixture-Beweis: vor dem Lauf sind drei Fahrten offen",
+   len(sm.pending_remeasure(_lauf, 120)) == 3)
+for _row in list(sm.pending_remeasure(_lauf, 120)):
+    for _fam in _row["families"]:
+        sm.set_measurement(_lauf, _row["activity_id"], family=_fam,
+                           hours=[{"hour": 1}] if _fam == "endurance" else None,
+                           blocks=None if _fam == "endurance" else [{"start_index": 0}],
+                           measured_at="2026-09-19", window_s=120)
+ok("neu messen: nach einem vollstaendigen Lauf ist die Liste LEER",
+   sm.pending_remeasure(_lauf, 120) == [])
+ok("neu messen: und jede Familie traegt danach ihre Fensterbreite",
+   all(sm.window_of(sm.entry_for(_lauf, k), f) == 120
+       for k, fams in (("A", ["endurance"]), ("G", ["sweetspot", "endurance"]),
+                       ("H", ["vo2max", "sweetspot", "tempo"]))
+       for f in fams))
 ok("neu messen: die Schubgroesse steht im Modul, nicht im Panel",
    isinstance(sm.REMEASURE_BATCH, int) and sm.REMEASURE_BATCH >= 1)
 ok("neu messen: und eine Pause dazwischen", sm.REMEASURE_PAUSE_MS > 0)

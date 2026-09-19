@@ -1,5 +1,68 @@
 # ha-intervals-icu — Übergabe an den nächsten Chat
 
+## AKTUELL — 0.65.1: die Endlosschleife des Massenlaufs ist behoben (19.09.2026). Zuerst lesen.
+
+**Ausgeliefert: 0.65.1.** Prüfstand **23 Dateien, 7.625 Prüfungen, 0 Fehler** (Basis 7.613).
+
+### Die Ursache — und sie lag NICHT im Messweg
+
+Der Massenlauf war in Ordnung, und der Einzelknopf auch: `websocket_measure_section_marks`
+läuft über **alle** markierten Familien und schreibt für jede eine Messung. Am Syntaxbaum
+nachgewiesen (eine Schleife über `FAMILIES`, genau ein `set_measurement` darin).
+
+**Der Fehler saß in der LISTE, die sagt, was noch offen ist.** `pending_remeasure` prüfte auf
+`hours` — die tragen aber **nur die Grundlage**. Blockfamilien legen `blocks` ab, und eine
+Messung ohne verwertbare Zahlen legt ihren **Grund** ab. Damit meldete die Liste jede VO2max-,
+SweetSpot- und Tempo-Marke **auf ewig** als „nie gemessen": der Knopf maß, schrieb, und meldete
+danach dieselben 12 wieder.
+
+Das erklärt den Livebefund vollständig: 6 vo2max + 4 sweetspot + 1 tempo + 2 gemischte, alle
+mit `reason: "missing"`, während 30 Messungen mit `w = 120` im Archiv standen.
+
+**Behoben:** die Liste fragt jetzt nach der **Achse**, nicht nach dem Inhalt — gibt es
+überhaupt einen Eintrag, und wurde er unter der heute geltenden Fensterbreite geschrieben?
+Ein Eintrag mit Grund („zu kurz", „keine Wattwerte") ist gemessen; ein zweiter Lauf ändert
+daran nichts. Dazu neu: `open_families` je Zeile, damit die Karte sagen kann, woran es liegt.
+
+### Die Zusicherung, die gefehlt hat
+
+**Der Lauf war nie daran gemessen worden, ob er sein eigenes Ziel erreicht.** Jetzt schon: eine
+Prüfung stellt den vollständigen Lauf nach (je Fahrt alle markierten Familien) und fordert,
+dass `pending_remeasure` danach **leer** ist — mit Fixture-Beweis, dass vorher drei Fahrten
+offen waren, und mit der Nachprüfung, dass jede Familie danach ihre Fensterbreite trägt.
+
+**Das ist die Lehre dieser Runde, und sie ist allgemein:** ein Vorgang, der eine Liste abtragen
+soll, muss daran geprüft werden, dass die Liste danach leer ist — nicht nur daran, dass er
+etwas tut.
+
+### Randfälle, geprüft
+
+Fahrt mit drei Familien, eine fehlt · Fahrt mit einer · Fahrt, deren zweite Familie keine
+Blöcke mehr hat (Messung mit Grund = gemessen, keine Schleife) · gemischte Fahrt mit zwei
+Familien, eine gemessen · Gegenprobe bei der anderen Schalterstellung.
+
+### Mutation über Dateikopie: drei von drei
+
+- Liste prüft wieder auf `hours` → 6 Prüfungen fallen
+- Messweg schreibt nur die letzte Familie → „er läuft nicht über die Familien"
+- die Achsenprüfung fällt weg → 6 Prüfungen fallen
+
+### Für Johannes
+
+Nach dem Update **einmal auf den Knopf**: er sollte danach verschwinden. Tut er das nicht,
+steht in der Fehlerliste, woran es liegt.
+
+### OFFEN
+
+0. **Trockenlauf fahren** und die Kachelzahlen am Livebestand ansehen.
+1. **Die Blockkacheln**: einseitige t-Tabelle, Zusage „8 von 10".
+2. **Erholung nach einem fremden Block.**
+3. `bridges_alpha` am Livebestand · `alpha_window_*`, `alpha_mad`, `watt_mad` · die unbelegte
+   Rolle/draußen-Beschriftung · Trockenlauf ohne Oberfläche · Aufräum-Release.
+4. **Der GitHub-Token liegt weiterhin im Klartext in `GIT_Intervals.txt`. Widerrufen.**
+
+---
+
 ## AKTUELL — 0.65.0: ein Knopf, der alle markierten Einheiten neu misst (19.09.2026). Zuerst lesen.
 
 **Ausgeliefert: 0.65.0.** Prüfstand **23 Dateien, 7.613 Prüfungen, 0 Fehler** (Basis 7.579).
