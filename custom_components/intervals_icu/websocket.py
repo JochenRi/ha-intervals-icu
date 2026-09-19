@@ -1507,6 +1507,13 @@ def websocket_section_marks(hass, connection, msg) -> None:
         "families": list(marks_lib.FAMILIES),
         # Und die Saetze zu den Driftgruenden, aus derselben Quelle wie der
         # Grund selbst (fuenfte Bauregel).
+        # WAS NEU ZU MESSEN IST, und warum. Der Sammelknopf ueber der Liste
+        # zeigt die Zahl, bevor er etwas tut - "alle neu messen" waere eine
+        # andere Zusage als die, die er einloest.
+        "pending_remeasure": marks_lib.pending_remeasure(
+            data, derive.watt_window(data)),
+        "remeasure_batch": marks_lib.REMEASURE_BATCH,
+        "remeasure_pause_ms": marks_lib.REMEASURE_PAUSE_MS,
         "stale_reason": marks_lib.STALE_REASON,
         "not_measured": marks_lib.NOT_MEASURED,
         # Was die Markierungen heute bewirken - ZWEI Saetze, weil die beiden

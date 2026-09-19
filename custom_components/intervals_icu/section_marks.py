@@ -384,6 +384,48 @@ def entries(data: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
+# WIE VIELE EINHEITEN AUF EINMAL GEMESSEN WERDEN. Derselbe Gedanke wie
+# DFA_BATCH_SIZE beim Reimport: Intervals bekommt Schuebe und dazwischen Luft,
+# statt siebzehn Abrufe in einem Zug. Die Zahl steht HIER und nicht im Panel -
+# sonst gibt es zwei Schubgroessen, und eine davon ist irgendwann die falsche.
+REMEASURE_BATCH = 4
+REMEASURE_PAUSE_MS = 1500
+
+
+def pending_remeasure(data: dict[str, Any], window_s: int) -> list[dict[str, Any]]:
+    """Welche markierten Einheiten zur AKTUELLEN Rechnung nicht mehr passen.
+
+    NICHT "alle neu messen": eine Einheit steht hier nur, wenn sie markiert ist
+    UND ihre Messung fehlt oder auf der anderen Wattachse sitzt. Die Marken
+    selbst bleiben in jedem Fall stehen - sie sind die Aussage des Athleten,
+    und die verfaellt nicht, wenn sich die Mathematik dreht.
+
+    `window_s` kommt von aussen (derive.watt_window), damit dieses Modul den
+    Rechenschalter nicht ein zweites Mal auslegt.
+    """
+    out = []
+    for entry in entries(data):
+        familien = [fam for fam in FAMILIES if marked(entry, fam)]
+        if not familien:
+            continue
+        fehlt = [fam for fam in familien if not (measurement(entry, fam) or {}).get("hours")]
+        achse = [fam for fam in familien
+                 if (measurement(entry, fam) or {}).get("hours")
+                 and window_of(entry, fam) != window_s]
+        if not fehlt and not achse:
+            continue
+        out.append({"activity_id": entry.get("activity_id"),
+                    "date": entry.get("date"),
+                    "name": entry.get("name"),
+                    "families": familien,
+                    # DER GRUND, je Einheit - nicht ein Sammelsatz fuer alle.
+                    # "andere Wattachse" und "nie gemessen" verlangen dasselbe
+                    # Tun, sagen dem Athleten aber Verschiedenes.
+                    "reason": "window" if achse else "missing",
+                    "lost": entry.get("lost")})
+    return out
+
+
 def marked(entry: Any, family: str | None = None) -> list[int]:
     """Die markierten start_index - einer Familie, oder aller zusammen."""
     marks = (entry or {}).get("marks")

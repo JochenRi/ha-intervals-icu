@@ -2390,5 +2390,121 @@ const acts = F.activities(), thr = F.thresholds();
   PENDING.push(fertig);
 }
 
+/* ── 0.65.0: der Sammelknopf über der Aktivitätenliste ──────────────────────
+   Er ist ein SCHREIBWEG. Geprüft wird deshalb nicht nur, dass er misst,
+   sondern auch, dass er es NICHT von selbst tut, dass er vorher sagt was er
+   vorhat, dass Fehlschläge nicht still verschwinden und dass ein Abbruch das
+   schon Gemessene stehen lässt. */
+{
+  const q = new M.Panel();
+  q._nowIso = F.TODAY;
+  const OFFEN = [
+    { activity_id: "a1", date: "2026-09-01", name: "volumen eins", reason: "window" },
+    { activity_id: "a2", date: "2026-09-02", name: "volumen zwei", reason: "window" },
+    { activity_id: "a3", date: "2026-09-03", name: "volumen drei", reason: "window" },
+  ];
+  q._smarks = { pending_remeasure: OFFEN, remeasure_batch: 2, remeasure_pause_ms: 0 };
+  q._render = () => {};
+
+  // ── ER SAGT VORHER, WAS ER TUT.
+  const ruhe = String(q._bulkBar());
+  ok(/3 markierte Einheiten/.test(ruhe),
+     `Sammelknopf: die Zahl steht nicht am Knopf (${ruhe.slice(0, 120)})`);
+  ok(/anderen Wattachse/.test(ruhe), "Sammelknopf: der Grund fehlt");
+  ok(/Markierungen selbst bleiben unberührt/.test(ruhe),
+     "Sammelknopf: dass die Marken bleiben, steht nicht da");
+  ok(!/alle neu messen/i.test(ruhe),
+     "Sammelknopf: er verspricht 'alle', misst aber nur die unpassenden");
+  // ── BESTÄTIGUNG VOR DEM LAUF.
+  ok(!/data-act="bulkgo"/.test(ruhe), "Sammelknopf: er läuft ohne Rückfrage los");
+  q._bulkAsk = true;
+  ok(/data-act="bulkgo"/.test(String(q._bulkBar())),
+     "Sammelknopf: nach der Rückfrage fehlt der Startknopf");
+  q._bulkAsk = false;
+  // ── LEERFALL: keine Einheit, keine Leiste.
+  const leer = new M.Panel();
+  leer._smarks = { pending_remeasure: [] };
+  ok(String(leer._bulkBar()) === "", "Sammelknopf: er steht da, obwohl nichts zu messen ist");
+  // ── EINE EINZIGE: Einzahl.
+  const eine = new M.Panel();
+  eine._smarks = { pending_remeasure: [OFFEN[0]], remeasure_batch: 2 };
+  ok(/1 markierte Einheit\b/.test(String(eine._bulkBar())),
+     "Sammelknopf: bei einer Einheit steht die Mehrzahl da");
+
+  // ── ER LÄUFT NICHT VON SELBST. `_bulkRun` darf nur aus der Klick-Weiche
+  //    erreichbar sein - ein Aufruf aus `_render` oder `_need` wäre ein
+  //    Schreibweg ohne Hand am Knopf.
+  const src = H.source();
+  const von = src.indexOf("const act = el.dataset.act");
+  const weiche = src.slice(von, src.indexOf("\n    });", von));
+  const alle = [...src.matchAll(/this\._bulkRun\(/g)].length;
+  const inWeiche = [...weiche.matchAll(/this\._bulkRun\(/g)].length;
+  ok(alle > 0 && alle === inWeiche,
+     `Sammelknopf: ${alle - inWeiche} Aufruf(e) von _bulkRun außerhalb der Klick-Weiche`);
+  // KEIN KNOPF OHNE ZWEIG UND KEIN ZWEIG OHNE KNOPF - dieselbe Regel wie beim
+  // set_*-Wächter, hier für die vier Schaltflächen der Leiste.
+  for (const act of ["bulkask", "bulkgo", "bulkretry", "bulkstop"]) {
+    ok(src.includes(`data-act="${act}"`),
+       `Sammelknopf: "${act}" wird nirgends gezeichnet`);
+    ok(weiche.includes(`act === "${act}"`),
+       `Sammelknopf: die Klick-Weiche kennt "${act}" nicht`);
+  }
+
+  // ── DER LAUF. Gezählt wird, welche Einheiten geschickt werden.
+  const geschickt = [];
+  q._ws = async (name, arg) => {
+    if (name === "measure_section_marks") {
+      geschickt.push(arg.activity_id);
+      // a2 schlägt fehl, und zwar NICHT durch eine Ausnahme, sondern mit
+      // einem Grund in der Antwort - das ist der Fall, der still durchginge.
+      if (arg.activity_id === "a2") return { families: { endurance: { reason: "keine Ströme" } } };
+      return { families: { endurance: {} } };
+    }
+    if (name === "section_marks") return { pending_remeasure: [] };
+    return {};
+  };
+  PENDING.push(q._bulkRun(OFFEN).then(() => {
+    ok(geschickt.join(",") === "a1,a2,a3",
+       `Sammelknopf: geschickt wurden ${geschickt.join(",")}`);
+    ok(q._bulk === null, "Sammelknopf: der Lauf räumt sich nicht auf");
+    // FEHLSCHLÄGE NICHT STILL.
+    const fehl = q._bulkFailed || [];
+    ok(fehl.length === 1 && fehl[0].id === "a2",
+       `Sammelknopf: der Fehlschlag fehlt (${JSON.stringify(fehl)})`);
+    ok(fehl.length === 1 && /keine Ströme/.test(fehl[0].msg),
+       "Sammelknopf: der Grund des Fehlschlags fehlt");
+    const nach = String(q._bulkBar());
+    ok(/data-act="bulkretry"/.test(nach) && /volumen zwei/.test(nach),
+       "Sammelknopf: es gibt keinen Weg, nur die fehlgeschlagene zu wiederholen");
+    // Trefferzusicherung: die beiden anderen stehen NICHT in der Liste -
+    // sonst prüft die Zeile oben nur, dass überhaupt etwas drinsteht.
+    ok(!/volumen eins/.test(nach) && !/volumen drei/.test(nach),
+       "Sammelknopf: die geglückten Einheiten stehen in der Fehlerliste");
+
+    // ── ABBRUCH MITTEN IM SCHUB: das schon Gemessene bleibt stehen.
+    const q2 = new M.Panel();
+    q2._nowIso = F.TODAY;
+    q2._smarks = { pending_remeasure: OFFEN, remeasure_batch: 2, remeasure_pause_ms: 0 };
+    q2._render = () => {};
+    const gz = [];
+    q2._ws = async (name, arg) => {
+      if (name === "measure_section_marks") {
+        gz.push(arg.activity_id);
+        if (gz.length === 1) q2._bulk.stopping = true;   // nach der ersten
+        return { families: { endurance: {} } };
+      }
+      if (name === "section_marks") return { pending_remeasure: [] };
+      return {};
+    };
+    return q2._bulkRun(OFFEN).then(() => {
+      ok(gz.length === 1 && gz[0] === "a1",
+         `Sammelknopf Abbruch: ${gz.length} Einheiten gemessen statt einer`);
+      ok(q2._bulk === null, "Sammelknopf Abbruch: der Lauf hängt");
+      ok((q2._bulkFailed || []).length === 0,
+         "Sammelknopf Abbruch: die abgebrochenen zählen als Fehlschlag");
+    });
+  }));
+}
+
 Promise.all(PENDING).then(() => report("test_panel_fixes"));
 })();

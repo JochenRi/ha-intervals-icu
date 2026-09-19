@@ -2559,6 +2559,22 @@ class IntervalsIcuPanel extends HTMLElement {
       else if (act === "swsteering") this._setSteeringSource(el.dataset.on === "1");
       else if (act === "swfatigue") this._setFatigueSource(el.dataset.on === "1");
       else if (act === "smmeasure") this._smMeasure(id);
+      // DER SAMMELKNOPF wird NUR von Hand ausgeloest - drei Schritte, und der
+      // mittlere ist die Bestaetigung. Nichts davon laeuft von selbst.
+      else if (act === "bulkask") { this._bulkAsk = !this._bulkAsk; this._render(); }
+      else if (act === "bulkgo") {
+        this._bulkRun((this._smarks || {}).pending_remeasure || []);
+      }
+      else if (act === "bulkretry") {
+        // AUS DER FEHLERLISTE, nicht aus der offenen: nach einem Lauf ist die
+        // offene Liste leer, und der Wiederholversuch braucht trotzdem die
+        // Einheiten, an denen er gescheitert ist.
+        this._bulkRun((this._bulkFailed || []).map((f) => ({
+          activity_id: f.id, date: f.date, name: f.name })));
+      }
+      else if (act === "bulkstop") {
+        if (this._bulk) { this._bulk.stopping = true; this._render(); }
+      }
       else if (act === "smconf") this._smConfirm(id);
       else if (act === "smark") {
         this._smWrite(id, el.dataset.fam, Number(el.dataset.idx),
@@ -4424,6 +4440,7 @@ class IntervalsIcuPanel extends HTMLElement {
          zuletzt geladenen ${fmt(list.length)} Einheiten — sie ist älter als der geladene Bereich.
          Die Schwellenmessung dazu steht weiterhin im DFA-Reiter.</div>` : "";
     const detail = sel ? this._aktDetail(sel) : "";
+    const bulk = sel ? "" : this._bulkBar();
     const decGood = this._decGood();
     const rows = list.slice(0, 120).map((a) => {
       const sp = sportOf(a.type);
@@ -4448,7 +4465,7 @@ class IntervalsIcuPanel extends HTMLElement {
         <span class="amk">${this._markCell(a.id)}</span>
       </button>`;
     }).join("");
-    return `${miss}${detail}
+    return `${miss}${bulk}${detail}
       <div class="card pad0">
         <div class="ahead">
           <span></span><span>Einheit</span><span>Dauer</span><span>Distanz</span><span>Last</span><span>Ø HF</span><span>Entkopplung</span><span>DFA-Verteilung</span><span>Schwelle</span><span>Zuordnung</span>
@@ -5219,6 +5236,120 @@ class IntervalsIcuPanel extends HTMLElement {
      gemessen wurde (0.42.1).
 
      Die Scroll-Lage wird VOR dem Re-Render gesichert, wie bei _smWrite. */
+  /* ── DER SAMMELKNOPF: alle markierten Einheiten neu messen (0.65.0) ────────
+     Johannes hat den Rechenschalter umgelegt. Seine Marken tragen weiter ihren
+     Haken - die Aussage des Athleten verfaellt nicht -, aber die Messungen
+     sitzen auf der alten Wattachse und gelten nicht mehr. Ohne diesen Knopf
+     waeren das siebzehn Einzelklicks.
+
+     ER SAGT VORHER, WAS ER TUT, und er sagt es GENAU: nicht "alle neu
+     messen", sondern nur die, deren Messung zur aktuellen Rechnung nicht
+     passt. Die Zahl steht am Knopf, der Grund daneben, und dass die Marken
+     bleiben, steht dabei - sonst klickt niemand.
+
+     ER LAEUFT IN SCHUEBEN, mit Pause dazwischen (REMEASURE_BATCH /
+     REMEASURE_PAUSE_MS aus dem Modul, nicht aus dem Frontend): siebzehn
+     Stromabrufe in einem Zug sind gegen Intervals unhoeflich, und der
+     Reimport macht es aus demselben Grund genauso. */
+  _bulkBar() {
+    const sm = this._smarks || {};
+    const offen = sm.pending_remeasure || [];
+    const lauf = this._bulk;
+    // FEHLSCHLAEGE HALTEN DIE LEISTE AM LEBEN. Nach einem Lauf ist die
+    // offene Liste leer - verschwaende die Leiste dann, waere der Weg zum
+    // Wiederholen mit ihr weg, und der Athlet wuesste nur, dass etwas war.
+    if (!offen.length && !lauf && !(this._bulkFailed || []).length) return "";
+    if (lauf) {
+      const n = lauf.total, i = lauf.done;
+      const fehl = lauf.failed.length;
+      return `<div class="card pad bulk">
+        <p><b>${fmt(i)} von ${fmt(n)} gemessen</b>${lauf.current
+          ? ` · gerade: ${esc(lauf.current)}` : ""}${fehl
+          ? ` · <span class="warncol">${fmt(fehl)} fehlgeschlagen</span>` : ""}</p>
+        <div class="bbar"><i class="brange" style="left:0;right:${(100 - i / (n || 1) * 100)
+          .toFixed(1)}%"></i></div>
+        <p class="mut">Die Marken bleiben unberührt. Ein Abbruch lässt das schon
+          Gemessene stehen.</p>
+        <button class="btn small" data-act="bulkstop">${lauf.stopping
+          ? "wird abgebrochen …" : "abbrechen"}</button></div>`;
+    }
+    const fehl = this._bulkFailed || [];
+    if (!offen.length) {
+      return `<div class="card pad bulk">
+        <p class="warncol"><b>${fmt(fehl.length)} ${fehl.length === 1 ? "Einheit" : "Einheiten"}
+          konnten nicht gemessen werden.</b> Die Markierungen sind unberührt.</p>
+        <ul class="rides">${fehl.map((f) => `<li><span>${dMed(f.date)} ·
+          ${esc(f.name || f.id)}</span><span class="r">${esc(f.msg)}</span></li>`).join("")}</ul>
+        <button class="btn small" data-act="bulkretry">nur diese ${fmt(fehl.length)}
+          wiederholen</button></div>`;
+    }
+    const grund = offen.some((r) => r.reason === "window")
+      ? "ihre Messung sitzt auf der anderen Wattachse"
+      : "sie sind noch nicht gemessen";
+    return `<div class="card pad bulk">
+      <p><b>${fmt(offen.length)} ${offen.length === 1 ? "markierte Einheit" : "markierte Einheiten"}
+        ${offen.length === 1 ? "passt" : "passen"} nicht zur aktuellen Rechnung</b> — ${esc(grund)}.
+        Die Markierungen selbst bleiben unberührt; neu gemessen werden nur die Zahlen.</p>
+      ${this._bulkAsk ? `<p class="warncol">Neu messen? Das holt für jede Einheit die Ströme —
+        in Schüben zu ${fmt(sm.remeasure_batch)}, mit Pause dazwischen.</p>
+        <button class="btn small" data-act="bulkgo">ja, ${fmt(offen.length)} Einheiten messen</button>
+        <button class="btn small" data-act="bulkask">abbrechen</button>`
+      : `<button class="btn small" data-act="bulkask">${fmt(offen.length)} Einheiten neu messen</button>`}
+      ${fehl.length ? `<p class="warncol">Zuletzt fehlgeschlagen:</p>
+        <ul class="rides">${fehl.map((f) => `<li><span>${dMed(f.date)} ·
+          ${esc(f.name || f.id)}</span><span class="r">${esc(f.msg)}</span></li>`).join("")}</ul>
+        <button class="btn small" data-act="bulkretry">nur diese ${fmt(fehl.length)}
+          wiederholen</button>` : ""}</div>`;
+  }
+
+  /* Der Lauf selbst. Er blockiert die Oberflaeche NICHT: nach jeder Einheit
+     wird gezeichnet, und `_bulk.stopping` bricht zwischen zwei Einheiten ab -
+     nie mitten in einer, sonst bliebe eine halbe Messung stehen. */
+  async _bulkRun(liste) {
+    if (this._bulk || !liste.length) return;
+    const sm = this._smarks || {};
+    const schub = Math.max(1, +sm.remeasure_batch || 1);
+    const pause = Math.max(0, +sm.remeasure_pause_ms || 0);
+    this._bulk = { total: liste.length, done: 0, current: null, failed: [], stopping: false };
+    this._bulkAsk = false;
+    this._bulkFailed = null;
+    this._render();
+    for (let i = 0; i < liste.length; i++) {
+      if (this._bulk.stopping) break;
+      const row = liste[i];
+      this._bulk.current = row.name || dMed(row.date) || String(row.activity_id);
+      this._render();
+      try {
+        const res = await this._ws("measure_section_marks",
+          { activity_id: String(row.activity_id) });
+        // FEHLSCHLAEGE NICHT STILL: eine Familie, die einen Grund traegt, ist
+        // keine Messung - sie darf nicht als "gemessen" durchgehen, nur weil
+        // der Aufruf nicht geworfen hat (dieselbe Regel wie dfa_failed).
+        const fams = (res && res.families) || {};
+        const gruende = Object.keys(fams).map((k) => (fams[k] || {}).reason).filter(Boolean);
+        if (gruende.length) {
+          this._bulk.failed.push({ id: String(row.activity_id), date: row.date,
+                                   name: row.name, msg: gruende.join(" ") });
+        }
+      } catch (err) {
+        this._bulk.failed.push({ id: String(row.activity_id), date: row.date,
+                                 name: row.name, msg: String((err && err.message) || err) });
+      }
+      this._bulk.done += 1;
+      this._render();
+      if (pause && (i + 1) % schub === 0 && i + 1 < liste.length && !this._bulk.stopping) {
+        await new Promise((ok) => setTimeout(ok, pause));
+      }
+    }
+    const fehl = this._bulk.failed;
+    this._bulk = null;
+    this._bulkFailed = fehl.length ? fehl : null;
+    // Die Markenliste UND die Kacheln, die auf der Messung sitzen.
+    this._smarks = await this._ws("section_marks");
+    await this._afterMeasure();
+    this._render();
+  }
+
   async _smMeasure(id) {
     if (!id || this._msBusy || this._smBusy) return;
     this._msBusy = String(id);
@@ -6409,6 +6540,12 @@ details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
 .bigval .side{font-size:13px;color:${C.tx3};margin-left:10px;align-self:baseline;
   font-variant-numeric:tabular-nums}
 .bigval .side b{color:${C.slate};font-weight:600}
+/* Die Sammelleiste ueber der Aktivitaetenliste (0.65.0). Toene und Masse aus
+   den Karten daneben - sie ist eine Karte, kein eigener Bausatz. */
+.card.bulk{margin-bottom:12px}
+.card.bulk p{margin:0 0 8px;font-size:13px}
+.card.bulk .bbar{margin:8px 0}
+.card.bulk button{margin-right:8px}
 .fgrp{display:flex;gap:8px;margin:10px 0 2px;color:${C.tx2};font-size:12.5px}
 .fgrp i{font-style:normal;width:16px;text-align:center;color:${ROLE.series}}
 .fgrp b{color:${C.tx};font-weight:600}

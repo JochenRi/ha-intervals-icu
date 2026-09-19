@@ -806,6 +806,42 @@ check("Abschnitte: Start und Dauer aus dem Anker",
 check("Abschnitte: eine fremde Familie liefert nichts",
       sm.marked_sections(sm.entry_for(_d, "L3"), "vo2max"), [])
 
+# ---------------------------------------------------------------------------
+# WAS NEU ZU MESSEN IST (0.65.0). Der Sammelknopf nennt die Zahl, BEVOR er
+# etwas tut - also muss die Liste genau sagen, was sie meint: markiert, und
+# Messung fehlt oder sitzt auf der anderen Wattachse.
+_BASIS = {"date": "2026-09-10", "anchor": {"laps": 1, "sections": [{"i": 0, "s": 60}]},
+          "measured_at": "2026-09-10", "set_at": "2026-09-10", "v": sm.MEASURE_VERSION}
+def _bestand(eintraege):
+    return {"section_marks": {k: {**_BASIS, **v} for k, v in eintraege.items()}}
+_std = {"endurance": {"hours": [{"hour": 1}], sm.MEASURE_WINDOW_KEY: 0}}
+_neu = {"endurance": {"hours": [{"hour": 1}], sm.MEASURE_WINDOW_KEY: 120}}
+_d = _bestand({
+    "A": {"marks": {"endurance": [0]}, "measure": _std},        # alte Achse
+    "B": {"marks": {"endurance": [0]}, "measure": _neu},        # passt
+    "C": {"marks": {"endurance": [0]}, "measure": {}},          # nie gemessen
+    "D": {"marks": {}, "measure": {}},                          # NICHT markiert
+})
+_offen = sm.pending_remeasure(_d, 120)
+ok("neu messen: nur die, die nicht passen",
+   [r["activity_id"] for r in _offen] == ["A", "C"])
+ok("neu messen: eine nicht markierte Fahrt steht NIE darin",
+   all(r["activity_id"] != "D" for r in _offen))
+ok("neu messen: der Grund steht je Einheit dabei",
+   [r["reason"] for r in _offen] == ["window", "missing"])
+# GEGENPROBE: in der ANDEREN Schalterstellung kehrt sich A und B um - die
+# Liste haengt an der Achse und nicht an einem Merker.
+_aus = sm.pending_remeasure(_d, 0)
+ok("neu messen Gegenprobe: bei der anderen Achse ist es umgekehrt",
+   [r["activity_id"] for r in _aus] == ["B", "C"])
+ok("neu messen: passt alles, ist die Liste leer",
+   sm.pending_remeasure(_bestand({"B": {"marks": {"endurance": [0]}, "measure": _neu}}), 120) == [])
+ok("neu messen: eine einzige Einheit ist auch eine Liste",
+   len(sm.pending_remeasure(_bestand({"A": {"marks": {"endurance": [0]}, "measure": _std}}), 120)) == 1)
+ok("neu messen: die Schubgroesse steht im Modul, nicht im Panel",
+   isinstance(sm.REMEASURE_BATCH, int) and sm.REMEASURE_BATCH >= 1)
+ok("neu messen: und eine Pause dazwischen", sm.REMEASURE_PAUSE_MS > 0)
+
 print(f"test_section_marks: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

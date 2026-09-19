@@ -1,5 +1,66 @@
 # ha-intervals-icu — Übergabe an den nächsten Chat
 
+## AKTUELL — 0.65.0: ein Knopf, der alle markierten Einheiten neu misst (19.09.2026). Zuerst lesen.
+
+**Ausgeliefert: 0.65.0.** Prüfstand **23 Dateien, 7.613 Prüfungen, 0 Fehler** (Basis 7.579).
+**Johannes hat den Rechenschalter umgelegt** — seine Marken tragen weiter ihren Haken, die
+Messungen sitzen auf der alten Wattachse und gelten nicht mehr (`remeasure_window`, wie
+gebaut). Statt 17 Einzelklicks gibt es jetzt einen Knopf über der Aktivitätenliste.
+
+### Was er tut, und was er ausdrücklich nicht tut
+
+- **Er nennt die Zahl vorher.** Nicht „alle neu messen", sondern nur die Einheiten, deren
+  Messung zur aktuellen Rechnung nicht passt — `section_marks.pending_remeasure(data,
+  window_s)` liefert genau die, mit **Grund je Einheit** (`window` = andere Wattachse,
+  `missing` = nie gemessen). **Nicht markierte Fahrten stehen nie darin.**
+- **Er fragt nach**, wie der Schalter: drei Schritte, der mittlere ist die Bestätigung.
+- **Er läuft in Schüben** (`REMEASURE_BATCH = 4`, `REMEASURE_PAUSE_MS = 1500`) — die Zahlen
+  stehen im **Modul**, nicht im Panel, damit es nicht zwei Schubgrößen gibt.
+- **Fortschritt sichtbar**, laufende Einheit benannt, Oberfläche nicht blockiert (nach jeder
+  Einheit wird gezeichnet).
+- **Abbrechbar** — und zwar zwischen zwei Einheiten, nie mitten in einer. Das schon Gemessene
+  bleibt stehen, Abgebrochenes zählt **nicht** als Fehlschlag.
+- **Fehlschläge nicht still.** Eine Familie, die einen Grund zurückgibt, ist keine Messung —
+  auch wenn der Aufruf nicht geworfen hat. Dieselbe Regel wie `dfa_failed` aus 0.63.3. Die
+  Leiste bleibt danach stehen und bietet **nur die fehlgeschlagenen** zur Wiederholung an.
+- **Danach aktualisieren sich die Kacheln** über `_afterMeasure()` (MEASURE_FEEDS) — kein
+  Strg+Shift+R.
+- **Er ist ein Schreibweg und läuft nie von selbst.** Eine Prüfung zählt die Aufrufe von
+  `_bulkRun` im ganzen Quelltext und fordert, dass **alle** in der Klick-Weiche stehen.
+
+### Prüfstand und Mutation
+
+`test_section_marks.py` 184 → **192** · `test_panel_fixes.js` 857 → **883**.
+
+**Mutation über Dateikopie, vier von vier gefangen:**
+- die Liste nimmt auch passende Einheiten auf → 4 Prüfungen fallen
+- Fehlschläge werden nicht gesammelt → „der Fehlschlag fehlt ([])"
+- der Abbruch greift nicht → „3 Einheiten gemessen statt einer"
+- der Startzweig fällt weg → „die Klick-Weiche kennt 'bulkgo' nicht"
+
+**Zwei rutschten im ersten Lauf durch**, beide aus demselben Grund wie in den Runden zuvor:
+die Prüfung sah nur eine Seite. Behoben durch (a) eine Zusicherung, die nicht am Index eines
+leeren Feldes hängt, und (b) die Regel **kein Knopf ohne Zweig und kein Zweig ohne Knopf** für
+alle vier Schaltflächen der Leiste.
+
+### Randfälle, geprüft
+
+keine Einheit (Leiste verschwindet) · eine einzige (Einzahl im Text) · Abbruch mitten im Schub
+· eine Einheit ohne Ströme (Grund in der Antwort, nicht als Ausnahme) · Schalterstellung
+gewechselt (die Liste kehrt sich um, Gegenprobe).
+
+### OFFEN
+
+0. **Nach dem Lauf den Trockenlauf fahren** und die Kachelzahlen am Livebestand ansehen.
+1. **Die Blockkacheln**: einseitige t-Tabelle, Zusage „8 von 10" — prüfen und entscheiden,
+   es hängen Trainingsvorgaben daran.
+2. **Erholung nach einem fremden Block** — steht unverändert.
+3. `bridges_alpha` am Livebestand · `alpha_window_*`, `alpha_mad`, `watt_mad` · die unbelegte
+   Rolle/draußen-Beschriftung · Trockenlauf ohne Oberfläche · Aufräum-Release.
+4. **Der GitHub-Token liegt weiterhin im Klartext in `GIT_Intervals.txt`. Widerrufen.**
+
+---
+
 ## AKTUELL — 0.64.3: das Band ist repariert, und es waren ZWEI Fehler (19.09.2026). Zuerst lesen.
 
 **Ausgeliefert: 0.64.3.** Prüfstand **23 Dateien, 7.579 Prüfungen, 0 Fehler** (Basis 7.568).
