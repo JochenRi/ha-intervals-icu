@@ -375,29 +375,61 @@ print()
 # DIE UMKEHRUNG (0.64.0): die Mindestbelegung und die Zusammensetzung des Bands.
 # Beides sind Entscheidungen, keine Nebenwirkungen - also werden sie geprueft.
 # Gerechnet wird mit der PRODUKTIONSFUNKTION, nicht mit einem Nachbau im Test -
-# sonst prueft die Suite ihre eigene Kopie und nicht das, was ausgeliefert wird
-# (die Regel aus 0.41.0).
-def _kette(n_je_stunde, spread=21.1):
-    return [(h, len(al), v2.reversal_band(al, 101.2, spread))
-            for h, al in sorted(n_je_stunde.items())]
+# sonst prueft die Suite ihre eigene Kopie und nicht das, was ausgeliefert wird.
+# Seit 0.64.3 gehen die FERTIGEN Wattzahlen hinein, nicht die alphas.
+def _zahlen(alphas, last=139.6, bruecke=101.2):
+    return [last + (a - v2.ALPHA_FLOOR) * bruecke for a in alphas]
 check("Umkehrung: die Mindestbelegung steht auf vier", v2.MIN_RIDES_FOR_BAND, 4)
 check("Umkehrung: die Grenze steht auf 1,0", v2.ALPHA_FLOOR, 1.0)
-_roh = _kette({3: [1.20, 1.25, 1.30], 4: [1.20, 1.25, 1.30, 1.35]})
-check("Umkehrung: drei Fahrten tragen KEIN Band", _roh[0][2], None)
-check("Umkehrung Gegenprobe: vier Fahrten tragen eines", _roh[1][2] is not None, True)
-# DAS BAND HAT ZWEI ANTEILE, und sie stehen getrennt. Der aus der Umrechnung
-# ist klein - aber er ist nicht null, und er verschwindet nicht.
-_b = _roh[1][2]
-check("Umkehrung Band: Streuung und Umrechnung sind beide darin",
+check("Umkehrung: drei Fahrten tragen KEIN Band",
+      v2.reversal_band(_zahlen([1.20, 1.25, 1.30]), 2.0), None)
+_b = v2.reversal_band(_zahlen([1.20, 1.25, 1.30, 1.35]), 2.0)
+check("Umkehrung Gegenprobe: vier Fahrten tragen eines", _b is not None, True)
+# DAS BAND HAT ZWEI ANTEILE, und sie stehen getrennt: die Streuung ZWISCHEN DEN
+# FAHRTEN (sie enthaelt jetzt Last UND alpha) und der systematische Abstand der
+# beiden Umrechnungen.
+check("Umkehrung Band: Fahrten und Umrechnung sind beide darin",
       (_b["from_spread"] > 0, _b["from_bridge"] > 0), (True, True))
-check("Umkehrung Band: quadratisch zusammengelegt, nicht nur die Streuung",
+check("Umkehrung Band: quadratisch zusammengelegt",
       _b["half"] > _b["from_spread"], True)
-check("Umkehrung Band: die Streuung traegt den groessten Teil", _b["from_spread"] > _b["from_bridge"], True)
-# Trefferzusicherung: ohne den Brueckenanteil kaeme etwas ANDERES heraus -
-# sonst prueft die Zeile oben nur, dass eine Zahl groesser als sie selbst ist.
-_ohne = _kette({4: [1.20, 1.25, 1.30, 1.35]}, spread=0.0)[0][2]
+_ohne = v2.reversal_band(_zahlen([1.20, 1.25, 1.30, 1.35]), 0.0)
 check("Umkehrung Band Fixture-Beweis: ohne Umrechnungsanteil ist es schmaler",
       _ohne["half"] < _b["half"], True)
+# DIE STREUUNG DER LAST GEHT MIT EIN - das war der Fehler bis 0.64.2. Zwei
+# Bestaende mit DEMSELBEN alpha, aber verschieden streuender Last, muessen
+# verschiedene Baender ergeben.
+_gleich = v2.reversal_band([170.0, 172.0, 174.0, 176.0], 0.0)
+_streut = v2.reversal_band([150.0, 165.0, 180.0, 195.0], 0.0)
+check("Umkehrung Band: streuende Last verbreitert es",
+      _streut["half"] > _gleich["half"] * 2, True)
+# DIE TABELLENSEITE: zweiseitig, nicht einseitig. Geprueft am Wert selbst,
+# damit ein Zurueckdrehen auf STEERING_T90 auffaellt.
+check("Umkehrung Band: das t-Quantil ist das ZWEISEITIGE",
+      v2.T90_TWO_SIDED[3] > STEERING_T90[3], True)
+_glatt = v2.reversal_band([170.0, 172.0, 174.0, 176.0], 0.0)
+_sd = (sum((x - 173.0) ** 2 for x in [170.0, 172.0, 174.0, 176.0]) / 3) ** 0.5
+check("Umkehrung Band: und es wird auch benutzt",
+      _glatt["from_spread"],
+      round(v2.T90_TWO_SIDED[3] * _sd * (1 + 1 / 4) ** 0.5, 1))
+# DIE QUOTE STEHT NUR DA, WO SIE NACHPRUEFBAR IST.
+check("Umkehrung Band: unter neun Fahrten keine Quote", _b["quote_shown"], False)
+# WAS DER KETTE UEBERGEBEN WIRD, ist die zweite Haelfte der Reparatur: eine
+# Pruefung der Funktion allein faengt nicht, wenn der Aufrufer wieder alphas
+# schickt. Deshalb am SYNTAXBAUM, wie beim Fensterbreiten-Waechter.
+import ast as _ast  # noqa: E402
+_baum = _ast.parse((Path(__file__).resolve().parents[1] / "custom_components"
+                    / "intervals_icu" / "fatigue_v2.py").read_text(encoding="utf-8"))
+_rufe = [n for n in _ast.walk(_baum)
+         if isinstance(n, _ast.Call) and isinstance(n.func, _ast.Name)
+         and n.func.id == "reversal_band"]
+check("Umkehrung Band: genau ein Aufruf in der Kette", len(_rufe), 1)
+_arg = _ast.dump(_rufe[0].args[0]) if _rufe and _rufe[0].args else ""
+check("Umkehrung Band: die FERTIGEN Wattzahlen gehen hinein, nicht die alphas",
+      ("ALPHA_FLOOR" in _arg and _arg.count("BinOp") >= 2), True)
+check("Umkehrung Band Fixture-Beweis: der Wortlaut kommt im Aufruf wirklich vor",
+      "ALPHA_FLOOR" in _arg, True)
+check("Umkehrung Band Gegenprobe: ab neun schon",
+      v2.reversal_band(_zahlen([1.2 + i * 0.01 for i in range(9)]), 0.0)["quote_shown"], True)
 
 
 # ---------------------------------------------------------------------------

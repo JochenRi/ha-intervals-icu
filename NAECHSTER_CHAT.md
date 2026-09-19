@@ -1,5 +1,78 @@
 # ha-intervals-icu — Übergabe an den nächsten Chat
 
+## AKTUELL — 0.64.3: das Band ist repariert, und es waren ZWEI Fehler (19.09.2026). Zuerst lesen.
+
+**Ausgeliefert: 0.64.3.** Prüfstand **23 Dateien, 7.579 Prüfungen, 0 Fehler** (Basis 7.568).
+**Nicht umgelegt, nichts neu eingelesen, kein `set_*`.**
+
+### Warum 70 gegen 82 % — die Antwort ist eine Kreuztabelle
+
+Weglass-Rückblick, Stunde 1 (n = 17) und Stunde 2 (n = 12), mit der Produktionsfunktion:
+
+| Streuung aus … | einseitiges t (Haustabelle) | zweiseitiges t |
+|---|---|---|
+| **alpha allein** | **70 % / 66 %** ← war ausgeliefert | 82 % / 75 % ← die Zahl des Vorarbeiters |
+| **der fertigen Wattzahl** | 76 % / 83 % | **88 % / 91 %** ← jetzt ausgeliefert |
+
+**Es waren zwei unabhängige Fehler, und sie haben sich addiert:**
+
+1. **Die falsche Streuung.** Gerechnet wurde `s(alpha) × Umrechnung` = 14,0 W. Die gehaltene
+   Last streut aber selbst um **8,7 W** (117–154 W), und die fertige Zahl je Fahrt um
+   **15,9 W**. Die halbe Streuung fehlte.
+2. **Die falsche Tabellenseite.** `STEERING_T90` ist ein **einseitiges** 90-%-Quantil — richtig
+   für „höchstens so viel", falsch für ein **symmetrisches** Band, das 80 % einschließen soll.
+   Dafür braucht es das zweiseitige, also t(0,95) einseitig.
+
+Der Vorarbeiter hatte Fehler 1 gesehen, ich Fehler 2 nicht — deshalb die Lücke zwischen
+unseren Zahlen. **Beide sind behoben.** Neues Band: Stunde 1 **± 28,7**, Stunde 2 **± 26,7**,
+Stunde 3 ± 11,6 W.
+
+### Der Rat „empirisches Quantil" — WIDERLEGT, und der Grund ist ein anderer als gedacht
+
+Am Bestand trifft er schlechter (76 % gegen 88 %). Die Obergrenze (n−1)/(n+1) gilt aber **nur
+für verteilungsfreie Bänder aus Ordnungsstatistiken**, nicht für ein t-Band: die Blockkacheln
+treffen bei n = 6 und n = 5 tatsächlich **83 % und 80 %**, also über ihrer eigenen
+„Obergrenze" von 71 und 67 %. Ein parametrisches Band kann das. **Die Obergrenze ist damit
+kein Argument gegen die Zusage, sondern gegen das empirische Quantil.**
+
+Was trotzdem gilt: bei vier Fahrten hat ein Weglass-Rückblick drei Fälle, eine Quote ist dort
+**nicht nachprüfbar**. Deshalb steht sie seit 0.64.3 nur ab **neun Fahrten**
+(`BAND_QUOTE_MIN_N`); darunter sagt die Zeile „t-Band über n Fahrten".
+
+### Die Aufteilung bleibt sinnvoll — mit neuer Beschriftung
+
+`from_spread` heißt jetzt die Streuung **zwischen den Fahrten** (Last **und** alpha zusammen),
+`from_bridge` bleibt der **systematische** halbe Abstand der beiden Umrechnungen. Das eine ist
+Streuung, das andere Unkenntnis — sie quadratisch zusammenzulegen bleibt richtig, sie
+zusammenzuwerfen wäre falsch.
+
+### Die Blockkacheln
+
+Dieselbe Formel, dieselbe einseitige Tabelle, dieselbe Zusage. Am Bestand treffen sie 83 %
+(VO2max, n = 6) und 80 % (SweetSpot, n = 5) — **sie halten ihre Zusage**, obwohl die Tabelle
+die falsche Seite ist. Das ist Glück bei kleinem n, kein Beleg. **Nicht angefasst** in dieser
+Auslieferung: eine Änderung dort verschiebt Trainingsvorgaben, und das ist eine eigene
+Entscheidung.
+
+### Mutation über Dateikopie
+
+- zurück auf die einseitige Tabelle → fällt
+- Band wieder aus alpha statt aus den fertigen Zahlen → fällt (**am Syntaxbaum**, weil eine
+  Prüfung der Funktion allein den Aufrufer nicht fängt — das war der erste Durchrutscher)
+- Quote immer anzeigen → fällt
+
+### OFFEN
+
+0. **Die Blockkacheln**: einseitige Tabelle, Zusage „8 von 10". Prüfen und entscheiden — es
+   hängen Trainingsvorgaben daran.
+1. **Erholung nach einem fremden Block** — die Frage steht unverändert.
+2. **Trockenlauf nach diesem Update erneut fahren.**
+3. `bridges_alpha` am Livebestand · die Felder `alpha_window_*`, `alpha_mad`, `watt_mad` ·
+   die unbelegte Rolle/draußen-Beschriftung · Trockenlauf ohne Oberfläche · Aufräum-Release.
+4. **Der GitHub-Token liegt weiterhin im Klartext in `GIT_Intervals.txt`. Widerrufen.**
+
+---
+
 ## AKTUELL — 0.64.2: die Punktschwelle zählt Sekunden, und sie steht jetzt auf 120 (19.09.2026). Zuerst lesen.
 
 **Ausgeliefert: 0.64.2.** Prüfstand **23 Dateien, 7.568 Prüfungen, 0 Fehler** (Basis 7.562).

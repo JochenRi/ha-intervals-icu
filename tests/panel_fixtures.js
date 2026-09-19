@@ -308,11 +308,11 @@ function fatigueV2Block(over) {
     measured: false, lower: form_watts <= watts ? "form" : "chain" });
   const plan = [
     m(1, 172.7, 139.6, 1.327, 17, 172.7,
-      { half: 25.5, from_spread: 25.2, from_bridge: 3.4, n: 17 }),
+      { half: 28.7, from_spread: 28.5, from_bridge: 3.4, n: 17, quote_shown: true }),
     m(2, 166.1, 140.2, 1.256, 14, 167.7,
-      { half: 35.6, from_spread: 35.5, from_bridge: 2.7, n: 14 }),
+      { half: 26.7, from_spread: 26.6, from_bridge: 2.7, n: 12, quote_shown: true }),
     m(3, 150.6, 139.8, 1.107, 4, 160.7,
-      { half: 18.8, from_spread: 18.8, from_bridge: 1.1, n: 4 }),
+      { half: 11.6, from_spread: 11.5, from_bridge: 1.1, n: 4, quote_shown: false }),
     // Drei Fahrten: unter der Mindestbelegung, also KEIN Band.
     m(4, 146.6, 138.7, 1.078, 3, 151.6, null),
     m(5, 130.0, 146.8, 0.834, 1, 140.5, null),
@@ -348,7 +348,8 @@ function fatigueV2Block(over) {
     reversal_words: {
       state: "aus gemessenem alpha", lead: "F\u00fcr eine Fahrt von",
       unit_note: "so lange bleibst du \u00fcber alpha {floor}",
-      band_share: "8 von 10 Fahrten", no_band: "unter {min} Fahrten keine Spanne",
+      band_share: "8 von 10 Fahrten", band_no_quote: "t-Band \u00fcber {n} Fahrten",
+      no_band: "unter {min} Fahrten keine Spanne",
       mean: "BEDEUTUNGSSATZ AUS DEM MODUL {floor}.", form: "FORMSATZ AUS DEM MODUL.",
       rides: "FAHRTENSATZ AUS DEM MODUL.", others: "MESSUNGSSATZ AUS DEM MODUL.",
       why: "WARUMSATZ AUS DEM MODUL.",

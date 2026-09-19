@@ -1420,7 +1420,9 @@ class IntervalsIcuPanel extends HTMLElement {
           .replace("{min}", fmt(rv.min_rides_for_band)))} · ${fahrten(r.n)}</span>`;
       }
       return `± ${fmt(r.band.half)} W · <b class="tn">${fmt(r.watts - r.band.half)} –
-        ${fmt(r.watts + r.band.half)} W</b> · ${esc(rw.band_share || "")} · ${fahrten(r.n)}`;
+        ${fmt(r.watts + r.band.half)} W</b> · ${r.band.quote_shown
+          ? esc(rw.band_share || "")
+          : esc((rw.band_no_quote || "").replace("{n}", fmt(r.n)))} · ${fahrten(r.n)}`;
     };
     const fStreifen = (i) => {
       const r = at(i);

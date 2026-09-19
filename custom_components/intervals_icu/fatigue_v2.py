@@ -590,7 +590,10 @@ REVERSAL_WORDS = {
     # und verspricht keine Trefferquote, die es nicht haelt. Die Abhilfe
     # (empirisches Quantil statt t-Band) ist eine eigene Entscheidung und
     # steht als offener Punkt.
-    "band_share": "t-Band über die Streuung",
+    # Die Quote steht nur da, wo sie nachpruefbar ist. Darunter sagt die Zeile,
+    # WIE das Band gebaut ist - und verspricht nichts.
+    "band_share": "8 von 10 Fahrten",
+    "band_no_quote": "t-Band über {n} Fahrten",
     "no_band": "unter {min} Fahrten keine Spanne",
     "mean": ("Die Zahl ist keine Schwelle. Sie sagt: über eine Fahrt dieser Länge "
              "bleibt dein alpha im Mittel über {floor} — also im Bereich, in dem "
@@ -619,6 +622,22 @@ ALPHA_FLOOR_STEP = 0.1
 # ein Band von +-92 W - das ist keine Auskunft, sondern ein Eingestaendnis mit
 # Zahlen. Die Zeile verschwindet dann ganz, wie an der Stunde ohne Band.
 MIN_RIDES_FOR_BAND = 4
+
+# DIE TABELLENSEITE. `STEERING_T90` ist ein EINSEITIGES 90-%-Quantil - richtig
+# fuer eine Aussage "hoechstens so viel", falsch fuer ein SYMMETRISCHES Band,
+# das 80 % einschliessen soll. Dafuer braucht es das zweiseitige 90-%-Quantil,
+# also t(0,95) einseitig. Mit der einseitigen Tabelle traf das Band am Bestand
+# 70 % statt 80; mit dieser 88 %.
+T90_TWO_SIDED = {1: 6.314, 2: 2.920, 3: 2.353, 4: 2.132, 5: 2.015, 6: 1.943,
+                 7: 1.895, 8: 1.860, 9: 1.833, 10: 1.812, 11: 1.796, 12: 1.782,
+                 13: 1.771, 14: 1.761, 15: 1.753, 16: 1.746, 17: 1.740,
+                 18: 1.734, 19: 1.729, 20: 1.725}
+T90_TWO_SIDED_INF = 1.645
+
+# AB WIE VIELEN FAHRTEN EINE QUOTE ANGESAGT WIRD. Darunter steht keine - nicht
+# weil das Band schlechter waere, sondern weil "8 von 10" an vier Fahrten nicht
+# nachpruefbar ist: ein Weglass-Rueckblick hat dort drei Faelle.
+BAND_QUOTE_MIN_N = 9
 
 
 def bridges_alpha(data: dict[str, Any]) -> dict[str, Any]:
@@ -682,29 +701,37 @@ def bridges_alpha(data: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def reversal_band(alphas: list[float], mid: float, spread: float) -> dict[str, Any] | None:
-    """Das Band einer Stunde - EIGENE Funktion, damit sie geprueft werden kann.
+def reversal_band(values: list[float], bridge_half: float = 0.0) -> dict[str, Any] | None:
+    """Das Band einer Stunde - ueber die FERTIGEN Wattzahlen, nicht ueber alpha.
 
-    Unter MIN_RIDES_FOR_BAND gibt es KEINES: am Bestand ergaebe Stunde 4 (drei
-    Fahrten, s = 0,270) ein Band von +-92 W, und das ist keine Auskunft.
+    ZWEI FEHLER STECKTEN HIER BIS 0.64.2, und sie haben sich addiert:
 
-    Zwei Anteile, quadratisch zusammengelegt und GETRENNT ausgewiesen: die
-    Streuung zwischen den Fahrten (sie traegt 88 bis 99 %) und der Abstand der
-    beiden Umrechnungen. Wer sie zusammenwirft, laesst zwei Unsicherheiten wie
-    eine aussehen - und die kleinere ist die, um die vier Runden lang
-    gestritten wurde.
+    1. Gerechnet wurde die Streuung von ALPHA, mal der Umrechnung. Die
+       gehaltene Last streut aber selbst - am Bestand um 8,7 W -, und die
+       fertige Zahl je Fahrt um 15,9 W statt der 14,0 W, die aus alpha allein
+       folgen. Die halbe Streuung fehlte also.
+    2. Genommen wurde `STEERING_T90`, ein EINSEITIGES Quantil, fuer ein
+       SYMMETRISCHES Band.
+
+    Weglass-Rueckblick an Stunde 1 (n = 17): alpha + einseitig 70 %, alpha +
+    zweiseitig 82 %, fertige Zahl + einseitig 76 %, fertige Zahl + zweiseitig
+    88 %. Stunde 2 (n = 12): 66 / 75 / 83 / 91 %.
+
+    `bridge_half` ist der systematische Anteil aus der Umrechnung - er ist
+    KEINE Streuung zwischen Fahrten, sondern der halbe Abstand der beiden
+    Messungen, und wird deshalb quadratisch dazugelegt statt mitgemittelt.
     """
-    n = len(alphas)
+    n = len(values)
     if n < MIN_RIDES_FOR_BAND:
         return None
-    mean = sum(alphas) / n
-    sd = (sum((a - mean) ** 2 for a in alphas) / (n - 1)) ** 0.5
-    t = STEERING_T90.get(n - 1, STEERING_T90[max(STEERING_T90)])
-    aus_streuung = t * sd * (1 + 1 / n) ** 0.5 * mid
-    aus_bruecke = abs(derive._median(alphas) - ALPHA_FLOOR) * (spread or 0.0) / 2
-    return {"half": round((aus_streuung ** 2 + aus_bruecke ** 2) ** 0.5, 1),
-            "from_spread": round(aus_streuung, 1),
-            "from_bridge": round(aus_bruecke, 1), "n": n}
+    mean = sum(values) / n
+    sd = (sum((x - mean) ** 2 for x in values) / (n - 1)) ** 0.5
+    t = T90_TWO_SIDED.get(n - 1, T90_TWO_SIDED_INF)
+    aus_fahrten = t * sd * (1 + 1 / n) ** 0.5
+    return {"half": round((aus_fahrten ** 2 + (bridge_half or 0.0) ** 2) ** 0.5, 1),
+            "from_spread": round(aus_fahrten, 1),
+            "from_bridge": round(bridge_half or 0.0, 1), "n": n,
+            "quote_shown": n >= BAND_QUOTE_MIN_N}
 
 
 def reversal(data: dict[str, Any]) -> dict[str, Any]:
@@ -747,7 +774,10 @@ def reversal(data: dict[str, Any]) -> dict[str, Any]:
         last = derive._median([w for w, _ in paare])
         alpha = derive._median([a for _, a in paare])
         watts = last + (alpha - ALPHA_FLOOR) * mid
-        band = reversal_band([a for _, a in paare], mid, spanne)
+        # DIE FERTIGEN ZAHLEN je Fahrt gehen hinein, nicht die alphas: die
+        # gehaltene Last streut mit, und genau die fehlte bis 0.64.2.
+        band = reversal_band([w + (a - ALPHA_FLOOR) * mid for w, a in paare],
+                             abs(alpha - ALPHA_FLOOR) * spanne / 2)
         plan.append({"hours": hour, "watts": round(watts, 1),
                      "load_w": round(last, 1), "alpha": round(alpha, 3),
                      "n": n, "band": band, "measured": True, "lower": None,

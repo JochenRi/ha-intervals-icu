@@ -2808,6 +2808,18 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   qz._fillReadout("fatv2", 0);
   ok(felder.strip !== "" && /±/.test(felder.tol),
      "Umkehrung Gegenprobe: mit genug Fahrten bleibt die Spanne leer");
+  // DIE QUOTE STEHT NUR DA, WO SIE NACHPRUEFBAR IST. Stunde 1 traegt 17
+  // Fahrten und sagt sie an; Stunde 3 traegt vier und sagt, wie das Band
+  // gebaut ist, statt eine Quote zu versprechen, die niemand nachzaehlen kann.
+  ok(felder.tol.includes(an.v2.reversal_words.band_share),
+     `Umkehrung Quote: bei 17 Fahrten fehlt die Quote (${felder.tol})`);
+  const iQuote = rv.plan.findIndex((r) => r.band && !r.band.quote_shown);
+  ok(iQuote >= 0, "Umkehrung Fixture-Beweis: keine Stunde mit Band ohne Quote");
+  qz._fillReadout("fatv2", iQuote);
+  ok(!felder.tol.includes(an.v2.reversal_words.band_share)
+     && /t-Band über/.test(felder.tol),
+     `Umkehrung Quote: bei wenigen Fahrten steht sie trotzdem da (${felder.tol})`);
+  ok(/±/.test(felder.tol), "Umkehrung Quote: ohne Quote fehlt auch die Spanne");
 
   // ── JENSEITS DER MESSUNG.
   const iEst = rv.plan.findIndex((r) => !r.measured);
