@@ -271,6 +271,33 @@ except ImportError:  # standalone (test suite loads this file directly)
 # power and alpha WITHIN each interval and correlates only those midpoints -
 # that is what clears the cardiac lag. Width and minimum count are house
 # settings: the published work bins by group, not by a stated width.
+# ANDRIOLO 2024, Abschnitt 2.3, woertlich: die Fensterbreite fuer DFA-a1 wurde
+# auf 120 s gesetzt (Neuberechnung alle 5 s) - UND "dieselbe Fensterbreite von
+# 120 s wurde fuer die Leistung als Mittel ueber dieses Fenster verwendet".
+# Wir paaren heute sekundengenau: ein 120-s-Mittel (alpha) gegen einen
+# Momentanwert (Watt). Am echten 1-Hz-Strom der Rampen-Fixture hebt die
+# Angleichung R2 von 0,603 auf 0,808 und p075 von 169,9 auf 179,0 W. Ueber 25
+# Fahrtstunden drehen sich 7 von 25 physiologisch verkehrten Steigungen auf
+# 0 von 25, der Median-R2 steigt von 0,092 auf 0,752. In Synthetik mit
+# bekannter Wahrheit faellt der Fehler von 8,25 auf 0,66 W - und die
+# Gegenprobe OHNE Antritte und Rollphasen zeigt 0,57 gegen 1,23 W: der Fehler
+# erscheint nur dort, wo sein Mechanismus existiert.
+#
+# 0 = aus, heutiges Verhalten bitgenau. Der Schalter steht VOR dem
+# Versionszaehler: solange er aus ist, wird nichts neu gemessen.
+DFA_WATT_WINDOW_S = 120
+
+# DIE ABLESESTELLE. alpha bei der eigenen gehaltenen Last statt am
+# Kreuzungspunkt 0,75. Dort liegen im Median 110 Punkte je Stunde gegen 7 im
+# alpha-Fenster 0,65-0,85; 11 von 42 Fahrtstunden haben im alpha-Fenster GAR
+# keinen Punkt, im Lastfenster keine einzige. Am 20.08. warf der Fit 187,4 W
+# aus, obwohl dort NULL Punkte lagen - das ist der Fall, den die Ablesestelle
+# nicht mehr erzeugen kann.
+# Das Fenster +/- 5 W ist eine SETZUNG: am 1-Hz-Strom verschiebt +/-10 W statt
+# +/-5 W das abgelesene alpha um 0,083 - so viel wie eine ganze Stunde Abfall.
+DFA_LOAD_BAND_W = 5.0
+DFA_LOAD_MIN_POINTS = 20
+
 DFA_BIN_WIDTH = 0.05
 FATIGUE_MIN_BINS = 3
 
@@ -304,6 +331,38 @@ def _read_at(points: list[tuple[float, float]], at: float = 0.75) -> float | Non
     return round(slope * at + (mean_v - slope * mean_a), 1)
 
 
+def trailing_mean(values: list[Any] | None, window_points: int) -> list[float | None]:
+    """Nachlaufendes Mittel ueber `window_points` Stellen - Andriolos Wattachse.
+
+    Laufende Summe mit Zaehler, EIN Durchgang. Verworfen wird nicht hier:
+    Nullwerte (Rollphasen) zaehlen nicht in den Mittelwert, aber die
+    Verwerfregel der Messung bleibt am ROHWERT. Sonst zaehlte eine Rollphase
+    als gefahren, nur weil der Nachbar getreten hat.
+    """
+    if not values:
+        return []
+    if window_points <= 1:
+        return [_number(v) for v in values]
+    out: list[float | None] = []
+    total = 0.0
+    queue: list[float | None] = []
+    count = 0
+    for raw in values:
+        value = _number(raw)
+        value = value if (value is not None and value > 0) else None
+        queue.append(value)
+        if value is not None:
+            total += value
+            count += 1
+        if len(queue) > window_points:
+            gone = queue.pop(0)
+            if gone is not None:
+                total -= gone
+                count -= 1
+        out.append(total / count if count else None)
+    return out
+
+
 def dfa_hours(
     dfa: list[Any] | None,
     watts: list[Any] | None,
@@ -311,6 +370,7 @@ def dfa_hours(
     sample_secs: int = 1,
     hour_secs: int = 3600,
     keep: Any = None,
+    watt_window_s: int = 0,
 ) -> list[dict[str, Any]]:
     """Read P(alpha = 0.75) off EACH hour of a ride, separately.
 
@@ -369,11 +429,36 @@ def dfa_hours(
                 continue
             allowed.update(range(max(0, first), min(total, last)))
 
+    # DIE GEPAARTE WATTACHSE. Ein Durchgang ueber den ganzen Strom, VOR der
+    # Stundenschleife: alpha bei Stelle i beschreibt die letzten
+    # DFA_WATT_WINDOW_S Sekunden, also muss der Wattwert dieselbe Zeitspanne
+    # beschreiben. `watt_window_s = 0` laesst die Rohachse stehen - bitgenau
+    # das heutige Verhalten.
+    window_points = max(1, int(watt_window_s // max(sample_secs, 1))) if watt_window_s else 1
+    paired = trailing_mean(watts, window_points) if window_points > 1 else None
+
+    # DIE EIGENE GEHALTENE LAST der Fahrt: Median der gepaarten Watt ueber die
+    # ZUGELASSENEN Stellen. Sie ist die Ablesestelle und muss vor der
+    # Stundenschleife feststehen, damit alle Stunden an DERSELBEN Last gelesen
+    # werden - sonst verglichen wir Stunden bei verschiedenen Lasten.
+    load_pool: list[float] = []
+    for index in range(total):
+        if allowed is not None and index not in allowed:
+            continue
+        raw = _number(watts[index]) if watts and index < len(watts) else None
+        if raw is None or raw <= 0:
+            continue
+        value = paired[index] if paired is not None and index < len(paired) else raw
+        if value is not None and value > 0:
+            load_pool.append(value)
+    ride_load = _median(load_pool) if load_pool else None
+
     hour = 0
     while hour * per_hour < total:
         start, stop = hour * per_hour, min(total, (hour + 1) * per_hour)
         points: list[tuple[float, float]] = []
         hr_points: list[tuple[float, float]] = []
+        load_alphas: list[float] = []
         dropped = 0
         excluded = 0
         low = 0
@@ -386,7 +471,11 @@ def dfa_hours(
                 excluded += 1
                 continue
             alpha = _number(dfa[index])
+            # ROHWERT fuer die Verwerfregel, GEPAARTER Wert fuer die Messung.
             watt = _number(watts[index]) if watts and index < len(watts) else None
+            watt_paired = watt
+            if paired is not None and index < len(paired):
+                watt_paired = paired[index]
             pulse = _number(heartrate[index]) if heartrate and index < len(heartrate) else None
             if alpha is None or not 0.0 < alpha <= 2.0:
                 dropped += 1
@@ -401,12 +490,24 @@ def dfa_hours(
             if watt is None or watt <= 0:
                 dropped += 1
                 continue
-            points.append((alpha, watt))
+            if watt_paired is None or watt_paired <= 0:
+                dropped += 1
+                continue
+            points.append((alpha, watt_paired))
+            if ride_load is not None and abs(watt_paired - ride_load) <= DFA_LOAD_BAND_W:
+                load_alphas.append(alpha)
             if alpha < 1.0:
                 low += 1
 
         row: dict[str, Any] = {
             "hour": hour + 1,
+            # DIE ABLESESTELLE. `load_alpha` ist None, wenn im Lastfenster
+            # weniger als DFA_LOAD_MIN_POINTS Punkte liegen - lieber keine
+            # Zahl als eine aus drei Punkten.
+            "load_w": None if ride_load is None else round(ride_load, 1),
+            "load_n": len(load_alphas),
+            "load_alpha": (round(_median(load_alphas), 3)
+                           if len(load_alphas) >= DFA_LOAD_MIN_POINTS else None),
             "points": len(points),
             "dropped": dropped,
             # Bewusst ausgeschlossene Sekunden, GETRENNT von `dropped`. Ohne

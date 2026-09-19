@@ -1,5 +1,125 @@
 # ha-intervals-icu — Übergabe an den nächsten Chat
 
+## AKTUELL — 0.63.0 ausgeliefert: die Kachel der Ermüdungsrechnung v2, mit Schätzung bis 8 h (19.09.2026). Zuerst lesen.
+
+**Ausgeliefert: 0.63.0.** Prüfstand **23 Dateien, 7.413 gezählte Einzelprüfungen, 0 Fehler**
+(Basis war 23 / 7.305 / 0 nach Patch 0003). Johannes: HACS-Update, HA-Neustart, Browser hart
+neu laden. **Der Rechenschalter startet AUS** — ohne ihn ist die Ermüdungskachel *bitgenau*
+die von 0.62.2 (im Prüfstand als Zeichenvergleich zugesichert, mit Trefferzusicherung, dass
+die An-Stellung sich wirklich unterscheidet). Einschalten über
+`intervals_icu/set_fatigue_source`; **er kostet 58 Neuabrufe in drei Abgleichen und 28
+Neumessungen**, und das steht vor dem Umlegen da.
+
+**Was 0.63.0 enthält — nur die KACHEL. Rechenschicht, Modul und WebSocket kamen mit Patch
+0003 und sind unverändert übernommen.**
+
+1. **`rFatigueV2(f, v2)`** im Panel, eingehängt als Weiche in `rFatigue` **hinter** den beiden
+   Leerfällen — die sagen in beiden Stellungen dasselbe, eine Weiche davor hätte sie gedoppelt.
+2. **Aufbau und Reihenfolge aus der Vorschau, Farben und Maße aus dem Panel.** Die Kachel
+   benutzt genau die Bausteine des Blockkachelwerts (0.62.0/0.62.1):
+   `.famval/.state/.fam/.bigval/.tol/.bstrip/.bbar/.brange/.bmark/.bticks`,
+   `.formel/.fcap/.rsatz/.rchips`. Neu nur `.fgrp`, `ul.rides`, `.setz`, `.bigval .side`.
+3. **Sieben Felder folgen dem Zeiger, über EINE Mechanik.** `_fillLead` bekam eine
+   `html`-Karte (Selektor → Funktion); die Kachel meldet
+   `[data-v2="neben|tol|strip|satz|formel"]` an, Dauer und Zahl laufen wie bisher über
+   `.ldl`/`.ldv`. Eine Gruppe ohne `html` rührt nachweislich nichts an — dieselbe Regel wie
+   bei `lead` selbst.
+4. **Die Kette reicht bis 8 Stunden** (`PLAN_HORIZON_HOURS`, eine SETZUNG: längste Fahrt im
+   Zielprofil, keine Quelle). Bis zum Ende des belegten Bereichs unverändert; darüber
+   **zwei Reihen, beide in `fatigue_v2.chain` gerechnet**: `watts` schreibt den eigenen
+   gemessenen Schritt fort, `form_watts` legt die Gallo-Form über
+   `fatigue.literature_factor` **an Stunde 1** an (nicht an Dauer null — dort ist nie
+   gefahren worden, dieselbe Entscheidung wie 0.58.1). Das Panel rechnet keine von beiden
+   nach.
+5. **Die Schätzung geht nie als Messung durch:** Zustandszeile `geschätzt, keine Messung ·
+   Fortschreibung aus deinen Fahrten · 0 Fahrten` **an der Stelle** der Toleranzzeile, kein
+   Band, kein Bullet-Streifen, kein alpha, `n = 0`, im Rechenweg als gerechnet ausgewiesen.
+   Im Bild: durchgezogen nur über den gemessenen Bereich, die Fortschreibung gestrichelt.
+6. **Der Randfall ist entschieden und beschriftet.** Die GROSSE Zahl ist **immer** die
+   Fortschreibung aus den eigenen Daten — sie ist die Antwort auf „was sagen meine Fahrten".
+   Die Studienform steht klein daneben. Was kippt, ist der **Satz**: welche der beiden die
+   vorsichtige ist, entscheidet die Payload über `lower` (`"form"` oder `"chain"`), nicht der
+   Text. Heute fällt Johannes flacher als die Studie → `flat` → „fang eher an der kleineren
+   an". Wird sein Abfall steiler, steht `steep` da: „sie ist damit schon die vorsichtige
+   Zahl; die Studienform daneben ist die Gegenrechnung, kein Ziel."
+
+### DIE ZAHLEN, mit Schalter AN (Anker 156,6 W · Schritt 2,39 W je Stunde)
+
+| h | Fortschreibung | Studienform | Δ | Spanne | n | Zustand |
+|---|---|---|---|---|---|---|
+| 1 | 156,6 | 156,6 | 0,0 | ± 5,1 | 18 | gemessen |
+| 2 | 154,2 | 152,1 | 2,1 | ± 5,0 | 13 | gemessen |
+| 3 | 151,8 | 145,8 | 6,0 | ± 8,0 | 4 | gemessen |
+| 4 | 149,4 | 137,5 | 11,9 | — | 3 | gemessen, **ohne Band** |
+| 5 | 147,0 | 127,4 | 19,6 | — | 0 | geschätzt |
+| 6 | 144,7 | 115,4 | 29,3 | — | 0 | geschätzt |
+| 7 | 142,3 | 101,6 | 40,7 | — | 0 | geschätzt |
+| 8 | 139,9 | 85,8 | 54,1 | — | 0 | geschätzt |
+
+Mit Schalter AUS: Kopfzahl **153 W**, Leitzahlen 1 h 152,5 · 2 h 142,4 · 3 h 138,8 W —
+Zeichen für Zeichen die Kachel von 0.62.2.
+
+**DER BEFUND AUS DIESER TABELLE, und er ist die nächste Frage:** die Gallo-Form ist
+quadratisch und läuft davon. Bei 8 h sagt sie **85,8 W** gegen 139,9 W aus der eigenen
+Fortschreibung — **54 W Abstand**. Eine der beiden ist deutlich falsch, und am Bestand ist
+nicht entscheidbar welche: Johannes' Schritt steht auf 14 Fahrten von *höchstens vier*
+Stunden, die Studienform auf einer Arbeit mit anderem Kollektiv. **Die Spanne 0,92 bis 7,70 W
+je Stunde (die drei Brücken) deckt beide ab** — bei 7,70 W je Stunde läge die Fortschreibung
+bei 8 h auf 102 W, mitten zwischen den beiden. Das heißt: der Abstand ist kein Widerspruch
+zwischen Messung und Literatur, sondern **die Umrechnung alpha → Watt, die niemand kennt**.
+Zu klären mit einer Fahrt, die zwei verschiedene Lasten lange hält — das steht schon als
+Setzung im Modul.
+
+### Prüfstand, was dazugekommen ist
+
+- `test_fatigue_v2.py` 33 → **50**: die Kette bis zum Horizont, beide Reihen, die Schätzung
+  ohne Band/Belegung/alpha (mit Trefferzusicherung, dass die gemessenen Stunden sehr wohl
+  Bänder tragen), der Randfall `lower` bei steilerem Schritt, das Nachwachsen auf 6 h mit
+  Gegenprobe.
+- `test_panel_views.js` 1485 → **1546**: Reihenfolge innerhalb der Karte, sechs Setzungen
+  wörtlich und gezählt, die sechs bzw. sieben Zeigerfelder einzeln benannt, die **Formelzeile
+  wird nachgerechnet statt abgesucht** (Operanden geparst, ausgewertet, gegen ihr eigenes
+  Ergebnis UND gegen die große Zahl gehalten), Toleranzzeile verschwindet ganz + Gegenprobe,
+  Schätzung mit Zustandszeile und Studienform daneben + Gegenprobe an einer gemessenen
+  Stunde, Randfall mit gekippter Reihenfolge, Nachwachsen am durchgezogenen Zug + Gegenprobe,
+  Leerfall.
+- `test_panel_fixes.js` 777 → **807**: Reiter-Zuordnung und der Zahlen-Wächter über
+  `rFatigueV2`. Verboten sind **156,6 · 2,39 · 5,1 · 0,92/7,70 · jedes alpha 1,xx · 0,080 ·
+  ± 5 W · 120 s**, jedes mit Gegenprobe an einem eingebauten Literal.
+
+**Mutation über Dateikopie: 16 von 16 gefangen** — Weiche tot · Toleranzzeile bleibt ohne
+Band · Anker fest im Template · eine Setzung fällt weg · `html`-Karte tot · falscher Schritt
+in der Formel · Reihenfolge kippt · Trendgrenze fest · **Schätzwert bekommt eine
+Toleranzzeile** · Studienform daneben fällt weg · Satz kippt nicht mit `lower` ·
+durchgezogener Zug läuft über die Schätzung · kein Horizont · Schätzung bekommt ein Band ·
+Studienform an Dauer null · `lower` fest auf `form`.
+
+**M8 war in der ersten Runde durchgerutscht** und ist der Merkposten: kleine Zahlen wie die
+Trendgrenze 2 fallen keinem Zahlen-Wächter auf, weil die 2 überall vorkommt. Die Abhilfe ist
+die REAKTIVE Probe — zweite Payload, andere Grenze, alte Zahl muss verschwinden. Dieselbe
+Klasse wie 0.62.1. **Für jede neue Kachelzahl mitmachen.**
+
+### Eine bewusste Abweichung von der Vorschau
+
+Die Vorschau lässt den Zeiger auf einem feinen Literaturraster gleiten. Die Kachel rastet auf
+den **vollen Stunden der Kette** ein: das Raster ist `v2.plan`, weil die Antwort „welche
+Leistung über eine Fahrt von X Stunden" genau dort existiert und nirgends dazwischen. Wer das
+ändern will, ändert `fatigue_v2.chain`, nicht das Panel.
+
+### OFFEN, als Auftrag
+
+0. **Die 54-Watt-Frage bei 8 h** (oben). Erste Zahl, die nachzurechnen ist.
+1. `f.literature` wird von `rFatigueV2` **nicht mehr gelesen** — die Studienform kommt aus
+   `plan[].form_watts`. Die alte Kachel liest sie weiter. Solange der Schalter aus ist, ist
+   das richtig; wird v2 zum Normalfall, kann `literature` aus der Payload fallen.
+2. Die fünf Beschriftungsfelder, die ich der Rechenschicht hinzugefügt habe (`state_label`,
+   `band_share_words`, `min_hours_for_trend`, `load_band_w`, `watt_window_s`) sind in
+   `test_fatigue_v2.py` **noch nicht einzeln geprüft** — sie hängen nur an den Panel-Tests.
+3. **Der GitHub-Token liegt weiterhin im Klartext in `GIT_Intervals.txt`. Widerrufen.** Der
+   Klon lief auch in dieser Runde ohne ihn; gebraucht wird er nur für den Push.
+
+---
+
 ## AKTUELL — Rampen-Lesart ENTSCHIEDEN, Rechenwege belegt (18.09.2026, abends). Zuerst lesen.
 
 **Kein Code, keine Version, kein Release.** Reiner Doku-Commit auf `main`; der Stand bleibt

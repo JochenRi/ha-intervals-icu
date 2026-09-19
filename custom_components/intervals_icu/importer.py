@@ -12,6 +12,7 @@ from datetime import date, datetime, timedelta
 from typing import Any, Callable
 
 from . import derive
+from . import fatigue_v2
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -268,8 +269,14 @@ async def async_import_dfa(
             # sie werden gleich danach weggeworfen und sind spaeter nicht mehr
             # zu haben. Genau diese Luecke hat Paket L bis 0.44.0 blockiert:
             # das Archiv trug ein Fenstermittel je Fahrt und keinen Verlauf.
+            # DIE WATTACHSE haengt am Rechenschalter (Ermuedungsrechnung v2):
+            # aus = sekundengenau wie bisher, an = ueber dasselbe 120-s-Fenster
+            # gemittelt wie alpha (Andriolo 2024, Abschnitt 2.3). Der Schalter
+            # steht VOR dem Versionszaehler - ausgeschaltet aendert sich hier
+            # kein Wert, eingeschaltet wird der Bestand neu gemessen.
             summary["hours"] = derive.dfa_hours(
-                by_name.get("dfa_a1"), by_name.get("watts"), by_name.get("heartrate")
+                by_name.get("dfa_a1"), by_name.get("watts"), by_name.get("heartrate"),
+                watt_window_s=fatigue_v2.watt_window(data),
             )
             # Die Bloecke brauchen die Abschnittsgrenzen des Athleten, und die
             # stehen NICHT in den Stroemen. Zweiter Abruf, nur hier - Laps

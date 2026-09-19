@@ -286,6 +286,78 @@ function fatigue(over) {
       { hour: 3, t: 2.5, bpm: 172.7 }, { hour: 4, t: 3.5, bpm: 177.8 },
     ],
     progress: { done: 58, pending: 0, total: 58, batch: 25, importing: false },
+    // Der v2-Block reist IMMER mit (websocket.py), aber ab Werk ausgeschaltet:
+    // so prueft dieselbe Fixture, dass die alte Kachel davon unberuehrt bleibt.
+    v2: fatigueV2Block({ on: false }),
+  }, over || {});
+}
+
+/* Die Ermuedungsrechnung v2, in der Form, die `fatigue_v2.curve` liefert.
+ * Die Kette ist NACHRECHENBAR gebaut - 156,6 - (h-1) * 2,39 - damit die
+ * Formelzeile der Kachel gegen die Zahl darueber gehalten werden kann; und
+ * Stunde 4 haengt an EINER Fahrt und traegt deshalb KEIN Band: das ist der
+ * Fall, in dem die Toleranzzeile ganz verschwinden muss. */
+function fatigueV2Block(over) {
+  const m = (hours, watts, form_watts, alpha, n, band) => ({
+    hours, watts, form_watts, alpha, n, band, measured: true, lower: null });
+  // Jenseits des Bestands: KEIN Band, KEINE Belegung, KEIN alpha - und `lower`
+  // sagt, welche der beiden Zahlen die tiefere ist.
+  const g = (hours, watts, form_watts) => ({
+    hours, watts, form_watts, alpha: null, n: 0, band: null, measured: false,
+    lower: form_watts <= watts ? "form" : "chain" });
+  const plan = [
+    m(1, 156.6, 156.6, 1.30, 18, { half: 5.1, from_spread: 4.8, from_bridge: 1.7, n: 18 }),
+    m(2, 154.2, 152.1, 1.27, 13, { half: 7.4, from_spread: 6.2, from_bridge: 4.1, n: 13 }),
+    m(3, 151.8, 145.8, 1.20, 4, { half: 11.9, from_spread: 9.1, from_bridge: 7.7, n: 4 }),
+    // Stunde 4 haengt an EINER Fahrt: gemessen, aber ohne Band.
+    m(4, 149.4, 137.5, 1.05, 1, null),
+    g(5, 147.0, 127.4), g(6, 144.7, 115.4), g(7, 142.3, 101.6), g(8, 139.9, 85.8),
+  ];
+  return Object.assign({
+    on: true,
+    switch_note: "SCHALTERSATZ AUS DEM MODUL.",
+    anchor_watts: 156.6,
+    decline: { alpha_per_hour: -0.080, n: 14, falling: 13, steps: [-0.08, -0.07] },
+    step_watts: 2.39,
+    bridges: { global: 0.92, flat: 2.39, local: 7.70 },
+    plan,
+    covered_until_hours: 4,
+    horizon_hours: 8,
+    estimate_words: {
+      state: "gesch\u00e4tzt, keine Messung",
+      lead: "Fortschreibung aus deinen Fahrten",
+      form: "Studienform, an Stunde 1 verankert",
+      rides: "0 Fahrten",
+      flat: "FLACHSATZ AUS DEM MODUL.",
+      steep: "STEILSATZ AUS DEM MODUL.",
+      first_ride: "ERSTFAHRTSATZ AUS DEM MODUL.",
+    },
+    groups: {
+      carries: [
+        { date: "2026-08-08", activity_id: "v1", hours: 4, alpha_from: 1.30, alpha_to: 0.79 },
+        { date: "2026-09-04", activity_id: "v2", hours: 3, alpha_from: 1.42, alpha_to: 1.30 },
+        { date: "2026-08-12", activity_id: "v3", hours: 3, alpha_from: 1.36, alpha_to: 1.20 },
+      ],
+      supports: [
+        { date: "2026-08-20", activity_id: "v4", hours: 1, alpha_from: 1.41, alpha_to: 1.41 },
+        { date: "2026-09-02", activity_id: "v5", hours: 1, alpha_from: 1.49, alpha_to: 1.49 },
+      ],
+      covered_until_hours: 4,
+    },
+    rides_used: 5,
+    state_label: "mit neuer Rechnung",
+    band_share_words: "8 von 10 Fahrten",
+    min_hours_for_trend: 2,
+    load_band_w: 5.0,
+    watt_window_s: 120,
+    settings: [
+      "der Schnitt nach Fahrtstunden (keine Quelle)",
+      "das Lastfenster \u00b1 5 W",
+      "ein gerader Abfall ab Stunde 2 (bis dahin an 13 Fahrten belegt)",
+      "die Umrechnung alpha \u2192 Watt (je nach Verfahren 0,9 bis 7,7 W je Stunde)",
+      "die Spanne quadratisch aus Streuung und Umrechnung zusammengelegt",
+      "die Studienform hinter dem belegten Bereich, verankert an Stunde 1",
+    ],
   }, over || {});
 }
 
@@ -1198,4 +1270,4 @@ function dayContext(extra) {
   };
 }
 
-module.exports = { STAGE_WORDS, stageOf, TODAY, days, load, readiness, activities, streams, thresholds, fatigue, blocks, calendar, pmc, laps, lapsWithBounds, steadyStream, night, context, goal, today, coach, signals, workouts, dayContext };
+module.exports = { STAGE_WORDS, stageOf, TODAY, days, load, readiness, activities, streams, thresholds, fatigue, fatigueV2Block, blocks, calendar, pmc, laps, lapsWithBounds, steadyStream, night, context, goal, today, coach, signals, workouts, dayContext };

@@ -2684,6 +2684,280 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
      "quellen: die Grundlage sagt nicht, worauf die Umstellung ruht");
 }
 
+/* ── 0.63.0: die Kachel der Ermuedungsrechnung v2 ───────────────────────────
+   Vier Fragen, und sie haengen zusammen: steht die Kachel in der Reihenfolge
+   da, die verabredet ist · folgen dem Zeiger WIRKLICH sechs Felder (die
+   Formelzeile ist das, was eine falsche Zahl auffliegen laesst) · verschwindet
+   die Toleranzzeile GANZ, wo es keine Spanne gibt · und ist die Kachel mit
+   ausgeschaltetem Rechenschalter bitgenau die von 0.62.2. */
+{
+  const q = new M.Panel();
+  q._nowIso = F.TODAY;
+  const an = F.fatigue({ v2: F.fatigueV2Block({ on: true }) });
+  const html = String(q.rFatigueV2(an, an.v2));
+  clean(html, "ermuedung_v2");
+
+  // ── DER SCHALTER AUS: bitgenau wie heute. Die Weiche steht hinter den
+  //    Leerfaellen, also muss dieselbe Payload mit `on: false` dasselbe
+  //    liefern wie eine Payload, die gar kein v2 traegt.
+  const q0 = new M.Panel(); q0._nowIso = F.TODAY;
+  const q1 = new M.Panel(); q1._nowIso = F.TODAY;
+  const mitAus = String(q0.rFatigue(F.fatigue({ v2: F.fatigueV2Block({ on: false }) })));
+  const ohneV2 = String(q1.rFatigue(F.fatigue({ v2: undefined })));
+  ok(mitAus === ohneV2,
+     "v2 aus: die Kachel ist nicht bitgenau die von 0.62.2 (der v2-Block wirkt trotz AUS)");
+  // Trefferzusicherung: die AN-Stellung unterscheidet sich wirklich - sonst
+  // prueft der Vergleich oben nur, dass zweimal dasselbe herauskommt.
+  const mitAn = String(new M.Panel().rFatigue(an));
+  ok(mitAn !== mitAus,
+     "v2 Fixture-Beweis: an und aus liefern dieselbe Kachel - der Schalter greift nicht");
+  ok(/mit neuer Rechnung/.test(mitAn) && !/mit neuer Rechnung/.test(mitAus),
+     "v2: das Zustandsschildchen haengt nicht am Schalter");
+
+  // ── AUFBAU UND REIHENFOLGE, INNERHALB der Karte gelesen: Schildchen,
+  //    Dauerzeile, grosse Zahl, Toleranzzeile, Streifen, Satz, Spannen-
+  //    Aufklapper, Verlauf, Rechenweg zuletzt.
+  const ORDER = ['class="state"', 'class="ldl"', 'class="tn ldv"', 'data-v2="tol"',
+                 'data-v2="strip"', 'data-v2="satz"', "Warum die Spanne so breit ist",
+                 'class="trend"', "mehr anzeigen", 'data-v2="formel"'];
+  let pos = -1, gut = true, wo = "";
+  for (const stueck of ORDER) {
+    const at = html.indexOf(stueck);
+    if (at < 0 || at < pos) { gut = false; wo = stueck; break; }
+    pos = at;
+  }
+  ok(gut, `v2 Reihenfolge: "${wo}" steht nicht an seinem Platz`);
+
+  // ── DIE SECHS SETZUNGEN, WOERTLICH aus v2.settings und GEZAEHLT. Eine
+  //    Kachel, die fuenf davon zeigt, verschweigt eine Entscheidung.
+  const setz = (/<p class="setz">[\s\S]*?<\/p>/.exec(html) || [""])[0];
+  let getroffen = 0;
+  for (const satz of an.v2.settings) if (setz.includes(satz)) getroffen++;
+  ok(getroffen === 6,
+     `v2 Setzungen: ${getroffen} von ${an.v2.settings.length} stehen wörtlich auf der Kachel`);
+  ok(an.v2.settings.length === 6,
+     `v2 Fixture-Beweis: die Payload führt ${an.v2.settings.length} Setzungen statt sechs`);
+
+  // ── DIE ZAHLEN KOMMEN AUS DER PAYLOAD, reaktiv geprueft: eine ANDERE
+  //    Payload muss durchschlagen. Ein fester Wert im Template ueberlebt den
+  //    Zahlen-Waechter, wenn er dort gar nicht als Zahl aussieht - das ist die
+  //    Lehre aus 0.62.1.
+  const anders = F.fatigueV2Block({
+    anchor_watts: 201.4, step_watts: 3.55,
+    plan: [{ hours: 1, watts: 201.4, alpha: 0.91, n: 7,
+             band: { half: 2.2, from_spread: 2.0, from_bridge: 0.9, n: 7 } }],
+    covered_until_hours: 1 });
+  const zweit = String(new M.Panel().rFatigueV2(F.fatigue({ v2: anders }), anders));
+  ok(/201,4/.test(zweit) && !/156,6/.test(zweit),
+     "v2: der Anker steht fest im Template statt in der Payload");
+  // M8: die Trendgrenze und der belegte Bereich sind kleine Zahlen - ein
+  // Literal "2" im Template faellt keinem Zahlen-Waechter auf, weil die 2
+  // ueberall vorkommt. Also REAKTIV: eine andere Payload muss durchschlagen,
+  // und die alte Zahl muss verschwinden.
+  const dritt = F.fatigueV2Block({ min_hours_for_trend: 3, covered_until_hours: 2 });
+  const gedreht = String(new M.Panel().rFatigueV2(F.fatigue({ v2: dritt }), dritt));
+  ok(/mindestens 3 Stunden/.test(gedreht) && !/mindestens 2 Stunden/.test(gedreht),
+     "v2: die Trendgrenze steht fest im Template statt in der Payload");
+  ok(/ab Stunde 3\b/.test(gedreht) && !/ab Stunde 5\b/.test(gedreht),
+     "v2: die Grenze des belegten Bereichs steht fest im Template statt in der Payload");
+  ok(dritt.min_hours_for_trend !== an.v2.min_hours_for_trend
+     && dritt.covered_until_hours !== an.v2.covered_until_hours,
+     "v2 Fixture-Beweis: die zweite Payload trägt dieselben Grenzen - sie prüft nichts");
+  ok(/3,55/.test(zweit) && !/2,39/.test(zweit),
+     "v2: der Schritt steht fest im Template statt in der Payload");
+
+  // ── DER ZEIGER: sechs Felder folgen mit. Simuliert, nicht gegrept.
+  const felder = {};
+  const mach = (name) => ({ set innerHTML(v) { felder[name] = v; },
+                            get innerHTML() { return felder[name] || ""; },
+                            set textContent(v) { felder[name] = v; },
+                            get textContent() { return felder[name] || ""; },
+                            style: {} });
+  const box = { querySelector: (sel) => {
+    if (/ldl/.test(sel)) return mach("ldl");
+    if (/ldv/.test(sel)) return mach("ldv");
+    if (/ldn/.test(sel)) return null;
+    const m = /data-v2="(\w+)"/.exec(sel);
+    return m ? mach(m[1]) : null;
+  } };
+  let sx = "", sv = "";
+  const strip = { querySelector: (sel) => (/rdox/.test(sel)
+    ? { set textContent(v) { sx = v; }, get textContent() { return sx; } }
+    : { set innerHTML(v) { sv = v; }, get innerHTML() { return sv; } }) };
+  const qz = new M.Panel(); qz._nowIso = F.TODAY;
+  qz.rFatigueV2(an, an.v2);            // meldet die Zeigergruppe an
+  qz.shadowRoot.querySelector = (sel) => (/data-rdo="fatv2"/.test(sel) ? strip
+    : (/data-lead="fatv2"/.test(sel) ? box : null));
+  ok(qz._grp.fatv2 && qz._grp.fatv2.xy === true,
+     "v2 Zeiger: die Kette ist nicht als xy-Gruppe angemeldet");
+  ok(qz._grp.fatv2.pts.length === an.v2.plan.length,
+     `v2 Zeiger: ${qz._grp.fatv2.pts.length} Rasterpunkte gegen ${an.v2.plan.length} in der Payload`);
+
+  // Stunde 1 (Ruhezustand ist dieselbe Stelle) gegen Stunde 3 - SECHS Felder
+  // muessen sich unterscheiden, und zwar einzeln benannt.
+  qz._fillReadout("fatv2", 0);
+  const eins = { ...felder };
+  qz._fillReadout("fatv2", 2);
+  const drei = { ...felder };
+  for (const feld of ["ldl", "ldv", "tol", "strip", "satz", "formel"]) {
+    ok(eins[feld] !== drei[feld] && drei[feld],
+       `v2 Zeiger: "${feld}" ändert sich nicht mit (Stunde 1: ${String(eins[feld]).slice(0, 60)})`);
+  }
+  // DIE FORMELZEILE MUSS DIE ZAHL ERGEBEN, die darüber steht.
+  const p3 = an.v2.plan[2];
+  ok(drei.ldv === M.fmt(p3.watts),
+     `v2 Zeiger: die große Zahl ist ${drei.ldv} statt ${M.fmt(p3.watts)}`);
+  // Nicht "drei Zahlen kommen vor", sondern NACHGERECHNET: die Operanden der
+  // Zeile werden ausgewertet und gegen ihr eigenes Ergebnis UND gegen die
+  // grosse Zahl gehalten. Sonst ueberlebt ein falscher Schritt die Pruefung,
+  // weil das Ergebnis danebensteht statt gerechnet zu werden.
+  const zahl = (t) => parseFloat(String(t).replace(/\./g, "").replace(",", "."));
+  const teile = /=\s*([\d.,]+)\s*W\s*−\s*(\d+)\s*·\s*<b>([\d.,]+)\s*W<\/b>\s*=\s*<b>([\d.,]+)\s*W<\/b>/
+    .exec(drei.formel.replace(/\s+/g, " "));
+  ok(teile != null, `v2 Zeiger: die Formelzeile ist nicht lesbar (${drei.formel})`);
+  if (teile) {
+    const gerechnet = zahl(teile[1]) - Number(teile[2]) * zahl(teile[3]);
+    ok(Math.abs(gerechnet - zahl(teile[4])) < 0.06,
+       `v2 Formel: ${teile[1]} − ${teile[2]} · ${teile[3]} = ${gerechnet.toFixed(2)}, `
+       + `die Zeile behauptet ${teile[4]}`);
+    ok(Math.abs(zahl(teile[4]) - p3.watts) < 0.06,
+       `v2 Formel: die Zeile endet auf ${teile[4]}, über ihr steht ${M.fmt(p3.watts)}`);
+  } else {
+    ok(false, "v2 Formel: ohne lesbare Zeile ist nichts nachgerechnet");
+    ok(false, "v2 Formel: ohne lesbare Zeile ist der Abgleich mit der großen Zahl nicht gelaufen");
+  }
+  // Fixture-Beweis: Anker minus Schritt ergibt die Zahl wirklich - sonst
+  // prüfte die Zeile oben nur, dass drei Zahlen vorkommen.
+  ok(Math.abs((an.v2.anchor_watts - (p3.hours - 1) * an.v2.step_watts) - p3.watts) < 0.05,
+     "v2 Fixture-Beweis: die Kette der Fixture ist nicht nachrechenbar");
+  ok(/geplante Dauer/.test(sx) && /alpha bei eigener Last/.test(sv),
+     `v2 Zeiger: der Ablesestreifen trägt die Kette nicht (${sx} | ${sv.slice(0, 80)})`);
+
+  // ── STUNDE OHNE MESSUNG: die Toleranzzeile verschwindet GANZ. Stunde 4
+  //    haengt an einer einzigen Fahrt und traegt kein Band.
+  const letzte = an.v2.plan.findIndex((r) => r.measured && r.band == null);
+  ok(letzte >= 0 && an.v2.plan[letzte].n === 1,
+     "v2 Fixture-Beweis: die Fixture hat keine GEMESSENE Stunde ohne Band - der Fall wird nicht geprüft");
+  qz._fillReadout("fatv2", letzte);
+  ok(felder.tol === "", `v2 ohne Band: die Toleranzzeile steht noch da ("${felder.tol}")`);
+  ok(felder.strip === "", `v2 ohne Band: der Streifen steht noch da ("${felder.strip}")`);
+  ok(!/±/.test(felder.satz) && /ohne Spanne/.test(felder.satz),
+     `v2 ohne Band: der Satz behauptet eine Spanne (${felder.satz})`);
+  ok(felder.ldv === M.fmt(an.v2.plan[letzte].watts),
+     "v2 ohne Band: die Zahl selbst fehlt - ohne Spanne heißt nicht ohne Wert");
+  // GEGENPROBE: mit Band steht beides wieder da.
+  qz._fillReadout("fatv2", 1);
+  ok(felder.tol !== "" && felder.strip !== "",
+     "v2 Gegenprobe: Toleranzzeile und Streifen bleiben auch mit Band leer");
+
+  // ── DIE GRUPPEN: Zahl aus der Liste, Grenze aus der Payload.
+  ok(html.includes(`mindestens ${M.fmt(an.v2.min_hours_for_trend)} Stunden`),
+     "v2: die Trendgrenze steht nicht aus der Payload an der Gruppe");
+  ok(html.includes(`ab Stunde ${M.fmt(an.v2.covered_until_hours + 1)}`),
+     "v2: die Grenze des belegten Bereichs kommt nicht aus der Payload");
+  ok(new RegExp(`${an.v2.groups.carries.length} Fahrten tragen den`).test(html.replace(/\s+/g, " ")),
+     "v2: die Zahl der tragenden Fahrten stammt nicht aus der Liste");
+
+  // ── DIE SCHAETZUNG JENSEITS DES BESTANDS (5-8 h). Sie darf NIE als Messung
+  //    durchgehen: eigene Zustandszeile statt Toleranzzeile, kein Band, kein
+  //    Streifen, und im Rechenweg als gerechnet mit "0 Fahrten" ausgewiesen.
+  const iEst = an.v2.plan.findIndex((r) => !r.measured);
+  ok(iEst > 0, "v2 Fixture-Beweis: die Fixture trägt keine geschätzte Stunde");
+  ok(an.v2.plan[an.v2.plan.length - 1].hours === an.v2.horizon_hours,
+     `v2 Fixture-Beweis: die Kette endet bei ${an.v2.plan[an.v2.plan.length - 1].hours} `
+     + `statt bei ${an.v2.horizon_hours} Stunden`);
+  qz._fillReadout("fatv2", iEst);
+  const est = { ...felder };
+  ok(est.tol.includes(an.v2.estimate_words.state),
+     `v2 Schätzung: keine Zustandszeile an der Stelle der Toleranzzeile (${est.tol})`);
+  ok(!/±/.test(est.tol),
+     `v2 Schätzung: die Zustandszeile trägt eine Toleranz (${est.tol})`);
+  ok(est.tol.includes(an.v2.estimate_words.rides),
+     "v2 Schätzung: die Zeile sagt nicht, auf wie vielen Fahrten sie steht");
+  ok(est.strip === "", "v2 Schätzung: ein Bullet-Streifen zeichnet ein Band, das es nicht gibt");
+  // GROSSE Zahl = Fortschreibung, KLEINE daneben = Studienform. Beide aus der
+  // Payload, keine im Panel gerechnet.
+  ok(est.ldv === M.fmt(an.v2.plan[iEst].watts),
+     `v2 Schätzung: die große Zahl ist ${est.ldv} statt ${M.fmt(an.v2.plan[iEst].watts)}`);
+  ok(est.neben.includes(M.fmt(an.v2.plan[iEst].form_watts))
+     && est.neben.includes(an.v2.estimate_words.form),
+     `v2 Schätzung: die Studienform steht nicht klein daneben (${est.neben})`);
+  ok(an.v2.plan[iEst].watts !== an.v2.plan[iEst].form_watts,
+     "v2 Fixture-Beweis: beide Reihen tragen dieselbe Zahl - die Verwechslung wäre unsichtbar");
+  ok(est.satz.includes(an.v2.estimate_words.flat)
+     && est.satz.includes(an.v2.estimate_words.first_ride),
+     `v2 Schätzung: der Infotext kommt nicht aus dem Modul (${est.satz})`);
+  ok(est.formel.includes(an.v2.estimate_words.state)
+     && est.formel.includes(M.fmt(an.v2.plan[iEst].form_watts)),
+     `v2 Schätzung: der Rechenweg weist sie nicht als gerechnet aus (${est.formel})`);
+  // GEGENPROBE: bei einer GEMESSENEN Stunde steht nichts davon da.
+  qz._fillReadout("fatv2", 1);
+  ok(felder.neben === "" && !felder.tol.includes(an.v2.estimate_words.state),
+     "v2 Gegenprobe: die Schätzungs-Beschriftung erscheint auch an einer gemessenen Stunde");
+
+  // ── DER RANDFALL: faellt die Fortschreibung UNTER die Studienform, kippt
+  //    der Satz - und zwar an der Zahl (`lower`), nicht am Text. Die grosse
+  //    Zahl bleibt die eigene Fortschreibung; was sich aendert, ist welche von
+  //    beiden als die vorsichtige benannt wird.
+  const steilPlan = an.v2.plan.map((r) => (r.measured ? r
+    : { ...r, watts: r.form_watts - 10, lower: "chain" }));
+  const steil = F.fatigueV2Block({ plan: steilPlan });
+  const qs = new M.Panel(); qs._nowIso = F.TODAY;
+  qs.rFatigueV2(F.fatigue({ v2: steil }), steil);
+  qs.shadowRoot.querySelector = (sel) => (/data-rdo="fatv2"/.test(sel) ? strip
+    : (/data-lead="fatv2"/.test(sel) ? box : null));
+  qs._fillReadout("fatv2", iEst);
+  ok(felder.satz.includes(steil.estimate_words.steep)
+     && !felder.satz.includes(steil.estimate_words.flat),
+     `v2 Randfall: der Satz kippt nicht mit der Reihenfolge (${felder.satz})`);
+  ok(felder.ldv === M.fmt(steilPlan[iEst].watts),
+     "v2 Randfall: die große Zahl ist nicht mehr die eigene Fortschreibung");
+  ok(steilPlan[iEst].watts < steilPlan[iEst].form_watts,
+     "v2 Fixture-Beweis: im Randfall liegt die Fortschreibung nicht unter der Studienform");
+
+  // ── DAS NACHWACHSEN: eine 6-Stunden-Fahrt schiebt die Grenze auf 6 h, die
+  //    Schaetzung auf 7-8 h, und der Schritt wird NEU gerechnet.
+  const gewachsen = F.fatigueV2Block({
+    step_watts: 3.1, covered_until_hours: 6,
+    plan: [an.v2.plan[0], an.v2.plan[1], an.v2.plan[2], an.v2.plan[3],
+           { hours: 5, watts: 144.2, form_watts: 127.4, alpha: 0.98, n: 2, measured: true,
+             lower: null, band: { half: 19.4, from_spread: 14.1, from_bridge: 13.3, n: 2 } },
+           { hours: 6, watts: 141.1, form_watts: 115.4, alpha: 0.91, n: 2, measured: true,
+             lower: null, band: { half: 22.8, from_spread: 15.9, from_bridge: 16.3, n: 2 } },
+           { hours: 7, watts: 138.0, form_watts: 101.6, alpha: null, n: 0, measured: false,
+             lower: "form", band: null },
+           { hours: 8, watts: 134.9, form_watts: 85.8, alpha: null, n: 0, measured: false,
+             lower: "form", band: null }] });
+  const gHtml = String(new M.Panel().rFatigueV2(F.fatigue({ v2: gewachsen }), gewachsen));
+  ok(gHtml.includes(`ab Stunde ${M.fmt(gewachsen.covered_until_hours + 1)}`),
+     "v2 Nachwachsen: die Grenze bleibt bei vier Stunden stehen");
+  ok(!gHtml.includes(`ab Stunde ${M.fmt(an.v2.covered_until_hours + 1)}`),
+     "v2 Nachwachsen: die alte Grenze steht noch da");
+  // Der Schritt ist NEU gerechnet - er kommt aus der Payload, nicht aus dem Panel.
+  ok(gHtml.includes(M.fmt(gewachsen.step_watts, 2)) && !gHtml.includes(M.fmt(an.v2.step_watts, 2)),
+     "v2 Nachwachsen: der Schritt je Stunde ist nicht neu gerechnet");
+  // Und der durchgezogene Zug waechst mit: er haengt an `measured`, nicht an
+  // einer Zahl im Frontend.
+  const zug = (h) => {
+    const p = /<path d="([^"]*)"[^>]*stroke-width="2\.6"/.exec(h);
+    return p ? (p[1].match(/[ML]/g) || []).length : 0;
+  };
+  ok(zug(gHtml) === gewachsen.plan.filter((r) => r.measured).length,
+     `v2 Nachwachsen: der durchgezogene Zug hat ${zug(gHtml)} Punkte statt `
+     + `${gewachsen.plan.filter((r) => r.measured).length}`);
+  // GEGENPROBE: ohne die lange Fahrt bleibt alles wie heute.
+  ok(zug(html) === an.v2.plan.filter((r) => r.measured).length,
+     "v2 Nachwachsen Gegenprobe: der Zug der heutigen Kachel stimmt nicht mit ihren Messungen");
+  ok(zug(gHtml) > zug(html),
+     "v2 Nachwachsen Fixture-Beweis: der Zug ist nicht gewachsen - der Fall wird nicht geprüft");
+
+  // ── DER LEERFALL DER NEUEN RECHNUNG: Schalter an, aber keine Ablesestelle.
+  const leer = F.fatigueV2Block({ on: true, plan: [] });
+  const leerHtml = String(new M.Panel().rFatigueV2(F.fatigue({ v2: leer }), leer));
+  ok(!/data-v2="tol"/.test(leerHtml) && /Ablesestelle|gehaltenen Last/.test(leerHtml),
+     "v2 leer: die Kachel steht leer da, statt zu sagen, was fehlt");
+}
+
 
 report("test_panel_views");
 })();

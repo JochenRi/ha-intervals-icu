@@ -14,7 +14,7 @@ from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.util import dt as dt_util
 
-from . import analytics, blocks as blocks_lib, coach as coach_module, day_context as day_context_lib, derive, fatigue, importer, plan as plan_lib, ramp, ramp_tests as ramp_lib, reconcile as reconcile_lib, section_marks as marks_lib, steering as steering_lib, workouts as workout_lib
+from . import analytics, blocks as blocks_lib, coach as coach_module, day_context as day_context_lib, derive, fatigue, fatigue_v2, importer, plan as plan_lib, ramp, ramp_tests as ramp_lib, reconcile as reconcile_lib, section_marks as marks_lib, steering as steering_lib, workouts as workout_lib
 from .api import IntervalsError
 from .const import (
     BLOCK_CORRIDORS,
@@ -122,6 +122,7 @@ def async_register(hass: HomeAssistant) -> None:
         websocket_confirm_section_marks,
         websocket_measure_section_marks,
         websocket_set_curve_source,
+        websocket_set_fatigue_source,
         websocket_set_block_source,
         websocket_set_steering_source,
         websocket_reconcile,
@@ -392,6 +393,11 @@ def websocket_fatigue(hass, connection, msg) -> None:
     anchors = coach_module.anchors(data)
     result = fatigue.curve(data, aerobic_hr=anchors.get("aerobic_hr"),
                            aerobic_power=anchors.get("aerobic_power"))
+    # DIE ERMUEDUNGSRECHNUNG v2 reist als eigener Block mit, nicht als Ersatz.
+    # So sieht die Kachel in EINEM Abruf beide Stellungen. Steht der Schalter
+    # aus, ist `v2["on"]` false und die Kachel zeigt unveraendert das heutige
+    # Verhalten - der Block kostet dann nur seine Zeilen.
+    result["v2"] = fatigue_v2.curve(data)
     # Nach einem Algorithmus-Bump ist das Archiv leer, bis die Stroeme neu
     # geholt sind - in Baendern von DFA_BATCH_SIZE je Sync. Der Fortschritt
     # reist mit, damit die Kachel "rechnet noch, x von y" sagen kann statt
@@ -538,6 +544,60 @@ async def websocket_set_curve_source(hass, connection, msg) -> None:
         box[fatigue.CURVE_SWITCH] = want
         await coordinator.archive.async_save_now()
     connection.send_result(msg["id"], {"from_marks": fatigue.curve_from_marks(data)})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "intervals_icu/set_fatigue_source",
+        vol.Required("enabled"): bool,
+        vol.Optional("athlete_id"): str,
+    }
+)
+@websocket_api.async_response
+async def websocket_set_fatigue_source(hass, connection, msg) -> None:
+    """Den RECHENSCHALTER umlegen - und zurueck.
+
+    ZWEI FRAGEN, ZWEI SCHALTER. Der Kurvenschalter waehlt die FAHRTEN ("meine
+    Markierungen"), dieser waehlt die RECHNUNG: Watt ueber dasselbe
+    120-s-Fenster wie alpha, Verlauf an der eigenen gehaltenen Last. Sie
+    haengen nicht aneinander und duerfen es auch nicht - sonst liesse sich die
+    eine Frage nicht mehr ohne die andere beantworten.
+
+    ER KOSTET ETWAS, und das steht VOR dem Umlegen da: an bedeutet 58 Fahrten
+    neu holen (in Schueben zu DFA_BATCH_SIZE) und 28 markierte Einheiten neu
+    messen. Aus bedeutet: der Bestand wird nicht angefasst. Gespeichert - und
+    geleert - wird deshalb nur im AENDERUNGSFALL (J7, zweite Auflage): ein
+    Klick auf die Stellung, die schon steht, loest keine Neumessung aus.
+
+    Das Leeren steht HIER und nicht im Versionszaehler. Der Zaehler gilt fuer
+    alle und fuer immer; dieser Schalter gilt fuer diesen Athleten und nur,
+    solange er umgelegt ist.
+    """
+    coordinator = _pick(hass, msg.get("athlete_id"))
+    if coordinator is None:
+        connection.send_error(msg["id"], "not_found", "no Intervals.icu athlete loaded")
+        return
+    data = coordinator.archive.data
+    box = data.get("settings")
+    if not isinstance(box, dict):
+        box = {}
+        data["settings"] = box
+    want = bool(msg["enabled"])
+    changed = bool(box.get(fatigue_v2.V2_SWITCH)) != want
+    stats_before = importer.archive_stats(data)
+    if changed:
+        box[fatigue_v2.V2_SWITCH] = want
+        data["dfa"] = {}
+        await coordinator.archive.async_save_now()
+    connection.send_result(msg["id"], {
+        "enabled": fatigue_v2.v2_on(data),
+        "changed": changed,
+        "note": fatigue_v2.SWITCH_NOTE,
+        "remeasure": {
+            "rides": stats_before["dfa_done"] + stats_before["dfa_pending"],
+            "batch": DFA_BATCH_SIZE,
+        },
+    })
 
 
 @websocket_api.websocket_command(

@@ -250,9 +250,85 @@ check("Kein Bump: die Zeilenform des Importwegs, Feld fuer Feld",
       sorted(["hour", "points", "dropped", "excluded", "dropped_share",
               "dynamic_share", "bins", "p075", "alpha_min", "alpha_max",
               "p050", "low_points", "low_dropped", "low_dropped_share",
-              "hr075", "slope", "r2"]))
+              "hr075", "slope", "r2",
+              # ADDITIV (Ermuedungsrechnung v2): die Ablesestelle an der
+              # eigenen gehaltenen Last. Sie steht IMMER da - auch mit
+              # ausgeschaltetem Paarungsfenster, weil sie nichts an den
+              # bestehenden Werten aendert und der Schalter vor dem
+              # Versionszaehler steht.
+              "load_w", "load_n", "load_alpha"]))
 check("Kein Bump: excluded ist ohne Maske null und steht trotzdem da",
       (_h(ganz, 0).get("excluded"), _h(ganz, 1).get("excluded")), (0, 0))
+
+
+# ---------------------------------------------------------------------------
+# ERMUEDUNGSRECHNUNG v2: die 120-s-Paarung und die Ablesestelle.
+# Der Schalter steht VOR dem Versionszaehler: `watt_window_s=0` (Vorgabe) muss
+# Wert fuer Wert dasselbe liefern wie vor dem Einbau.
+_v2_aus = derive.dfa_hours(RIDE_A, RIDE_W)
+_v2_an = derive.dfa_hours(RIDE_A, RIDE_W, watt_window_s=derive.DFA_WATT_WINDOW_S)
+check("v2: Schalter aus laesst jede bestehende Zahl unveraendert",
+      [{k: v for k, v in row.items() if k not in ("load_w", "load_n", "load_alpha")}
+       for row in _v2_aus],
+      [{k: v for k, v in row.items() if k not in ("load_w", "load_n", "load_alpha")}
+       for row in ganz])
+check("v2: die Fensterbreite steht auf Andriolos 120 s",
+      derive.DFA_WATT_WINDOW_S, 120)
+check("v2: das Lastfenster ist eine gesetzte Groesse und steht bei +/- 5 W",
+      derive.DFA_LOAD_BAND_W, 5.0)
+check("v2: unter 20 Punkten im Lastfenster gibt es keinen Wert",
+      derive.DFA_LOAD_MIN_POINTS, 20)
+# Dass der Schalter wirkt, wird dort geprueft, wo der Mechanismus existiert:
+# an einem Strom MIT Antritt. Auf einem glatten Strom darf er nichts tun - das
+# ist die Gegenprobe und gehoert mitgeprueft, sonst misst der Test nur Rauschen.
+_spitz_a = [1.30 - 0.0012 * i for i in range(600)]
+_spitz_w = [260.0 if 250 <= i < 350 else 120.0 for i in range(600)]
+_sp_aus = derive.dfa_hours(_spitz_a, _spitz_w, hour_secs=600)[0]
+_sp_an = derive.dfa_hours(_spitz_a, _spitz_w, hour_secs=600, watt_window_s=120)[0]
+check("v2: mit Antritt verschiebt die Paarung die Wattachse",
+      _sp_an.get("p075") != _sp_aus.get("p075"), True)
+_glatt_a = [0.70 + 0.002 * i for i in range(600)]
+_glatt_w = [150.0] * 600
+_gl_aus = derive.dfa_hours(_glatt_a, _glatt_w, hour_secs=600)[0]
+_gl_an = derive.dfa_hours(_glatt_a, _glatt_w, hour_secs=600, watt_window_s=120)[0]
+check("v2: GEGENPROBE - ohne Schwankung aendert die Paarung nichts",
+      (_gl_an.get("p075"), _gl_an.get("slope")),
+      (_gl_aus.get("p075"), _gl_aus.get("slope")))
+
+# DAS MITTEL SELBST, an einer Hand voll Zahlen nachgerechnet.
+check("v2: nachlaufendes Mittel ueber drei Stellen",
+      derive.trailing_mean([3, 6, 9, 12], 3), [3.0, 4.5, 6.0, 9.0])
+check("v2: Nullwerte zaehlen nicht in den Mittelwert",
+      derive.trailing_mean([10, 0, 20], 3), [10.0, 10.0, 15.0])
+check("v2: ohne Fenster bleibt die Rohachse stehen",
+      derive.trailing_mean([10, 0, 20], 1), [10.0, 0.0, 20.0])
+check("v2: ein leerer Strom liefert eine leere Achse",
+      derive.trailing_mean([], 3), [])
+
+# DIE VERWERFREGEL BLEIBT AM ROHWERT: eine reine Rollphase darf nicht als
+# gefahren zaehlen, nur weil die Nachbarsekunden getreten haben.
+# Rollphasen MITTEN im Tritt: dort ist der Rohwert 0, das 120-s-Mittel aber
+# positiv. Genau hier trennt sich die Verwerfregel am Rohwert von der am
+# Mittel - eine Rollsekunde darf nicht als gefahren zaehlen, nur weil die
+# Nachbarsekunden getreten haben.
+_roll_a = [0.8] * 600
+_roll_w = [0.0 if i % 3 == 0 else 150.0 for i in range(600)]
+_roll = derive.dfa_hours(_roll_a, _roll_w, hour_secs=600,
+                         watt_window_s=derive.DFA_WATT_WINDOW_S)
+check("v2: Rollphasen zaehlen weiter als verworfen, nicht als gefahren",
+      _roll[0]["dropped"], 200)
+check("v2: und sie stehen nicht in den Messpunkten",
+      _roll[0]["points"], 400)
+
+# RANDFAELLE: kein Strom, ein einziger Punkt, alles ausmaskiert.
+check("v2: ohne alpha-Strom bleibt es bei einer leeren Liste",
+      derive.dfa_hours(None, RIDE_W, watt_window_s=120), [])
+check("v2: eine vollstaendig ausmaskierte Fahrt hat keine Ablesestelle",
+      [row.get("load_alpha") for row in
+       derive.dfa_hours(RIDE_A, RIDE_W, keep=[], watt_window_s=120)], [None, None])
+check("v2: eine einzige Stelle liefert keinen Wert aus dem Lastfenster",
+      derive.dfa_hours([0.9], [150.0], hour_secs=600,
+                       watt_window_s=120)[0]["load_alpha"], None)
 
 
 print()

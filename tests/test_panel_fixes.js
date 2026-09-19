@@ -613,7 +613,7 @@ const acts = F.activities(), thr = F.thresholds();
   // und die Liste der geprüften Kacheln wird gegen den Quelltext gehalten,
   // damit die übernächste nicht wieder durchrutscht (vierte Bauregel, 0.44.0).
   const tiles = (src.match(/\n  r[A-Z]\w*\(/g) || []).map((m) => m.trim().slice(0, -1));
-  const guarded = ["rDurability", "rFatigue", "rBlocks"];
+  const guarded = ["rDurability", "rFatigue", "rFatigueV2", "rBlocks"];
   for (const name of guarded) {
     ok(tiles.includes(name), `Wächter: ${name} steht in der Liste, existiert aber nicht mehr`);
   }
@@ -639,6 +639,42 @@ const acts = F.activities(), thr = F.thresholds();
                      "median_alpha", "first_watts", "suggested_watts"]) {
     ok(blk.includes(key), `Wächter: rBlocks liest ${key} nicht aus der Payload`);
   }
+  // DIE ERMUEDUNGSRECHNUNG v2 (0.63.0) - je Kachel nachzutragen, und das ist
+  // die Pruefung selbst. Verboten sind hier nicht irgendwelche Zahlen, sondern
+  // GENAU die, die aus `v2` kommen muessen: der Anker, der Schritt, eine
+  // Bandbreite und die Alphawerte. Stuende eine davon im Template, zeigte die
+  // Kachel bei anderer Payload weiter die alte Zahl - und die Formelzeile
+  // ergaebe etwas anderes als die grosse Zahl darueber.
+  const fv2 = (/rFatigueV2\(f, v2\) \{[\s\S]*?\n  \}/.exec(src) || [""])[0];
+  ok(fv2.length > 0, "Wächter: rFatigueV2 nicht gefunden");
+  for (const [name, re] of [["Anker", /156[.,]6/],
+                            ["Schritt", /2[.,]39/],
+                            ["Bandbreite", /\b5[.,]1\b/],
+                            ["Bruecken", /0[.,]92|7[.,]70?\b/],
+                            ["Alphawert", /\b1[.,][0-9]{2}\b/],
+                            ["Verlauf", /0[.,]080/],
+                            ["Lastfenster", /±\s*5\s*W/],
+                            ["Fensterbreite", /\b120\s*(s|Sekunden)/]]) {
+    ok(!re.test(fv2), `Wächter: ${name} steht als Zahl in rFatigueV2 statt in der Payload`);
+  }
+  // GEGENPROBE, gezaehlt und benannt: die acht Nullen oben pruefen sonst nur,
+  // dass die Ausdruecke nie greifen.
+  for (const [planted, re] of [["der Anker 156,6 W", /156[.,]6/],
+                               ["Schritt 2,39 W", /2[.,]39/],
+                               ["± 5,1 W", /\b5[.,]1\b/],
+                               ["zwischen 0,92 und 7,70", /0[.,]92|7[.,]70?\b/],
+                               ["alpha 1,30", /\b1[.,][0-9]{2}\b/],
+                               ["−0,080 alpha", /0[.,]080/],
+                               ["Lastfenster ± 5 W", /±\s*5\s*W/],
+                               ["über 120 s gemittelt", /\b120\s*(s|Sekunden)/]]) {
+    ok(re.test(planted), `Wächter Gegenprobe: "${planted}" wird NICHT gefunden — der Wächter ist blind`);
+  }
+  for (const key of ["v2.anchor_watts", "v2.step_watts", "v2.bridges", "v2.settings",
+                     "v2.band_share_words", "v2.load_band_w", "v2.watt_window_s",
+                     "v2.min_hours_for_trend", "v2.covered_until_hours", "v2.state_label"]) {
+    ok(fv2.includes(key), `Wächter: rFatigueV2 liest ${key} nicht aus der Payload`);
+  }
+
   ok(fat.length > 0, "Wächter: rFatigue nicht gefunden");
   for (const [name, re] of [["Zonengrenze", /\b20\s*%/],
                             ["Mindestdauer", /\b60\s*(Minuten|min)/],
@@ -918,7 +954,7 @@ const acts = F.activities(), thr = F.thresholds();
   // falschen Reiter. Eine Korrektur ohne Zusicherung ist keine.
   const HOME = {
     rTrainer: "trainer", rGoal: "trainer", rPlanWeeks: "trainer", rWorkouts: "trainer",
-    rDurability: "trainer", rFatigue: "trainer", rBlocks: "trainer",
+    rDurability: "trainer", rFatigue: "trainer", rFatigueV2: "trainer", rBlocks: "trainer",
     rRampTest: "trainer", rRampGap: "trainer",
     rHeute: "heute", rSignale: "signale", rFitness: "fitness",
     rAkt: "akt", rDfa: "dfa", rKalender: "kalender", rBelastung: "belastung",
