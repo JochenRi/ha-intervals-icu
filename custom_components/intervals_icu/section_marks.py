@@ -63,14 +63,30 @@ BLOCK = "section_marks"
 # behoben war. Die Zahlen aus 0.54.0 sind damit falsch gemessen und fallen
 # beim Laden; die Marken bleiben.
 # 3 seit 0.55.0.
-# 4 seit 0.63.1: die Stundenzeile traegt seit der Ermuedungsrechnung v2 die
-# ABLESESTELLE (`load_w`, `load_n`, `load_alpha`). Messungen von vorher haben
-# diese Felder gar nicht - auf dem Livebestand stand die v2-Kachel deshalb auf
-# NULL Fahrten, obwohl zwoelf markierte Fahrten gemessen waren. Das ist kein
-# Anzeigefehler, sondern genau der Fall, fuer den dieser Zaehler da ist: die
-# MESSUNG hat sich geaendert, also fallen die alten Zahlen und die Marken
-# bleiben.
-MEASURE_VERSION = 4
+#
+# 4 IN 0.63.1 GESETZT UND IN 0.63.3 ZURUECKGENOMMEN. Der Grund damals war
+# richtig beobachtet und falsch behandelt: die Stundenzeile traegt seit v2 die
+# Ablesestelle (`load_w/load_n/load_alpha`), und Messungen von vorher haben
+# diese Felder nicht. Daraus folgt aber NICHT, dass sie falsch gemessen waeren
+# - sie sind unvollstaendig fuer EINE Kachel, die nur zaehlt, wenn der
+# Rechenschalter an ist. Der Zaehler hat sie trotzdem geleert, und zwar beim
+# BLOSSEN EINSPIELEN, mit ausgeschaltetem Schalter: 17 Einheiten, von Hand neu
+# zu messen, fuer eine Aenderung, die fuer den Athleten gar nicht stattfand.
+# Das widerspricht der Auflage, unter der die ganze v2 gebaut ist - "der
+# Schalter steht VOR dem Versionszaehler, AUS kostet nichts" - und dem Satz
+# aus 0.63.1 selbst: der Zaehler traegt Code-Aenderungen, nicht das Umlegen
+# eines athletenweisen Schalters.
+#
+# DIE GUELTIGKEIT EINER MESSUNG HAENGT SEIT 0.63.3 AN `w`, NICHT AN `v`.
+# Passt die Fensterbreite zur aktuellen Schalterstellung, gilt die Messung;
+# passt sie nicht, faellt sie mit `remeasure_window` - und kommt zurueck,
+# sobald der Schalter zurueckgestellt wird. Eine Messung ohne `w` gilt als
+# ungefenstert und ist bei ausgeschaltetem Schalter GUELTIG.
+#
+# Der Zaehler bleibt fuer das, wofuer er da ist: eine Messung, die nachweislich
+# FALSCH gerechnet wurde (Fall 2). Wer ihn hochzieht, loescht Messwerte - das
+# ist die Frage, die vorher zu beantworten ist, nicht hinterher.
+MEASURE_VERSION = 3
 
 # DIE FENSTERBREITE, MIT DER GEMESSEN WURDE - je Familie, in Sekunden.
 # Der Versionszaehler traegt Aenderungen am CODE; er kann nicht tragen, dass
@@ -306,6 +322,19 @@ def _index(value: Any) -> int | None:
     if isinstance(value, float) and value >= 0 and float(value).is_integer():
         return int(value)
     return None
+
+
+def _version_of(entry: Any) -> int:
+    """Die Messmarke eines Eintrags - fehlend heisst 0, also "aelter als alles".
+
+    Eigene Funktion, weil an ihr seit 0.63.3 eine Entscheidung haengt: es wird
+    auf AELTER geprueft und nicht auf UNGLEICH. Ungleich traf auch den
+    NEUEREN Stand, und genau der entsteht auf dem geplanten Rueckweg
+    (HACS-Downgrade) - wer zurueckrollt, haette damit die Messungen ein
+    zweites Mal verloren.
+    """
+    got = _index((entry or {}).get("v") if isinstance(entry, dict) else entry)
+    return 0 if got is None else got
 
 
 def _seconds(lap: Any) -> int | None:
@@ -602,7 +631,10 @@ def usable_hours(entry: Any, laps: Any) -> list[Any] | None:
     hours = got.get("hours")
     if not isinstance(hours, list) or not hours:
         return None
-    if _index(entry.get("v")) != MEASURE_VERSION:
+    # NUR AELTER ist ungueltig. `!=` traf auch den NEUEREN Stand - und genau
+    # der entsteht auf dem geplanten Rueckweg (HACS-Downgrade). Wer
+    # zurueckrollt, verlaengert damit den Schaden statt ihn zurueckzunehmen.
+    if _version_of(entry) < MEASURE_VERSION:
         return None
     if drift(entry, laps) is not None:
         return None
@@ -941,11 +973,14 @@ def migrate(block: Any) -> dict[str, Any] | None:
             "reason": str(entry.get("reason") or "")[:REASON_LIMIT],
             "measured_at": str(entry.get("measured_at") or "") or None,
             "set_at": str(entry.get("set_at") or ""),
-            "v": MEASURE_VERSION,
+            # NIE NACH UNTEN. Ein Eintrag, der unter einer hoeheren Marke
+            # geschrieben wurde, behaelt sie - sonst schriebe ein Rueckweg ihn
+            # herunter, und der naechste echte Bump loeschte ihn doch noch.
+            "v": max(_version_of(entry), MEASURE_VERSION),
         }
         if entry.get("lost") in (LOST_CHANGED, LOST_MOVED, LOST_VERSION):
             row["lost"] = entry["lost"]
-        if entry.get("v") != MEASURE_VERSION and row["measure"]:
+        if _version_of(entry) < MEASURE_VERSION and row["measure"]:
             row["measure"] = {}
             row["reason"] = ("Nach einer Änderung der Messung neu zu messen — "
                              "die Ströme liegen nicht im Archiv. Die Zuordnung "

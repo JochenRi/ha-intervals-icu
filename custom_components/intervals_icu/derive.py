@@ -276,9 +276,19 @@ except ImportError:  # standalone (test suite loads this file directly)
 # 120 s wurde fuer die Leistung als Mittel ueber dieses Fenster verwendet".
 # Wir paaren heute sekundengenau: ein 120-s-Mittel (alpha) gegen einen
 # Momentanwert (Watt). Am echten 1-Hz-Strom der Rampen-Fixture hebt die
-# Angleichung R2 von 0,603 auf 0,808 und p075 von 169,9 auf 179,0 W. Ueber 25
-# Fahrtstunden drehen sich 7 von 25 physiologisch verkehrten Steigungen auf
-# 0 von 25, der Median-R2 steigt von 0,092 auf 0,752. In Synthetik mit
+# Angleichung R2 von 0,603 auf 0,808 und p075 von 169,9 auf 179,0 W.
+#
+# DIE FOLGENDEN ZAHLEN SIND AM GEDUENNTEN STROM UEBER GANZE FAHRTEN GERECHNET
+# und gelten NICHT fuer die Produktion, die auf den MARKIERTEN Abschnitten
+# rechnet. Der Trockenlauf am Livebestand (19.09.2026, 17 Fahrten, markierte
+# Abschnitte) sagt stattdessen: 14 von 27 verkehrten Steigungen drehen auf
+# 8 von 27, der Median-R2 steigt von 0,098 auf 0,324, und die Kopfzahl faellt
+# von 149,6 auf 147,6 W statt zu steigen. Beide Reihen sind richtig gerechnet
+# und beantworten verschiedene Fragen - wer sie gegeneinanderhaelt, haelt
+# ganze Fahrten gegen Ausschnitte.
+# Ueber 25 Fahrtstunden (ganze Fahrten, gedünnt) drehen sich 7 von 25
+# physiologisch verkehrten Steigungen auf 0 von 25, der Median-R2 steigt von
+# 0,092 auf 0,752. In Synthetik mit
 # bekannter Wahrheit faellt der Fehler von 8,25 auf 0,66 W - und die
 # Gegenprobe OHNE Antritte und Rollphasen zeigt 0,57 gegen 1,23 W: der Fehler
 # erscheint nur dort, wo sein Mechanismus existiert.

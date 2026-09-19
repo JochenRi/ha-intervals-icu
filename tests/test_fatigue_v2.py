@@ -128,32 +128,53 @@ check("Messung: die Versionsmarke steht auf 4",
 # am Livebestand stand die v2-Kachel deshalb auf NULL Fahrten, obwohl zwoelf
 # markierte Fahrten gemessen waren. Geprueft wird das Verhalten, nicht die
 # Zahl: eine Messung der VORIGEN Marke muss beim Laden fallen.
-# Die Marke muss ABSOLUT stehen, nicht relativ: eine Pruefung gegen
-# MEASURE_VERSION - 1 wandert mit, wenn jemand den Zaehler zurueckdreht, und
-# faengt genau den Fall nicht, um den es geht.
-check("Versionsmarke: mindestens 4, seit die Stundenzeile die Ablesestelle traegt",
-      sm.MEASURE_VERSION >= 4, True)
-check("Versionsmarke: die Stundenzeile traegt die Ablesestelle wirklich",
-      all(f in derive.dfa_hours(_A[:3700], _W[:3700], _H[:3700])[0]
-          for f in ("load_w", "load_n", "load_alpha")), True)
-_alt = {"A1": {"date": "2026-09-10", "marks": {"endurance": [0]},
-               "anchor": {"laps": 1, "sections": [{"i": 0, "s": 60}]},
-               "measure": {"endurance": {"hours": [{"hour": 1, "p075": 150.0}]}},
-               "measured_at": "2026-09-10", "set_at": "2026-09-10",
-               "v": sm.MEASURE_VERSION - 1}}
-_neu = sm.migrate(_alt)
-check("Versionsmarke: eine Messung der vorigen Marke faellt beim Laden",
-      (_neu or _alt)["A1"]["measure"], {})
-check("Versionsmarke: die Marken bleiben stehen",
-      (_neu or _alt)["A1"]["marks"], {"endurance": [0]})
-check("Versionsmarke: der Grund wird benannt",
-      (_neu or _alt)["A1"].get("lost"), sm.LOST_VERSION)
-# GEGENPROBE: mit der AKTUELLEN Marke bleibt die Messung stehen.
-_frisch = {"A1": {**_alt["A1"], "v": sm.MEASURE_VERSION,
-                  "measure": {"endurance": {"hours": [{"hour": 1, "p075": 150.0}]}}}}
-_nach = sm.migrate(_frisch) or _frisch
-check("Versionsmarke Gegenprobe: eine aktuelle Messung bleibt",
-      bool(_nach["A1"]["measure"]), True)
+# DIE GUELTIGKEIT HAENGT AN `w`, NICHT AN `v` (0.63.3). In 0.63.1 hing sie am
+# Versionszaehler, und das BLOSSE EINSPIELEN hat Johannes 17 Messungen
+# geloescht - bei AUSGESCHALTETEM Schalter, fuer eine Aenderung, die fuer ihn
+# gar nicht stattfand.
+_OHNE_W = {"hours": [{"hour": 1, "p075": 150.0}], "blocks": None, "reason": ""}
+_EINTRAG = {"date": "2026-09-10", "marks": {"endurance": [0]},
+            "anchor": {"laps": 1, "sections": [{"i": 0, "s": 60}]},
+            "measured_at": "2026-09-10", "set_at": "2026-09-10"}
+def _bestand(measure, v, an):
+    return {"activities": {"A1": {"start_date_local": "2026-09-10T08:00:00",
+                                  "name": "volumen", "moving_time": 7200}},
+            "dfa": {}, "section_marks": {"A1": {**_EINTRAG, "measure": measure, "v": v}},
+            "settings": {fatigue.CURVE_SWITCH: True, **({v2.V2_SWITCH: True} if an else {})}}
+
+_aus = fatigue.rides(_bestand({"endurance": _OHNE_W}, 3, False))
+check("Schalter aus + Messung ohne w: sie GILT",
+      [r["activity_id"] for r in _aus["used"]], ["A1"])
+check("Schalter aus + Messung ohne w: keine Meldung", _aus["dropped"], {})
+_an = fatigue.rides(_bestand({"endurance": _OHNE_W}, 3, True))
+check("Schalter an + Messung ohne w: sie faellt",
+      [r["activity_id"] for r in _an["used"]], [])
+check("Schalter an + Messung ohne w: mit remeasure_window",
+      list(_an["dropped"]), [fatigue.WINDOW_CHANGED_REASON])
+
+# DER WAECHTER GEGEN DIE NAECHSTE AUSLIEFERUNG, DIE DATEN LOESCHT.
+# Die Marke steht hier als LITERAL und nicht als sm.MEASURE_VERSION: wird der
+# Zaehler hochgezogen, faellt diese Pruefung - und genau das soll sie.
+# Johannes' frisch gemessene Eintraege tragen `v: 4` aus 0.63.2; sie duerfen
+# durch die Ruecknahme NICHT fallen, deshalb der zweite Fall.
+for _marke, _wort in ((3, "unter der heutigen Marke"), (4, "unter einer neueren Marke")):
+    _block = {"A1": {**_EINTRAG, "measure": {"endurance": dict(_OHNE_W)}, "v": _marke}}
+    _nach = sm.migrate(_block) or _block
+    check(f"Einspielen ({_wort}): die Messung bleibt stehen",
+          bool(_nach["A1"]["measure"].get("endurance")), True)
+    check(f"Einspielen ({_wort}): kein Verwerfungsgrund wird gesetzt",
+          _nach["A1"].get("lost"), None)
+    check(f"Einspielen ({_wort}): die Marke wird nicht nach unten geschrieben",
+          _nach["A1"]["v"] >= _marke, True)
+# Eine WIRKLICH aeltere Messung faellt weiter - der Zaehler bleibt scharf fuer
+# das, wofuer er da ist (Fall 2: nachweislich falsch gerechnet).
+_alt = {"A1": {**_EINTRAG, "measure": {"endurance": dict(_OHNE_W)}, "v": 1}}
+_nach_alt = sm.migrate(_alt) or _alt
+check("Einspielen: eine wirklich aeltere Messung faellt",
+      _nach_alt["A1"]["measure"], {})
+check("Einspielen: mit Grund", _nach_alt["A1"].get("lost"), sm.LOST_VERSION)
+check("Einspielen: die Marken bleiben in jedem Fall stehen",
+      _nach_alt["A1"]["marks"], {"endurance": [0]})
 
 # UND DER LESEWEG NIMMT SIE NICHT MIT, wenn die Achse nicht stimmt.
 _raus = fatigue.rides({**_md, "settings": {fatigue.CURVE_SWITCH: True}})

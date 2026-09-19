@@ -1,5 +1,16 @@
 # Belegter Rechenweg für alle Ableseverfahren
 
+> **BESCHRIFTUNG, nachgetragen am 19.09.2026 (0.63.3).** Alle Zahlen dieser
+> Datei und der Runden vom 17./18.09. zur 120-s-Paarung sind **am gedünnten
+> Strom über GANZE Fahrten** gerechnet. Die Produktion rechnet auf den
+> **markierten Abschnitten** am vollen Strom. Der Trockenlauf am Livebestand
+> (19.09.2026, 17 Fahrten) liefert deshalb andere Zahlen: verkehrte Steigungen
+> 14 → **8 von 27** (gemeldet 14 → 0 von 25), Median-R² 0,098 → **0,324**
+> (gemeldet 0,092 → 0,752), Kopfzahl 149,6 → **147,6 W** (gemeldet ~156,6 W —
+> sie sinkt). Beide Reihen sind richtig gerechnet und beantworten verschiedene
+> Fragen; wer sie gegeneinanderhält, hält ganze Fahrten gegen Ausschnitte.
+> Wo unten eine Zahl ohne Zusatz steht, ist die erste Lesart gemeint.
+
 **Stand:** 18.09.2026 · gegen `main` = `07df34a` (0.62.2) · Prüfstand 22 Dateien /
 7.241 Prüfungen / 0 Fehler, selbst nachgefahren.
 **Auftrag:** PROJEKTSTAND §10 Punkt 11. Eine LISTE, kein Bau. Kein Code, keine

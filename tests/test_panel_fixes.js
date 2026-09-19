@@ -8,6 +8,7 @@ const F = require("./panel_fixtures");
 const { ok, clean, contains, report } = H;
 
 const M = H.load();
+const PENDING = [];   // asynchrone Simulationen, vor der Summary abgewartet
 const p = new M.Panel();
 p._status = { activities: 238, wellness_days: 487, dfa_done: 56, importing: false, decoupling_good: 5.0, athlete: "Test" };
 // Pin "today". A window that asks the wall clock makes this suite go red on
@@ -2324,5 +2325,67 @@ const acts = F.activities(), thr = F.thresholds();
      "Knopf-Waechter Fixture-Beweis: swfatigue wird nicht gezeichnet");
 }
 
-report("test_panel_fixes");
+/* ── 0.63.3: nach dem Messen stehen die Kacheln auf dem neuen Stand ─────────
+   Johannes hat gemessen, nichts gesehen und musste hart neu laden. Ursache:
+   `_smMeasure` holte NUR die Markenliste neu; Kurve, Blockmessung, Einheiten
+   und Wochenplan standen weiter auf ihrem Zwischenstand. Geprueft wird am
+   simulierten Messvorgang, nicht am Quelltext - die Aussage ist eine ueber
+   Verhalten. */
+{
+  const q = new M.Panel();
+  q._nowIso = F.TODAY;
+  const geholt = [];
+  q._ws = async (name) => {
+    geholt.push(name);
+    if (name === "measure_section_marks") return { families: { endurance: {} } };
+    if (name === "section_marks") return { marks: [] };
+    if (name === "fatigue") return F.fatigue();
+    if (name === "blocks") return F.blocks();
+    return {};
+  };
+  q._render = () => {};
+  // Der Ausgangszustand: die vier Kacheln sind geladen UND angefordert worden.
+  q._fatigue = F.fatigue(); q._blocks = F.blocks();
+  q._workouts = { a: 1 }; q._goal = { b: 1 };
+  for (const was of q.MEASURE_FEEDS) q._asked[was] = true;
+  ok(q.MEASURE_FEEDS.length === 4,
+     `messen: ${q.MEASURE_FEEDS.length} gespeiste Kacheln statt vier - die Liste ist zu prüfen`);
+
+  const fertig = q._smMeasure("i1").then(() => {
+    ok(geholt.includes("measure_section_marks"), "messen: der Messbefehl wird nicht geschickt");
+    ok(geholt.includes("section_marks"), "messen: die Markenliste wird nicht neu geholt");
+    // DIE KACHELN. Jede einzeln benannt - eine vergessene faellt sonst mit
+    // der naechsten zusammen und niemand sieht, welche.
+    for (const was of q.MEASURE_FEEDS) {
+      ok(geholt.includes(was),
+         `messen: "${was}" wird nach der Messung nicht neu geholt - die Zahl `
+         + "erscheint erst nach hartem Neuladen");
+    }
+    // GEGENPROBE: was NICHT angefordert war, wird auch nicht geholt - ein
+    // Abruf fuer eine Kachel ohne Leser ist ein Rundgang ohne Zweck.
+    const q2 = new M.Panel();
+    q2._nowIso = F.TODAY;
+    const geholt2 = [];
+    q2._ws = async (name) => {
+      geholt2.push(name);
+      if (name === "measure_section_marks") return { families: {} };
+      return {};
+    };
+    q2._render = () => {};
+    q2._asked = {};
+    return q2._smMeasure("i1").then(() => {
+      for (const was of q2.MEASURE_FEEDS) {
+        ok(!geholt2.includes(was),
+           `messen Gegenprobe: "${was}" wird geholt, obwohl die Ansicht es nie angefordert hat`);
+      }
+      // Trefferzusicherung: der erste Lauf hat wirklich etwas geholt, sonst
+      // prueft die Gegenprobe nur, dass nie etwas passiert.
+      ok(geholt.filter((n) => q.MEASURE_FEEDS.includes(n)).length === q.MEASURE_FEEDS.length,
+         "messen Fixture-Beweis: der erste Lauf hat gar keine Kachel geholt");
+    });
+  });
+  PENDING.push(fertig);
+}
+
+Promise.all(PENDING).then(() => report("test_panel_fixes"));
 })();

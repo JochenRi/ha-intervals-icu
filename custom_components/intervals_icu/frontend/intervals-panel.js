@@ -5272,6 +5272,12 @@ class IntervalsIcuPanel extends HTMLElement {
       const res = await this._ws("measure_section_marks", { activity_id: String(id) });
       const scroll = this.scrollTop;
       this._smarks = await this._ws("section_marks");
+      // UND DIE KACHELN, DIE AUF DER MESSUNG SITZEN. Bis 0.63.2 wurde nur die
+      // Markenliste neu geholt: die Kurve, die Blockmessung und alles, was
+      // daran haengt, standen weiter auf ihrem Zwischenstand, und die frisch
+      // gemessene Zahl erschien erst nach einem harten Neuladen. Das ist die
+      // Art Fehler, nach der jemand zweimal misst.
+      await this._afterMeasure();
       this._msBusy = null;
       // GRÜN nur, wenn KEINE Familie einen Grund trägt. Eine Fahrt, an der
       // VO2max gemessen hat und die Grundlage nicht, ist kein Erfolg —
@@ -5290,6 +5296,27 @@ class IntervalsIcuPanel extends HTMLElement {
       this._render();
       this.scrollTop = scroll;
     }
+  }
+
+  /* WAS EINE MESSUNG SPEIST, wird danach neu geholt - und NUR das, was die
+     Ansicht schon angefordert hat. Ein Abruf fuer eine Kachel, die niemand
+     offen hat, ist ein Rundgang ohne Leser (dieselbe Regel wie in `_need`).
+
+     Die Liste ist dieselbe wie beim Blockschalter, aus demselben Grund: die
+     Grundlagen-Marken speisen die Ermuedungskurve, die Blockfamilien die
+     Blockmessung, und ueber die Steuerung haengen Einheiten und Wochenplan
+     daran. Wer hier eine Kachel vergisst, baut den Fehler von 0.63.2 neu. */
+  MEASURE_FEEDS = ["fatigue", "blocks", "workouts", "goal"];
+
+  async _afterMeasure() {
+    const felder = { fatigue: "_fatigue", blocks: "_blocks",
+                     workouts: "_workouts", goal: "_goal" };
+    const holen = [];
+    for (const was of this.MEASURE_FEEDS) {
+      this[felder[was]] = null;
+      if (this._asked[was]) holen.push(this._need(was));
+    }
+    await Promise.all(holen);
   }
 
   /* Die verschobene Zuordnung ausdruecklich bestaetigen.

@@ -1,5 +1,101 @@
 # ha-intervals-icu — Übergabe an den nächsten Chat
 
+## AKTUELL — 0.63.3: die Auslieferung, die Messungen gelöscht hat, ist zurückgenommen (19.09.2026). Zuerst lesen.
+
+**Ausgeliefert: 0.63.3.** Prüfstand **23 Dateien, 7.551 Prüfungen, 0 Fehler** (Basis 7.532).
+**Nichts umgelegt, nichts neu eingelesen, kein `set_*`-Aufruf.** Der Trockenlauf lief lesend.
+
+### 1 · MEASURE_VERSION 4 war ein Fehler und ist zurückgenommen
+
+0.63.1 hat den Zähler hochgezogen, weil die Stundenzeile seit v2 die Ablesestelle trägt.
+Beobachtung richtig, Behandlung falsch: **das blosse Einspielen hat Johannes 17 Messungen
+gelöscht** — bei ausgeschaltetem Schalter, für eine Änderung, die für ihn gar nicht stattfand.
+
+- **`MEASURE_VERSION` zurück auf 3.** Die Gültigkeit hängt seit 0.63.3 an **`w`**, nicht an `v`:
+  passt die Fensterbreite zur Schalterstellung, gilt die Messung; passt sie nicht, fällt sie mit
+  `remeasure_window` — und **kommt zurück**, sobald der Schalter zurückgestellt wird. Eine
+  Messung ohne `w` gilt als ungefenstert, bei Schalter AUS also gültig.
+- **Der Versionsvergleich prüft auf ÄLTER (`<`), nicht auf UNGLEICH.** `!=` traf auch den
+  *neueren* Stand — und genau der entsteht auf dem geplanten Rückweg (HACS-Downgrade). Wer
+  zurückrollt, hätte die Messungen ein zweites Mal verloren.
+- **Die Marke wird nie nach unten geschrieben** (`max(_version_of(entry), MEASURE_VERSION)`),
+  sonst fielen Johannes' `v: 4`-Einträge beim nächsten echten Bump doch noch.
+- **Johannes' 17 frisch gemessene Einträge bleiben stehen** — vor der Auslieferung geprüft, als
+  eigener Fall in `test_fatigue_v2.py` ("unter einer neueren Marke").
+- **Der Wächter gegen die nächste solche Auslieferung:** die Marke steht in der Prüfung als
+  LITERAL. Wer den Zähler hochzieht, lässt die Prüfung fallen — und muss dann sagen, wessen
+  Messwerte er löscht.
+
+### 2 · Die Kachel aktualisiert sich nach dem Messen
+
+Ursache am Code: `_smMeasure` holte **nur** die Markenliste neu (`section_marks`). Kurve,
+Blockmessung, Einheiten und Wochenplan standen weiter auf ihrem Zwischenstand. Jetzt
+`_afterMeasure()` mit `MEASURE_FEEDS = ["fatigue","blocks","workouts","goal"]` — dieselbe Liste
+wie beim Blockschalter, aus demselben Grund; geholt wird **nur**, was die Ansicht angefordert
+hat. Am simulierten Messvorgang geprüft, je Kachel einzeln benannt, mit Gegenprobe.
+
+### 3 · BEFUND — die Vorhersagen waren keine Produktionszahlen
+
+Trockenlauf am Livebestand: 17 Fahrten, **45 Fahrtstunden, davon 27 mit einem p075** (18 haben
+im gebinnten Feld keinen Schnittpunkt mit alpha 0,75).
+
+**a) Ist der Unterschied durch die Auswahl erklärt?** Nicht vollständig nachweisbar — die alten
+Zahlen standen auf dem gedünnten Strom über ganze Fahrten, und dieser Strom liegt nicht mehr
+vor. Was messbar ist: die markierten Abschnitte sind kürzer und gleichmässiger, die alpha-Wolke
+damit enger, die Extrapolation nach 0,75 länger. Der Median-R² erreicht deshalb nur **0,324**
+statt der gemeldeten 0,752 — die Richtung stimmt (0,098 → 0,324), die Höhe nicht.
+
+**b) Warum bleiben 8 von 27 verkehrt herum?** Sie haben eines gemeinsam, und es ist nicht
+Physiologie: **ihre Gerade ist praktisch flach.** Median |Steigung| **4,1** W je alpha gegen 6,6
+bei den richtigen; und ihr p075 landet im Median **2,1 W** von der eigenen gehaltenen Last
+(max 9,5 W) gegen 6,1 W (max 21,8) bei den richtigen. Von den 20 Stunden mit |Steigung| < 12
+sind 7 verkehrt, von den 7 steilen genau 1. **Eine verkehrte Steigung ist kein falsches
+Vorzeichen, sondern gar kein Zusammenhang:** bei flacher Wolke gibt die Regression die mittlere
+Leistung der Stunde zurück, und das Vorzeichen ist Rauschen. Ein Vorzeichen-Zähler ist damit
+das falsche Gütemass — was fehlt, ist **Andriolos R²-Schranke > 0,75**, und die steht seit dem
+18.09. offen.
+
+**c) Die Kopfzahl sinkt (149,6 → 147,6 W) — woher?** **Nicht, weil die Messungen fallen:
+9 von 10 Stunde-1-Werten STEIGEN**, im Median um +4,5 W. Die ganze Bewegung kommt von **einer
+Fahrt** (…0973): 174,9 → 138,7 W, R² 0,043 → 0,050 — der Fit erklärt in beiden Stellungen
+praktisch nichts. Unter AUS war sie der **Höchstwert** der Reihe, unter AN rutscht sie ans
+untere Ende; der Median von zehn Werten verschiebt sich dadurch um einen Rang nach unten.
+**Ohne diese eine Fahrt: 149,2 → 148,1 W.** Die Paarung tut genau, was sie soll — der Median
+ist die falsche Zusammenfassung dafür.
+
+**d) Ein Befund, der im Auftrag nicht stand und schwerer wiegt:** die Stunde-2-Werte steigen
+von 137,2 auf **147,8 W**, stärker als Stunde 1. Die Kette läuft damit **1 h 147,6 → 2 h 149,7 W
+— nach oben.** Eine Ermüdungskurve, die sagt, man werde mit der Zeit stärker. Das ist vor jedem
+Umlegen zu klären.
+
+**Doku:** die Zahlen der Vorrunden sind jetzt in `docs/rechenwege.md` und in `derive.py`
+ausdrücklich als *„am gedünnten Strom, ganze Fahrten"* beschriftet, mit den
+Produktionszahlen daneben.
+
+### 1d · Weitere Stellen, an denen eine Auslieferung Daten entwertet (nur gelistet)
+
+1. **`importer.DFA_ALGO_VERSION` (heute 7)** → `drop_outdated_dfa()` setzt `data["dfa"] = {}`.
+   Eine reine Code-Auslieferung löst damit den vollen Reimport aus — und den Ankerrisiko von
+   bis zu **17 W** aus 0.63.2. Kein Athleteneingabe-Verlust, aber Arbeit und Risiko.
+2. **`section_marks.RETIRED`** (`threshold`, `long`): Marken stillgelegter Familien und ihre
+   Messungen fallen bei der Migration. Benannt, aber es ist derselbe Mechanismus.
+3. **`ramp_tests.MEASURE_VERSION` (2)**: gleiche Bauart wie der eben zurückgenommene Zähler,
+   gleiche Falle — dort noch ungeprüft.
+4. **`WIN_VERSION` im Panel**: verwirft gespeicherte Zeitfenster im localStorage. Harmlos.
+5. **`ACTIVITY_FIELDS_VERSION` (2)**: löst einen Neuabruf der Aktivitätsfelder aus.
+
+### OFFEN
+
+0. **Die Kette läuft nach oben** (Befund d). Vor dem Umlegen zu klären.
+1. **Andriolos R²-Schranke > 0,75** fehlt weiter — 8 von 27 Stunden stehen auf Fits ohne
+   jeden Zusammenhang. Seit 18.09. offen, jetzt beziffert.
+2. Der Trockenlauf hat **keine Oberfläche**, nur `ws_command`.
+3. Die **54-W-Frage** bei 8 h.
+4. Aufräum-Release, wenn die Rechenschalter fallen.
+5. **Der GitHub-Token liegt weiterhin im Klartext in `GIT_Intervals.txt`. Widerrufen.**
+
+---
+
 ## AKTUELL — 0.63.2: zwei Fehler behoben, Trockenlauf gebaut, der Schalter hat endlich einen Knopf (19.09.2026). Zuerst lesen.
 
 **Ausgeliefert: 0.63.2.** Prüfstand **23 Dateien, 7.532 Prüfungen, 0 Fehler** (Basis 23 / 7.413 / 0).
