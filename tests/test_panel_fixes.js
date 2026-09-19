@@ -2506,5 +2506,52 @@ const acts = F.activities(), thr = F.thresholds();
   }));
 }
 
+/* ── 0.65.2: gemessen schlägt Archivstand ───────────────────────────────────
+   Die Aktivitätskarte schrieb "keine DFA-Auswertung im Archiv — an ihren
+   Abschnitten ist nichts zu messen" über eine Karte, die zwei Zeilen tiefer
+   vier gemessene VO2max-Blöcke auflistete. Dieselbe Verwechslung wie in
+   `pending_remeasure` vor 0.65.1: gefragt wurde nach `hours`, und die tragen
+   nur die Grundlage. */
+{
+  const q = new M.Panel();
+  q._nowIso = F.TODAY;
+  const SATZ = "keine DFA-Auswertung im Archiv";
+  const akt = (id) => ({ id, name: "vo2max", type: "Ride", start_date_local: "2026-09-01T08:00:00",
+                         moving_time: 3600, dfa: null });
+  const marke = (id, measure) => ({ activity_id: id, date: "2026-09-01",
+                                    marks: { vo2max: [0] }, measure });
+  // EINE Fahrt OHNE Archivstand, aber MIT Blockmessung.
+  q._smarks = { marks: [marke("m1", { vo2max: { blocks: [{ start_index: 0 }], w: 120 } })],
+                families: ["vo2max", "sweetspot", "tempo", "endurance"] };
+  const mit = String(q._aktDetail(akt("m1")));
+  ok(!mit.includes(SATZ),
+     "gemessen: der Satz 'nichts zu messen' steht über einer gemessenen Fahrt");
+  // GEGENPROBE: dieselbe Fahrt OHNE jede Messung bekommt ihn weiterhin.
+  q._smarks = { marks: [marke("m1", {})],
+                families: ["vo2max", "sweetspot", "tempo", "endurance"] };
+  const ohne = String(q._aktDetail(akt("m1")));
+  ok(ohne.includes(SATZ),
+     "gemessen Gegenprobe: eine Fahrt ohne Messung bekommt den Satz nicht mehr");
+  // Und eine Fahrt, die gar nicht markiert ist, auch.
+  q._smarks = { marks: [], families: ["vo2max", "sweetspot", "tempo", "endurance"] };
+  ok(String(q._aktDetail(akt("m9"))).includes(SATZ),
+     "gemessen Gegenprobe: eine unmarkierte Fahrt ohne Archivstand bekommt den Satz nicht mehr");
+
+  // DIE EINE STELLE: `_hasMeasure` fragt nach der MESSUNG, nicht nach `hours`.
+  ok(q._hasMeasure({ measure: { vo2max: { blocks: [{ start_index: 0 }] } } }),
+     "gemessen: eine Blockmessung zählt nicht als Messung");
+  ok(q._hasMeasure({ measure: { endurance: { hours: [{ hour: 1 }] } } }),
+     "gemessen: eine Stundenmessung zählt nicht als Messung");
+  ok(!q._hasMeasure({ measure: { vo2max: { hours: null, blocks: null, reason: "zu kurz" } } }),
+     "gemessen: eine Messung ohne Zahlen zählt als Messung");
+  ok(!q._hasMeasure({ measure: {} }) && !q._hasMeasure(null) && !q._hasMeasure(undefined),
+     "gemessen: ein leerer Eintrag zählt als gemessen");
+  // Und sie ist die EINZIGE Stelle - kein zweiter Nachbau im Quelltext.
+  const src2 = H.source();
+  const nachbau = (src2.match(/\(got\.hours \|\| \[\]\)\.length \|\| \(got\.blocks/g) || []).length;
+  ok(nachbau === 0,
+     `gemessen: ${nachbau} handgebaute Kopie(n) der Frage im Quelltext statt _hasMeasure`);
+}
+
 Promise.all(PENDING).then(() => report("test_panel_fixes"));
 })();

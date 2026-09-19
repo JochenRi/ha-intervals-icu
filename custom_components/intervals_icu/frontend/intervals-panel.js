@@ -4432,6 +4432,20 @@ class IntervalsIcuPanel extends HTMLElement {
   }
 
   /* ---------------- Aktivitäten ---------------- */
+  /* IST AN DIESER FAHRT ETWAS GEMESSEN? EINE Stelle, und sie fragt nach der
+     MESSUNG, nicht nach `hours`. Die tragen nur die Grundlage; Blockfamilien
+     legen `blocks` ab. Diese Verwechslung hat dreimal zugeschlagen: in
+     `pending_remeasure` (Endlosschleife des Massenlaufs, 0.65.1), im
+     Zustandssatz der Aktivitaetskarte (0.65.2) - und sie wird wiederkommen,
+     solange jede Stelle es selbst ausrechnet. Deshalb steht sie hier. */
+  _hasMeasure(entry) {
+    const box = (entry || {}).measure || {};
+    return Object.keys(box).some((fam) => {
+      const got = box[fam] || {};
+      return ((got.hours || []).length > 0) || ((got.blocks || []).length > 0);
+    });
+  }
+
   rAkt(list, sel) {
     if (!list) return this._dataGap("akt", "Die Aktivitäten");
     if (!list.length) return `<div class="card pad">Noch keine Aktivitäten im Archiv.</div>`;
@@ -4584,7 +4598,7 @@ class IntervalsIcuPanel extends HTMLElement {
       if (!(((m.marks || {})[fam] || []).length)) return false;
       if (!mitMessung) return true;
       const got = ((m.measure || {})[fam]) || null;
-      return !!(got && ((got.hours || []).length || (got.blocks || []).length));
+      return this._hasMeasure({ measure: { [fam]: got } });
     }).length;
     const famStand = ["vo2max", "sweetspot", "tempo"].map((fam) => {
       const n = zaehl(fam, true);
@@ -4913,7 +4927,13 @@ class IntervalsIcuPanel extends HTMLElement {
     // dasselbe Nichts.
     const dfa = a.dfa || null;
     const hasBlocks = !!(dfa && (dfa.blocks || []).length);
-    const off = (key) => !dfa || (FAM_BLOCKS.includes(key) && !hasBlocks);
+    // Dieselbe Regel fuer die Knoepfe: was gemessen ist, wird nicht
+    // ausgegraut. `gemessen` steht weiter unten erst zur Verfuegung - deshalb
+    // hier dieselbe Frage an derselben Stelle gestellt.
+    const gemessenFuerOff = this._hasMeasure(
+      ((this._smarks || {}).marks || []).find((m) => String(m.activity_id) === String(a.id)));
+    const off = (key) => (!dfa && !gemessenFuerOff)
+      || (FAM_BLOCKS.includes(key) && !hasBlocks && !gemessenFuerOff);
 
     // EIN Abschnitt ist kein Mangel, sondern der Normalfall einer
     // Rolleneinheit: sie IST die ganze Fahrt. "1 Abschnitt" klaenge nach einem
@@ -4988,7 +5008,12 @@ class IntervalsIcuPanel extends HTMLElement {
     // ein Stellvertreter ist - das Markieren holt die Ströme live (§7, erster
     // Fall: `stream_types` sagt, was in der Datei lag, nicht was die
     // Schnittstelle liefert).
-    const lage = !dfa
+    // GEMESSEN SCHLAEGT ARCHIVSTAND. Der Archivstand ist ein Stellvertreter
+    // (der Satz sagt es selbst); eine vorhandene Messung ist der BEWEIS, dass
+    // an dieser Fahrt sehr wohl etwas zu messen war. Bis 0.65.1 stand der
+    // Satz trotzdem da - ueber einer Karte, die zwei Zeilen tiefer vier
+    // gemessene VO2max-Bloecke auflistete.
+    const lage = (!dfa && !gemessenFuerOff)
       ? `<p class="mut pad">Für diese Fahrt liegt keine DFA-Auswertung im Archiv — an ihren
           Abschnitten ist nichts zu messen. Der Archivstand ist dabei nur ein Stellvertreter:
           gemessen wird aus den Strömen, die beim Übernehmen live geholt werden.</p>`

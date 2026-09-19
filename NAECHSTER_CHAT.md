@@ -1,5 +1,68 @@
 # ha-intervals-icu — Übergabe an den nächsten Chat
 
+## AKTUELL — 0.65.2: dritter Fundort derselben Verwechslung, und diesmal mit einer Stelle dagegen (19.09.2026). Zuerst lesen.
+
+**Ausgeliefert: 0.65.2.** Prüfstand **23 Dateien, 7.633 Prüfungen, 0 Fehler** (Basis 7.625).
+
+### Die Stelle
+
+`intervals-panel.js`, Zustandssatz der Aktivitätskarte: `const off = (key) => !dfa || …` und
+`const lage = !dfa ? …`. Beide hingen am **Archivstand** `a.dfa`. Der Satz sagt selbst, dass
+der Archivstand nur ein Stellvertreter ist — trotzdem entschied er allein, ob „an ihren
+Abschnitten ist nichts zu messen" dasteht.
+
+**Eine vorhandene Messung ist der Beweis, dass sehr wohl etwas zu messen war.** Genau die wurde
+nicht gefragt. Bei i181999211 fehlte der Archivstand, die vier gemessenen VO2max-Blöcke standen
+zwei Zeilen tiefer.
+
+### Die eine Stelle dagegen
+
+`_hasMeasure(entry)` — fragt, ob **irgendeine** Familie `hours` **oder** `blocks` trägt. Sie
+ersetzt auch den einzigen bisherigen Nachbau (in `zaehl`, Zeile 4587), und ein Wächter im
+Prüfstand fordert, dass es **keine handgebaute Kopie** der Frage mehr im Quelltext gibt.
+
+### Punkt 2 — Grep über das Paket, auch für Stellen, die NICHT geändert wurden
+
+| Stelle | Fragt nach | Urteil |
+|---|---|---|
+| `panel:4992` `lage` / `panel:4916` `off` | Archivstand statt Messung | **behoben** |
+| `panel:4587` `zaehl` | `hours \|\| blocks` — war richtig | **auf `_hasMeasure` gezogen** |
+| `section_marks.usable_hours` | `hours` | **richtig so** — sie liefert den Stundenverlauf für die Kurve, nicht „gibt es eine Messung" |
+| `fatigue.py:289` `_marked_rides` | `hours` | **richtig so** — die Kurve rechnet auf Stunden; eine Blockmessung hat dort nichts zu suchen |
+| `fatigue_v2.reading_rows` (205) | `hours` | **richtig so**, gleicher Grund |
+| `panel:5032/5066/5116` Quittung | `mess.endurance.hours` | **richtig so** — ausdrücklich über die Grundlage |
+| `analytics`, `workouts`, `fatigue.py:144 ff.` | eigenes `hours` (Fahrtstunden, Plandauer) | **anderes Feld**, keine Verwechslung |
+
+**Zu merken:** `hours` ist legitim, wo die **Grundlage** gemeint ist. Falsch ist es nur, wo
+„gibt es überhaupt eine Messung" gemeint ist — und dafür gibt es jetzt `_hasMeasure`.
+
+### Prüfungen und Mutation
+
+`test_panel_fixes.js` 883 → **891**. Fahrt mit Blockmessung bekommt den Satz nicht ·
+**Gegenprobe**: Fahrt ohne Messung bekommt ihn weiterhin · unmarkierte Fahrt auch ·
+`_hasMeasure` für `blocks`, `hours`, Messung-mit-Grund, leerer Eintrag, `null`.
+
+**Mutation über Dateikopie, beide gefangen:** `_hasMeasure` fragt wieder nur nach `hours` ·
+der Satz hängt wieder allein am Archivstand.
+
+### Der Merkposten dieser Runde
+
+**Das war der dritte Fundort derselben Verwechslung in zwei Tagen** (Kachel 0.63.x,
+`pending_remeasure` 0.65.1, Zustandssatz 0.65.2). Jedes Mal hatte eine Stelle die Frage „ist
+hier etwas gemessen" selbst ausgerechnet. Dagegen hilft nicht das nächste Einzelfix, sondern
+**eine Stelle plus ein Wächter gegen Nachbauten** — so gebaut.
+
+### OFFEN
+
+0. **Trockenlauf fahren** und die Kachelzahlen am Livebestand ansehen.
+1. **Die Blockkacheln**: einseitige t-Tabelle, Zusage „8 von 10".
+2. **Erholung nach einem fremden Block.**
+3. `bridges_alpha` am Livebestand · `alpha_window_*`, `alpha_mad`, `watt_mad` · die unbelegte
+   Rolle/draußen-Beschriftung · Trockenlauf ohne Oberfläche · Aufräum-Release.
+4. **Der GitHub-Token liegt weiterhin im Klartext in `GIT_Intervals.txt`. Widerrufen.**
+
+---
+
 ## AKTUELL — 0.65.1: die Endlosschleife des Massenlaufs ist behoben (19.09.2026). Zuerst lesen.
 
 **Ausgeliefert: 0.65.1.** Prüfstand **23 Dateien, 7.625 Prüfungen, 0 Fehler** (Basis 7.613).
