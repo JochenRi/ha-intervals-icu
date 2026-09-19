@@ -323,7 +323,24 @@ def watt_window(data: dict[str, Any] | None) -> int:
 # Das Fenster +/- 5 W ist eine SETZUNG: am 1-Hz-Strom verschiebt +/-10 W statt
 # +/-5 W das abgelesene alpha um 0,083 - so viel wie eine ganze Stunde Abfall.
 DFA_LOAD_BAND_W = 5.0
-DFA_LOAD_MIN_POINTS = 20
+# WIE VIEL IM LASTFENSTER LIEGEN MUSS, damit eine Stunde eine Ablesestelle
+# bekommt. Die Zahl zaehlt STROMSTELLEN, und bei `sample_secs = 1` - der
+# Vorgabe, die beide Aufrufer stehenlassen - ist eine Stelle eine SEKUNDE.
+# Eine volle Fahrtstunde hat also rund 3.600.
+#
+# 20 WAR ZU WENIG, und zwar nicht nach Gefuehl: alpha ist selbst ein Fenster
+# ueber DFA_WATT_WINDOW_S = 120 Sekunden. Unter 120 Sekunden im Lastfenster
+# liegt keine EINZIGE vollstaendige Messung vor - die Zahl kam dann aus
+# Bruchstuecken von alpha-Fenstern, die groesstenteils ausserhalb der Last
+# lagen. Die Schwelle ist damit aus der Bauart des Messwerts abgeleitet und
+# nicht gesetzt.
+#
+# Am Bestand (17 Fahrten) faellt dadurch genau zweierlei weg - zwei Stunden
+# mit 22 und 20 Sekunden, deren alpha bei 0,78 und 1,64 lag. Kette, Verlauf
+# (-0,043 alpha je Stunde) und Reichweite (5 h) bleiben, und die Spanne der
+# zweiten Stunde halbiert sich von +- 27,7 auf +- 14,8 W. Ueber 900 Sekunden
+# kippt der Verlauf (-0,106) - die Schwelle darf also nicht beliebig hoch.
+DFA_LOAD_MIN_POINTS = 120
 
 DFA_BIN_WIDTH = 0.05
 FATIGUE_MIN_BINS = 3

@@ -1,13 +1,13 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 19.09.2026 · **Version:** 0.64.1 · **Status:** produktiv auf HEIMDALL,
+**Stand:** 19.09.2026 · **Version:** 0.64.2 · **Status:** produktiv auf HEIMDALL,
 Auslieferung über HACS aus `github.com/JochenRi/ha-intervals-icu`
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lokal
 archiviert, auswertet und in einem eigenen Seitenleisten-Panel darstellt.
 
 **Umfang:** ~18.950 Zeilen, davon ~6.280 Frontend · 34 WebSocket-Befehle · 16 Einheiten in
-9 Familien · 23 Testdateien mit **7.562** gezählten Einzelprüfungen · 72 Releases.
+9 Familien · 23 Testdateien mit **7.568** gezählten Einzelprüfungen · 73 Releases.
 
 ---
 
@@ -2066,12 +2066,12 @@ dauerhafte Unterschreitung, Kurvenform — und nennt den Strom, auf dem sie steh
 
 ## 9. Prüfstand
 
-**23 Dateien, 7.562 gezählte Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
+**23 Dateien, 7.568 gezählte Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
 HA-Instanz oder einen Browser.
 
 | Datei | prüft | Umfang |
 |---|---|---|
-| `test_derive.py` | Parselogik gegen echte Payloads | 44 |
+| `test_derive.py` | Parselogik gegen echte Payloads ; **seit 0.64.2 die Punktschwelle: dass `load_n` STELLEN zählt und eine Stelle bei `sample_secs = 1` eine Sekunde ist, wird am Zähler nachgewiesen (3.600 bei einer vollen Stunde), und die Schwelle wird gegen `DFA_WATT_WINDOW_S` gehalten statt gegen eine Zahl — mit Gegenprobe knapp darunter und knapp darüber** | 50 |
 | `test_dfa.py` | DFA-Auswertung, Bandgrenzen, Artefakte, **die Plausibilitätsregel: Ausfall gegen Messung, Belegung je Wert getrennt, die alte `or`-Formel als Gegenprobe**; **seit B1 die Maskierung: die Achse bleibt die Fahrtzeit — mit dem Zusammenschieben als Gegenfall, dem Ausschluss VOR der Gültigkeitsprüfung, `dropped_share` als nichts statt 0,0 % im leeren Fenster, `keep=[]` gegen `keep=None`, und der Zeilenform des Importwegs Feld für Feld als Bump-Wächter**; **seit v2 die 120-s-Paarung nach Andriolo 2.3: Schalter aus Wert für Wert unverändert, das nachlaufende Mittel an vier Zahlen nachgerechnet, die Verwerfregel am ROHWERT mit Rollphasen mitten im Tritt als Mutationsfänger, Wirkung am Antritt MIT Gegenprobe am glatten Strom, und die Ablesestelle an der eigenen Last mit ihren Randfällen** | 80 |
 | `test_import.py` | vollständiger Import gegen einen Nachbau des Kontos, Schwellenreihe und `since`, day_context-Migration und Schreibweg, Quellenblock-Auflagen, **der Versionsmarken-Wächter mit Gegenprobe über eine dritte Marke, der Historienbeginn getrennt vom Bestandszeitraum** ; **seit 0.63.1 die ausgefallenen Stromabrufe: beide werden namentlich mit ihrem Grund gemeldet, die geglückte Fahrt nicht, Gegenprobe ohne Ausfall, und der Wiederholversuch gibt nur die leeren Zeilen frei, lässt Gemessenes stehen und ist beim zweiten Mal ein No-op** ; **der `except`-Zweig am ECHTEN Lauf durchlaufen: der Fake-Client wirft für eine Fahrt, die Meldung nennt sie mit Grund und Datum, die leere Zeile bleibt als Marke stehen, sie wird nicht wieder angefragt — mit der Gegenprobe, dass die geglückten Fahrten nicht im Fach stehen** | 144 |
 | `test_analytics.py` | Trainingsmetriken gegen bekannte Ergebnisse, Ebene-3-Wächter (Last kennt keine Etiketten, Quelltext und Verhalten), **die Wochenbilanz aus dem Archiv — Abgrenzung, und dass nichts gepaart wird** | 108 |

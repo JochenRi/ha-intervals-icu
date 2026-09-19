@@ -583,7 +583,14 @@ REVERSAL_WORDS = {
     "state": "aus gemessenem alpha",
     "lead": "Für eine Fahrt von",
     "unit_note": "so lange bleibst du über alpha {floor}",
-    "band_share": "8 von 10 Fahrten",
+    # NICHT "8 von 10 Fahrten". Der Weglass-Rueckblick am Bestand trifft mit
+    # diesem Band 70 % (Stunde 1) und 66 % (Stunde 2), nicht 80 - die
+    # alpha-Verteilung zwischen den Fahrten hat schwerere Enden, als das
+    # t-Band unterstellt. Die Zeile sagt deshalb, WIE das Band gebaut ist,
+    # und verspricht keine Trefferquote, die es nicht haelt. Die Abhilfe
+    # (empirisches Quantil statt t-Band) ist eine eigene Entscheidung und
+    # steht als offener Punkt.
+    "band_share": "t-Band über die Streuung",
     "no_band": "unter {min} Fahrten keine Spanne",
     "mean": ("Die Zahl ist keine Schwelle. Sie sagt: über eine Fahrt dieser Länge "
              "bleibt dein alpha im Mittel über {floor} — also im Bereich, in dem "

@@ -276,8 +276,11 @@ check("v2: die Fensterbreite steht auf Andriolos 120 s",
       derive.DFA_WATT_WINDOW_S, 120)
 check("v2: das Lastfenster ist eine gesetzte Groesse und steht bei +/- 5 W",
       derive.DFA_LOAD_BAND_W, 5.0)
-check("v2: unter 20 Punkten im Lastfenster gibt es keinen Wert",
-      derive.DFA_LOAD_MIN_POINTS, 20)
+# 0.64.2: die Schwelle ist nicht mehr gesetzt, sondern ABGELEITET - sie ist die
+# Fensterbreite von alpha. Der Zaehler zaehlt Sekunden, und unter 120 liegt
+# keine vollstaendige Messung vor.
+check("v2: unter einer vollen alpha-Fensterbreite gibt es keinen Wert",
+      derive.DFA_LOAD_MIN_POINTS, derive.DFA_WATT_WINDOW_S)
 # Dass der Schalter wirkt, wird dort geprueft, wo der Mechanismus existiert:
 # an einem Strom MIT Antritt. Auf einem glatten Strom darf er nichts tun - das
 # ist die Gegenprobe und gehoert mitgeprueft, sonst misst der Test nur Rauschen.

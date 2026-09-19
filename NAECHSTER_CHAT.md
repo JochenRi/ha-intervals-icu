@@ -1,5 +1,76 @@
 # ha-intervals-icu — Übergabe an den nächsten Chat
 
+## AKTUELL — 0.64.2: die Punktschwelle zählt Sekunden, und sie steht jetzt auf 120 (19.09.2026). Zuerst lesen.
+
+**Ausgeliefert: 0.64.2.** Prüfstand **23 Dateien, 7.568 Prüfungen, 0 Fehler** (Basis 7.562).
+**Nicht umgelegt, nichts neu eingelesen, kein `set_*`.**
+
+### Die Deutung ist am Code belegt
+
+`dfa_hours` läuft über die **Stromstellen** und sammelt je Stelle einen Wert;
+`sample_secs` steht auf **1** und **beide** Aufrufer (`importer.py:344`,
+`websocket.py:1786`) lassen die Vorgabe stehen. Eine Stelle ist also eine **Sekunde**, eine
+volle Stunde rund **3.600**. Im Prüfstand nachgewiesen: ein Strom aus 3.600 Stellen bei fester
+Last ergibt `load_n = 3600`.
+
+**`DFA_LOAD_MIN_POINTS = 20` hieß damit 20 Sekunden** — bei einem alpha, das selbst ein
+Fenster über 120 Sekunden ist. Unter 120 s liegt **keine einzige vollständige Messung** vor.
+Die Schwelle steht jetzt auf **120 und ist gegen `DFA_WATT_WINDOW_S` geprüft**, nicht gegen
+eine Zahl: sie ist aus der Bauart des Messwerts abgeleitet, nicht gesetzt.
+
+### Was sich ändert — mit den Produktionsfunktionen gerechnet
+
+| Schwelle | Fahrten | trägt / stützt | Reichweite | alpha/h | Kette |
+|---|---|---|---|---|---|
+| 20 s | 17 | 15 / 2 | 5 h | −0,043 (15) | 1h 173±20 · 2h 166**±28** · 3h 151±13 · 4h 147 · 5h 130 |
+| **120 s** | **17** | **13 / 4** | **5 h** | **−0,043 (13)** | 1h 173±20 · 2h 166**±15** · 3h 151±13 · 4h 147 · 5h 130 |
+| 300 s | 17 | 12 / 5 | 4 h | −0,0385 | Stunde 5 fällt weg |
+| 900 s | 17 | 6 / 11 | 3 h | **−0,106** | kippt |
+
+**Kette, Verlauf und Reichweite bleiben unverändert. Was sich ändert, ist das Band der zweiten
+Stunde: ± 27,7 → ± 14,8 W, praktisch halbiert.** Weg fallen genau zwei Stunden, beide auf der
+Rolle: **9908 h2 (22 s, alpha 0,78)** und **4325 h2 (20 s, alpha 1,64)** — die beiden
+Ausreißer, die das Band aufgebläht haben. **Stunde 1 bleibt 17 von 17.**
+
+### DER BEFUND, DER DABEI AUFGEFALLEN IST — und er ist nicht behoben
+
+Der Weglass-Rückblick mit der **Produktionsfunktion** (`reversal_band`) trifft:
+
+| Schwelle | Stunde 1 | Stunde 2 |
+|---|---|---|
+| 20 s | **70 %** | 78 % |
+| 120 s | **70 %** | **66 %** |
+
+**Das Band hält seine Zusage nicht.** Die Toleranzzeile sagte „8 von 10 Fahrten" — geliefert
+werden 7 von 10 und schlechter. Der Grund ist nicht die t-Tabelle (`STEERING_T90` klemmt bei
+df = 10 auf 1,372; der korrekte Wert für df = 16 wäre 1,337, also **noch schmaler**), sondern
+die **alpha-Verteilung zwischen den Fahrten: sie hat schwerere Enden, als ein t-Band
+unterstellt.**
+
+**In dieser Auslieferung wurde deshalb der Satz geändert, nicht das Band:** die Zeile sagt
+jetzt **„t-Band über die Streuung"** und verspricht keine Trefferquote mehr. Ein Band, das
+80 % hält, wäre das **empirische Quantil** der Abweichungen statt der t-Formel — das ist eine
+eigene Entscheidung und steht als offener Punkt.
+
+**Achtung, das betrifft vermutlich auch die Blockkacheln:** sie benutzen dieselbe t-Formel mit
+derselben Zusage. Dort ist n meist ≤ 10, weshalb es nie aufgefallen ist. Ungeprüft.
+
+### OFFEN
+
+0. **Das Band, das seine Zusage nicht hält.** Empirisches Quantil statt t-Formel — und die
+   Blockkacheln dagegenhalten.
+1. **Erholung nach einem fremden Block** — die Frage aus dem vorigen Auftrag. Die 120 s lösen
+   den 20.08. mit, aber nicht die Frage dahinter: was macht ein VO2max-Block mitten in einer
+   Grundlagenfahrt mit dem alpha der Folgestunde, und wie lange.
+2. **Den Trockenlauf nach diesem Update erneut fahren** — er zeigt jetzt die Kachel (0.64.1)
+   und rechnet mit der neuen Schwelle. Erst danach ist das Umlegen belegt.
+3. `bridges_alpha` am Livebestand · die Felder `alpha_window_*`, `alpha_mad`, `watt_mad` ·
+   die unbelegte Rolle/draußen-Beschriftung an drei Code-Stellen · Trockenlauf ohne
+   Oberfläche · Aufräum-Release.
+4. **Der GitHub-Token liegt weiterhin im Klartext in `GIT_Intervals.txt`. Widerrufen.**
+
+---
+
 ## AKTUELL — 0.64.1: der Trockenlauf zeigt jetzt die Kachel (19.09.2026). Zuerst lesen.
 
 **Ausgeliefert: 0.64.1.** Prüfstand **23 Dateien, 7.562 Prüfungen, 0 Fehler** (Basis 7.543).

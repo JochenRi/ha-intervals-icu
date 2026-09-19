@@ -4,6 +4,7 @@ import sys
 from datetime import date, datetime
 from pathlib import Path
 
+import inspect  # noqa: E402
 import coldcache  # noqa: F401  - MUSS vor jedem Bauteil-Import stehen (§9)
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "custom_components" / "intervals_icu"))
 
@@ -142,6 +143,44 @@ check("ohne Leistungsstrom nennt test_measures den Grund",
       "Leistungsstrom" in (nopow["reason"] or ""), True)
 
 print()
+# ---------------------------------------------------------------------------
+# DIE PUNKTSCHWELLE ZAEHLT SEKUNDEN (0.64.2). Das ist keine Auslegung, sondern
+# am Code belegbar: `dfa_hours` laeuft ueber die Stromstellen, sammelt je
+# Stelle EINEN Wert, und `sample_secs` steht auf 1 - beide Aufrufer lassen die
+# Vorgabe stehen. Eine volle Stunde hat also rund 3.600.
+_takt = derive.dfa_hours.__defaults__
+check("Schwelle: sample_secs steht auf einer Sekunde",
+      inspect.signature(derive.dfa_hours).parameters["sample_secs"].default, 1)
+check("Schwelle: eine Stunde sind 3.600 Stellen",
+      inspect.signature(derive.dfa_hours).parameters["hour_secs"].default, 3600)
+# EINE Stelle je Sekunde, nachgewiesen am Zaehler: ein Strom aus 3.600 gleichen
+# Werten bei fester Last ergibt rund 3.600 Punkte im Lastfenster.
+_konst = derive.dfa_hours([1.2] * 3600, [150.0] * 3600, [130] * 3600)
+check("Schwelle: der Zaehler zaehlt Stellen, nicht Fenster",
+      _konst[0]["load_n"], 3600)
+# DIE SCHWELLE IST AUS DEM MESSWERT ABGELEITET, nicht gesetzt: sie ist die
+# Fensterbreite von alpha. Darunter liegt keine vollstaendige Messung vor.
+check("Schwelle: sie ist die Fensterbreite von alpha",
+      derive.DFA_LOAD_MIN_POINTS, derive.DFA_WATT_WINDOW_S)
+# GEGENPROBE, gezaehlt: knapp darunter gibt es KEINE Zahl, knapp darueber eine.
+# Gebaut so, dass die gehaltene Last (der Median der Fahrt) auf 150 W liegt und
+# GENAU `n` Stellen im Fenster darum liegen - der Rest weit darunter und
+# darueber, zu gleichen Teilen.
+def _last_mit(n):
+    rest = 3600 - n
+    return [100.0] * (rest // 2) + [150.0] * n + [200.0] * (rest - rest // 2)
+_wenig = derive.dfa_hours([1.2] * 3600, _last_mit(derive.DFA_LOAD_MIN_POINTS - 1),
+                          [130] * 3600)
+check("Schwelle: knapp darunter gibt es keine Ablesestelle",
+      (_wenig[0]["load_w"], _wenig[0]["load_n"], _wenig[0]["load_alpha"]),
+      (150.0, derive.DFA_LOAD_MIN_POINTS - 1, None))
+_genug = derive.dfa_hours([1.2] * 3600, _last_mit(derive.DFA_LOAD_MIN_POINTS),
+                          [130] * 3600)
+check("Schwelle Gegenprobe: knapp darueber gibt es eine",
+      (_genug[0]["load_w"], _genug[0]["load_n"], _genug[0]["load_alpha"]),
+      (150.0, derive.DFA_LOAD_MIN_POINTS, 1.2))
+
+
 print(f"test_derive: {CHECKS} Prüfungen, {len(failures)} Fehler")
 print("FEHLER:", failures if failures else "keine")
 sys.exit(1 if failures else 0)
