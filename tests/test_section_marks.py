@@ -784,9 +784,15 @@ sm.set_mark(_d, "L2", "2026-09-10", "endurance", 0, _LAPS)
 check("lost: nie gemessen hat keinen Grund", sm.lost_of(sm.entry_for(_d, "L2")), None)
 check("lost: gemessen, Feld fehlt (Altbestand) = unbekannt",
       sm.lost_of({"measured_at": "2026-09-15", "measure": {}}), sm.LOST_UNKNOWN)
-ok("lost: jeder Grund hat einen Satz",
-   all(sm.LOST_TEXT.get(k) for k in (sm.LOST_CHANGED, sm.LOST_MOVED, sm.LOST_VERSION, sm.LOST_UNKNOWN)))
-ok("lost: die vier Saetze sind verschieden", len(set(sm.LOST_TEXT.values())) == 4)
+# Seit 0.63.1 sind es FUENF - LOST_WINDOW kommt dazu. Gezaehlt wird gegen das
+# Register selbst, nicht gegen eine Zahl im Test: ein sechster Grund faellt
+# damit beim Eintragen auf und nicht erst, wenn jemand die Zahl nachzieht.
+_GRUENDE = (sm.LOST_CHANGED, sm.LOST_MOVED, sm.LOST_VERSION, sm.LOST_WINDOW, sm.LOST_UNKNOWN)
+ok("lost: jeder Grund hat einen Satz", all(sm.LOST_TEXT.get(k) for k in _GRUENDE))
+ok("lost: die Saetze sind paarweise verschieden",
+   len(set(sm.LOST_TEXT.values())) == len(sm.LOST_TEXT) == len(_GRUENDE))
+ok("lost: das Umlegen der Rechnung ist ein EIGENER Grund",
+   sm.lost_of({"measured_at": "x", "lost": sm.LOST_WINDOW}) == sm.LOST_WINDOW)
 ok("lost: „unbekannt\" behauptet keine Ursache",
    "Auswahl" not in sm.LOST_TEXT[sm.LOST_UNKNOWN] and "verschoben" not in sm.LOST_TEXT[sm.LOST_UNKNOWN])
 for _wort in ("zu locker", "Fehler", "Mangel", "leider", "nicht ausreich"):

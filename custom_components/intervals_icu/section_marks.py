@@ -62,7 +62,25 @@ BLOCK = "section_marks"
 # Gerade - genau der Fit-durch-zwei-Wolken aus Paket M, der dort schon einmal
 # behoben war. Die Zahlen aus 0.54.0 sind damit falsch gemessen und fallen
 # beim Laden; die Marken bleiben.
-MEASURE_VERSION = 3
+# 3 seit 0.55.0.
+# 4 seit 0.63.1: die Stundenzeile traegt seit der Ermuedungsrechnung v2 die
+# ABLESESTELLE (`load_w`, `load_n`, `load_alpha`). Messungen von vorher haben
+# diese Felder gar nicht - auf dem Livebestand stand die v2-Kachel deshalb auf
+# NULL Fahrten, obwohl zwoelf markierte Fahrten gemessen waren. Das ist kein
+# Anzeigefehler, sondern genau der Fall, fuer den dieser Zaehler da ist: die
+# MESSUNG hat sich geaendert, also fallen die alten Zahlen und die Marken
+# bleiben.
+MEASURE_VERSION = 4
+
+# DIE FENSTERBREITE, MIT DER GEMESSEN WURDE - je Familie, in Sekunden.
+# Der Versionszaehler traegt Aenderungen am CODE; er kann nicht tragen, dass
+# ein SCHALTER umgelegt wurde: der ist athletenweise und laesst sich
+# zuruecknehmen, der Zaehler nicht. Ohne dieses Feld mischten sich in
+# `fatigue._marked_rides` Messungen beider Achsen unter demselben `v`.
+# Fehlt das Feld, ist 0 gemeint - alles vor 0.63.1 wurde ungefenstert
+# gemessen. Faellt der Schalter spaeter weg, steht hier dauerhaft 120, und
+# eine alte 0-Messung faellt weiter richtig.
+MEASURE_WINDOW_KEY = "w"
 
 # Vier Familien mit Abschnitts-Haken. Der Stufentest steht NICHT dabei - eine
 # Messfahrt ist als GANZES eine Messfahrt, es gibt daran keinen Abschnitt zu
@@ -194,6 +212,7 @@ _LEGACY_NOT_MEASURED = (
 LOST_CHANGED = "changed"
 LOST_MOVED = "moved"
 LOST_VERSION = "version"
+LOST_WINDOW = "window"    # die Rechnung wurde umgestellt, die Messung passt nicht mehr
 LOST_UNKNOWN = "unknown"   # nur im Leseweg: der Eintrag ist aelter als das Feld
 
 # Die Saetze dazu reisen im Leseweg (fuenfte Bauregel). „Unbekannt" behauptet
@@ -203,6 +222,9 @@ LOST_TEXT = {
     LOST_MOVED: ("Die markierten Abschnitte haben sich in Intervals verschoben — "
                  "die Messung gilt nicht mehr. Neu zu messen auf „übernehmen "
                  "und messen“."),
+    LOST_WINDOW: ("Diese Fahrt wurde mit der anderen Wattachse gemessen — seit dem "
+                  "Umlegen des Rechenschalters gilt sie nicht mehr und ist neu zu "
+                  "messen. Die Zuordnung und ihr Anker bleiben stehen."),
     LOST_VERSION: ("Die Messung wurde bei einer Änderung der Rechnung verworfen — "
                    "die Ströme liegen nicht im Archiv. Neu zu messen auf "
                    "„übernehmen und messen“."),
@@ -217,7 +239,8 @@ def lost_of(entry: Any) -> str | None:
     if not isinstance(entry, dict) or not entry.get("measured_at"):
         return None
     code = entry.get("lost")
-    return code if code in (LOST_CHANGED, LOST_MOVED, LOST_VERSION) else LOST_UNKNOWN
+    return code if code in (LOST_CHANGED, LOST_MOVED, LOST_VERSION,
+                            LOST_WINDOW) else LOST_UNKNOWN
 
 
 def marked_sections(entry: Any, family: str) -> list[dict[str, Any]]:
@@ -546,6 +569,21 @@ def measurement(entry: Any, family: str = "") -> dict[str, Any] | None:
     return found if isinstance(found, dict) else None
 
 
+def window_of(entry: Any, family: str = "") -> int:
+    """Mit welcher Fensterbreite diese Familie gemessen wurde.
+
+    Fehlt das Feld, ist 0 gemeint: vor 0.63.1 gab es nur die ungefensterte
+    Achse. NACHSICHTIG im Lesen, streng im Schreiben - dieselbe Trennung wie
+    ueberall in diesem Modul.
+    """
+    got = measurement(entry, family) or {}
+    raw = got.get(MEASURE_WINDOW_KEY)
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return 0
+
+
 def usable_hours(entry: Any, laps: Any) -> list[Any] | None:
     """Der maskierte Stundenverlauf - oder nichts, mit Grund an der Kachel.
 
@@ -723,7 +761,7 @@ def _write(block: dict[str, Any], key: str, old: dict[str, Any] | None,
 
 def set_measurement(data: dict[str, Any], activity_id: Any, family: str = "",
                     hours: Any = None, blocks: Any = None, reason: str = "",
-                    measured_at: str = "") -> dict[str, Any]:
+                    measured_at: str = "", window_s: int = 0) -> dict[str, Any]:
     """Das Ergebnis von "uebernehmen und messen" ablegen - JE FAMILIE.
 
     Die Markierung steht auch, wenn die Messung ausfaellt - dann aber MIT
@@ -751,7 +789,10 @@ def set_measurement(data: dict[str, Any], activity_id: Any, family: str = "",
         box = {}
         entry["measure"] = box
     box[family] = {"hours": hours, "blocks": blocks,
-                   "reason": (reason or "")[:REASON_LIMIT]}
+                   "reason": (reason or "")[:REASON_LIMIT],
+                   # MIT WELCHER WATTACHSE gemessen wurde. Ohne dieses Feld
+                   # sieht eine Messung von vorher aus wie eine von jetzt.
+                   MEASURE_WINDOW_KEY: int(window_s or 0)}
     entry["reason"] = ""
     # Nur eine Messung MIT Zahlen zaehlt als gemessen. Ein gescheiterter
     # Versuch traegt seinen Grund und laesst den Zustand, wie er war - sonst

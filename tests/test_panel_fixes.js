@@ -870,6 +870,7 @@ const acts = F.activities(), thr = F.thresholds();
    Tests eine Payload, die es nicht gibt - und das ist genau der Fall, der beim
    Bau von 0.42.0 aufgefallen ist (Urteil ohne Stufe). */
 {
+  const src = H.source();
   const fs = require("fs");
   const path = require("path");
   const backend = fs.readFileSync(
@@ -2240,6 +2241,87 @@ const acts = F.activities(), thr = F.thresholds();
      "vorgabe-schalter: die Kachel zeigt beide Stellungen gleichzeitig");
   ok(/Woher die Zahlen kommen/.test(kachelAn),
      "vorgabe-schalter: die Kachel sagt nicht, wo umgestellt wird");
+}
+
+/* ── 0.63.2: KEIN BEFEHL OHNE KNOPF ─────────────────────────────────────────
+   Die Luecke, die 0.63.0 durchgelassen hat: `intervals_icu/set_fatigue_source`
+   war registriert, geprueft und ausgeliefert - und im Panel gab es keinen
+   Schalter dazu. Johannes konnte die neue Rechnung schlicht nicht einschalten.
+   Kein bestehender Waechter konnte das finden: der Registrierungs-Waechter
+   sieht nur das Backend, die Panel-Waechter nur das Frontend.
+
+   Geprueft wird deshalb ueber BEIDE: fuer jeden registrierten `set_*`-Befehl
+   muss das Panel ihn aufrufen, der Aufruf muss in einer Methode stehen, und
+   diese Methode muss von der Klick-Weiche aus erreichbar sein - ueber ein
+   `data-act`, das auch wirklich gezeichnet wird. */
+{
+  const src = H.source();
+  const fs = require("fs");
+  const path = require("path");
+  const pkg = path.join(__dirname, "..", "custom_components", "intervals_icu");
+  const wsSrc = fs.readFileSync(path.join(pkg, "websocket.py"), "utf8");
+  // Ziffern gehoeren dazu: `[a-z_]+` haette `set_v2_source` nie gefunden.
+  const befehle = [...new Set([...wsSrc.matchAll(
+    /["']intervals_icu\/(set_[a-z0-9_]+)["']/g)].map((x) => x[1]))].sort();
+  ok(befehle.length >= 6,
+     `Knopf-Waechter: nur ${befehle.length} set_*-Befehle gefunden - der Fund greift nicht`);
+
+  // Methodenkoerper des Panels, grob nach Einrueckung geschnitten.
+  const koerper = {};
+  const mre = /\n  (?:async )?(_?[A-Za-z]\w*)\([^)]*\)\s*\{/g;
+  const treffer = [...src.matchAll(mre)];
+  treffer.forEach((t, i) => {
+    const von = t.index + t[0].length;
+    const bis = i + 1 < treffer.length ? treffer[i + 1].index : src.length;
+    koerper[t[1]] = (koerper[t[1]] || "") + src.slice(von, bis);
+  });
+
+  // Die Klick-Weiche: jede `act === "x"`-Verzweigung mit dem, was sie aufruft.
+  const weiche = src.slice(src.indexOf("const act = el.dataset.act"));
+  // Der Zweigkoerper endet am NAECHSTEN Zweig, nicht nach n Zeichen - sonst
+  // trifft die Suche den uebernaechsten Aufruf und meldet den falschen act.
+  const orte = [...weiche.matchAll(/act === "([a-z0-9_]+)"/g)];
+  const zweige = orte.map((t, i) => [t[1],
+    weiche.slice(t.index, i + 1 < orte.length ? orte[i + 1].index : t.index + 600)]);
+  // Gezeichnet wird ueber zwei Wege: als Literal im Markup und als `act:` im
+  // Baustein `_switchRow`, der es einsetzt. Beide zaehlen.
+  const gezeichnet = new Set([
+    ...[...src.matchAll(/data-act="([a-z0-9_]+)"/g)].map((x) => x[1]),
+    ...[...src.matchAll(/\bact: "([a-z0-9_]+)"/g)].map((x) => x[1]),
+  ]);
+
+  for (const cmd of befehle) {
+    // 1 - das Panel ruft den Befehl ueberhaupt auf
+    const stelle = src.indexOf(`_ws("${cmd}"`);
+    ok(stelle > 0, `Knopf-Waechter: das Panel ruft ${cmd} nirgends auf - der Befehl ist tot`);
+    if (stelle < 0) continue;
+    // 2 - er steht in einer Methode, und die ist von einem Zweig aus erreichbar
+    const wirt = Object.keys(koerper).find((k) => koerper[k].includes(`_ws("${cmd}"`));
+    ok(!!wirt, `Knopf-Waechter: der Aufruf von ${cmd} sitzt in keiner Methode`);
+    let erreicht = null;
+    for (const [act, folge] of zweige) {
+      const namen = new Set([...folge.matchAll(/this\.(_?[A-Za-z]\w*)\(/g)].map((x) => x[1]));
+      if (folge.includes(`_ws("${cmd}"`) || (wirt && namen.has(wirt))) { erreicht = act; break; }
+      // eine Ebene tiefer - manche Zweige rufen ueber einen Zwischenschritt
+      for (const n of namen) {
+        if ((koerper[n] || "").includes(`_ws("${cmd}"`)
+            || (wirt && (koerper[n] || "").includes(`this.${wirt}(`))) { erreicht = act; break; }
+      }
+      if (erreicht) break;
+    }
+    ok(!!erreicht,
+       `Knopf-Waechter: ${cmd} ist von der Klick-Weiche aus nicht erreichbar - `
+       + `es gibt einen Befehl, aber keinen Knopf (die Lücke von 0.63.0)`);
+    // 3 - und der Knopf wird auch GEZEICHNET
+    ok(!erreicht || gezeichnet.has(erreicht),
+       `Knopf-Waechter: der Zweig "${erreicht}" für ${cmd} kennt kein data-act im Markup`);
+  }
+  // Trefferzusicherung: der vierte Schalter ist WIRKLICH dabei - sonst prueft
+  // die Schleife oben nur die drei, die es schon gab.
+  ok(befehle.includes("set_fatigue_source"),
+     "Knopf-Waechter Fixture-Beweis: set_fatigue_source ist nicht in der Liste");
+  ok(gezeichnet.has("swfatigue"),
+     "Knopf-Waechter Fixture-Beweis: swfatigue wird nicht gezeichnet");
 }
 
 report("test_panel_fixes");

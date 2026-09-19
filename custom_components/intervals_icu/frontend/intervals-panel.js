@@ -1302,6 +1302,7 @@ class IntervalsIcuPanel extends HTMLElement {
     const wannGemessen = wann && wann.hour != null
       ? f.measured.find((r) => r.hour === wann.hour) : null;
     return `<div class="card pad"><h3 class="secname">Ermüdungskurve der aeroben Schwelle</h3>
+      ${this._fatigueIncomplete(f)}
       <div class="statgrid lead"><div class="stat wide" data-lead="fat">
         <small class="ldl">${erster ? `Leistung für eine Fahrt von ${fmt(erster.hours)} h` : ""}</small>
         <b class="tn lead1"><span class="ldv" style="color:${ROLE.series}">${erster ? fmt(erster.watts) : "–"}</span>
@@ -1565,6 +1566,7 @@ class IntervalsIcuPanel extends HTMLElement {
 
     return `<div class="card pad" data-grp="fatv2" data-lead="fatv2">
       <h3 class="secname">Ermüdungskurve der aeroben Schwelle</h3>
+      ${this._fatigueIncomplete(f)}
       <div class="famval">
         <span class="state">${esc(v2.state_label || "")}</span>
         <div class="fam"><span class="ldl">${fDauer(null)}</span></div>
@@ -1629,6 +1631,26 @@ class IntervalsIcuPanel extends HTMLElement {
           ${(v2.settings || []).map((x) => esc(x)).join(" · ")}.</p>
         ${this._fatigueDropped(f)}
       </details></div>`;
+  }
+
+  /* SOLANGE FAHRTEN FEHLEN, SAGT DIE KARTE DAS - und zwar oben, nicht im
+     Rechenweg. Ein ausgefallener Stromabruf nimmt der Fahrt ihre DFA-Zeile,
+     und damit auch dem Anker, dem DFA-Reiter und den Belastungsansichten, die
+     von der Wattachse gar nichts wissen. Die Zahl kommt aus dem Zaehlfeld, die
+     Namen aus der Liste - die ist gekappt, das Zaehlfeld nicht (0.46.0). */
+  _fatigueIncomplete(f) {
+    const inc = (f || {}).incomplete || {};
+    if (!inc.n) return "";
+    const liste = (inc.rides || []).map((r) =>
+      `<li>${dMed(r.date)} — ${esc(r.name || "ohne Namen")}
+        <span class="mut">${esc(r.reason)}</span></li>`).join("");
+    return `<p class="src warn">${ico("info", C.amber, 13)}
+      <b>${fmt(inc.n)} ${inc.n === 1 ? "Fahrt" : "Fahrten"} fehlen dem Bestand</b> —
+      ihr Strom konnte nicht geholt werden. Sie fehlen nicht nur dieser Karte:
+      auch der Anker, die Schwellenreihe und die Belastungsansichten rechnen
+      ohne sie. <b>Die Zahlen unten sind deshalb nicht vollständig.</b>
+      <button class="btn small" data-act="retrydfa">Noch einmal versuchen</button></p>
+      <ul class="rides">${liste}</ul>`;
   }
 
   /* Warum die Belegung so dünn ist: nicht weil zu wenig gefahren wurde,
@@ -2531,6 +2553,14 @@ class IntervalsIcuPanel extends HTMLElement {
       if (!el) return;
       const act = el.dataset.act, id = el.dataset.id;
       if (act === "tab") this._setTab(id);
+      // KEIN KNOPF OHNE HANDLER (0.56.1). Der Wiederholversuch gibt die
+      // ausgefallenen Fahrten nur frei; geholt werden sie vom naechsten
+      // Abgleich - der Holweg bleibt an einer Stelle.
+      else if (act === "retrydfa") {
+        this._ws("retry_dfa").then(() => { this._fatigue = null; this._need("fatigue")
+          .then(() => this._render()); }).catch((err) => {
+            this._err = String(err && err.message || err); this._render(); });
+      }
       else if (act === "range") { this._range = +id; this._render(); }
       else if (act === "weeks") {
         this._weeks = +id; this._days = null;
@@ -2570,6 +2600,7 @@ class IntervalsIcuPanel extends HTMLElement {
       else if (act === "swcurve") this._setCurveSource(el.dataset.on === "1");
       else if (act === "swblocks") this._setBlockSource(el.dataset.on === "1");
       else if (act === "swsteering") this._setSteeringSource(el.dataset.on === "1");
+      else if (act === "swfatigue") this._setFatigueSource(el.dataset.on === "1");
       else if (act === "smmeasure") this._smMeasure(id);
       else if (act === "smconf") this._smConfirm(id);
       else if (act === "smark") {
@@ -4685,7 +4716,34 @@ class IntervalsIcuPanel extends HTMLElement {
       })}
 
       ${this._steeringSwitch(b)}
+      ${this._fatigueSwitch(f)}
     </div>`;
+  }
+
+  /* DER VIERTE SCHALTER - die RECHNUNG der Ermuedungskurve, nicht ihre
+     Auswahl. Bis 0.63.0 gab es den Befehl `set_fatigue_source` und keinen
+     Knopf dazu: die neue Rechnung war gebaut, geprueft, ausgeliefert - und
+     nicht einschaltbar. Seit 0.63.2 haelt eine Pruefung fest, dass zu JEDEM
+     registrierten set_*-Befehl ein Knopf gehoert.
+
+     KEINE ZAHLENSPALTE: die Payload traegt nur die geltende Stellung, die
+     Gegenstellung ist ohne die Stroeme gar nicht zu rechnen (dafuer gibt es
+     den Trockenlauf `intervals_icu/fatigue_dry_run`). Eine leere Spalte waere
+     ehrlicher als eine erfundene, ein weggelassener Block ist es noch mehr. */
+  _fatigueSwitch(f) {
+    const v2 = (f || {}).v2 || null;
+    const w = (v2 || {}).switch_words;
+    if (!v2 || !w) return "";
+    const an = !!v2.on;
+    return this._switchRow({
+      title: w.title, act: "swfatigue", on: an,
+      offLabel: w.off_label, onLabel: w.on_label,
+      goLabel: w.go_label, backLabel: w.back_label,
+      what: an ? w.on_note : w.off_note,
+      note: v2.switch_note,
+      basis: `${fmt(v2.rides_used || 0)} ${v2.rides_used === 1 ? "Fahrt" : "Fahrten"} `
+        + `mit Ablesestelle · gemessen bis Stunde ${fmt(v2.covered_until_hours || 0)}`,
+    });
   }
 
   /* DER DRITTE SCHALTER, derselbe Baustein wie die beiden darueber. Alle
@@ -4754,6 +4812,23 @@ class IntervalsIcuPanel extends HTMLElement {
       // drei wie beim Blockschalter, aus demselben Grund.
       this._blocks = null; this._workouts = null; this._goal = null;
       await this._need("blocks");
+    } finally {
+      this._swBusy = false;
+      this._render();
+    }
+  }
+
+  async _setFatigueSource(on) {
+    if (this._swBusy) return;
+    this._swBusy = true;
+    try {
+      // DIE ANTWORT KOMMT AUS DER PAYLOAD, nicht aus einem Satz hier: der
+      // Befehl sagt, ob er etwas geaendert hat und was das kostet.
+      const res = await this._ws("set_fatigue_source", { enabled: !!on });
+      this._swNote = (res && res.changed) ? (res.note || "") : "";
+      // Die Kurve rechnet danach anders, und der Reiter zeigt ihre Zahlen.
+      this._fatigue = null;
+      await this._need("fatigue");
     } finally {
       this._swBusy = false;
       this._render();

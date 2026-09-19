@@ -199,6 +199,30 @@ async def main():
     check("alle DFA-Auswertungen da", len(data["dfa"]), 242)
     check("Stream-Anfragen gesamt", client.calls["streams"], 242)
 
+    # DER except-ZWEIG, WIRKLICH DURCHLAUFEN. Der FakeClient wirft fuer jede
+    # Fahrt auf "099" - bis 0.63.0 legte der Importweg dafuer STUMM eine leere
+    # Zeile ab, und die Fahrt fiel danach aus dem Ankerpool, ohne dass irgendwo
+    # etwas stand. Geprueft wird am Ergebnis des echten Laufs, nicht an einem
+    # von Hand gefuellten Fach.
+    gefallen = importer.failed_dfa(data)
+    check("Ausfall im echten Lauf: gemeldet", len(gefallen) > 0, True)
+    check("Ausfall im echten Lauf: es sind genau die geworfenen",
+          all(r["activity_id"].endswith("099") for r in gefallen), True)
+    check("Ausfall im echten Lauf: der Grund reist mit",
+          all("boom" in r["reason"] for r in gefallen), True)
+    check("Ausfall im echten Lauf: jeder traegt sein Datum",
+          all(r["date"] and r["at"] for r in gefallen), True)
+    # Die leere Zeile BLEIBT - sie ist die Marke "nicht noch einmal holen".
+    check("Ausfall im echten Lauf: die leere Zeile steht im Archiv",
+          all(data["dfa"].get(r["activity_id"]) == {} for r in gefallen), True)
+    check("Ausfall im echten Lauf: sie wird nicht wieder angefragt",
+          [k for k in importer.pending_dfa(data) if k.endswith("099")], [])
+    # GEGENPROBE, gezaehlt und benannt: die geglueckten Fahrten stehen NICHT
+    # im Fach - sonst prueften die Zeilen oben nur, dass ueberhaupt etwas
+    # drinsteht.
+    check("Ausfall Gegenprobe: die geglueckten Fahrten fehlen dem Fach",
+          len(gefallen) < len(data["dfa"]), True)
+
 
     sample = next(v for v in data["dfa"].values() if v)
     check("Artefakt verworfen", sample["samples"], 3599)
@@ -586,6 +610,42 @@ async def main():
     ohne.update(alt)
     check("Gegenprobe: ohne die Ausnahme verwirft die Migration nichts",
           importer.drop_outdated_dfa(ohne), 0)
+
+    # -----------------------------------------------------------------------
+    # AUSGEFALLENE STROMABRUFE WERDEN GEZAEHLT UND BENANNT (0.63.1).
+    # Bis 0.63.0 legte der Importweg bei einem Fehlschlag STUMM eine leere
+    # Zeile ab: die Fahrt wurde nie wieder geholt, fiel aus dem Ankerpool und
+    # sagte es niemandem. Am Livebestand verschiebt EIN solcher Ausfall unter
+    # den letzten fuenf die Schwellenleistung des Ankers um bis zu 17 W.
+    fd = importer.empty_data("i1")
+    for k, tag in (("F1", "2026-09-01"), ("F2", "2026-09-02"), ("OK", "2026-09-03")):
+        fd["activities"][k] = {"id": k, "start_date_local": tag + "T08:00:00",
+                               "name": "volumen " + k}
+    fd["dfa"] = {"F1": {}, "F2": {}, "OK": {"hours": [{"hour": 1}]}}
+    importer.failed_box(fd)["F1"] = {"reason": "HTTP 500", "at": "2026-09-19"}
+    importer.failed_box(fd)["F2"] = {"reason": "timeout", "at": "2026-09-19"}
+    liste = importer.failed_dfa(fd)
+    check("Ausfall: beide werden gemeldet", [r["activity_id"] for r in liste], ["F1", "F2"])
+    check("Ausfall: jeder mit seinem Grund",
+          [r["reason"] for r in liste], ["HTTP 500", "timeout"])
+    check("Ausfall: die geglückte Fahrt taucht NICHT auf",
+          any(r["activity_id"] == "OK" for r in liste), False)
+    check("Ausfall: die Namen reisen mit, sonst ist die Meldung nicht handhabbar",
+          [r["name"] for r in liste], ["volumen F1", "volumen F2"])
+    ok = importer.empty_data("i1")
+    ok["dfa"] = {"OK": {"hours": []}}
+    check("Ausfall Gegenprobe: ohne Ausfall meldet nichts", importer.failed_dfa(ok), [])
+    # Eine Fahrt, die im Fach steht, inzwischen aber Daten hat: sie darf NICHT
+    # geloescht werden - der Wiederholversuch gibt frei, er wirft nichts weg.
+    fd["dfa"]["F2"] = {"hours": [{"hour": 1}]}
+    freed = importer.retry_failed_dfa(fd)
+    check("Wiederholen: nur die leere Zeile wird freigegeben", freed, 1)
+    check("Wiederholen: die inzwischen gefuellte Fahrt bleibt",
+          sorted(fd["dfa"]), ["F2", "OK"])
+    check("Wiederholen: die gemessene Fahrt bleibt unberührt",
+          fd["dfa"]["OK"], {"hours": [{"hour": 1}]})
+    check("Wiederholen: das Fach ist leer", importer.failed_dfa(fd), [])
+    check("Wiederholen: beim zweiten Mal passiert nichts", importer.retry_failed_dfa(fd), 0)
 
     print(f"test_import: {CHECKS} Prüfungen, {len(failures)} Fehler")
     print("FEHLER:", failures if failures else "keine")

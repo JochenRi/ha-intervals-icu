@@ -207,7 +207,14 @@ NOT_MEASURED_REASON = "not_measured"
 # der zwei Gruende zusammenfasst, erfindet den haeufigeren (§7).
 NO_VALUE_REASON = "no_value"
 MEASURE_FAILED_REASON = "measure_failed"
+
+# DIE ACHSE HAT GEWECHSELT. Ein eigener Grund und nicht `remeasure_version`:
+# der Versionssprung gilt fuer alle und fuer immer, das Umlegen des
+# Rechenschalters fuer diesen Athleten und nur, solange er umgelegt ist. Wer
+# beides unter ein Wort legt, kann dem Athleten nicht sagen, was er tun soll.
+WINDOW_CHANGED_REASON = "remeasure_window"
 LOST_REASON = {
+    marks_lib.LOST_WINDOW: WINDOW_CHANGED_REASON,
     marks_lib.LOST_CHANGED: "remeasure_changed",
     marks_lib.LOST_MOVED: "remeasure_moved",
     marks_lib.LOST_VERSION: "remeasure_version",
@@ -220,6 +227,8 @@ LOST_REASON = {
 DROPPED_WORDS: dict[str, tuple[str, str]] = {
     NOT_MEASURED_REASON: ("markiert, noch nicht gemessen", marks_lib.NOT_MEASURED),
     NO_VALUE_REASON: ("gemessen, ohne Punkt für die Kurve", marks_lib.NO_VALUE),
+    WINDOW_CHANGED_REASON: ("mit der anderen Wattachse gemessen",
+                            marks_lib.LOST_TEXT[marks_lib.LOST_WINDOW]),
     MEASURE_FAILED_REASON: ("gemessen, ohne Ergebnis",
                             "die Messung lief und brachte keine Zahlen — der Grund "
                             "steht an der Fahrt"),
@@ -278,6 +287,15 @@ def _marked_rides(data: dict[str, Any]) -> dict[str, Any]:
         row["sections"] = marks_lib.marked_sections(entry, "endurance")
         got = marks_lib.measurement(entry, "endurance") or {}
         hours = got.get("hours")
+        # DIE ACHSE MUSS STIMMEN. Eine Messung, die unter der anderen
+        # Wattachse entstanden ist, wird NICHT mitgerechnet - sie sagt eine
+        # andere Groesse. Bis 0.63.0 landete sie still in derselben Reihe,
+        # weil der Versionszaehler nur Code-Aenderungen traegt und nicht das
+        # Umlegen eines athletenweisen Schalters.
+        if isinstance(hours, list) and hours \
+                and marks_lib.window_of(entry, "endurance") != derive.watt_window(data):
+            dropped.setdefault(WINDOW_CHANGED_REASON, []).append(row)
+            continue
         if isinstance(hours, list) and hours:
             used.append({**row, "hours": hours})
             continue

@@ -123,6 +123,8 @@ def async_register(hass: HomeAssistant) -> None:
         websocket_measure_section_marks,
         websocket_set_curve_source,
         websocket_set_fatigue_source,
+        websocket_retry_dfa,
+        websocket_fatigue_dry_run,
         websocket_set_block_source,
         websocket_set_steering_source,
         websocket_reconcile,
@@ -398,6 +400,16 @@ def websocket_fatigue(hass, connection, msg) -> None:
     # aus, ist `v2["on"]` false und die Kachel zeigt unveraendert das heutige
     # Verhalten - der Block kostet dann nur seine Zeilen.
     result["v2"] = fatigue_v2.curve(data)
+    _stats = importer.archive_stats(data)
+    result["v2"]["switch_note"] = fatigue_v2.switch_note(
+        data, rides=_stats["dfa_done"] + _stats["dfa_pending"], batch=DFA_BATCH_SIZE)
+    # DER BESTAND SAGT, OB ER VOLLSTAENDIG IST. Ein Stromabruf, der ausfaellt,
+    # nimmt der Fahrt still ihre DFA-Zeile - und damit auch dem Anker, dem
+    # DFA-Reiter und den Belastungsansichten, die von der Wattachse nichts
+    # wissen. Solange hier etwas steht, darf keine Zahl der Karte so tun, als
+    # waere der Bestand vollstaendig.
+    result["incomplete"] = {"n": len(importer.failed_dfa(data)),
+                            "rides": importer.failed_dfa(data)[:20]}
     # Nach einem Algorithmus-Bump ist das Archiv leer, bis die Stroeme neu
     # geholt sind - in Baendern von DFA_BATCH_SIZE je Sync. Der Fortschritt
     # reist mit, damit die Kachel "rechnet noch, x von y" sagen kann statt
@@ -592,12 +604,105 @@ async def websocket_set_fatigue_source(hass, connection, msg) -> None:
     connection.send_result(msg["id"], {
         "enabled": fatigue_v2.v2_on(data),
         "changed": changed,
-        "note": fatigue_v2.SWITCH_NOTE,
+        "note": fatigue_v2.switch_note(
+            data, rides=stats_before["dfa_done"] + stats_before["dfa_pending"],
+            batch=DFA_BATCH_SIZE),
         "remeasure": {
             "rides": stats_before["dfa_done"] + stats_before["dfa_pending"],
             "batch": DFA_BATCH_SIZE,
         },
     })
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "intervals_icu/fatigue_dry_run",
+        vol.Optional("limit"): int,
+        vol.Optional("athlete_id"): str,
+    }
+)
+@websocket_api.async_response
+async def websocket_fatigue_dry_run(hass, connection, msg) -> None:
+    """DER TROCKENLAUF: beide Wattachsen an denselben Stroemen, LESEND.
+
+    Er holt die Stroeme der Fahrten, die die Kurve heute traegt, rechnet
+    jede Stunde in beiden Stellungen und gibt die Kachelzahlen beider Seiten
+    zurueck. GESPEICHERT WIRD NICHTS: kein `async_save_now`, kein Schreiben in
+    `data`. Die Rechnung laeuft auf Kopien (`fatigue_v2._shadow`).
+
+    Damit sind die Zahlen der anderen Stellung sichtbar, BEVOR umgelegt wird -
+    heute die einzige Luecke, die das Umlegen zu einem Sprung ins Dunkle
+    macht. Er ueberlebt den Wegfall der Schalter, weil er zwei
+    FENSTERBREITEN vergleicht und nicht zwei Schalterstellungen.
+    """
+    coordinator = _pick(hass, msg.get("athlete_id"))
+    if coordinator is None:
+        connection.send_error(msg["id"], "not_found", "no Intervals.icu athlete loaded")
+        return
+    data = coordinator.archive.data
+    auswahl = [row.get("activity_id") for row in (fatigue.rides(data).get("used") or [])]
+    limit = int(msg.get("limit") or 0)
+    if limit > 0:
+        auswahl = auswahl[-limit:]
+    streams: dict[str, Any] = {}
+    fehlt: list[dict[str, Any]] = []
+    for key in auswahl:
+        try:
+            by_name = derive.streams_to_dict(
+                await coordinator.client.async_get_streams(key, importer.DFA_STREAMS))
+        except Exception as err:  # noqa: BLE001 - eine Fahrt ist kein Abbruch
+            fehlt.append({"activity_id": key, "reason": str(err)[:200]})
+            continue
+        keep = None
+        if fatigue.curve_from_marks(data):
+            entry = marks_lib.entry_for(data, key)
+            try:
+                laps = derive.normalize_laps(
+                    await coordinator.client.async_get_intervals(key)).get("laps") or []
+            except Exception as err:  # noqa: BLE001
+                fehlt.append({"activity_id": key, "reason": str(err)[:200]})
+                continue
+            keep, missing = marks_lib.mask_ranges(
+                laps, marks_lib.marked(entry, "endurance"))
+            if missing or not keep:
+                fehlt.append({"activity_id": key, "reason": "Marken ohne Grenzen"})
+                continue
+        streams[key] = {"dfa_a1": by_name.get("dfa_a1"), "watts": by_name.get("watts"),
+                        "heartrate": by_name.get("heartrate"), "keep": keep}
+    result = fatigue_v2.dry_run(data, streams)
+    result["asked"] = len(auswahl)
+    result["missing"] = fehlt
+    result["from_marks"] = fatigue.curve_from_marks(data)
+    connection.send_result(msg["id"], result)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "intervals_icu/retry_dfa",
+        vol.Optional("athlete_id"): str,
+    }
+)
+@websocket_api.async_response
+async def websocket_retry_dfa(hass, connection, msg) -> None:
+    """Die ausgefallenen Stromabrufe wieder freigeben.
+
+    Kein Holen von hier aus: freigegeben wird nur die Marke "schon versucht",
+    danach nimmt der naechste Abgleich die Fahrten wie jede andere mit. So
+    bleibt der Holweg an EINER Stelle (dem Importweg) und wird nicht ein
+    zweites Mal gebaut.
+
+    Gespeichert wird nur im AENDERUNGSFALL (J7, zweite Auflage): ein Klick
+    ohne Ausfaelle loest keinen Speichervorgang aus.
+    """
+    coordinator = _pick(hass, msg.get("athlete_id"))
+    if coordinator is None:
+        connection.send_error(msg["id"], "not_found", "no Intervals.icu athlete loaded")
+        return
+    data = coordinator.archive.data
+    freed = importer.retry_failed_dfa(data)
+    if freed:
+        await coordinator.archive.async_save_now()
+    connection.send_result(msg["id"], {"freed": freed})
 
 
 @websocket_api.websocket_command(
@@ -1673,8 +1778,14 @@ async def websocket_measure_section_marks(hass, connection, msg) -> None:
                           "Fahrt keine Grenzen mehr — die Zuordnung ist zu bestätigen "
                           "oder neu zu setzen.")
             else:
+                # DIE WATTACHSE HAENGT AM RECHENSCHALTER, hier wie im
+                # Importweg. Bis 0.63.0 stand hier kein Fenster: stand der
+                # Kurvenschalter auf "meine Markierungen" - so steht er -,
+                # las die Kurve ungefensterte Werte, und der Rechenschalter
+                # hatte gar keine Wirkung. Zwei Wahrheiten unter einem Dach.
                 hours = derive.dfa_hours(by_name.get("dfa_a1"), by_name.get("watts"),
-                                         by_name.get("heartrate"), keep=ranges) or None
+                                         by_name.get("heartrate"), keep=ranges,
+                                         watt_window_s=derive.watt_window(data)) or None
                 if hours is None:
                     reason = ("Diese Fahrt führt keinen auswertbaren DFA-a1-Strom — an "
                               "den markierten Abschnitten ist nichts abzulesen.")
@@ -1694,7 +1805,8 @@ async def websocket_measure_section_marks(hass, connection, msg) -> None:
                 reason = "In den markierten Abschnitten stehen keine Wattwerte."
         try:
             marks_lib.set_measurement(data, activity_id, family=family, hours=hours,
-                                      blocks=blocks, reason=reason, measured_at=stamp)
+                                      blocks=blocks, reason=reason, measured_at=stamp,
+                                      window_s=derive.watt_window(data))
         except ValueError as err:
             connection.send_error(msg["id"], "invalid_format", str(err))
             return

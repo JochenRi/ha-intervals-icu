@@ -49,18 +49,60 @@ except ImportError:  # standalone (test suite loads this file directly)
 # DER SCHALTER. Wie `CURVE_SWITCH` im Archiv, nicht in den Optionen: er gehoert
 # zu den Daten, die er umschaltet. ZWEI Fragen, ZWEI Schalter - die Auswahl der
 # Fahrten ("meine Markierungen") bleibt davon unberuehrt.
-V2_SWITCH = "fatigue_v2"
+V2_SWITCH = derive.DFA_WATT_WINDOW_SETTING
 
 # ER KOSTET ETWAS, und das muss VOR dem Umlegen dastehen. Die 120-s-Paarung
 # aendert jedes gespeicherte p075, also muss der Bestand neu gemessen werden.
 # Ausgeschaltet passiert nichts: das Archiv bleibt unberuehrt.
-SWITCH_NOTE = ("Umgelegt rechnet die Kurve anders: die Watt werden über "
-               "dasselbe 120-Sekunden-Fenster gemittelt wie alpha, und der "
-               "Verlauf wird an deiner eigenen gehaltenen Last abgelesen statt "
-               "am Kreuzungspunkt 0,75. Das ändert jeden gespeicherten Wert — "
-               "58 Fahrten werden neu geholt (in Schüben zu 25, also drei "
-               "Abgleiche) und 28 markierte Einheiten neu gemessen. "
-               "Ausgeschaltet bleibt alles, wie es ist.")
+SWITCH_NOTE = (
+    "Umgelegt rechnet die Kurve anders: die Watt werden über dasselbe "
+    "120-Sekunden-Fenster gemittelt wie alpha, und der Verlauf wird an deiner "
+    "eigenen gehaltenen Last abgelesen statt am Kreuzungspunkt 0,75. "
+    "ES ÄNDERT SICH NUR DIE ERMÜDUNGSKURVE: deine aerobe Schwellen-HF, die "
+    "Schwellenleistung des Ankers, die Trainer-Einheiten, die Blockmessung, "
+    "der DFA-Reiter und die Belastungsansichten lesen eine andere Größe und "
+    "bleiben unberührt. "
+    "Es kostet einen Reimport: {rides} Fahrten werden neu EINGELESEN (alle mit "
+    "alpha-Daten, in Schüben zu {batch}, also {batches} Abgleiche). "
+    "FÜR DIE KURVE zählen weiterhin nur deine {curve} markierten Fahrten — sie "
+    "sind neu zu messen, weil die alte Messung auf der anderen Wattachse sitzt. "
+    "Bis der Reimport durch ist, sind Blockmessung und Steuerung leer. "
+    "Ausgeschaltet bleibt alles, wie es ist."
+)
+
+
+# DIE WOERTER DES SCHALTERS, wie bei den drei anderen aus dem Modul und nicht
+# aus dem Panel. Ohne sie gab es 0.63.0 zwar den Befehl, aber keinen Knopf:
+# Johannes konnte die neue Rechnung gar nicht einschalten.
+SWITCH_WORDS = {
+    "title": "Rechnung der Ermüdungskurve",
+    "off_label": "Kreuzungspunkt 0,75",
+    "on_label": "meine eigene Last",
+    "go_label": "auf die neue Rechnung umstellen",
+    "back_label": "zurück auf den Kreuzungspunkt",
+    "off_note": ("Die Kurve liest heute ab, wo die Ausgleichsgerade alpha 0,75 "
+                 "schneidet — bei deinen Grundlagenfahrten liegt das über der "
+                 "Last, die du wirklich trittst, die Zahl wird also aus dem "
+                 "Datenbereich heraus gerechnet."),
+    "on_note": ("Die Kurve liest alpha bei der Last ab, die du wirklich "
+                "gefahren bist, und die Watt werden über dasselbe "
+                "120-Sekunden-Fenster gemittelt wie alpha."),
+}
+
+
+def switch_note(data: dict[str, Any], rides: int = 0, batch: int = 0) -> str:
+    """Der Hinweis MIT den Zahlen dieses Bestands.
+
+    Bis 0.63.0 standen 58 und 28 als Text im Satz - zwei Zahlen, die niemand
+    nachzog, und sie lasen sich ausserdem so, als liefen alle 58 Fahrten in
+    die Kurve. Eingelesen wird alles mit alpha-Daten; gerechnet wird mit den
+    markierten. Das sind zwei Zahlen und zwei Saetze.
+    """
+    marked = len((fatigue.rides(data) or {}).get("used") or [])
+    schuebe = max(1, -(-int(rides or 0) // max(1, int(batch or 1))))
+    return SWITCH_NOTE.format(rides=int(rides or 0), batch=int(batch or 0),
+                              batches=schuebe, curve=marked)
+
 
 # DIE DREI BRUECKEN alpha -> Watt, in Watt je Stunde bei -0,080 alpha je Stunde.
 # Sie stehen um den Faktor acht auseinander, und das ist keine Streuung,
@@ -137,8 +179,13 @@ def flipped(data: dict[str, Any]) -> dict[str, Any]:
 
 
 def watt_window(data: dict[str, Any]) -> int:
-    """Die Fensterbreite fuer den Importweg. Aus = 0 = heutiges Verhalten."""
-    return derive.DFA_WATT_WINDOW_S if v2_on(data) else 0
+    """Die Fensterbreite. DURCHGEREICHT - die Regel steht in `derive`.
+
+    Drei Wege fragen danach (Import, Messweg der Markierungen, Leseweg der
+    Kurve); eine zweite Fassung hier waere die zweite Wahrheit, die 0.63.0
+    genau an dieser Stelle hatte.
+    """
+    return derive.watt_window(data)
 
 
 def reading_rows(data: dict[str, Any]) -> list[dict[str, Any]]:
@@ -339,6 +386,7 @@ def curve(data: dict[str, Any]) -> dict[str, Any]:
             "state_label": STATE_ON,
             "horizon_hours": PLAN_HORIZON_HOURS,
             "estimate_words": ESTIMATE_WORDS,
+            "switch_words": SWITCH_WORDS,
             "band_share_words": BAND_SHARE_WORDS,
             "min_hours_for_trend": MIN_HOURS_FOR_TREND,
             "load_band_w": derive.DFA_LOAD_BAND_W,
@@ -355,3 +403,114 @@ SETTINGS_NOTE = [
     "die Spanne quadratisch aus Streuung und Umrechnung zusammengelegt",
     "die Studienform hinter dem belegten Bereich, verankert an Stunde 1",
 ]
+
+
+# --- DER TROCKENLAUF ----------------------------------------------------------
+# Heute ist der Schalter die einzige Art, den Bestand mit 120-s-Paarung zu
+# sehen - und zugleich die Aktion, die abgesichert werden soll. Das ist
+# strukturell unerfuellbar: man kann nicht vorher nachsehen, was danach
+# herauskommt.
+#
+# Dieser Weg rechnet BEIDE Stellungen aus denselben Stroemen und fasst das
+# Archiv NICHT an. Er nimmt die Stroeme entgegen, statt sie zu holen: das
+# Holen gehoert dem Importweg, und eine zweite Fassung davon waere die zweite
+# Wahrheit, die dieses Release gerade beseitigt.
+#
+# Er ueberlebt den Wegfall der Schalter. Verglichen werden zwei FENSTERBREITEN
+# (0 und DFA_WATT_WINDOW_S), nicht zwei Schalterstellungen; faellt der Schalter
+# weg, vergleicht derselbe Weg die naechste Umstellung.
+DRY_FIELDS = ("p075", "r2", "slope", "load_w", "load_n", "load_alpha", "hr075")
+
+
+def dry_hours(dfa: Any, watts: Any, heartrate: Any, keep: Any = None,
+              window_s: int | None = None) -> list[dict[str, Any]]:
+    """Je Fahrtstunde beide Achsen nebeneinander - ohne etwas abzulegen."""
+    breite = derive.DFA_WATT_WINDOW_S if window_s is None else int(window_s)
+    aus = derive.dfa_hours(dfa, watts, heartrate, keep=keep, watt_window_s=0)
+    an = derive.dfa_hours(dfa, watts, heartrate, keep=keep, watt_window_s=breite)
+    out = []
+    for index, row in enumerate(aus):
+        other = an[index] if index < len(an) else {}
+        line: dict[str, Any] = {"hour": row.get("hour")}
+        for field in DRY_FIELDS:
+            line[field] = {"off": row.get(field), "on": other.get(field)}
+        out.append(line)
+    return out
+
+
+def dry_run(data: dict[str, Any], streams: dict[str, Any],
+            window_s: int | None = None) -> dict[str, Any]:
+    """Beide Stellungen an EINEM Bestand - Stundenwerte UND Kachelzahlen.
+
+    `streams` ist {activity_id: {"dfa_a1": [...], "watts": [...],
+    "heartrate": [...], "keep": [...] | None}} und kommt von aussen.
+
+    DAS ARCHIV WIRD NICHT ANGEFASST. Gerechnet wird auf zwei flachen Kopien,
+    in die die frisch gerechneten Stunden gelegt werden; `data` selbst geht nur
+    lesend hinein. Eine Pruefung haelt das fest (Archiv vorher/nachher
+    identisch) - sonst waere die Zusicherung nur ein Satz.
+    """
+    breite = derive.DFA_WATT_WINDOW_S if window_s is None else int(window_s)
+    je_fahrt = []
+    schatten: dict[int, dict[str, Any]] = {0: {}, breite: {}}
+    for key, chan in sorted((streams or {}).items()):
+        keep = (chan or {}).get("keep")
+        rows = dry_hours((chan or {}).get("dfa_a1"), (chan or {}).get("watts"),
+                         (chan or {}).get("heartrate"), keep=keep, window_s=breite)
+        je_fahrt.append({"activity_id": key, "hours": rows})
+        for w in (0, breite):
+            schatten[w][key] = derive.dfa_hours(
+                (chan or {}).get("dfa_a1"), (chan or {}).get("watts"),
+                (chan or {}).get("heartrate"), keep=keep, watt_window_s=w)
+
+    kacheln: dict[str, Any] = {}
+    for name, w in (("off", 0), ("on", breite)):
+        schein = _shadow(data, schatten[w], w)
+        alt = fatigue.curve(schein) or {}
+        neu = curve(schein)
+        kacheln[name] = {
+            "window_s": w,
+            "anchor_watts": alt.get("anchor_watts"), "anchor_n": alt.get("anchor_n"),
+            "rides_used": alt.get("rides_used"),
+            "plan": [{k: row.get(k) for k in ("hours", "watts", "n", "step", "band")}
+                     for row in (alt.get("plan") or [])],
+            "solid_until_hours": alt.get("plan_solid_until_hours"),
+            "thin_until_hours": alt.get("plan_thin_until_hours"),
+            "v2": {"anchor_watts": neu.get("anchor_watts"),
+                   "step_watts": neu.get("step_watts"),
+                   "decline": neu.get("decline"),
+                   "covered_until_hours": neu.get("covered_until_hours"),
+                   "rides_used": neu.get("rides_used"),
+                   "groups": {"carries": len((neu.get("groups") or {}).get("carries") or []),
+                              "supports": len((neu.get("groups") or {}).get("supports") or [])},
+                   "plan": [{k: row.get(k) for k in
+                             ("hours", "watts", "form_watts", "alpha", "n", "measured", "band")}
+                            for row in (neu.get("plan") or [])]},
+        }
+    return {"window_s": breite, "rides": je_fahrt, "tiles": kacheln,
+            "fields": list(DRY_FIELDS)}
+
+
+def _shadow(data: dict[str, Any], hours_by_key: dict[str, Any],
+            window_s: int) -> dict[str, Any]:
+    """Ein Bestand, in dem die frisch gerechneten Stunden liegen - als KOPIE.
+
+    Beide Lesewege werden bedient, weil beide vorkommen: `data["dfa"]` fuer
+    die Auswahl ohne Marken und `section_marks` fuer die Auswahl mit ihnen.
+    Angefasst wird nur die Kopie; die Originaldicts bleiben, wie sie sind.
+    """
+    dfa = {key: {**(((data.get("dfa") or {}).get(key)) or {}), "hours": rows}
+           for key, rows in hours_by_key.items()}
+    marks = {}
+    for key, entry in (data.get("section_marks") or {}).items():
+        if not isinstance(entry, dict):
+            continue
+        box = dict(entry.get("measure") or {})
+        if key in hours_by_key and isinstance(box.get("endurance"), dict):
+            box["endurance"] = {**box["endurance"], "hours": hours_by_key[key],
+                                "w": window_s}
+        marks[key] = {**entry, "measure": box}
+    box = dict(data.get("settings") or {})
+    box[V2_SWITCH] = bool(window_s)
+    return {**data, "dfa": {**(data.get("dfa") or {}), **dfa},
+            "section_marks": marks, "settings": box}

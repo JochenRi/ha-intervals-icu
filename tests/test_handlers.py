@@ -235,8 +235,13 @@ _sm_payload = FakeConn()
 ws._pick = lambda hass, athlete_id: FakeCoordinator(importer.empty_data("i1"))
 ws.websocket_section_marks(None, _sm_payload, {"id": 1})
 _lost = ((_sm_payload.results or [{}])[0]).get("lost_text") or {}
+# Gegen das REGISTER, nicht gegen eine Liste im Test: ein neuer Grund (seit
+# 0.63.1 "window") muss in der Payload ankommen, ohne dass jemand hier
+# nachzieht - sonst zeigt die Karte den Rohschluessel (§7, 0.56.0).
 eq("lost: die Payload traegt je Verwerfungsgrund einen Satz",
-      sorted(_lost), sorted(["changed", "moved", "version", "unknown"]))
+      sorted(_lost), sorted(sys.modules["iv.section_marks"].LOST_TEXT))
+eq("lost: das Umlegen der Rechnung hat seinen eigenen Satz",
+      bool(_lost.get(sys.modules["iv.section_marks"].LOST_WINDOW)), True)
 eq("lost: die Saetze kommen aus dem Modul",
       _lost, dict(sys.modules["iv.section_marks"].LOST_TEXT))
 check("A1: der Blocksatz steht in beiden Stellungen",

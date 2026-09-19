@@ -287,6 +287,23 @@ except ImportError:  # standalone (test suite loads this file directly)
 # Versionszaehler: solange er aus ist, wird nichts neu gemessen.
 DFA_WATT_WINDOW_S = 120
 
+# WELCHE BREITE GERADE GILT - EINE Regel, und sie steht HIER, weil hier auch
+# die Zahl steht. Drei Stellen fragen danach: der Importweg, der Messweg der
+# Markierungen und der Leseweg der Kurve. Bis 0.63.0 kannte nur der Importweg
+# den Schalter; der Messweg mass ungefenstert weiter, und in der Kurve
+# mischten sich beide Achsen - abhaengig von einem DRITTEN Schalter (§7).
+# `fatigue_v2.watt_window` ruft hierher durch; wer die Regel aendert, aendert
+# sie an einer Stelle. Faellt der Schalter spaeter weg, bleibt diese Funktion
+# stehen und gibt dann immer DFA_WATT_WINDOW_S zurueck.
+DFA_WATT_WINDOW_SETTING = "fatigue_v2"
+
+
+def watt_window(data: dict[str, Any] | None) -> int:
+    """Die Fensterbreite fuer die Wattachse. Aus = 0 = Verhalten bis 0.62.2."""
+    box = (data or {}).get("settings")
+    return (DFA_WATT_WINDOW_S
+            if isinstance(box, dict) and box.get(DFA_WATT_WINDOW_SETTING) else 0)
+
 # DIE ABLESESTELLE. alpha bei der eigenen gehaltenen Last statt am
 # Kreuzungspunkt 0,75. Dort liegen im Median 110 Punkte je Stunde gegen 7 im
 # alpha-Fenster 0,65-0,85; 11 von 42 Fahrtstunden haben im alpha-Fenster GAR

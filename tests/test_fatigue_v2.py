@@ -12,6 +12,7 @@ import coldcache  # noqa: F401  - MUSS vor jedem Bauteil-Import stehen (§9)
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]
                       / "custom_components" / "intervals_icu"))
 
+import derive  # noqa: E402
 import fatigue  # noqa: E402  - die Studienform der Kette kommt von dort
 import fatigue_v2 as v2  # noqa: E402
 from const import STEERING_T90  # noqa: E402
@@ -40,8 +41,134 @@ check("Schalter: umgedreht ist wirklich umgedreht",
       v2.v2_on(v2.flipped({"settings": {v2.V2_SWITCH: True}})), False)
 check("Schalter: das Umdrehen laesst den Bestand in Ruhe",
       v2.flipped({"activities": {"a": 1}, "settings": {}})["activities"], {"a": 1})
-check("Der Hinweis nennt die Neumessung mit Zahlen",
-      ("58" in v2.SWITCH_NOTE and "28" in v2.SWITCH_NOTE), True)
+# 0.63.1: die Zahlen stehen nicht mehr im Satz, sondern kommen aus dem
+# Bestand - und der Satz TRENNT: eingelesen wird alles mit alpha-Daten,
+# gerechnet wird mit den markierten Fahrten. Der alte Text las sich, als
+# liefen alle 58 in die Kurve.
+check("Der Hinweis fuehrt keine Zahl als Text",
+      any(ch.isdigit() for ch in v2.SWITCH_NOTE.replace("120", "").replace("0,75", "")), False)
+check("Der Hinweis trennt Einlesen von Rechnen",
+      ("EINGELESEN" in v2.SWITCH_NOTE and "FÜR DIE KURVE" in v2.SWITCH_NOTE), True)
+check("Der Hinweis sagt, was sich NICHT aendert",
+      "bleiben unberührt" in v2.SWITCH_NOTE, True)
+_hin = v2.switch_note({"activities": {}, "dfa": {}, "section_marks": {},
+                       "settings": {}}, rides=60, batch=25)
+check("Der Hinweis nennt die Neumessung mit Zahlen aus dem Bestand",
+      ("60 Fahrten werden neu EINGELESEN" in _hin and "also 3 Abgleiche" in _hin), True)
+check("Der Hinweis nennt die Zahl der Fahrten, die die Kurve tragen",
+      "nur deine 0 markierten Fahrten" in _hin, True)
+# Gegenprobe: ein anderer Bestand, andere Zahlen - sonst prueft die Zeile oben
+# nur, dass ueberhaupt Text herauskommt.
+_hin2 = v2.switch_note({"activities": {}, "dfa": {}, "section_marks": {},
+                        "settings": {}}, rides=26, batch=25)
+check("Der Hinweis Gegenprobe: andere Zahlen schlagen durch",
+      ("26 Fahrten" in _hin2 and "also 2 Abgleiche" in _hin2), True)
+
+# ---------------------------------------------------------------------------
+# DIE WATTACHSE, EINE REGEL. Bis 0.63.0 kannte nur der Importweg den
+# Rechenschalter; der Messweg der Markierungen mass ungefenstert weiter. Stand
+# der Kurvenschalter auf "meine Markierungen" - so steht er bei Johannes -,
+# hatte der Rechenschalter GAR KEINE Wirkung auf die Kurve, und beide Achsen
+# lagen unter demselben Versionszaehler im selben Archiv.
+import section_marks as sm  # noqa: E402
+
+AUS = {"settings": {}}
+AN = {"settings": {v2.V2_SWITCH: True}}
+check("Achse: aus ist die Breite null", derive.watt_window(AUS), 0)
+check("Achse: an ist sie die Fensterbreite", derive.watt_window(AN), derive.DFA_WATT_WINDOW_S)
+check("Achse: fatigue_v2 reicht durch, es gibt keine zweite Fassung",
+      (v2.watt_window(AUS), v2.watt_window(AN)),
+      (derive.watt_window(AUS), derive.watt_window(AN)))
+check("Achse: der Schluessel des Schalters steht in derive",
+      v2.V2_SWITCH, derive.DFA_WATT_WINDOW_SETTING)
+
+# FESTGEHALTENE SOLLWERTE. Sie ueberleben den Wegfall des Schalters: "aus =
+# wie heute" ist dann kein Bezugspunkt mehr, diese Zahlen schon. Gerechnet am
+# echten 1-Hz-Strom des Stufentests vom 16.09.2026.
+import json  # noqa: E402
+_STROM = json.loads((Path(__file__).resolve().parent / "data"
+                     / "ramp_i187258578.json").read_text(encoding="utf-8"))
+_A, _W, _H = _STROM["alpha1"], _STROM["watts"], _STROM["heartrate"]
+_aus = derive.dfa_hours(_A, _W, _H, watt_window_s=0)[0]
+_an = derive.dfa_hours(_A, _W, _H, watt_window_s=derive.DFA_WATT_WINDOW_S)[0]
+check("Sollwert aus: p075", _aus["p075"], 169.9)
+check("Sollwert aus: r2", _aus["r2"], 0.603)
+check("Sollwert aus: load_w / load_n", (_aus["load_w"], _aus["load_n"]), (143.0, 401))
+check("Sollwert an: p075", _an["p075"], 179.1)
+check("Sollwert an: r2", _an["r2"], 0.81)
+check("Sollwert an: load_w / load_n", (_an["load_w"], _an["load_n"]), (140.6, 519))
+# DIE HF-SEITE FAELLT NICHT MIT - sie sitzt auf (alpha, Puls), da kommen keine
+# Watt vor. Das ist die Haelfte der Kurve, die das Umlegen nicht anfasst.
+check("Sollwert: hr075 ist in beiden Stellungen dieselbe Zahl",
+      _aus["hr075"], _an["hr075"])
+check("Fixture-Beweis: die beiden Stellungen unterscheiden sich wirklich",
+      _aus["p075"] != _an["p075"], True)
+
+# DIE FENSTERBREITE REIST MIT DER MESSUNG. Ohne dieses Feld sieht eine
+# Messung von vorher aus wie eine von jetzt.
+# Ein Geruest von Hand - `importer` zieht Home Assistant in den Lauf.
+# Der Kurvenschalter steht AN ("meine Markierungen"), denn genau dort
+# sass der Fehler.
+_md = {"activities": {"M1": {"start_date_local": "2026-09-10T08:00:00",
+                            "name": "volumen", "moving_time": 7200}},
+       "section_marks": {}, "dfa": {},
+       "settings": {fatigue.CURVE_SWITCH: True}}
+sm.set_mark(_md, "M1", "2026-09-10", "endurance", 0,
+            [{"n": 0, "start_index": 0, "end_index": 60, "moving_time": 60}])
+sm.set_measurement(_md, "M1", family="endurance",
+                   hours=[{"hour": 1, "p075": 150.0}], window_s=120)
+check("Messung: die Breite steht im Eintrag",
+      sm.window_of(sm.entry_for(_md, "M1"), "endurance"), 120)
+check("Messung: ein Eintrag ohne das Feld gilt als ungefenstert",
+      sm.window_of({"measure": {"endurance": {"hours": [1]}}}, "endurance"), 0)
+check("Messung: die Versionsmarke steht auf 4",
+      sm.entry_for(_md, "M1")["v"], sm.MEASURE_VERSION)
+# DER VERSIONSZAEHLER MUSSTE STEIGEN. Die Stundenzeile traegt seit v2 die
+# Ablesestelle (`load_*`); Messungen von vorher haben diese Felder gar nicht -
+# am Livebestand stand die v2-Kachel deshalb auf NULL Fahrten, obwohl zwoelf
+# markierte Fahrten gemessen waren. Geprueft wird das Verhalten, nicht die
+# Zahl: eine Messung der VORIGEN Marke muss beim Laden fallen.
+# Die Marke muss ABSOLUT stehen, nicht relativ: eine Pruefung gegen
+# MEASURE_VERSION - 1 wandert mit, wenn jemand den Zaehler zurueckdreht, und
+# faengt genau den Fall nicht, um den es geht.
+check("Versionsmarke: mindestens 4, seit die Stundenzeile die Ablesestelle traegt",
+      sm.MEASURE_VERSION >= 4, True)
+check("Versionsmarke: die Stundenzeile traegt die Ablesestelle wirklich",
+      all(f in derive.dfa_hours(_A[:3700], _W[:3700], _H[:3700])[0]
+          for f in ("load_w", "load_n", "load_alpha")), True)
+_alt = {"A1": {"date": "2026-09-10", "marks": {"endurance": [0]},
+               "anchor": {"laps": 1, "sections": [{"i": 0, "s": 60}]},
+               "measure": {"endurance": {"hours": [{"hour": 1, "p075": 150.0}]}},
+               "measured_at": "2026-09-10", "set_at": "2026-09-10",
+               "v": sm.MEASURE_VERSION - 1}}
+_neu = sm.migrate(_alt)
+check("Versionsmarke: eine Messung der vorigen Marke faellt beim Laden",
+      (_neu or _alt)["A1"]["measure"], {})
+check("Versionsmarke: die Marken bleiben stehen",
+      (_neu or _alt)["A1"]["marks"], {"endurance": [0]})
+check("Versionsmarke: der Grund wird benannt",
+      (_neu or _alt)["A1"].get("lost"), sm.LOST_VERSION)
+# GEGENPROBE: mit der AKTUELLEN Marke bleibt die Messung stehen.
+_frisch = {"A1": {**_alt["A1"], "v": sm.MEASURE_VERSION,
+                  "measure": {"endurance": {"hours": [{"hour": 1, "p075": 150.0}]}}}}
+_nach = sm.migrate(_frisch) or _frisch
+check("Versionsmarke Gegenprobe: eine aktuelle Messung bleibt",
+      bool(_nach["A1"]["measure"]), True)
+
+# UND DER LESEWEG NIMMT SIE NICHT MIT, wenn die Achse nicht stimmt.
+_raus = fatigue.rides({**_md, "settings": {fatigue.CURVE_SWITCH: True}})
+check("Leseweg: die 120er-Messung zaehlt bei ausgeschalteter Rechnung NICHT",
+      [r["activity_id"] for r in _raus["used"]], [])
+check("Leseweg: und sie wird mit EIGENEM Grund benannt",
+      list(_raus["dropped"]), [fatigue.WINDOW_CHANGED_REASON])
+_rein = fatigue.rides({**_md, "settings": {fatigue.CURVE_SWITCH: True, v2.V2_SWITCH: True}})
+check("Leseweg: mit eingeschalteter Rechnung zaehlt sie",
+      [r["activity_id"] for r in _rein["used"]], ["M1"])
+check("Leseweg Gegenprobe: dann ist nichts verworfen", _rein["dropped"], {})
+check("Grund: er hat ein Wort und einen Satz",
+      all(fatigue.DROPPED_WORDS[fatigue.WINDOW_CHANGED_REASON]), True)
+check("Grund: er ist NICHT der Versionssprung",
+      fatigue.WINDOW_CHANGED_REASON != fatigue.LOST_REASON[sm.LOST_VERSION], True)
 
 # ---------------------------------------------------------------------------
 # DIE KETTE: Anker Stunde 1, danach der gemessene Verlauf. Die Formelzeile
@@ -216,6 +343,44 @@ check("Setzungen: die quadratische Zusammenlegung ist benannt",
       any("quadratisch" in line for line in v2.SETTINGS_NOTE), True)
 
 print()
+# ---------------------------------------------------------------------------
+# DER TROCKENLAUF. Er rechnet beide Wattachsen aus denselben Stroemen und
+# fasst das Archiv NICHT an - das ist die eine Zusicherung, die er geben muss,
+# und sie wird erzwungen statt behauptet.
+import copy  # noqa: E402
+_TROCKEN = {"activities": {"T1": {"start_date_local": "2026-09-16T08:00:00",
+                                  "name": "volumen", "moving_time": 7200,
+                                  "icu_zone_times": [{"id": "Z1", "secs": 3600}, {"id": "Z2", "secs": 3600}]}},
+            "dfa": {}, "section_marks": {}, "settings": {}}
+_VORHER = copy.deepcopy(_TROCKEN)
+_erg = v2.dry_run(_TROCKEN, {"T1": {"dfa_a1": _A, "watts": _W, "heartrate": _H}})
+check("Trockenlauf: das Archiv ist unveraendert", _TROCKEN, _VORHER)
+_std = _erg["rides"][0]["hours"][0]
+check("Trockenlauf: beide Achsen stehen nebeneinander",
+      (_std["p075"]["off"], _std["p075"]["on"]), (169.9, 179.1))
+check("Trockenlauf: die Ablesestelle auch",
+      (_std["load_n"]["off"], _std["load_n"]["on"]), (401, 519))
+check("Trockenlauf: die HF-Seite steht in beiden Spalten gleich",
+      _std["hr075"]["off"], _std["hr075"]["on"])
+check("Trockenlauf: alle sieben Felder sind da", sorted(_erg["fields"]), sorted(v2.DRY_FIELDS))
+check("Trockenlauf: beide Kachelseiten kommen zurueck", sorted(_erg["tiles"]), ["off", "on"])
+check("Trockenlauf: die Breiten stehen dran",
+      (_erg["tiles"]["off"]["window_s"], _erg["tiles"]["on"]["window_s"]),
+      (0, derive.DFA_WATT_WINDOW_S))
+check("Trockenlauf: die Kopfzahl der Kurve unterscheidet sich zwischen beiden",
+      _erg["tiles"]["off"]["anchor_watts"] != _erg["tiles"]["on"]["anchor_watts"], True)
+check("Trockenlauf: die v2-Kette reicht in beiden Seiten bis zum Horizont",
+      [len(_erg["tiles"][k]["v2"]["plan"]) for k in ("off", "on")],
+      [v2.PLAN_HORIZON_HOURS, v2.PLAN_HORIZON_HOURS])
+# Er haengt NICHT am Schalter: derselbe Bestand mit umgelegtem Schalter gibt
+# dieselben zwei Spalten. Sonst waere er nach dem Wegfall der Schalter nutzlos.
+_erg2 = v2.dry_run({**_TROCKEN, "settings": {v2.V2_SWITCH: True}},
+                   {"T1": {"dfa_a1": _A, "watts": _W, "heartrate": _H}})
+check("Trockenlauf: die Schalterstellung aendert sein Ergebnis nicht",
+      _erg2["rides"], _erg["rides"])
+check("Trockenlauf: auch die Kachelzahlen nicht", _erg2["tiles"], _erg["tiles"])
+
+
 print(f"test_fatigue_v2: {CHECKS} Prüfungen, {len(failures)} Fehler")
 print("FEHLER:", failures if failures else "keine")
 sys.exit(1 if failures else 0)

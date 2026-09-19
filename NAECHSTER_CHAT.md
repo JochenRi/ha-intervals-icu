@@ -1,5 +1,106 @@
 # ha-intervals-icu — Übergabe an den nächsten Chat
 
+## AKTUELL — 0.63.2: zwei Fehler behoben, Trockenlauf gebaut, der Schalter hat endlich einen Knopf (19.09.2026). Zuerst lesen.
+
+**Ausgeliefert: 0.63.2.** Prüfstand **23 Dateien, 7.532 Prüfungen, 0 Fehler** (Basis 23 / 7.413 / 0).
+**Es wurde NICHTS umgelegt und NICHTS neu eingelesen** — kein `set_*`-Aufruf, `data["dfa"]`
+unberührt. Alle HEIMDALL-Zugriffe waren lesend.
+
+### Was behoben ist
+
+**1 · Der Messweg der Markierungen kannte den Schalter nicht** (`websocket.py:1676`, ohne
+`watt_window_s`). Johannes' Kurvenschalter steht auf „meine Markierungen" — der Rechenschalter
+hatte damit **gar keine Wirkung auf die Kurve**. Behoben, und die Ursache ist tiefer:
+
+- `derive.watt_window(data)` ist jetzt **die eine Regel**; `fatigue_v2.watt_window` reicht durch.
+- **`MEASURE_VERSION` 3 → 4.** Die Stundenzeile trägt seit v2 die Ablesestelle
+  (`load_w/load_n/load_alpha`); die zwölf gemessenen Marken haben diese Felder **gar nicht**.
+  Genau deshalb stand die v2-Kachel am Livebestand auf **null Fahrten**, obwohl gemessen war.
+  Das Umlegen hätte 60 Fahrten neu eingelesen und die Kurve hätte sich nicht bewegt —
+  `set_fatigue_source` leert `data["dfa"]`, aber **nicht** die Markierungsmessungen.
+- Die **Fensterbreite reist als Feld mit der Messung** (`w`). Der Versionszähler trägt
+  Code-Änderungen; er kann nicht tragen, dass ein athletenweiser Schalter umgelegt wurde.
+- `fatigue._marked_rides` rechnet eine Messung der anderen Achse **nicht** mit, sondern
+  verwirft sie mit eigenem Grund `remeasure_window` und eigenem Satz.
+- **Festgehaltene Sollwerte** am echten Strom, beide Breiten: p075 169,9 / 179,1 · r² 0,603 /
+  0,810 · load_n 401 / 519 · **hr075 in beiden gleich**. Sie überleben den Wegfall des Schalters.
+- Wächter **am Syntaxbaum** über jeden `dfa_hours`-Aufruf im Paket: fünf Aufrufe, jeder nennt
+  seine Breite, die zwei produktiven **erfragen** sie.
+
+**2 · Ausgefallene Stromabrufe waren stumm** (`importer.py:255`). Jetzt eigenes Fach
+`dfa_failed` — bewusst **nicht** in `data["dfa"]`, wo sieben Leser an „ist die Zeile leer"
+hängen. Die Karte nennt Zahl und Namen oben, mit Knopf; `intervals_icu/retry_dfa` gibt nur die
+leeren Zeilen frei, lässt Gemessenes stehen, ist beim zweiten Mal ein No-op. Der `except`-Zweig
+wird am **echten Lauf** durchlaufen (der Fake-Client wirft für eine Fahrt).
+
+**3 · Der Trockenlauf** (`fatigue_v2.dry_hours` / `dry_run`, `intervals_icu/fatigue_dry_run`):
+je Fahrt und Stunde beide Achsen nebeneinander (p075, r², slope, load_w, load_n, load_alpha,
+hr075), dazu die Kachelzahlen beider Seiten inklusive v2-Kette. **Erzwungen geprüft: das Archiv
+ist vorher/nachher identisch.** Er vergleicht zwei **Fensterbreiten**, nicht zwei
+Schalterstellungen — geprüft ist, dass die Schalterstellung sein Ergebnis nicht bewegt.
+
+**4 · Der Knopf, den es nicht gab.** `set_fatigue_source` war registriert, geprüft und
+ausgeliefert — und im Panel gab es keinen Schalter dazu. Jetzt `_fatigueSwitch(f)`,
+`act="swfatigue"`, `_setFatigueSource(on)`, Wörter und Antworttext aus der Payload
+(`fatigue_v2.SWITCH_WORDS`). **Keine Zahlenspalte**: die Payload trägt nur die geltende
+Stellung, die Gegenstellung ist ohne die Ströme gar nicht zu rechnen — dafür ist der
+Trockenlauf da.
+
+**5 · Die Lücke, die das durchgelassen hat**, ist geschlossen: `test_panel_fixes.js` fordert
+für **jeden** im Backend registrierten `set_*`-Befehl, dass das Panel ihn aufruft, der Aufruf
+in einer Methode steht, diese von der Klick-Weiche erreichbar ist und ihr `data-act` auch
+gezeichnet wird — **über beide Quelltexte hinweg**, weil kein einseitiger Wächter das finden
+konnte. Mutation „bestehenden Knopf entfernen" fällt. Das Befehlsmuster kennt jetzt Ziffern.
+
+**6 · Der Hinweistext** trennt: „60 Fahrten werden neu **EINGELESEN**" gegen „**FÜR DIE KURVE**
+zählen weiterhin nur deine 12 markierten Fahrten". Keine Zahl mehr als Text im Satz.
+
+### Der Ausgangsstand, gelesen (19.09.2026)
+
+`aerobic_hr` **161 bpm** (n = 49) · `aerobic_power` **163 W` · Kurve `from_marks: true`,
+Kopfzahl **149,6 W** (n = 10), 12 Fahrten tragen · Bestand 60 Fahrten, 0 offen ·
+**v2-Kachel: rides_used 0** (siehe Punkt 1).
+
+**Die Zahl, die das Risiko beziffert** — fällt eine der letzten fünf Fahrten beim Reimport aus:
+
+| Ausfall | aerobic_hr | aerobic_power |
+|---|---|---|
+| 30.08. | 160 (−1) | **146 (−17)** |
+| 01.09. | 161 | 163 |
+| 04.09. | 161 | 163 |
+| 13.09. | 160 (−1) | **146 (−17)** |
+| 16.09. | 160 (−1) | **146 (−17)** |
+
+Die HF ist robust, die Wattseite nicht: **in drei von fünf Fällen 17 W** — am Anker, der die
+Einheiten steuert. Deshalb Punkt 2.
+
+### Mutation über Dateikopie: 9 von 9 gefangen
+
+Messweg ohne Fenster · Breite reist nicht mit · Leseweg mischt beide Achsen · Versionszähler
+bleibt auf 3 · Ausfälle wieder stumm · Wiederholen löscht Gemessenes · Trockenlauf schreibt ins
+Archiv · Trockenlauf rechnet nur eine Achse · Hinweistext mit Zahl als Text. Dazu der
+Knopf-Wächter mit seiner eigenen Mutation.
+
+**Zwei Merkposten aus den Runden:** eine Prüfung gegen `KONSTANTE − 1` wandert mit der
+Konstante und fängt genau den Fall nicht — absolut verankern. Und kleine Zahlen (2, 3) fallen
+keinem Zahlen-Wächter auf; dagegen hilft nur die **reaktive** Probe mit einer zweiten Payload.
+
+### OFFEN — der nächste Schritt
+
+0. **Den Trockenlauf einmal fahren**, bevor umgelegt wird: `intervals_icu/fatigue_dry_run`
+   (lesend). Erst danach ist das Umlegen belegt und nicht geraten.
+1. **Nach dem Umlegen sind alle zwölf markierten Fahrten neu zu messen** — die alten Messungen
+   fallen mit `remeasure_window`. Das ist gewollt und steht in der Kachel, aber es ist Arbeit,
+   und Johannes soll es vorher wissen.
+2. Der Trockenlauf hat **keine Oberfläche**. Er ist heute nur über `ws_command` erreichbar.
+3. Die **54-W-Frage bei 8 h** (Fortschreibung gegen Studienform) ist weiter offen.
+4. **Richtungsentscheidung:** die Rechenschalter sollen verschwinden, der Rückweg wird ein
+   HACS-Downgrade. Der Aufräum-Release ist ein eigener Schritt. Die Sollwerte oben und der
+   Trockenlauf sind so gebaut, dass sie ihn überleben.
+5. **Der GitHub-Token liegt weiterhin im Klartext in `GIT_Intervals.txt`. Widerrufen.**
+
+---
+
 ## AKTUELL — 0.63.0 ausgeliefert: die Kachel der Ermüdungsrechnung v2, mit Schätzung bis 8 h (19.09.2026). Zuerst lesen.
 
 **Ausgeliefert: 0.63.0.** Prüfstand **23 Dateien, 7.413 gezählte Einzelprüfungen, 0 Fehler**

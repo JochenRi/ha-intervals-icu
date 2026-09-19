@@ -233,6 +233,63 @@ def pending_dfa(data: dict[str, Any]) -> list[str]:
     ]
 
 
+# --- was beim Holen der Stroeme ausgefallen ist -------------------------------
+# EIGENES FACH, nicht in `data["dfa"]`: dort haengen sieben Leser an der Frage
+# "ist die Zeile leer", und eine gefuellte Fehlerzeile haette jedem davon eine
+# andere Bedeutung untergeschoben. Hier steht nur, WARUM nichts da ist.
+DFA_FAILED = "dfa_failed"
+
+
+def failed_box(data: dict[str, Any]) -> dict[str, Any]:
+    """Das Fach fuer ausgefallene Stromabrufe, angelegt wenn noetig."""
+    box = data.get(DFA_FAILED)
+    if not isinstance(box, dict):
+        box = {}
+        data[DFA_FAILED] = box
+    return box
+
+
+def failed_dfa(data: dict[str, Any]) -> list[dict[str, Any]]:
+    """Welche Fahrten beim Holen ausgefallen sind - NAMENTLICH, mit Grund.
+
+    Solange hier etwas steht, ist der Bestand unvollstaendig, und keine Zahl
+    darf so tun, als waere er es nicht.
+    """
+    acts = data.get("activities") or {}
+    out = []
+    for key, row in sorted((data.get(DFA_FAILED) or {}).items()):
+        if key not in (data.get("dfa") or {}):
+            continue          # schon wieder geholt - der Eintrag ist Altlast
+        act = acts.get(key) or {}
+        out.append({"activity_id": key,
+                    "date": str(act.get("start_date_local") or "")[:10],
+                    "name": act.get("name"),
+                    "reason": str((row or {}).get("reason") or "unbekannt"),
+                    "at": str((row or {}).get("at") or "")})
+    out.sort(key=lambda r: r["date"])
+    return out
+
+
+def retry_failed_dfa(data: dict[str, Any]) -> int:
+    """Die ausgefallenen Fahrten wieder zum Holen freigeben.
+
+    Loescht NUR die leeren Zeilen der ausgefallenen Fahrten; alles Gemessene
+    bleibt stehen. Gibt zurueck, wie viele freigegeben wurden - null heisst
+    No-op, und der Aufrufer speichert dann nicht (J7, zweite Auflage).
+    """
+    box = data.get(DFA_FAILED) or {}
+    dfa = data.get("dfa") or {}
+    freed = 0
+    for key in list(box):
+        if key in dfa and not dfa[key]:
+            del dfa[key]
+            freed += 1
+        box.pop(key, None)
+    if not box:
+        data.pop(DFA_FAILED, None)
+    return freed
+
+
 async def async_import_dfa(
     client: Any,
     data: dict[str, Any],
@@ -254,8 +311,18 @@ async def async_import_dfa(
         try:
             streams = await client.async_get_streams(key, DFA_STREAMS)
         except Exception as err:  # noqa: BLE001 - one bad activity must not stop the import
+            # STUMM WAR FALSCH. Bis 0.63.0 stand hier nur die leere Zeile: die
+            # Fahrt wurde nie wieder geholt, fiel aus dem Ankerpool und sagte
+            # es niemandem. Am Livebestand verschiebt EIN solcher Ausfall
+            # unter den letzten fuenf die Schwellenleistung des Ankers um bis
+            # zu 17 W - und der Anker steuert die Einheiten.
+            # Die leere Zeile BLEIBT (sie ist die Marke "nicht noch einmal
+            # holen"); der Grund kommt in ein EIGENES Fach, damit kein Leser
+            # von `data["dfa"]` sich aendert.
             _LOGGER.debug("streams for %s failed: %s", key, err)
             data["dfa"][key] = {}
+            failed_box(data)[key] = {"reason": str(err)[:200] or "unbekannt",
+                                     "at": date.today().isoformat()}
             continue
 
         by_name = derive.streams_to_dict(streams)

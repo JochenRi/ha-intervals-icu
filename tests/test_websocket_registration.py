@@ -10,6 +10,7 @@ event loop, and it fails on exactly that class of mistake.
 """
 
 import ast
+import ast
 import re
 import sys
 from pathlib import Path
@@ -72,7 +73,7 @@ for name in registered:
         if "websocket_command" not in text:
             continue
         # ast.unparse normalises quotes, so match either kind
-        found = re.search(r"['\"]intervals_icu/([a-z_]+)['\"]", text)
+        found = re.search(r"['\"]intervals_icu/([a-z0-9_]+)['\"]", text)
         if found:
             commands[name] = "intervals_icu/" + found.group(1)
 
@@ -651,6 +652,48 @@ if "section_marks.migrate(" in store_src:
           "section_marks: migriert wird, bevor die Altdaten übernommen sind")
     check("schedule_save()" in store_src[_at:_at + 400],
           "section_marks: die Reparatur wird nie gespeichert")
+
+
+# ---------------------------------------------------------------------------
+# JEDER AUFRUF VON dfa_hours NENNT SEINE FENSTERBREITE (0.63.1).
+# Der Fehler von 0.63.0 war genau das Fehlen des Parameters an EINER von zwei
+# Stellen: der Importweg kannte den Rechenschalter, der Messweg der
+# Markierungen nicht. Geprueft wird deshalb ueber das ganze Paket und nicht an
+# der einen Stelle, die gerade repariert wurde - die naechste Stelle soll beim
+# Schreiben auffallen und nicht im Betrieb.
+_PKG = Path(__file__).resolve().parents[1] / "custom_components" / "intervals_icu"
+# AM SYNTAXBAUM, nicht am Text: `dfa_hours` kommt in zwei Docstrings vor, und
+# eine Erwaehnung in Prosa ist kein Aufruf.
+_AUFRUFE = []
+for _f in sorted(_PKG.glob("*.py")):
+    _baum = ast.parse(_f.read_text(encoding="utf-8"))
+    for _node in ast.walk(_baum):
+        if not isinstance(_node, ast.Call):
+            continue
+        _ziel = _node.func
+        if not (isinstance(_ziel, ast.Attribute) and _ziel.attr == "dfa_hours"):
+            continue
+        _AUFRUFE.append((_f.name, {kw.arg: ast.dump(kw.value) for kw in _node.keywords}))
+check(len(_AUFRUFE) == 5,
+      f"Fensterbreite: {len(_AUFRUFE)} Aufrufe von dfa_hours statt fuenf - "
+      "eine neue Stelle ist einzeln zu beurteilen")
+for _name, _args in _AUFRUFE:
+    check("watt_window_s" in _args,
+          f"Fensterbreite: der Aufruf in {_name} nennt sie nicht - "
+          "er misst dann immer sekundengenau, egal wie der Schalter steht")
+# Die zwei PRODUKTIVEN Wege muessen sie ERFRAGEN statt sie selbst zu setzen.
+# Der Trockenlauf darf beide Breiten fest waehlen - das ist sein Zweck.
+_PRODUKTIV = [(n, a) for n, a in _AUFRUFE if n in ("importer.py", "websocket.py")]
+check(len(_PRODUKTIV) == 2,
+      f"Fensterbreite: {len(_PRODUKTIV)} produktive Aufrufe statt zwei")
+for _name, _args in _PRODUKTIV:
+    check("watt_window" in str(_args.get("watt_window_s")),
+          f"Fensterbreite: {_name} setzt sie selbst statt sie zu erfragen - "
+          "genau der Fehler von 0.63.0")
+# Trefferzusicherung: der Wortlaut kommt im Paket WIRKLICH vor.
+check(any("watt_window" in str(a.get("watt_window_s")) for _, a in _PRODUKTIV),
+      "Fensterbreite Fixture-Beweis: kein produktiver Aufruf erfragt sie - "
+      "die Pruefung greift ins Leere")
 
 
 print(f"test_websocket_registration: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
