@@ -1,6 +1,6 @@
 # ha-intervals-icu — Projektstand
 
-**Stand:** 19.09.2026 · **Version:** 0.65.2 · **Status:** produktiv auf HEIMDALL,
+**Stand:** 20.09.2026 · **Version:** 0.65.2 · **Status:** produktiv auf HEIMDALL,
 Auslieferung über HACS aus `github.com/JochenRi/ha-intervals-icu`
 
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lokal
@@ -2032,6 +2032,51 @@ Glättungsbreite entscheidet mit, und sie ist eine Setzung.**
 eine Schwelle aus einem verrauschten Abfall liest, nennt die Regel — Gerade, erste oder
 dauerhafte Unterschreitung, Kurvenform — und nennt den Strom, auf dem sie steht.**
 
+**Vierzigster Fall (0.63.1 → 0.63.3, 19.09.2026): eine reine Auslieferung hat Messungen
+gelöscht, obwohl der Schalter aus stand.**
+
+`MEASURE_VERSION` ging von 3 auf 4 — aus gutem Grund: die Stundenzeile trägt seit v2 die
+Ablesestelle (`load_w`, `load_n`, `load_alpha`), und die zwölf vorhandenen Marken hatten
+diese Felder gar nicht. Der Zähler steht aber im **Ladeweg**: `migrate()` leert beim ersten
+Laden nach dem Update jede Messung mit kleinerer Nummer und **speichert das Ergebnis**. Es
+brauchte keinen Klick, keinen `set_*`-Aufruf und keine Schalterstellung — HACS-Update,
+HA-Start, weg. **Johannes hat 17 Einheiten von Hand neu gemessen.**
+
+Der Fehler ist nicht der Zähler, sondern **was er tragen sollte**. Ein Versionszähler trägt
+CODE-Änderungen. Er kann nicht tragen, dass ein **athletenweiser Schalter** umgelegt wurde —
+und genau das war hier gemeint. Zwei verschiedene Fragen an derselben Zahl.
+
+**Zurückgenommen in 0.63.3, in zwei Schritten:**
+
+1. **Die Gültigkeit hängt an der Fensterbreite `w`**, die als Feld **mit der Messung
+   reist** — nicht an einem Zähler. Eine Messung auf der anderen Wattachse wird nicht
+   gelöscht, sondern mit eigenem Grund (`remeasure_window`) verworfen und kann neu gemessen
+   werden. Der Bestand bleibt stehen, nur seine Gültigkeit ändert sich.
+2. **Der Vergleich steht auf „älter als", nicht auf „ungleich".** Mit „ungleich" hätte ein
+   **HACS-Downgrade dieselben Messungen ein zweites Mal genommen** — der Rückweg hätte den
+   Schaden wiederholt, den er heilen soll. Das ist keine Feinheit: seit der
+   Richtungsentscheidung vom 19.09. IST der Rückweg das HACS-Downgrade, weil die
+   Rechenschalter verschwinden sollen.
+
+**Fünf weitere Stellen derselben Bauart — eine reine Auslieferung entwertet Daten.**
+Gelistet, **keine davon geprüft**:
+
+| Stelle | was beim Einspielen passiert | Kosten |
+|---|---|---|
+| `importer.DFA_ALGO_VERSION` (heute 7) | `drop_outdated_dfa()` setzt `data["dfa"] = {}` | voller Reimport, dazu das Ankerrisiko von bis zu **17 W** aus 0.63.2 — kein Verlust von Athleteneingaben, aber Arbeit und Risiko |
+| `section_marks.RETIRED` (`threshold`, `long`) | Marken stillgelegter Familien und ihre Messungen fallen bei der Migration | benannt, aber derselbe Mechanismus |
+| `ramp_tests.MEASURE_VERSION` (2) | gleiche Bauart wie der eben zurückgenommene Zähler | **dieselbe Falle, dort noch ungeprüft** |
+| `WIN_VERSION` (Panel) | verwirft gespeicherte Zeitfenster im localStorage | harmlos |
+| `ACTIVITY_FIELDS_VERSION` (2) | löst einen Neuabruf der Aktivitätsfelder aus | Abrufe |
+
+**Lehre: jede Zahl, die im LADEWEG einen Bestand verwirft, ist eine Auslieferung, die Daten
+löscht** — auch wenn sie „Version" heißt, auch wenn niemand einen Knopf gedrückt hat, und
+auch wenn der zugehörige Schalter aus steht. Vor jedem Heben einer solchen Zahl gehört
+beantwortet: was genau geht verloren, wer muss es von Hand wiederherstellen, und was
+passiert beim Downgrade.
+
+---
+
 ### Die drei Fehlerklassen, die sich durchziehen
 
 1. **Falsche Quelle statt falscher Anzeige.** FTP, Tageslast — beide standen in den Daten und
@@ -2212,6 +2257,69 @@ und `scaled()`. Eine Liste ohne Vollständigkeitsprüfung schützt genau bis zur
 
 ## 10. Offen — ehrlich priorisiert
 
+---
+
+### ZUERST LESEN — der Befund vom 19.09.2026, der mehrere Punkte dieser Liste auf einmal erklärt
+
+**Aus Grundlagenfahrten ist die Schwellenleistung NICHT bestimmbar.** Nicht „schwer", nicht
+„mit mehr Daten schon" — **nicht bestimmbar**.
+
+*Warum:* Johannes' Lastfenster in Grundlagenfahrten ist **29 W breit**. Damit ein
+Zusammenhang Last → alpha aus dem Rauschen tritt, bräuchte es rund **150 W** Spanne. Bei
+seiner Tagesstreuung würde der wahre Effekt in **4 von 100** Fällen gefunden; auch mit
+**200 Fahrten** nur in **10 von 100**. Die Synthetik zeigt beide Welten — Effekt vorhanden
+und Effekt nicht vorhanden — mit r ≈ 0: die Probe kann **„kein Zusammenhang" nicht von „zu
+schmal gefahren" unterscheiden**. Ein sichtbarer Zusammenhang erscheint erst ab rund
+**102 W** Spanne.
+
+**Das ist kein toter alpha-Bereich.** Es ist die **Breite** des Lastfensters, nicht seine
+Lage. Dasselbe gilt in jedem schmalen Fenster — auch bei **SweetSpot und VO2max**, wo die
+Blöcke ebenso eng gefahren werden. Wer dort eine Schwelle aus den Blöcken ablesen will,
+steht vor derselben Wand. Breit ist im ganzen Bestand nur zweierlei: der **Stufentest** und
+die **Blockleiter über mehrere Familien**.
+
+**Was dieser eine Befund miterklärt — vier Stellen, die einzeln nie aufgingen:**
+
+| Stelle | bisher notiert als | unter dem Befund |
+|---|---|---|
+| Die GA-Geraden sind **25-mal flacher** als die Brücken (Median-R² 0,32; 8 von 27 Stunden mit verkehrtem Vorzeichen) | „Rauschen, das als Gerade gelesen wird" | **erwartetes Verhalten** bei 29 W Spanne: die Regression gibt die mittlere Leistung der Stunde zurück, und das Vorzeichen ist Rauschen |
+| Die Umrechnung hängt am **Stufentest und an einer einzigen Tempo-Einheit** | „dünne Brücke, unschön" | **die einzigen Quellen mit breitem Lastfenster** im Bestand — deshalb hängt sie dort und kann nirgends sonst hängen |
+| Der Anstieg **Stunde 1 → Stunde 2** (147,6 → 149,7 W: „man wird mit der Zeit stärker") | „vor dem Umlegen zu klären" | **kein physiologischer Befund**, sondern zwei Mediane aus Fits ohne Zusammenhang. Die ganze Bewegung kam nachweislich aus **einer** Fahrt (R² 0,05) |
+| Die nie aufgelösten **35 / 40 / 41 W** zwischen Blockkreuzung (174–194 W) und Rampe (213 W) | „die 40-Watt-Frage, offen" | die eine Seite steht auf einer **breiten** Spanne, die andere auf einer **schmalen** — die beiden Zahlen beantworten **nicht dieselbe Frage** und sind nicht ineinander umzurechnen |
+
+**Folge für diese Liste:** die Frage „wo liegt meine Schwelle" wird aus dem Bestand heraus
+nicht beantwortet werden, und kein weiteres Fahren ändert das, solange das Fenster schmal
+bleibt. Die Kachel stellt deshalb seit 0.64.0 eine **andere** Frage — „bei wieviel Watt
+bleibe ich über alpha 1,0, für eine Fahrt von X Stunden" (`docs/rechenwege.md` K5). **Die
+40-Watt-Frage ist damit nicht gelöst, sondern als falsch gestellt erkannt.** Das ist ein
+Ergebnis, kein Ausweichen.
+
+**Was damit NICHT mehr gilt — gestrichen, nicht danebengeschrieben:**
+
+1. **Der 0,75-Anker aus Grundlagenfahrten als Prüfstein.** `derive.p075` extrapoliert je
+   Stunde auf eine Leistung bei alpha 0,75 — aus einer 29-W-Wolke hinunter auf einen Punkt,
+   der außerhalb liegt. Die Zahl wird weiterhin gerechnet und angezeigt; **als Beleg für
+   eine Schwelle taugt sie nicht**, und keine Entscheidung darf sich auf sie stützen.
+   Andriolos R²-Schranke > 0,75 (Punkt 11a) bleibt davon unberührt richtig — sie würde
+   genau diese Fits verwerfen, und das ist jetzt kein Widerspruch mehr, sondern derselbe
+   Satz von der anderen Seite.
+2. **Die Behauptung, die 40 W seien ein Umgebungseffekt (Rolle gegen draußen), ist
+   unbelegt und bleibt es.** Sie steht weiterhin an **drei Code-Stellen** —
+   `blocks.py:334`, `intervals-panel.js:1952`, `intervals-panel.js:2055` — und wird hier
+   als **offener Punkt** geführt, nicht als Erklärung. Unter dem Befund braucht der Abstand
+   diese Erklärung ohnehin nicht mehr; damit ist sie eine Behauptung ohne Aufgabe.
+3. **Die Zahlen der Vorrunden gelten nur mit ihrer Beschriftung.** Alles, was vor 0.63.1
+   gerechnet wurde, steht am **gedünnten Strom über ganze Fahrten** — gemeldet wurde dort
+   ein Median-R² von 0,752, am Produktionsstand sind es **0,324**. Ohne diese Beschriftung
+   ist keine Vorrunden-Zahl mit einer heutigen vergleichbar, und ein Vergleich ohne sie ist
+   ein Fehler, kein Hinweis.
+
+*Was hier bewusst NICHT steht:* eine Kandidatenliste „K-a bis K-f". Der Auftrag nennt sie,
+in keinem Dokument dieses Projekts kommt sie vor. Gestrichen werden kann nur, was
+dasteht — erfunden wird nichts.
+
+---
+
 **0 · NÄCHSTER GROSSER SCHRITT: aus dem Stufentest eine Vorgabe — als ABLESUNG je
 alpha-Korridor, nicht als Anteil einer Schwelle (Johannes, 16.09.2026).**
 
@@ -2238,8 +2346,13 @@ keine Ableitung aus der Literatur. Bei α=0,5: Gerade 233 W, gemessen 226 W.
 Blockkreuzung liegt formübergreifend bei **174–194 W**, die Rampe bei **213 W** — rund
 **20 bis 40 W** Abstand, der unter der entschiedenen Lesart bestehen bleibt. Unter der
 verworfenen Lesart („erste Unterschreitung", 193 W) wäre er verschwunden; genau deshalb war
-die Lesart zuerst zu entscheiden. **Der Abstand ist jetzt die nächste Frage, und er ist
-offen.** Eine Spur aus der Literatur, kein Beleg: die Autoren von Andriolo 2024 berichten im
+die Lesart zuerst zu entscheiden. **ERLEDIGT seit 19.09.: der Abstand ist erklärt, aber
+anders als gesucht** — die Rampe steht auf einer breiten Lastspanne, die Blöcke auf einer
+schmalen, und die beiden Zahlen beantworten nicht dieselbe Frage (Befund oben). Eine
+Umrechnung zwischen ihnen wird es nicht geben. **Punkt 0 selbst bleibt gültig und wird
+durch den Befund eher stärker:** die Ablesung je Korridor aus dem STUFENTEST ist genau der
+Weg, der trägt, weil dort das Lastfenster breit ist. Eine Spur aus der Literatur, kein
+Beleg: die Autoren von Andriolo 2024 berichten im
 eigenen Blog, dass Rampenerkennung Schwellen in manchen Fällen überschätzt, während
 Cluster-Ablesungen (unserem Blockverfahren ähnlich) besser übereinstimmen — dieselbe
 Richtung wie hier, aber kein begutachteter Befund (docs/rechenwege.md, Quellenliste).
@@ -2734,3 +2847,72 @@ Code, Zahlen nachgerechnet, Quellen geprüft).
 Verwaiste rTrainer-Blöcke (Infekt-Warnung!) · zweiter Empfehler · Anker-Konflikt-
 wächter · Budget-Lead · Entlastungs-Arithmetik · `weekly_load`-Quelle — Details im
 Fehlerkapitel (§7).
+
+---
+
+## 13. Bauregeln — aus Fundstellen, nicht aus Lehrbüchern
+
+Fünf Regeln aus den Auslieferungen **0.63.0 bis 0.65.2** (19.09.2026). Jede steht hier, weil
+genau dieser Fehler gebaut, ausgeliefert und wieder eingefangen wurde — nicht, weil sie gut
+klingt. **Vor dem nächsten Bau lesen.**
+
+### 1 · Kein Knopf ohne Zweig, kein Zweig ohne Knopf
+
+**0.63.0:** der Befehl für den Rechenschalter war registriert, der Knopf dazu wurde nie
+gezeichnet. Kein Wächter sah beide Seiten — die eine Prüfung fragte den Befehl, die andere
+die Oberfläche, und zwischen ihnen lag die Lücke. Der Schalter war „gebaut" und nicht
+erreichbar.
+
+Seit **0.65.0** wird es erzwungen: für alle vier Schaltflächen der Massenlauf-Leiste zählt
+eine Prüfung die Aufrufe im ganzen Quelltext und fordert, dass jeder in der Klick-Weiche
+steht — und umgekehrt.
+
+### 2 · Eine Stelle statt zweier Listen
+
+**0.64.1:** die Kachel war auf die Umkehrung umgebaut, der Trockenlauf behielt seine
+**eigene Liste** der Kachelzahlen. Damit zeigte ausgerechnet das Werkzeug, das vor dem
+Umlegen absichern soll, den Stand von vorgestern. Behoben durch
+`fatigue_v2.tile_numbers(data)` als die EINE Stelle: wer der Kachel eine Zahl hinzufügt,
+fügt sie dort hinzu, und sie steht im Trockenlauf, ohne dass jemand daran denken muss.
+
+Derselbe Bauplan hat in **0.65.2** `_hasMeasure(entry)` hervorgebracht — mit einem Wächter,
+der **handgebaute Kopien der Frage** im Quelltext verbietet.
+
+### 3 · Eine Prüfung der Funktion fängt den Aufrufer nicht
+
+**0.64.3:** die Prüfung rief `reversal_band` direkt und war grün, während der Aufrufer ihr
+weiter die falschen Daten schickte. Geprüft werden muss die **Kette bis zu der Zahl, die
+auf der Kachel steht** — notfalls am Syntaxbaum, wie dort geschehen.
+
+Schwesterregel aus **0.64.0**: **eine Prüfung, die die Rechnung nachbaut, prüft ihre eigene
+Kopie.** Drei Mutationen rutschten im ersten Lauf durch, weil im Testcode nachgerechnet
+wurde statt die Produktionsfunktion zu rufen. Deshalb gibt es `reversal_band` überhaupt als
+eigene Funktion.
+
+### 4 · Ein Vorgang, der eine Liste abtragen soll, wird daran gemessen, dass die Liste danach LEER ist
+
+**0.65.1:** der Massenknopf war an **sechzehn** Punkten geprüft — Schübe, Abbruch mitten im
+Schub, Fehlschläge, Einzahl im Text, Schalterwechsel — und an **diesem einen** nicht. Er
+maß, schrieb, und meldete danach dieselben 12 Einheiten wieder. Die Frage ist nicht „tut er
+etwas", sondern **„ist danach nichts mehr offen"**.
+
+Gebaut als Zusicherung: der vollständige Lauf wird nachgestellt und `pending_remeasure` muss
+danach **leer** sein — mit Fixture-Beweis, dass vorher drei Fahrten offen waren.
+
+### 5 · `hours` ist richtig, wo die GRUNDLAGE gemeint ist — und falsch, wo „gibt es überhaupt eine Messung" gemeint ist
+
+**Dreimal in zwei Tagen derselbe Griff:** Kachel (0.63.x), `pending_remeasure` (0.65.1),
+Zustandssatz der Aktivitätskarte (0.65.2). Blockfamilien legen `blocks` ab, und eine Messung
+ohne verwertbare Zahlen legt ihren `reason` ab — **beides ist gemessen**. Wer nur `hours`
+fragt, hält sie für nie gemessen, auf ewig.
+
+Legitim bleibt `hours` in `section_marks.usable_hours`, `fatigue._marked_rides`,
+`fatigue_v2.reading_rows` und in der Quittung: dort ist **ausdrücklich die Grundlage**
+gemeint. In `analytics`, `workouts` und `fatigue.py:144 ff.` ist es ein ganz anderes Feld
+(Fahrtstunden, Plandauer) und keine Verwechslung.
+
+### Die Regel über den Regeln
+
+**Gegen einen Griff, der dreimal vorkommt, hilft nicht das vierte Einzelfix, sondern eine
+Stelle plus ein Wächter gegen Nachbauten.** Die Regeln 2 und 5 sind derselbe Satz, einmal
+für Zahlen und einmal für Fragen.

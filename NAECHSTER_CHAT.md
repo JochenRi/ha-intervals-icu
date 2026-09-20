@@ -1,5 +1,17 @@
 # ha-intervals-icu — Übergabe an den nächsten Chat
 
+> **Dauerhafte Stellen, die NICHT im Journal stehen — dort nachschlagen, nicht hier suchen:**
+> · **PROJEKTSTAND §10, Kopf der Liste** — der Befund „aus Grundlagenfahrten ist die
+>   Schwelle nicht bestimmbar" (29 W Fenster, 150 W nötig), die vier Stellen, die er
+>   miterklärt, und was damit gestrichen ist.
+> · **PROJEKTSTAND §13 — Bauregeln.** Fünf Regeln aus 0.63.0–0.65.2. Vor dem nächsten Bau
+>   lesen; jede kommt aus einem Fehler, der ausgeliefert war.
+> · **PROJEKTSTAND §7, vierzigster Fall** — die Auslieferung, die Messungen gelöscht hat,
+>   und die fünf weiteren Stellen derselben Bauart.
+> · **docs/rechenwege.md K5** — die Umkehrung: Rechenweg, Livestand, die zwei Bandfehler,
+>   die Punktschwelle. Darin auch der offene Punkt der Blockkacheln.
+
+
 ## AKTUELL — 0.65.2: dritter Fundort derselben Verwechslung, und diesmal mit einer Stelle dagegen (19.09.2026). Zuerst lesen.
 
 **Ausgeliefert: 0.65.2.** Prüfstand **23 Dateien, 7.633 Prüfungen, 0 Fehler** (Basis 7.625).

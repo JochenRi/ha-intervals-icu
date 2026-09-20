@@ -299,6 +299,126 @@ Im Container liegt keine einzige Grundlagenfahrt.
 
 ---
 
+## K5 · Die Umkehrung — „bei wieviel Watt bleibe ich über alpha 1,0"
+
+**Seit 0.64.0.** Die Ermüdungskachel beantwortet nicht mehr „wo liegt meine Schwelle" —
+das ist aus Grundlagenfahrten nicht bestimmbar (Befund vom 19.09., PROJEKTSTAND §10,
+Kopf der Liste). Sie beantwortet: **bei wieviel Watt bleibe ich über alpha 1,0 — für eine
+Fahrt von X Stunden.**
+
+Diese Kausa hat nicht die Vier-Spalten-Form von K1–K4: es gibt keine Quelle, gegen die
+abzugleichen wäre. Die Frage ist neu gestellt, die Herleitung steht am eigenen Code.
+
+### K5.1 · Der Rechenweg, und warum er trägt
+
+Gerechnet wird aus **Gemessenem**, je Stunde:
+
+    Zielleistung(h) = gehaltene Last(h) + (alpha bei dieser Last(h) − 1,000) × Umrechnung
+
+`fatigue_v2.reversal(data)` über `reading_rows`; die Umrechnung holt `bridges_alpha(data)`
+aus **Stufentest und Blockleiter am Bestand** — nie aus den Stundenfits, die 20-mal
+flacher sind (Median-R² 0,32).
+
+**Warum das trägt, wo die alte Frage nicht trug:** der Weg ist kurz. Von der gefahrenen
+Last bis alpha 1,0 sind es **0,07 bis 0,31 alpha**. Über diese kurze Strecke liegen die
+beiden Umrechnungen — Stufentest **90,6 W je alpha**, Blockleiter **111,7 W je alpha** —
+nur **1,6 bis 6,9 W** auseinander. Bei der alten Frage (Extrapolation hinunter bis 0,75)
+spannten dieselben zwei Brücken **65 W** auf. Die Unkenntnis über die Brücke ist
+unverändert dieselbe; nur der Hebel, mit dem sie auf die Antwort wirkt, ist rund zehnmal
+kleiner.
+
+**Das ist der ganze Grund, und er ist geometrisch, nicht physiologisch.** Wer die Brücke
+für belegt hält, irrt sich in beiden Fragen gleich stark — es fällt nur in der einen auf.
+
+### K5.2 · Livestand 19.09.2026
+
+| h | Zielleistung | Band | Belegung |
+|---|---|---|---|
+| 1 | **174 W** | ± 28 W | 17 Fahrten |
+| 2 | **166 W** | ± 25 W | 14 Fahrten |
+| 3 | **151 W** | ± 12 W | 4 Fahrten |
+| 4 | **147 W** | *unter 4 Fahrten keine Spanne* | 3 Fahrten |
+| 5 | **130 W** | *unter 4 Fahrten keine Spanne* | 1 Fahrt |
+
+Verlauf **−0,0485 alpha je Stunde**, aus **14 Fahrten**, davon **12 fallend**.
+
+Die Trefferquote steht erst **ab 9 Fahrten** (`BAND_QUOTE_MIN_N`); darunter sagt die Zeile
+„t-Band über n Fahrten" und verspricht keine Quote. Grund: bei vier Fahrten hat ein
+Weglass-Rückblick drei Fälle — eine Quote ist dort nicht nachprüfbar, weder nach oben noch
+nach unten.
+
+*Beschriftung:* die Zahlen der Kachel zum Stand 0.64.0 lauteten 173/166/151/147/130 W mit
+±26/±36/±19 W. Die Bänder oben sind der Stand NACH den beiden Bandfehlern (K5.3) und der
+Punktschwelle (K5.4). Es sind dieselben Stunden, nicht dieselbe Rechnung.
+
+### K5.3 · Die zwei Bandfehler (0.64.3) — als Kreuztabelle
+
+Das Band war **zweimal unabhängig falsch**, und die beiden Fehler haben sich addiert.
+Weglass-Rückblick mit der Produktionsfunktion, Stunde 1 (n = 17) / Stunde 2 (n = 12):
+
+| Streuung aus … | einseitiges t (`STEERING_T90`) | zweiseitiges t (richtig) |
+|---|---|---|
+| **alpha allein** | **70 % / 66 %** ← war ausgeliefert | 82 % / 75 % |
+| **der fertigen Wattzahl** | 76 % / 83 % | **88 % / 91 %** ← seit 0.64.3 |
+
+**Fehler 1 — die halbe Streuung fehlte.** Gerechnet wurde `s(alpha) × Umrechnung` = 14,0 W.
+Die **gehaltene Last streut aber selbst um 8,7 W** (117–154 W), und darauf kommt es an: das
+Band soll die fertige Wattzahl einschließen, nicht das alpha. Die Streuung der fertigen
+Zahl je Fahrt beträgt **15,9 W**.
+
+**Fehler 2 — die falsche Tabellenseite.** `STEERING_T90` ist ein **einseitiges**
+90-%-Quantil. Richtig ist es für „höchstens so viel". Für ein **symmetrisches** Band, das
+80 % einschließen soll, braucht es das **zweiseitige** — also t(0,95) einseitig.
+
+Beide behoben. Neues Band: Stunde 1 **± 28,7** · Stunde 2 **± 26,7** · Stunde 3 **± 11,6 W**.
+
+Die Aufteilung der Streuung bleibt, mit neuer Beschriftung: `from_spread` ist die Streuung
+**zwischen den Fahrten** (Last und alpha zusammen), `from_bridge` der **systematische**
+halbe Abstand der beiden Umrechnungen. Das eine ist Streuung, das andere Unkenntnis — sie
+quadratisch zusammenzulegen bleibt richtig, sie zusammenzuwerfen wäre falsch.
+
+**OFFEN, ausdrücklich festgehalten: die Blockkacheln benutzen dieselbe einseitige
+Tabelle.** SweetSpot, VO2max und Tempo rechnen mit derselben Formel und tragen dieselbe
+Zusage „8 von 10 Einheiten". Am Bestand halten sie sie — **83 % bei n = 6** (VO2max),
+**80 % bei n = 5** (SweetSpot). Das ist **Glück bei kleinem n**: die einseitige Tabelle ist
+bei kleinem df großzügiger als nötig und gleicht den Fehler zufällig aus. **Nachgewiesen
+ist das nicht.** Nicht angefasst in 0.64.3, weil eine Änderung dort Trainingsvorgaben
+verschiebt — das ist eine eigene Entscheidung.
+
+*Nebenbefund:* der Rat „empirisches Quantil statt t-Formel" ist **widerlegt**. Am Bestand
+trifft er schlechter (76 % gegen 88 %), und die oft zitierte Obergrenze (n−1)/(n+1) gilt
+nur für **verteilungsfreie** Bänder aus Ordnungsstatistiken. Die Blockkacheln liegen mit 83
+und 80 % über ihrer angeblichen Obergrenze von 71 und 67 % — ein parametrisches Band kann
+das. Die Obergrenze ist damit kein Argument gegen die Zusage, sondern gegen das empirische
+Quantil.
+
+### K5.4 · Die Punktschwelle zählt Sekunden (0.64.2)
+
+**`load_n` zählt STELLEN.** `derive.dfa_hours` läuft über die Stromstellen und sammelt je
+Stelle einen Wert; `sample_secs` steht auf **1**, und **beide** Aufrufer
+(`importer.py:344`, `websocket.py:1786`) lassen die Vorgabe stehen. **Eine Stelle ist also
+eine Sekunde, eine volle Stunde rund 3.600** — im Prüfstand am Zähler nachgewiesen
+(3.600 Stellen bei fester Last ergeben `load_n = 3600`).
+
+**Damit hieß die alte Schwelle `DFA_LOAD_MIN_POINTS = 20` genau: 20 Sekunden** — bei einem
+alpha, das selbst ein Fenster über **120 Sekunden** ist. Unterhalb von 120 s liegt keine
+einzige vollständige Messung vor; die Schwelle ließ Werte durch, die es gar nicht geben
+kann.
+
+**Sie steht jetzt auf 120 und wird gegen `DFA_WATT_WINDOW_S` geprüft, nicht gegen eine
+Zahl.** Sie ist aus der Bauart des Messwerts **abgeleitet**, nicht gesetzt — genau darauf
+kommt es hier an, und deshalb steht sie in dieser Liste.
+
+*Wirkung, mit den Produktionsfunktionen gerechnet:* Kette, Verlauf und Reichweite bleiben
+unverändert. Weg fallen genau zwei Stunden, beide auf der Rolle — **9908 h2** (22 s, alpha
+0,78) und **4325 h2** (20 s, alpha 1,64), die beiden Ausreißer, die das Band der zweiten
+Stunde aufgebläht haben: **± 27,7 → ± 14,8 W**, praktisch halbiert. Stunde 1 bleibt 17 von
+17. Bei 300 s fiele Stunde 5 weg, bei 900 s kippt der Verlauf (−0,106 alpha/h aus 6
+Fahrten) — die 120 s sind nicht der Punkt, an dem es am besten aussieht, sondern der, an
+dem der Messwert vollständig ist.
+
+---
+
 ## Was diese Liste NICHT leistet
 
 1. **K2, K3 und K4 sind nicht am Livebestand gerechnet.** Der Container trägt nur
@@ -312,7 +432,14 @@ Im Container liegt keine einzige Grundlagenfahrt.
 4. Der Auftrag verlangt, jede Studie in **jeder** Kausa neu gegen ihre Stelle zu
    halten. Geleistet ist das für Andriolo 2024 (K2, K3, K4) und für Rogers 2021a/b
    (K1). Nicht geleistet für die übrigen.
-5. **Die entschiedene Lesart (K1.4) erklärt den Abstand zu den Blöcken NICHT.** Unter
-   „erste Unterschreitung" (193 W) wäre er verschwunden, unter „dauerhaft" (213 W)
-   bleibt er bestehen: Blöcke 174–194 W gegen Rampe 213 W, rund **20 bis 40 W**.
-   **Das ist die nächste offene Frage** (§10 Punkt 0).
+5. **Die entschiedene Lesart (K1.4) erklärt den Abstand zu den Blöcken NICHT** — und
+   seit dem 19.09. muss sie das auch nicht mehr. Unter „erste Unterschreitung" (193 W)
+   wäre er verschwunden, unter „dauerhaft" (213 W) bleibt er bestehen: Blöcke 174–194 W
+   gegen Rampe 213 W, rund **20 bis 40 W**. **Der Abstand ist inzwischen erklärt, aber
+   anders als gesucht:** die Rampe steht auf einer breiten Lastspanne, die Blöcke auf
+   einer schmalen — die beiden Zahlen beantworten nicht dieselbe Frage (PROJEKTSTAND §10,
+   Kopf der Liste). Eine Umrechnung zwischen ihnen wird es nicht geben.
+6. **K5 ist nicht am Livebestand nachgerechnet worden.** Die Zahlen in K5.2 sind der
+   Livestand vom 19.09., von Johannes gemeldet und gegen die Fixture gehalten — nicht in
+   diesem Container aus Rohströmen neu gerechnet. Der Container trägt nur die
+   Rampen-Fixture.
