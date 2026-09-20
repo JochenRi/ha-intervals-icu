@@ -443,3 +443,107 @@ dem der Messwert vollständig ist.
    Livestand vom 19.09., von Johannes gemeldet und gegen die Fixture gehalten — nicht in
    diesem Container aus Rohströmen neu gerechnet. Der Container trägt nur die
    Rampen-Fixture.
+
+## K6 · Das Blockband am Livebestand nachgerechnet (20.09.2026)
+
+Gerechnet mit den Produktionsfunktionen (`steering.t_band`, `steering.c6`) über den
+Livebestand aus `intervals_icu/blocks`. Die Zahlen der Kachel sind bitgenau
+reproduziert (TREFFER): VO2max `235–265` (half 14,6 · sd 7,97 · t 1,638 · n 4),
+SweetSpot `186–194` (half 4,06 · sd 2,22 · t 1,638 · n 4).
+
+### K6.1 · Das Fenster ist vier — n ist nie größer
+
+`t_band` schneidet `values[-STEERING_BAND_WINDOW:]` ab, und `STEERING_BAND_WINDOW = 4`.
+**Die Zahl der Einheiten einer Familie geht nicht ins Band ein**, nur die letzten vier.
+VO2max hat 6 Einheiten und rechnet mit 4; SweetSpot hat 5 und rechnet mit 4. In beiden
+Fällen df = 3, t = 1,638 — nicht df 5 / df 4.
+
+Damit fällt bei SweetSpot die älteste Einheit (05.07., 167 W) ganz aus dem Band heraus,
+bei VO2max die beiden Juli-Einheiten (258 / 258 W). Der Einheiten-Median des Fensters
+liegt deshalb bei VO2max auf **243,8 W**, während die Vorgabe auf **250 W** steht.
+
+### K6.2 · Die Tabellenseite, mit den richtigen Freiheitsgraden
+
+Faktor ist `t(0,95; 3) / t(0,90; 3) = 2,353 / 1,638 = 1,43651` — für **beide** Familien
+derselbe, weil beide bei df 3 rechnen.
+
+| Familie | Vorgabe | heute (einseitig) | zweiseitig | half heute → danach |
+|---|---|---|---|---|
+| VO2max | 250 W | **235 – 265** | **229 – 271** | 14,60 → 20,97 |
+| SweetSpot | 190 W | **186 – 194** | **184 – 196** | 4,06 → 5,83 |
+
+### K6.3 · Die Zusage „8 von 10" — Synthetik, fünf Seeds, je 20.000 Läufe
+
+Einheiten ~ Normal(µ, s), Fenster 4, Band wie Produktion. Entscheidend ist der
+**Versatz** zwischen Vorgabe und dem Median des Fensters:
+
+| Versatz | heute (einseitig) | nur Tabelle getauscht |
+|---|---|---|
+| 0 Streuungen | 83,3 % | 91,8 % |
+| 0,50 | 79,6 % | 89,8 % |
+| **0,78** (= VO2max heute) | **74,9 %** | **86,8 %** |
+| 1,25 | 63,0 % | 78,7 % |
+
+Sitzt die Vorgabe auf dem Gefahrenen, hält die einseitige Tabelle die 80 % sogar über.
+Am Bestand sitzt sie nicht: VO2max 6,2 W = 0,78 Streuungen daneben, SweetSpot 1,0 W =
+0,45. **Die Zusage hält heute bei VO2max nicht** (≈75 %), bei SweetSpot knapp (≈79 %).
+Mit der zweiseitigen Tabelle hält sie in beiden Fällen.
+
+### K6.4 · Der Weglass-Rückblick trägt hier nicht
+
+Weil das Fenster vier ist, **entfernt ein Weglassen keinen Punkt, sondern tauscht einen**:
+die nächstältere Einheit rückt nach. Bei SweetSpot zieht das die 167-W-Einheit ins
+Fenster, die sd springt von 2,22 auf ~12,5, und das Band 167–213 enthält trivial alles.
+Von fünf nominellen Fällen verändern vier das Fenster, einer gar nicht. Die Quoten
+6/6 (VO2max) und 4/5 (SweetSpot) sind **Artefakte, keine Messung**.
+
+Die ehrliche Probe ist die **Vorwärtsprobe** (Band aus den Einheiten davor, gegen die
+nächste): VO2max 2/3 einseitig, 3/3 zweiseitig · SweetSpot 2/2 in beiden. Drei und zwei
+Fälle — das trägt keine Quotenangabe.
+
+`fatigue_v2.BAND_QUOTE_MIN_N = 9` regelt genau das für die Ermüdungskachel. **Die
+Blockkacheln haben keine solche Schranke**: `band_share` (8) steht in
+`intervals-panel.js:1728` und `:1838` immer da, sobald es ein Band gibt — ab drei
+Einheiten.
+
+### K6.5 · Die fehlende zweite Streuung — es gibt eine, und sie ist nicht die erwartete
+
+Fehler 1 der Ermüdungskachel (Streuung von alpha statt der fertigen Zahl) hatten die
+Blockkacheln nie: `family_state` gibt `watts_raw` an `t_band`, die fertige Wattzahl je
+Einheit. Beide Streuungsquellen stecken darin.
+
+Das Gegenstück zu `bridge_half` ist ein anderes: **der Versatz zwischen Vorgabe und
+Fenster-Median.** Er ist keine Streuung zwischen Einheiten, sondern ein systematischer
+Abstand — genau die Bauart, die `reversal_band` quadratisch dazulegt. Im Blockband
+fehlt er ganz. Synthetik mit `half² + Versatz²`:
+
+| Versatz | heute | nur Tabelle | Tabelle + Versatz |
+|---|---|---|---|
+| 0 W | 83,3 % | 91,8 % | 93,2 % |
+| 6,2 W | 74,9 % | 86,8 % | **90,6 %** |
+| 10 W | 63,0 % | 78,7 % | **87,6 %** |
+
+### K6.6 · Tempo (n = 1) — zwei Sätze, die sich widersprechen
+
+`state["band"] = t_band(...) if state.get("watts") else None`. Tempo hat keinen
+Startwert (`STEERING_ANCHOR_W` kennt nur sweetspot und vo2max), also `watts = None`,
+also **nie ein Band — auch bei zehn Einheiten nicht.** Das Pulsfenster dagegen hängt an
+n ≥ 3 und käme mit mehr Einheiten.
+
+Die Kachel zeigt heute nebeneinander:
+`tile_no_band` — *„Für eine Spanne braucht es 3 gemessene Einheiten; solange steht die
+Vorgabe allein."* und `tile_no_target` — *„Für diese Familie wird keine Vorgabe geführt."*
+Der erste Satz ist für Tempo **falsch** (die Spanne kommt nie) und verweist auf eine
+Vorgabe, die daneben als `–` steht. `band_note` sagt „noch keine Toleranz" — das „noch"
+stimmt fürs Pulsfenster, nicht fürs Band.
+
+### K6.7 · Was der Regler liest — am Syntaxbaum, nicht am Kommentar
+
+`ast`-Lauf über `steering.py`: `c6` liest genau drei Schlüssel — `date`, `side`,
+`usable` — ruft nur `len`, `list`, `str`, und enthält kein einziges Vorkommen von
+„band". In `family_state` steht `c6` an Anweisung 3, `state["band"]` an Anweisung 7.
+**Der Regler läuft vor dem Band und kann es nicht lesen.** `side()` entscheidet am
+`BLOCK_CORRIDORS`-Korridor über alpha, nicht an Watt.
+
+Folge: Eine andere Tabellenseite ändert **die angezeigte Spanne und sonst nichts.**
+Die Vorgaben 190 W und 250 W bewegen sich nicht.
