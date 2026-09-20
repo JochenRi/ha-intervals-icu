@@ -547,3 +547,184 @@ stimmt fürs Pulsfenster, nicht fürs Band.
 
 Folge: Eine andere Tabellenseite ändert **die angezeigte Spanne und sonst nichts.**
 Die Vorgaben 190 W und 250 W bewegen sich nicht.
+
+## K7 · Wer hängt am Steuerfenster und an der Tabelle (20.09.2026)
+
+Vollständig am Code aufgelistet, nicht aus dem Gedächtnis.
+
+### K7.1 · Die Verbraucher von `t_band`
+
+Es gibt **genau zwei** Aufrufe, beide in `steering.family_state`:
+
+| Zeile | Was | Mitte | Wird daraus eine Vorgabe? |
+|---|---|---|---|
+| `steering.py:306` | `state["band"]` über `watts_raw` | `center = state["watts"]` | **nein** — nur Anzeige |
+| `steering.py:308` | `state["hr_band"]` über `r["hr"]` | kein `center`, also Median | **JA** |
+
+`state["band"]` fließt in `workouts.py:962` (`steering_source.band`) und ins Panel
+(`:1728`, `:1838`, `:4756`) — überall Text. Die Wattzahl der Einheit kommt aus
+`_stage_from_measurement(entry, ftp, steered["watts"], …)`, also aus der **Vorgabe**,
+nicht aus dem Band.
+
+`state["hr_band"]` dagegen:
+
+    workouts.py:976   band = steered.get("hr_band") if got else None
+    workouts.py:980   out["hr_window"] = (band["low"], band["high"])
+    workouts.py:981   out["hr_source"] = {**band, "family": fam, "source": "steering"}
+
+**Die Bandgrenzen sind das Pulsfenster der Trainer-Einheit.** Am Produktionsaufruf
+(`WK.scaled(vo2_4x4, …)`) nachgemessen: `hr_window = (180, 189)`, `hr_source.source =
+"steering"`. Störungsprobe: Pulsreihe +10 → `(190, 199)`. Gegenprobe: Wattband auf
+`[100,300,…]` verbogen → `hr_window` unverändert `(180, 189)`, `blocks_w` unverändert.
+
+**Das ist die Klasse, die durchgerutscht ist:** dieselbe Funktion, dasselbe Fenster,
+dieselbe Tabelle — auf der Wattseite Anzeige, auf der Pulsseite Vorgabe.
+
+### K7.2 · Weitere Verbraucher der Tabelle und des Fensters
+
+`STEERING_T90` wird ausserhalb von `steering.t_band` noch an **einer** Stelle gelesen:
+`fatigue_v2.py:165  T90 = STEERING_T90`, benutzt in `fatigue_v2.band()` (Z 265–290,
+gerufen aus Z 333) — dem Band der Ermüdungs**kette**. `reversal_band` (Z 704) benutzt
+seit 0.64.3 die eigene `T90_TWO_SIDED`. **Es laufen also zwei Tabellen im selben Modul**,
+und der Kommentar über Z 165 behauptet weiterhin das Gegenteil: *„DIESELBE Tabelle wie
+bei den Familien. Keine zweite Quelle: zwei Tabellen laufen früher oder später
+auseinander."* Sie sind bereits auseinander. **Bauregel 2, gemeldet.**
+
+Dazu doppelt: `BAND_SHARE_WORDS = "8 von 10 Fahrten"` (`fatigue_v2.py:157`) und dasselbe
+Literal noch einmal in `fatigue_v2.py:595`. Der Satz ist ausdrücklich an die
+**einseitige** Tabelle gebunden (Kommentar Z 151–156) — `reversal_band` rechnet aber
+zweiseitig, das sind 9 von 10.
+
+`STEERING_BAND_WINDOW` liest ausser `t_band` nur `websocket.py:369`, das es als
+`band_window` ans Panel durchreicht (Anzeige).
+
+### K7.3 · Was sich bei welcher Änderung bewegt
+
+| Verbraucher | Fenster 4 → 6 | einseitig → zweiseitig | Art |
+|---|---|---|---|
+| Wattzahl der Einheit (`blocks_w`) | nein | nein | Vorgabe |
+| angezeigte Wattspanne | ja | ja | Anzeige |
+| **`hr_window` der Einheit** | **ja** | **ja** | **Vorgabe** |
+| Pulschip der Kachel | ja | ja | Anzeige |
+| `compare()` im Umlege-Dialog | ja | ja | Anzeige |
+| Ermüdungskachel | nein | nein | eigene Tabelle |
+
+## K8 · Das Fenster selbst
+
+### K8.1 · Warum vier? — gesetzt, nicht belegt
+
+Der Kommentar in `const.py:219–222` begründet die **Form** des Bandes (t-Band statt MAD
+oder Bootstrap, Kreuzprobe K7, 40.000 Läufe) und nennt die Vier nur als Tatsache. Für
+die **Zahl 4** findet sich in `const.py`, `docs/`, `NAECHSTER_CHAT.md` und dem Prüfstand
+keine Herleitung. **UNBELEGT.** Die Zeile darunter verrät den blinden Fleck: *„Nur df 1..8
+werden je gebraucht (Fenster 4)"* — bei Fenster 4 ist df höchstens **3**.
+
+### K8.2 · Fensterlauf am Livebestand
+
+| Familie | Fenster | n | sd | Wattband | Fenster-Median | Versatz | Pulsband |
+|---|---|---|---|---|---|---|---|
+| VO2max | **4 (heute)** | 4 | 7,97 | 235–265 | 243,8 | **6,2 W** | **180–189** |
+| VO2max | 5 | 5 | 9,43 | 234–266 | 250,0 | 0,0 W | 178–188 |
+| VO2max | 6 / alle | 6 | 9,66 | 235–265 | 250,5 | 0,5 W | 177–187 |
+| SweetSpot | **4 (heute)** | 4 | 2,22 | 186–194 | 191,0 | 1,0 W | **159–174** |
+| SweetSpot | 5 / 6 / alle | 5 | **11,01** | **172–208** | 190,0 | 0,0 W | 158–172 |
+
+**Der Befund ist gegenläufig.** Bei VO2max verschwindet der Versatz mit Fenster 6 fast
+ganz, und das Band wird kaum breiter. Bei SweetSpot zieht Fenster 5 die Einheit vom
+05.07. (167 W, 23 W unter den übrigen) wieder herein: `sd` springt 2,22 → 11,01, das
+Band von ±4 auf ±18,5 W. **Ein grösseres Fenster hilft der einen Familie und ruiniert
+die andere.**
+
+### K8.3 · Der Preis: Trägheit gegen Breite
+
+Synthetik, acht Seeds. Welt: zwölf Einheiten bei µ = 200, dann Sprung auf µ = 220, s = 8.
+Gemessen: nach wie vielen Einheiten enthält das Band den neuen Mittelwert.
+
+| Fenster | Einheiten bis zum Nachziehen (Median) | mittlere Halbbreite ohne Sprung |
+|---|---|---|
+| 3 | 1,0 | 15,48 W |
+| **4 (heute)** | **1,0** | **13,53 W** |
+| 5 | 1,5 | 12,60 W |
+| 6 | 2,0 | 12,12 W |
+| 8 | 3,0 | 11,51 W |
+| alle | 4,5 | 11,07 W |
+
+GEGENPROBE (Welt **ohne** Sprung): jede Fenstergrösse enthält µ ab der ersten Einheit —
+der Unterschied ist wirklich nur die Breite. **Fenster 4 kostet gegenüber Fenster 6 rund
+1,4 W Breite und gewinnt eine Einheit Reaktionszeit.**
+
+### K8.4 · Zwei Fenster auf derselben Reihe
+
+Band: Fenster **4**, ab n = 3, Grösse = **Watt**.
+Regler: Fenster **3**, 2 von 3, ab 3 Einheiten, Schritt 5 W, Grösse = **alpha-Seite**.
+
+Sie berühren sich nirgends — belegt in K6.7. Der Punkt ist ein anderer: **sie messen
+nicht dasselbe Signal.** Synthetik (fünf Seeds), Welt mit Formsprung Watt +20 bei alpha
+im Korridor: Vorgabe bleibt bei allen Seeds auf 250 W (`moves = 0`), das Band zieht nach,
+der Versatz wächst auf 24–34 W. GEGENPROBE mit alpha ausserhalb: `moves = 3`, Vorgabe
+265 W — und der Versatz wächst auf 39–49 W, weil der Regler auf den **Startwert** rechnet,
+nicht auf die gefahrenen Watt.
+
+**Nichts im Paket bindet die Vorgabe an das Gefahrene.** Der Versatz ist kein Fehler des
+Bandes, er ist die Bauart.
+
+## K9 · Welche Probe die Quote misst
+
+### K9.1 · Der Weglass-Rückblick ist bei Fenster 4 verzerrt — belegt
+
+Welt bekannt (µ = 200, s = 8), Wahrheit aus 40.000 Läufen. Reihen à 60 Einheiten,
+20 Seeds:
+
+| Bandbau | WAHR | Weglass-Rückblick | Vorwärtsprobe |
+|---|---|---|---|
+| Fenster 4, einseitig | 79,5 % | 75,9 % (**−3,6**) | 80,2 % (+0,6) |
+| Fenster 4, zweiseitig | 89,7 % | 87,2 % (**−2,6**) | 90,4 % (+0,7) |
+| Fenster alle, einseitig | 82,8 % | 82,2 % (−0,5) | 82,2 % (−0,6) |
+| Fenster alle, zweiseitig | 89,7 % | 89,2 % (−0,6) | 88,9 % (−0,6) |
+
+**Die Probe, die es tut, ist die Vorwärtsprobe:** Band aus den Einheiten *davor*, gegen
+die nächste — genau die Aussage, die die Kachel macht. Sie ist bei Fenster 4 praktisch
+unverzerrt, der Weglass-Rückblick nicht.
+
+### K9.2 · Die Ermüdungskachel steht NICHT unter demselben Verdacht
+
+Ihr Fenster ist **alle** Fahrten. Dort entfernt ein Weglassen wirklich einen Punkt statt
+einen zu tauschen, und beide Proben treffen die Wahrheit auf einen halben Punkt genau
+(Tabelle oben, untere zwei Zeilen). **Die 88 % aus 0.64.3 bleiben gültig.**
+
+### K9.3 · Was dagegen NICHT gültig ist
+
+`NAECHSTER_CHAT.md` 0.64.3 begründet die Verwerfung des empirischen Quantils unter
+anderem damit, *„die Blockkacheln treffen bei n = 6 und n = 5 tatsächlich 83 % und
+80 %"*. Diese zwei Zahlen stammen aus einem Weglass-Rückblick bei Fenster 4 mit
+n = 6 / n = 5 — beides falsch (K6.1) und die Probe verzerrt (K9.1). **Der Schluss
+gegen das empirische Quantil mag stehen; diese Begründung trägt ihn nicht.**
+
+### K9.4 · Die Zusage am Bestand
+
+Das **Pulsband** hat kein `center`, seine Mitte ist der Fenster-Median. Dafür gilt die
+Wahrheit aus K9.1: **79,5 %** — die Zusage „8 von 10" hält dort knapp.
+Das **Wattband** hängt an der Vorgabe, und dort entscheidet der Versatz (K6.3): bei
+0,78 Streuungen rund 75 %. **Zwei Bänder, eine Zusage, zwei verschiedene Wahrheiten.**
+
+## K10 · Die angrenzenden Fälle
+
+### K10.1 · Tempo — der richtige Satz
+
+Belegt in K6.6: Tempo bekommt nie ein Band, weil es keinen Startwert hat. Die Kachel
+sagt trotzdem `tile_no_band` („braucht 3 gemessene Einheiten") neben `tile_no_target`
+(„keine Vorgabe"). Der richtige Satz wäre einer statt zweier, etwa:
+
+> *Für diese Familie wird keine Vorgabe geführt — ihre Zahl kommt aus der FTP, und
+> darum gibt es hier auch keine Spanne.*
+
+und `band_note` ohne das „noch". **Nicht gebaut, nur formuliert.**
+
+### K10.2 · Der Versatz: das Fenster, nicht der Regler — belegt
+
+`c6` am Bestand: `n_since = 0` für beide Familien, `moves = 0`, und die `sides` **aller**
+Einheiten sind `0` (jede liegt im Korridor). Die Vorgabe steht auf dem Startwert vom
+17.09., weil **keine einzige Einheit nach dem Stichtag liegt** — und selbst wenn:
+Störungsprobe mit drei Einheiten ausserhalb des Korridors bewegt sie erst bei der
+dritten (`MIN_UNITS = 3`, dann 2 von 3). **Der Regler hat nichts getan und hätte nichts
+getan.** Die 6,2 W sind Fenster gegen Startwert, sonst nichts.
