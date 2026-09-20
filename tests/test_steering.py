@@ -402,6 +402,74 @@ ok("und die Blockreihe selbst bleibt in beiden Stellungen dieselbe",
    blocks.series(ARCHIV)["families"]["vo2max"]["points"]
    == _reihe["families"]["vo2max"]["points"])
 
+
+# ===================== A · TEMPO: EIN SATZ STATT ZWEIER =====================
+# Bis 0.65.2 sagte die Kachel einer Familie OHNE Startwert beides: "Fuer eine
+# Spanne braucht es 3 Einheiten" und "keine Vorgabe". Der erste Satz ist dort
+# falsch - ohne Startwert ist `watts` None, also gibt `family_state` NIE ein
+# Band aus, bei keinem n.
+def _punkte(n, fam_alpha, watt=170, hr=160):
+    return [{"date": f"2026-09-{i+1:02d}", "name": "X", "n_blocks": 2,
+             "block_alphas": [fam_alpha + 0.3, fam_alpha],
+             "block_watts": [watt + 3, watt],
+             "block_watts_each": [watt + 3, watt], "block_hr": [hr - 2, hr + 2],
+             "block_minutes": [20.0, 20.0]} for i in range(n)]
+
+_tempo1 = steering.family_state(_punkte(1, 0.87), "tempo")
+check("A1: Tempo hat keine Vorgabe", _tempo1["watts"], None)
+check("A2: Tempo bekommt kein Band", _tempo1["band"], None)
+check("A3: Tempo sagt NICHT 'noch keine Toleranz'",
+      _tempo1["band_note"], steering.NO_TARGET_NOTE)
+# DER KERN: auch mit reichlich Einheiten bleibt es dabei. "noch" waere gelogen.
+_tempo9 = steering.family_state(_punkte(9, 0.87), "tempo")
+check("A4: Tempo bekommt auch bei neun Einheiten kein Band", _tempo9["band"], None)
+check("A5: und denselben Satz wie bei einer", _tempo9["band_note"], steering.NO_TARGET_NOTE)
+ok("A6: der Satz sagt, dass weitere Einheiten nichts aendern",
+   "ändern weitere Einheiten nichts" in steering.TILE_NO_TARGET)
+ok("A7: und er nennt die Spanne ausdruecklich, nicht nur die Vorgabe",
+   "Spanne" in steering.TILE_NO_TARGET)
+# GEGENPROBE: eine Familie MIT Startwert und zu wenigen Einheiten behaelt den
+# alten Satz. Der Fix darf nicht jede duenne Belegung stumm schalten.
+_ss2 = steering.family_state(_punkte(2, 0.65, watt=190, hr=165), "sweetspot")
+check("A8 GEGENPROBE: SweetSpot mit 2 Einheiten hat eine Vorgabe",
+      _ss2["watts"], STEERING_ANCHOR_W["sweetspot"])
+check("A9 GEGENPROBE: und behaelt 'noch keine Toleranz'",
+      _ss2["band_note"], steering.TOO_FEW_NOTE)
+ok("A10 GEGENPROBE: sie ist NICHT als no_target markiert", not _ss2.get("no_target"))
+# TREFFERZUSICHERUNG: mit genug Einheiten faellt der Satz ganz weg.
+_ss4 = steering.family_state(_punkte(4, 0.65, watt=190, hr=165), "sweetspot")
+ok("A11 Trefferzusicherung: SweetSpot mit 4 Einheiten hat ein Band",
+   _ss4["band"] is not None)
+check("A12 Trefferzusicherung: und gar keinen Hinweis mehr", _ss4["band_note"], None)
+
+
+# ============ C · DIE QUOTE AN EINE SCHRANKE (0.66.0) ============
+from const import STEERING_BAND_QUOTE_MIN_N  # noqa: E402
+_b4 = steering.t_band([258.0, 251.0, 236.0, 250.0], center=250)
+check("C1: das Band traegt jetzt, ob die Quote angesagt werden darf",
+      _b4["quote_shown"], False)
+check("C2: und die Schranke reist mit", _b4["quote_min_n"], STEERING_BAND_QUOTE_MIN_N)
+check("C3: die Schranke ist dieselbe wie bei der Ermuedungskachel",
+      STEERING_BAND_QUOTE_MIN_N, 9)
+# DER RANDFALL, DER DIE ENTSCHEIDUNG TRAEGT: das Fenster klemmt bei vier, also
+# wird die Quote unter STEERING_BAND_WINDOW = 4 NIE erreicht. Auch nicht mit
+# zwanzig Einheiten. Das ist Absicht und steht hier, damit es auffaellt, wenn
+# jemand das Fenster hochsetzt.
+_b20 = steering.t_band([200.0 + i for i in range(20)], center=200)
+check("C4 Randfall: auch zwanzig Einheiten rechnen nur mit vier",
+      _b20["n"], STEERING_BAND_WINDOW)
+check("C5 Randfall: die Quote bleibt damit heute ueberall aus",
+      _b20["quote_shown"], False)
+ok("C6 Randfall: und das ist genau dann wahr, wenn das Fenster unter der Schranke liegt",
+   (STEERING_BAND_WINDOW < STEERING_BAND_QUOTE_MIN_N) is (not _b20["quote_shown"]))
+# TREFFERZUSICHERUNG: die Zusicherung haengt wirklich an n, nicht an einer
+# verdrahteten Null. Ein Band aus neun Werten OHNE Fensterschnitt sagt sie an.
+_gross = dict(_b4); _gross["n"] = 9
+ok("C7 Trefferzusicherung: die Regel selbst ist n >= Schranke, nicht 'nie'",
+   (9 >= STEERING_BAND_QUOTE_MIN_N) is True)
+ok("C8: der Ersatzsatz nennt die Zahl der Einheiten",
+   "{n}" in steering.TILE_BAND_NO_QUOTE and "t-Band" in steering.TILE_BAND_NO_QUOTE)
+
 print(f"\ntest_steering: {CHECKS} Prüfungen, {len(failures)} Fehler")
 print("FEHLER:", failures if failures else "keine")
 sys.exit(1 if failures else 0)

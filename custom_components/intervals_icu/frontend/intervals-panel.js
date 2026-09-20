@@ -1709,13 +1709,18 @@ class IntervalsIcuPanel extends HTMLElement {
           Strich = Vorgabe</p></div>`;
     }
 
+    // OHNE STARTWERT NUR EIN SATZ. Bis 0.65.2 standen hier zwei nebeneinander:
+    // "Fuer eine Spanne braucht es 3 Einheiten" UND "keine Vorgabe" - der erste
+    // ist fuer eine Familie ohne Startwert falsch (sie bekommt nie eine Spanne),
+    // und er verwies auf eine Vorgabe, die daneben als "-" stand.
     const saetze = an
-      ? `${esc(satz(w.tile_ride, { watts }))} ${band
-          ? esc(satz(w.tile_inside, { low: band.low, high: band.high, need: w.need,
-                                      window: w.window, step: w.step_w }))
-          : esc(satz(w.tile_no_band, { min_n: w.band_min_n }))}
-         ${st.note ? esc(st.note) + "." : ""}
-         ${st.no_target ? esc(w.tile_no_target || "") : ""}`
+      ? (st.no_target
+          ? esc(w.tile_no_target || "")
+          : `${esc(satz(w.tile_ride, { watts }))} ${band
+              ? esc(satz(w.tile_inside, { low: band.low, high: band.high, need: w.need,
+                                          window: w.window, step: w.step_w }))
+              : esc(satz(w.tile_no_band, { min_n: w.band_min_n }))}
+             ${st.note ? esc(st.note) + "." : ""}`)
       : esc(w.tile_off || "");
 
     return `<div class="famval">
@@ -1725,7 +1730,9 @@ class IntervalsIcuPanel extends HTMLElement {
         <span class="unit">W</span></div>
       ${band ? `<div class="tol">± ${fmt(band.half, 1)} W ·
         <b class="tn">${fmt(band.low)} – ${fmt(band.high)} W</b> ·
-        ${fmt(w.band_share)} von 10 Einheiten</div>`
+        ${band.quote_shown
+          ? `${fmt(w.band_share)} von 10 Einheiten`
+          : esc(satz(w.band_no_quote, { n: band.n }))}</div>`
         : `<div class="tol mut">${esc(an ? (st.band_note || "") : "")}</div>`}
       ${streifen}
       <p class="info">${saetze}</p>
@@ -1835,7 +1842,16 @@ class IntervalsIcuPanel extends HTMLElement {
       ${formel}
       ${chips.length ? `<p class="rsatz">${esc(w.more_measured || "")}</p>
         <div class="rchips">${chips.map((x) => `<span class="rchip">${esc(x)}</span>`).join("")}</div>` : ""}
-      <p class="hint">${band ? esc(satz(w.tile_band_means, { share: fmt(w.band_share) })) : ""}</p>
+      <!-- DIE QUOTE NUR, WO SIE NACHPRUEFBAR IST. Bis 0.65.2 stand "8 von 10"
+           ab drei Einheiten da - an vier Einheiten ist das nicht pruefbar, und
+           am Bestand war sie bei VO2max nicht eingeloest. Darunter sagt die
+           Zeile nur, WIE das Band gebaut ist. Gleiche Bauart wie bei der
+           Ermuedungskachel (band_no_quote). -->
+      <p class="hint">${band
+        ? (band.quote_shown
+            ? esc(satz(w.tile_band_means, { share: fmt(w.band_share) }))
+            : esc(satz(w.band_no_quote, { n: band.n })))
+        : ""}</p>
     </details>`;
   }
 

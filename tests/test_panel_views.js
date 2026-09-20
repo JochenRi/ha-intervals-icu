@@ -1020,9 +1020,13 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
       pos = p2;
     }
     ok(heil, "kachel: die Reihenfolge von oben nach unten stimmt nicht");
-    // Die Toleranzzeile: Spanne, von-bis, wie viele von zehn
-    ok(/± 4,1 W · <b class="tn">186 – 194 W<\/b> · 8 von 10 Einheiten/.test(an),
+    // Die Toleranzzeile: Spanne, von-bis - und DANACH nicht mehr die Quote.
+    // Bis 0.65.2 stand dort "8 von 10 Einheiten", ab drei Einheiten und ohne
+    // Deckung. Jetzt sagt die Zeile, WIE das Band gebaut ist (0.66.0, C).
+    ok(/± 4,1 W · <b class="tn">186 – 194 W<\/b> · t-Band über 4 Einheiten/.test(an),
        "kachel: die Toleranzzeile steht nicht in der verlangten Form");
+    ok(!/8 von 10 Einheiten/.test(an),
+       "kachel: die Quote '8 von 10' steht wieder da, obwohl sie an 4 Einheiten nicht pruefbar ist");
     // Der Bullet-Streifen: Balken, Marker, VIER Zahlen an der Achse
     const strip = an.slice(an.indexOf("bstrip"), an.indexOf("bleg"));
     ok(/class="brange"/.test(strip) && /class="bmark"/.test(strip),
@@ -1087,7 +1091,10 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
     contains(chipTeil, "alpha 0,360 – 0,580 · Korridor 0,20 – 0,50", "aufklapp: der alpha-Chip stimmt nicht");
     contains(chipTeil, "Puls 178 – 189 bpm", "aufklapp: der Puls-Chip fehlt");
     contains(chipTeil, "Block 1 zählt nicht mit", "aufklapp: der Block-1-Chip fehlt");
-    ok(/Messrauschen/.test(an), "kachel: der Satz zur Bedeutung der Spanne fehlt");
+    ok(!/Messrauschen/.test(an),
+       "kachel: der Quotensatz ('Messrauschen ... 8 von 10') steht unterhalb der Schranke wieder da");
+    ok(/t-Band über 4 Einheiten/.test(an),
+       "kachel: unterhalb der Schranke fehlt der Satz, WIE das Band gebaut ist");
     // REIHENFOLGE im Aufklappteil: Satz, dann Formel, dann Chips.
     const rf = ["class=\"rsatz\"", "class=\"formel\"", "class=\"fcap\"", "class=\"rchips\""];
     let rp = -1, rheil = true;

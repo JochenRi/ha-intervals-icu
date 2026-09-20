@@ -40,11 +40,13 @@ from typing import Any
 try:  # inside the package (Home Assistant)
     from . import derive
     from . import fatigue
-    from .const import STEERING_T90
+    from .const import STEERING_T90, T90_ONE_SIDED, T90_TWO_SIDED, T90_TWO_SIDED_INF
 except ImportError:  # standalone (test suite loads this file directly)
     import derive  # type: ignore[no-redef]
     import fatigue  # type: ignore[no-redef]
-    from const import STEERING_T90  # type: ignore[no-redef]
+    from const import (  # type: ignore[no-redef]
+        STEERING_T90, T90_ONE_SIDED, T90_TWO_SIDED, T90_TWO_SIDED_INF,
+    )
 
 # DER SCHALTER. Wie `CURVE_SWITCH` im Archiv, nicht in den Optionen: er gehoert
 # zu den Daten, die er umschaltet. ZWEI Fragen, ZWEI Schalter - die Auswahl der
@@ -160,9 +162,12 @@ BAND_SHARE_WORDS = "8 von 10 Fahrten"
 # Bloecken: das Wort gehoert zum Schalter, nicht zur Darstellung.
 STATE_ON = "mit neuer Rechnung"
 
-# t(0,90) nach Freiheitsgraden - DIESELBE Tabelle wie bei den Familien. Keine
-# zweite Quelle: zwei Tabellen laufen frueher oder spaeter auseinander.
-T90 = STEERING_T90
+# DIE EINSEITIGE Tabelle, fuer `band()` weiter unten - die Kette der
+# Ermuedung. Sie kommt aus `const.py`, wo BEIDE Quantile stehen; hier wird
+# keine Liste gefuehrt. Bis 0.65.2 behauptete diese Stelle, es gebe ueberhaupt
+# nur eine Tabelle - da stand die zweiseitige schon dreihundert Zeilen
+# weiter unten in derselben Datei.
+T90 = T90_ONE_SIDED
 
 
 def v2_on(data: dict[str, Any]) -> bool:
@@ -623,16 +628,14 @@ ALPHA_FLOOR_STEP = 0.1
 # Zahlen. Die Zeile verschwindet dann ganz, wie an der Stunde ohne Band.
 MIN_RIDES_FOR_BAND = 4
 
-# DIE TABELLENSEITE. `STEERING_T90` ist ein EINSEITIGES 90-%-Quantil - richtig
-# fuer eine Aussage "hoechstens so viel", falsch fuer ein SYMMETRISCHES Band,
-# das 80 % einschliessen soll. Dafuer braucht es das zweiseitige 90-%-Quantil,
-# also t(0,95) einseitig. Mit der einseitigen Tabelle traf das Band am Bestand
+# DIE TABELLENSEITE. Die einseitige Tabelle ist richtig fuer eine Aussage
+# "hoechstens so viel", falsch fuer ein SYMMETRISCHES Band, das 80 %
+# einschliessen soll. Dafuer braucht es das zweiseitige 90-%-Quantil, also
+# t(0,95) einseitig. Mit der einseitigen Tabelle traf das Band am Bestand
 # 70 % statt 80; mit dieser 88 %.
-T90_TWO_SIDED = {1: 6.314, 2: 2.920, 3: 2.353, 4: 2.132, 5: 2.015, 6: 1.943,
-                 7: 1.895, 8: 1.860, 9: 1.833, 10: 1.812, 11: 1.796, 12: 1.782,
-                 13: 1.771, 14: 1.761, 15: 1.753, 16: 1.746, 17: 1.740,
-                 18: 1.734, 19: 1.729, 20: 1.725}
-T90_TWO_SIDED_INF = 1.645
+# Die Liste selbst steht in `const.py` neben der einseitigen (0.66.0); die
+# beiden Namen hier sind nur der Zeiger darauf, damit `reversal_band` unten
+# unveraendert lesbar bleibt.
 
 # AB WIE VIELEN FAHRTEN EINE QUOTE ANGESAGT WIRD. Darunter steht keine - nicht
 # weil das Band schlechter waere, sondern weil "8 von 10" an vier Fahrten nicht

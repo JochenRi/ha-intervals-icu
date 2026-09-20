@@ -728,3 +728,48 @@ Einheiten sind `0` (jede liegt im Korridor). Die Vorgabe steht auf dem Startwert
 Störungsprobe mit drei Einheiten ausserhalb des Korridors bewegt sie erst bei der
 dritten (`MIN_UNITS = 3`, dann 2 von 3). **Der Regler hat nichts getan und hätte nichts
 getan.** Die 6,2 W sind Fenster gegen Startwert, sonst nichts.
+\n
+## K11 · Die Tabellenseite — VORLAGE, nicht gebaut (0.66.0)
+
+Diese Änderung wartet auf Johannes' Wort. Hier steht, wo sie hingehört und was sie
+bewegt, damit sie nicht aus dem Gedächtnis gebaut werden muss.
+
+### K11.1 · Wo genau
+
+**In `steering.t_band`, nicht in `const.py`.** Die eine Zeile:
+
+    t = T90_ONE_SIDED.get(n - 1, T90_ONE_SIDED[max(T90_ONE_SIDED)])
+
+wird zu
+
+    t = T90_TWO_SIDED.get(n - 1, T90_TWO_SIDED_INF)
+
+Beide Tabellen stehen seit 0.66.0 nebeneinander in `const.py`; `t_band` importiert schon
+die eine und müsste die andere dazunehmen.
+
+**NICHT in `const.py`:** `T90_ONE_SIDED` wird ausserdem von `fatigue_v2.band()` gelesen —
+dem Band der Ermüdungs**kette**. Wer die Liste selbst tauscht, verändert jene Kachel mit,
+ohne es zu wollen. Das ist derselbe Fehlertyp wie der vierzigste Fall in PROJEKTSTAND §7.
+
+### K11.2 · Was sich für Johannes ändert
+
+| | heute | danach |
+|---|---|---|
+| **Watt-Vorgabe SweetSpot** | 190 W | **190 W — unverändert** |
+| **Watt-Vorgabe VO2max** | 250 W | **250 W — unverändert** |
+| angezeigte Wattspanne SweetSpot | 186–194 | 184–196 |
+| angezeigte Wattspanne VO2max | 235–265 | 229–271 |
+| **Pulsfenster SweetSpot** (Einheit!) | 159–174 | **155–178** |
+| **Pulsfenster VO2max** (Einheit!) | 180–189 | **178–191** |
+
+Die beiden letzten Zeilen sind keine Anzeige: `workouts.py:980` macht aus den Bandgrenzen
+das `hr_window` der Trainer-Einheit (K7.1). **Das ist die Zeile, die Johannes spürt.**
+
+### K11.3 · Warum überhaupt
+
+`T90_ONE_SIDED` ist ein einseitiges Quantil, symmetrisch um eine Mitte gelegt schliesst es
+80 % ein. Die Kachel sagte dazu „8 von 10". Seit 0.66.0 sagt sie das nicht mehr (die Quote
+hängt an einer Schranke, die das Fenster von vier nicht erreicht), also ist die Tabelle
+heute auch nicht mehr falsch beschriftet — sie ist nur schmaler als ein 90-%-Band.
+**Die Frage ist damit keine Fehlerfrage mehr, sondern eine Geschmacksfrage:** schärfer und
+öfter daneben, oder ehrlicher und breiter. Das entscheidet Johannes.

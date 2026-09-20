@@ -39,13 +39,14 @@ try:  # inside the package (Home Assistant)
         STEERING_ANCHOR_DATE,
         STEERING_ANCHOR_W,
         STEERING_BAND_MIN_N,
+        STEERING_BAND_QUOTE_MIN_N,
         STEERING_BAND_WINDOW,
         STEERING_CLEAR_AFTER_STEP,
         STEERING_FIRST_BLOCK_COUNTS,
         STEERING_MIN_UNITS,
         STEERING_NEED,
         STEERING_STEP_W,
-        STEERING_T90,
+        T90_ONE_SIDED,
         STEERING_WINDOW,
     )
 except ImportError:  # standalone (test suite loads this file directly)
@@ -55,13 +56,14 @@ except ImportError:  # standalone (test suite loads this file directly)
         STEERING_ANCHOR_DATE,
         STEERING_ANCHOR_W,
         STEERING_BAND_MIN_N,
+        STEERING_BAND_QUOTE_MIN_N,
         STEERING_BAND_WINDOW,
         STEERING_CLEAR_AFTER_STEP,
         STEERING_FIRST_BLOCK_COUNTS,
         STEERING_MIN_UNITS,
         STEERING_NEED,
         STEERING_STEP_W,
-        STEERING_T90,
+        T90_ONE_SIDED,
         STEERING_WINDOW,
     )
 
@@ -78,6 +80,13 @@ STEERING_FAMILIES = tuple(STEERING_ANCHOR_W)
 
 SINGLE_BLOCK_NOTE = "nur ein Block gemessen — keine Vorgabe"
 TOO_FEW_NOTE = "noch keine Toleranz"
+# ZWEI GRUENDE, ZWEI SAETZE. "noch keine Toleranz" heisst: es fehlen
+# Einheiten, und mit der naechsten kann die Spanne kommen. Fuer eine Familie
+# OHNE Startwert stimmt das "noch" nicht - dort entsteht nie eine Spanne,
+# weil es keine Vorgabe gibt, um die herum sie liegen koennte. Bis 0.65.2
+# stand der erste Satz auch dort, neben "keine Vorgabe" - zwei Saetze, einer
+# falsch (PROJEKTSTAND §7, Klasse "Zahl mit fremdem Etikett").
+NO_TARGET_NOTE = "keine Vorgabe, keine Spanne"
 NO_UNITS_NOTE = ("noch keine Einheit seit dem Startwert — die Vorgabe steht "
                  "auf ihm")
 
@@ -107,12 +116,23 @@ TILE_FIRST_BLOCK = ("Block 1 bleibt in der Blockreihe sichtbar, er trägt nur "
 TILE_OFF = ("Die Steuerung ist aus — diese Zahl ist der Wert deiner letzten "
             "Einheit. Einschalten im Reiter „Woher die Zahlen kommen“, Schalter "
             "„Wattvorgabe“.")
+# DER SATZ FUER EINE FAMILIE OHNE STARTWERT. Er sagt beides in einem: keine
+# Vorgabe, und deshalb auch keine Spanne - und ausdruecklich, dass weitere
+# Einheiten daran nichts aendern. Das ist keine Vertroestung, sondern die
+# Bauart: STEERING_ANCHOR_W kennt die Familie nicht, also ist `watts` None,
+# also gibt `family_state` kein Band aus, egal bei welchem n.
 TILE_NO_TARGET = ("Für diese Familie wird keine Vorgabe geführt — ihre Zahl kommt "
-                  "aus der FTP.")
+                  "aus der FTP. Ohne Vorgabe gibt es auch keine Spanne, und daran "
+                  "ändern weitere Einheiten nichts.")
 # Wie viele von zehn Einheiten das Band erfahrungsgemaess trifft. Das ist die
 # Deckung des t-Bandes bei 80 % zweiseitig, nicht gerundetes Bauchgefuehl:
 # t(0,90; n-1) laesst je 10 % nach oben und unten draussen.
 TILE_BAND_SHARE = 8
+# UND DER SATZ, WENN SIE NICHT ANGESAGT WERDEN DARF. Er sagt, WIE das Band
+# gebaut ist, und verspricht keine Quote - wortgleich gebaut wie
+# `fatigue_v2` "band_no_quote", damit beide Kacheln dieselbe Sprache
+# sprechen, wenn sie dasselbe meinen.
+TILE_BAND_NO_QUOTE = "t-Band über {n} Einheiten"
 
 # DER AUFKLAPPTEIL. Er war bis 0.62.0 eine zweispaltige Tabelle - ein Format
 # fuer den Vergleich ZWISCHEN Zeilen. Hier vergleicht niemand die Streuung mit
@@ -283,7 +303,12 @@ def t_band(values: list[float], digits: int = 0,
     mean = sum(used) / n
     # Stichprobenstreuung (n-1), passend zum t-Quantil.
     sd = (sum((x - mean) ** 2 for x in used) / (n - 1)) ** 0.5
-    t = STEERING_T90.get(n - 1, STEERING_T90[max(STEERING_T90)])
+    # EINSEITIG, ausdruecklich. t(0,90) symmetrisch um eine Mitte gelegt
+    # schliesst 80 % ein - genau die "8 von 10", die die Kachel ansagt. Die
+    # zweiseitige Tabelle steht daneben in `const.py` und gehoert der
+    # Ermuedungskachel; welche hier richtig ist, ist eine offene Frage
+    # (docs/rechenwege.md K6.2), aber keine stillschweigende.
+    t = T90_ONE_SIDED.get(n - 1, T90_ONE_SIDED[max(T90_ONE_SIDED)])
     half = t * sd * (1 + 1 / n) ** 0.5
     return {
         "low": round(mid - half, digits) if digits else round(mid - half),
@@ -292,6 +317,12 @@ def t_band(values: list[float], digits: int = 0,
         "unit_median": round(derive._median(used), 1),
         "half": round(half, 2), "sd": round(sd, 2), "t": t, "n": n,
         "window": STEERING_BAND_WINDOW, "min_n": STEERING_BAND_MIN_N,
+        # DARF DIE QUOTE ANGESAGT WERDEN? Dieselbe Form wie bei der
+        # Ermuedungskachel (`fatigue_v2.reversal_band`): das Band wird
+        # gerechnet wie immer, nur die Zusage darueber haelt sich zurueck,
+        # solange sie nicht nachpruefbar ist.
+        "quote_shown": n >= STEERING_BAND_QUOTE_MIN_N,
+        "quote_min_n": STEERING_BAND_QUOTE_MIN_N,
     }
 
 
@@ -306,7 +337,10 @@ def family_state(points: list[dict[str, Any]], family: str) -> dict[str, Any]:
     state["band"] = (t_band([r.get("watts_raw", r["watts"]) for r in usable],
                             center=state["watts"]) if state.get("watts") else None)
     state["hr_band"] = t_band([r["hr"] for r in usable if r.get("hr")])
-    state["band_note"] = None if state["band"] else TOO_FEW_NOTE
+    # WELCHER GRUND FEHLT? Ohne Startwert fehlt die Vorgabe (dauerhaft), sonst
+    # fehlen Einheiten (voruebergehend). Zwei Lagen, zwei Saetze.
+    state["band_note"] = (NO_TARGET_NOTE if state.get("no_target")
+                          else (None if state["band"] else TOO_FEW_NOTE))
     state["hr_band_note"] = None if state["hr_band"] else TOO_FEW_NOTE
     state["first_block_counts"] = STEERING_FIRST_BLOCK_COUNTS
     mins = [r["minutes"] for r in usable if r.get("minutes")]

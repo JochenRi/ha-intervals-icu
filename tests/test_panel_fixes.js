@@ -2553,5 +2553,126 @@ const acts = F.activities(), thr = F.thresholds();
      `gemessen: ${nachbau} handgebaute Kopie(n) der Frage im Quelltext statt _hasMeasure`);
 }
 
+/* ===== A · TEMPO: EIN SATZ STATT ZWEIER (0.66.0) =====================
+   Bis 0.65.2 stellte die Kachel einer Familie OHNE Startwert zwei Saetze
+   nebeneinander: "Fuer eine Spanne braucht es 3 gemessene Einheiten" und
+   "keine Vorgabe". Der erste ist dort falsch - sie bekommt nie eine Spanne -
+   und er verwies auf eine Vorgabe, die daneben als "-" stand.          */
+{
+  const q = new M.Panel();
+  const W = {
+    on_label: "mit Vorgabe", off_label: "wie bisher", tile_off: "aus.",
+    tile_ride: "Fahr die {watts} W.",
+    tile_inside: "Landet deine naechste Einheit zwischen {low} und {high} W.",
+    tile_no_band: "Fuer eine Spanne braucht es {min_n} gemessene Einheiten; solange steht die Vorgabe allein.",
+    tile_no_target: "Fuer diese Familie wird keine Vorgabe gefuehrt — ihre Zahl kommt aus der FTP. "
+                    + "Ohne Vorgabe gibt es auch keine Spanne, und daran aendern weitere Einheiten nichts.",
+    band_share: 8, band_min_n: 3, need: 2, window: 3, step_w: 5,
+  };
+  const laden = (steering, compare) => ({
+    steering_on: true, steering_words: W, steering, compare,
+    families: { tempo: { corridor: [0.75, 1.0] }, sweetspot: { corridor: [0.5, 0.75] } },
+  });
+
+  // OHNE STARTWERT: genau EIN Satz, und es ist der richtige.
+  const bT = laden({ tempo: { watts: null, no_target: true, band_note: "keine Vorgabe, keine Spanne",
+                              n_units: 1, single_block: [], first_block_counts: false } },
+                   { tempo: { steered: true, new_watts: null, new_band: null } });
+  const tempo = q._famValue(bT, "tempo");
+  ok(!tempo.includes("braucht"),
+     "tempo-kachel: der Satz 'braucht N Einheiten' steht noch da, obwohl nie eine Spanne kommt");
+  ok(tempo.includes("keine Vorgabe"), "tempo-kachel: der Satz zur fehlenden Vorgabe fehlt");
+  ok(/weitere Einheiten/.test(tempo),
+     "tempo-kachel: sie sagt nicht, dass weitere Einheiten daran nichts aendern");
+  ok(!tempo.includes("Fahr die"),
+     "tempo-kachel: 'Fahr die - W' steht noch da, obwohl es keine Zahl gibt");
+  ok(tempo.includes("keine Vorgabe, keine Spanne"),
+     "tempo-kachel: die Toleranzzeile sagt weiter 'noch keine Toleranz'");
+  ok(!/noch keine Toleranz/.test(tempo),
+     "tempo-kachel: das 'noch' steht noch da, obwohl die Spanne nie kommt");
+
+  // GEGENPROBE: eine Familie MIT Startwert und zu wenigen Einheiten behaelt
+  // ihren Satz. Der Fix darf nicht jede duenne Belegung stumm schalten.
+  const bS = laden({ sweetspot: { watts: 190, band_note: "noch keine Toleranz",
+                                  n_units: 2, single_block: [], first_block_counts: false } },
+                   { sweetspot: { steered: true, new_watts: 190, new_band: null } });
+  const ss = q._famValue(bS, "sweetspot");
+  ok(ss.includes("braucht"),
+     "GEGENPROBE sweetspot: der Satz 'braucht N Einheiten' ist verschwunden, obwohl es eine Vorgabe gibt");
+  ok(ss.includes("Fahr die"), "GEGENPROBE sweetspot: die Vorgabe wird nicht mehr angesagt");
+  ok(!/weitere Einheiten/.test(ss),
+     "GEGENPROBE sweetspot: sie bekommt den Tempo-Satz, obwohl sie einen Startwert hat");
+
+  // TREFFERZUSICHERUNG: mit Band sagt dieselbe Familie wieder die Spanne an.
+  const bS4 = laden({ sweetspot: { watts: 190, band_note: null, n_units: 4,
+                                   single_block: [], first_block_counts: false } },
+                    { sweetspot: { steered: true, new_watts: 190,
+                                   new_band: { low: 186, high: 194, median: 190, n: 4, sd: 2.22, window: 4 } } });
+  const ss4 = q._famValue(bS4, "sweetspot");
+  ok(/zwischen 186 und 194/.test(ss4),
+     "Trefferzusicherung: mit Band fehlt die Spanne im Satz");
+  ok(!ss4.includes("braucht"),
+     "Trefferzusicherung: mit Band steht der 'braucht'-Satz immer noch da");
+}
+
+/* ===== C · DIE QUOTE NUR, WO SIE NACHPRUEFBAR IST (0.66.0) ===========
+   Bis 0.65.2 stand "8 von 10 Einheiten" ab drei Einheiten in der Kachel.
+   An vier Einheiten ist das nicht pruefbar (der Weglass-Rueckblick tauscht
+   dort einen Punkt statt ihn zu entfernen), und am Bestand war die Zusage
+   bei VO2max mit ~75 % nicht eingeloest.                              */
+{
+  const q = new M.Panel();
+  const W = {
+    on_label: "mit Vorgabe", off_label: "wie bisher", tile_off: "aus.",
+    tile_ride: "Fahr die {watts} W.",
+    tile_inside: "Landet deine naechste Einheit zwischen {low} und {high} W.",
+    tile_no_band: "Fuer eine Spanne braucht es {min_n} gemessene Einheiten.",
+    tile_band_means: "Die Spanne ist das Messrauschen: {share} von 10 Einheiten landen darin.",
+    band_share: 8, band_no_quote: "t-Band über {n} Einheiten",
+    band_min_n: 3, need: 2, window: 3, step_w: 5,
+  };
+  const mit = (bandExtra) => ({
+    steering_on: true, steering_words: W,
+    families: { vo2max: { corridor: [0.2, 0.5] } },
+    steering: { vo2max: { watts: 250, band_note: null, n_units: 6,
+                          single_block: [], first_block_counts: false } },
+    compare: { vo2max: { steered: true, new_watts: 250,
+                         new_band: Object.assign({ low: 235, high: 265, median: 250,
+                                                   half: 14.6, sd: 7.97, t: 1.638,
+                                                   window: 4, min_n: 3 }, bandExtra) } },
+  });
+
+  // UNTERHALB DER SCHRANKE: keine Quote, dafuer die Bauart.
+  const unten = q._famValue(mit({ n: 4, quote_shown: false }), "vo2max");
+  ok(!/8 von 10/.test(unten),
+     "quote: '8 von 10' steht unterhalb der Schranke wieder in der Kachel");
+  ok(!/Messrauschen/.test(unten),
+     "quote: der Quotensatz steht unterhalb der Schranke wieder da");
+  ok(/t-Band über 4 Einheiten/.test(unten),
+     "quote: unterhalb der Schranke fehlt der Satz, WIE das Band gebaut ist");
+  ok(/235 – 265 W|235 – 265/.test(unten),
+     "quote: die Spanne selbst ist mitverschwunden - sie soll bleiben");
+
+  // TREFFERZUSICHERUNG: oberhalb der Schranke kommt die Quote zurueck.
+  // Ohne diese Probe wuerde auch ein hart verdrahtetes "nie" bestehen.
+  const oben = q._famValue(mit({ n: 9, quote_shown: true }), "vo2max");
+  ok(/8 von 10 Einheiten/.test(oben),
+     "Trefferzusicherung: oberhalb der Schranke fehlt die Quote in der Toleranzzeile");
+  ok(!/t-Band über/.test(oben),
+     "Trefferzusicherung: oberhalb der Schranke steht der Ersatzsatz immer noch da");
+
+  // DIESELBE SCHRANKE IM AUFKLAPPTEIL - zwei Stellen, eine Regel.
+  const mehrUnten = q._famMore(mit({ n: 4, quote_shown: false }), "vo2max");
+  ok(!/Messrauschen/.test(mehrUnten),
+     "quote/aufklapp: der Quotensatz steht unterhalb der Schranke wieder da");
+  ok(/t-Band über 4 Einheiten/.test(mehrUnten),
+     "quote/aufklapp: unterhalb der Schranke fehlt der Satz zur Bauart");
+  const mehrOben = q._famMore(mit({ n: 9, quote_shown: true }), "vo2max");
+  ok(/Messrauschen/.test(mehrOben),
+     "Trefferzusicherung/aufklapp: oberhalb der Schranke fehlt der Quotensatz");
+  ok(!/t-Band über/.test(mehrOben),
+     "Trefferzusicherung/aufklapp: oberhalb der Schranke steht der Ersatzsatz noch da");
+}
+
 Promise.all(PENDING).then(() => report("test_panel_fixes"));
 })();

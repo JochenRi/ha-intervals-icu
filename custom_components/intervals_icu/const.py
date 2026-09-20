@@ -39,7 +39,7 @@ PANEL_COMPONENT = "intervals-icu-panel"
 PANEL_FILE = "intervals-panel.js"
 PANEL_TITLE = "Intervals"
 PANEL_ICON = "mdi:chart-timeline-variant"
-PANEL_VERSION = "0.65.2"
+PANEL_VERSION = "0.66.0"
 
 # --- thresholds shared by backend and panel -----------------------------------
 # One definition per number, here, because the panel has to show several of them
@@ -222,10 +222,54 @@ STEERING_CLEAR_AFTER_STEP = True
 # sie 50-75 % statt der genannten 80 % (Kreuzprobe K7, 40.000 Laeufe je Fall).
 STEERING_BAND_MIN_N = 3
 STEERING_BAND_WINDOW = 4
-# t(0,90; df) - einseitig 90 %, also zweiseitig 80 %. Nur df 1..8 werden je
-# gebraucht (Fenster 4), der Rest steht fuer den Fall, dass das Fenster waechst.
-STEERING_T90 = {1: 3.078, 2: 1.886, 3: 1.638, 4: 1.533, 5: 1.476,
-                6: 1.440, 7: 1.415, 8: 1.397, 9: 1.383, 10: 1.372}
+# AB WIE VIELEN EINHEITEN EINE QUOTE ANGESAGT WIRD. Dieselbe Schranke und
+# derselbe Grund wie bei der Ermuedungskachel (`fatigue_v2.BAND_QUOTE_MIN_N`):
+# "8 von 10" ist an vier Einheiten NICHT nachpruefbar. Die Probe, die es tut,
+# ist die Vorwaertsprobe (Band aus den Einheiten davor, gegen die naechste) -
+# der Weglass-Rueckblick ist bei einem Fenster von vier um 2,6 bis 3,6 Punkte
+# verzerrt, weil ein Weglassen dort einen Punkt TAUSCHT statt ihn zu
+# entfernen (docs/rechenwege.md K9.1). Bei n = 5 bleiben zwei ehrliche Faelle.
+#
+# ACHTUNG, AUSDRUECKLICH: solange STEERING_BAND_WINDOW auf 4 steht, ist n im
+# Band nie groesser als 4, und die Quote wird damit NIRGENDS mehr angezeigt.
+# Das ist Absicht und keine Nebenwirkung - eine Zusage, die nicht nachprueftbar
+# ist, gehoert nicht in die Kachel. Die Schranke bleibt als Zahl stehen, damit
+# ein wachsendes Fenster sie wieder erreichen kann, statt dass jemand die
+# Zeile neu erfinden muss.
+STEERING_BAND_QUOTE_MIN_N = 9
+# =====================================================================
+# DIE t-TABELLEN - EINE STELLE, ZWEI QUANTILE (0.66.0)
+#
+# Bis 0.65.2 stand die einseitige Tabelle hier und die zweiseitige in
+# `fatigue_v2.py` - zwei Listen an zwei Orten, genau der Fall, den die zweite
+# Bauregel verbietet. Der Kommentar ueber der zweiten behauptete dabei, es
+# gebe nur eine. Beide stehen jetzt hier, nebeneinander, mit der Angabe,
+# WOFUER jede gebraucht wird. Wer eine tauscht, sieht die andere dabei.
+#
+# EINSEITIG t(0,90; df) - fuer eine Aussage "hoechstens so viel".
+#   Verwendet von: steering.t_band (Blockband, Watt UND Puls) und
+#   fatigue_v2.band (das Band der Ermuedungskette).
+#   Symmetrisch um eine Mitte gelegt schliesst sie 80 % ein, nicht 90 %.
+# ZWEISEITIG t(0,95; df) - fuer ein SYMMETRISCHES Band, das 90 % einschliesst.
+#   Verwendet von: fatigue_v2.reversal_band (seit 0.64.3). Mit der einseitigen
+#   Tabelle traf jenes Band am Bestand 70 % statt 80; mit dieser 88 %.
+#
+# df 1..8 reichen fuer ein Fenster von 4 NICHT nur knapp, sondern mit
+# Ueberschuss: dort ist df hoechstens 3. Die hoeheren Eintraege stehen fuer
+# den Fall, dass ein Fenster waechst - die Ermuedungskachel rechnet ueber ALLE
+# Fahrten und braucht sie heute schon.
+T90_ONE_SIDED = {1: 3.078, 2: 1.886, 3: 1.638, 4: 1.533, 5: 1.476,
+                 6: 1.440, 7: 1.415, 8: 1.397, 9: 1.383, 10: 1.372}
+T90_TWO_SIDED = {1: 6.314, 2: 2.920, 3: 2.353, 4: 2.132, 5: 2.015, 6: 1.943,
+                 7: 1.895, 8: 1.860, 9: 1.833, 10: 1.812, 11: 1.796, 12: 1.782,
+                 13: 1.771, 14: 1.761, 15: 1.753, 16: 1.746, 17: 1.740,
+                 18: 1.734, 19: 1.729, 20: 1.725}
+T90_TWO_SIDED_INF = 1.645
+# ALTER NAME, DIESELBE LISTE. `STEERING_T90` steht in Prüfstand und Doku; er
+# bleibt als Zeiger auf die einseitige Tabelle, damit hier kein zweiter Wert
+# entsteht. Neue Aufrufer nehmen den sprechenden Namen.
+STEERING_T90 = T90_ONE_SIDED
+# =====================================================================
 
 # Which sessions the durability tile may look at.
 DURABILITY_MIN_MINUTES = 45      # below this a decoupling reading is not usable

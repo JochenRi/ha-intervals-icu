@@ -520,6 +520,36 @@ check("Trockenlauf: die Schalterstellung aendert sein Ergebnis nicht",
 check("Trockenlauf: auch die Kachelzahlen nicht", _erg2["tiles"], _erg["tiles"])
 
 
+
+# ============ B · EINE STELLE, ZWEI QUANTILE (0.66.0) ============
+# Bis 0.65.2 fuehrte fatigue_v2 die zweiseitige Tabelle SELBST, waehrend der
+# Kommentar ueber `T90` behauptete, es gebe nur eine. Beide stehen jetzt in
+# const.py. Verhalten darf sich dabei NICHT aendern.
+import const as _C  # noqa: E402
+import inspect as _insp  # noqa: E402
+check("B1: die einseitige Tabelle kommt aus const", bool(v2.T90 is _C.T90_ONE_SIDED), True)
+check("B2: die zweiseitige kommt aus derselben Stelle", bool(v2.T90_TWO_SIDED is _C.T90_TWO_SIDED), True)
+check("B3: der alte Name zeigt auf die einseitige, er fuehrt keine zweite Liste", bool(_C.STEERING_T90 is _C.T90_ONE_SIDED), True)
+check("B4: und beide Quantile sind noch verschieden",
+      (_C.T90_ONE_SIDED[3], _C.T90_TWO_SIDED[3]), (1.638, 2.353))
+# KEINE ZWEITE LISTE MEHR IM MODUL. Das ist die eigentliche Bauregel - ein
+# Zeiger ist erlaubt, eine zweite Zahlenreihe nicht.
+_srcB = _insp.getsource(v2)
+check("B5: fatigue_v2 fuehrt keine eigene Zahlenreihe mehr", bool("6.314" not in _srcB and "2.353" not in _srcB and "1.886" not in _srcB), True)
+check("B6: und der Kommentar behauptet nicht mehr, es gebe nur eine Tabelle", bool("Keine zweite Quelle" not in _srcB), True)
+# ZUSICHERUNG: DIE ZAHLEN BEIDER KACHELN BLEIBEN BITGLEICH. Die Quantile
+# unten stehen von Hand da - so prueft sich der Code nicht gegen sich selbst.
+_werteB = [258.0, 251.0, 236.0, 250.0]
+_mB = sum(_werteB) / 4
+_sdB = (sum((x - _mB) ** 2 for x in _werteB) / 3) ** 0.5
+check("B7 Blockband bitgleich (einseitig, t=1,638)",
+      round(_C.T90_ONE_SIDED[3] * _sdB * (1 + 1 / 4) ** 0.5, 2),
+      round(1.638 * _sdB * (1 + 1 / 4) ** 0.5, 2))
+check("B8 Ermuedungsband bitgleich (zweiseitig, t=2,353)",
+      v2.reversal_band(_werteB)["from_spread"],
+      round(2.353 * _sdB * (1 + 1 / 4) ** 0.5, 1))
+check("B9 Trefferzusicherung: die zwei Quantile ergeben verschiedene Breiten", bool(round(1.638 * _sdB * (1 + 1 / 4) ** 0.5, 1) != v2.reversal_band(_werteB)["from_spread"]), True)
+
 print(f"test_fatigue_v2: {CHECKS} Prüfungen, {len(failures)} Fehler")
 print("FEHLER:", failures if failures else "keine")
 sys.exit(1 if failures else 0)

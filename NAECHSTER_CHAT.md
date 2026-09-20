@@ -10,6 +10,99 @@
 >   und die fünf weiteren Stellen derselben Bauart.
 > · **docs/rechenwege.md K5** — die Umkehrung: Rechenweg, Livestand, die zwei Bandfehler,
 >   die Punktschwelle. Darin auch der offene Punkt der Blockkacheln.
+> · **docs/rechenwege.md K6–K10** — das Blockband am Livebestand: das Fenster von vier,
+>   die Tabellenseite, wer am Steuerfenster hängt, welche Probe die Quote misst.
+> · **docs/rechenwege.md K11** — die VORLAGE für die Tabellenseite. Sie wartet auf
+>   Johannes' Wort und verschiebt seine Pulsfenster. Nicht aus dem Gedächtnis bauen.
+> · **PROJEKTSTAND §10, ganz oben** — der grösste offene Punkt: die Vorgabe folgt der
+>   Form nicht. Eigene Runde, nicht als Nebensatz einer anderen.
+
+
+## 0.66.0 — drei kleine Reparaturen, keine davon an einer Rechnung (20.09.2026)
+
+Prüfstand **23 Dateien / 7.685 / 0** (vorher 7.633). Jede der drei einzeln gebaut,
+geprüft und über eine Dateikopie mutiert. **Johannes' Zahlen sind unverändert:**
+SweetSpot 190 W, VO2max 250 W, Pulsfenster 180–189 und 159–174.
+
+### A · Tempo sagt einen Satz statt zweier
+
+Die Kachel stellte bei einer Familie **ohne Startwert** zwei Sätze nebeneinander:
+„Für eine Spanne braucht es 3 gemessene Einheiten" und „keine Vorgabe" — daneben eine
+Vorgabe, die als `–` dastand. Der erste Satz ist dort **falsch**: `STEERING_ANCHOR_W`
+kennt Tempo nicht, also ist `watts` None, also gibt `family_state` bei **keinem n** ein
+Band aus. Neun Einheiten ändern daran nichts.
+
+Neu: `NO_TARGET_NOTE = "keine Vorgabe, keine Spanne"` statt „noch keine Toleranz", und
+`TILE_NO_TARGET` sagt ausdrücklich, dass weitere Einheiten nichts ändern. Der Satz „Fahr
+die – W" fällt mit weg. **Gegenprobe im Prüfstand:** SweetSpot mit zwei Einheiten behält
+seinen alten Satz, mit vier verschwindet er ganz.
+
+### B · Eine Stelle, zwei Quantile
+
+`fatigue_v2` führte seit 0.64.3 die **zweiseitige** Tabelle selbst, während der Kommentar
+über `T90` behauptete: *„DIESELBE Tabelle wie bei den Familien. Keine zweite Quelle: zwei
+Tabellen laufen früher oder später auseinander."* Sie waren längst auseinander — dreihundert
+Zeilen weiter unten in derselben Datei. **Bauregel 2, ausgeliefert.**
+
+Beide stehen jetzt in `const.py` nebeneinander, `T90_ONE_SIDED` und `T90_TWO_SIDED`, mit
+der Angabe, wer welche braucht und warum. `STEERING_T90` bleibt als **Zeiger** auf die
+einseitige, damit kein zweiter Wert entsteht. `fatigue_v2` führt keine Zahlenreihe mehr —
+am Quelltext geprüft. **Zusicherung: beide Kacheln rechnen vorher/nachher bitgleich**,
+mit von Hand gesetzten Quantilen im Test, damit sich der Code nicht gegen sich selbst prüft.
+
+### C · Die Quote hinter einer Schranke — und sie wird heute nirgends erreicht
+
+„8 von 10 Einheiten" stand ab **drei** Einheiten in der Kachel. An vier ist das nicht
+nachprüfbar: der Weglass-Rückblick ist bei einem Fenster von vier um 2,6 bis 3,6 Punkte
+verzerrt, weil ein Weglassen dort einen Punkt **tauscht** statt ihn zu entfernen
+(K9.1). Am Bestand war die Zusage bei VO2max mit ~75 % **nicht eingelöst**.
+
+Neu: `STEERING_BAND_QUOTE_MIN_N = 9`, dieselbe Schranke wie bei der Ermüdungskachel.
+`quote_shown` reist am Band mit, beide Anzeigestellen (Toleranzzeile und Aufklappteil)
+lesen sie. Darunter sagt die Zeile nur noch **„t-Band über {n} Einheiten"**.
+
+**Ausdrücklich: solange `STEERING_BAND_WINDOW = 4` steht, ist n nie grösser als 4 — die
+Quote wird damit NIRGENDS mehr angezeigt.** Auch nicht mit zwanzig Einheiten. Das ist
+Absicht. Die Schranke bleibt als Zahl stehen, damit ein wachsendes Fenster sie wieder
+erreicht, statt dass jemand die Zeile neu erfinden muss; der Randfall steht als Prüfung
+(C4–C6) da, damit es auffällt, wenn jemand das Fenster hochsetzt.
+
+### D · Die Tabellenseite — VORLAGE, nicht gebaut
+
+Sie wartet auf Johannes' Wort, weil sie **seine Pulsfenster verschiebt**. Der Rechenweg
+steht in **`docs/rechenwege.md` K11**; hier nur das Nötigste:
+
+**Die Änderung gehört in `steering.t_band`, NICHT in `const.py`.** Eine Zeile:
+
+    t = T90_ONE_SIDED.get(n - 1, T90_ONE_SIDED[max(T90_ONE_SIDED)])
+    →
+    t = T90_TWO_SIDED.get(n - 1, T90_TWO_SIDED_INF)
+
+`T90_ONE_SIDED` wird ausserdem von `fatigue_v2.band()` gelesen — dem Band der
+Ermüdungs**kette**. Wer die Liste in `const.py` tauscht, verändert jene Kachel mit, ohne
+es zu wollen. Derselbe Fehlertyp wie der vierzigste Fall in §7.
+
+| | heute | danach |
+|---|---|---|
+| Watt-Vorgabe SweetSpot / VO2max | 190 / 250 W | **unverändert** |
+| angezeigte Wattspanne | 186–194 / 235–265 | 184–196 / 229–271 |
+| **Pulsfenster der Einheit** | **159–174 / 180–189** | **155–178 / 178–191** |
+
+Die letzte Zeile ist keine Anzeige: `workouts.py:980` macht aus den Bandgrenzen das
+`hr_window` der Trainer-Einheit. **Das ist die Zeile, die Johannes spürt.**
+
+Und: seit C sagt die Kachel keine Quote mehr an, also ist die einseitige Tabelle heute
+auch nicht mehr falsch beschriftet. **Die Frage ist damit keine Fehlerfrage mehr, sondern
+eine Abwägung** — schärfer und öfter daneben, oder ehrlicher und breiter.
+
+### Was NICHT angefasst wurde
+
+`STEERING_BAND_WINDOW` bleibt auf **4**. Der Fensterlauf am Bestand ist gegenläufig
+(K8.2): VO2max gewinnt mit 6, SweetSpot verliert schwer — die 167-W-Einheit vom 05.07.
+kommt zurück und treibt `sd` von 2,22 auf 11,01, das Band von ±4 auf ±18,5 W. Ein Fenster
+für beide Familien geht nicht.
+
+
 
 
 ## AKTUELL — 0.65.2: dritter Fundort derselben Verwechslung, und diesmal mit einer Stelle dagegen (19.09.2026). Zuerst lesen.

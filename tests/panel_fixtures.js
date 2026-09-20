@@ -450,8 +450,11 @@ function blocks(over) {
       tile_off: "Die Steuerung ist aus — diese Zahl ist der Wert deiner letzten Einheit. "
         + "Einschalten im Reiter „Woher die Zahlen kommen“, Schalter „Wattvorgabe“.",
       tile_no_target: "Für diese Familie wird keine Vorgabe geführt — ihre Zahl kommt "
-        + "aus der FTP.",
-      band_share: 8, step_w: 5, need: 2, window: 3, min_units: 3,
+        + "aus der FTP. Ohne Vorgabe gibt es auch keine Spanne, und daran ändern "
+        + "weitere Einheiten nichts.",
+      no_target_note: "keine Vorgabe, keine Spanne",
+      band_share: 8, band_no_quote: "t-Band über {n} Einheiten",
+      step_w: 5, need: 2, window: 3, min_units: 3,
       band_min_n: 3, band_window: 4,
       more_origin: "Die Vorgabe ist der Startwert {anchor} W vom {date}. Seither {verb} "
         + "{n} {units} dazugekommen, daraus {verb2} {moves} {moveword} à {step} W — die "
