@@ -894,6 +894,73 @@ ok("neu messen: die Schubgroesse steht im Modul, nicht im Panel",
    isinstance(sm.REMEASURE_BATCH, int) and sm.REMEASURE_BATCH >= 1)
 ok("neu messen: und eine Pause dazwischen", sm.REMEASURE_PAUSE_MS > 0)
 
+
+# --- F1.8 · ein Haken in Familie A laesst die Messung von Familie B stehen ----
+# Karte 1 F1.8 (bestaetigt 20.09.), R2: `_write` leerte `measure` fuer den
+# GANZEN Eintrag, obwohl die Maske je Familie rein ist. Rote Pruefung an 0.66.1:
+# Treffer 1 und 2 fallen, F1.8b faellt, die Gegenproben sind gruen.
+import copy as _copy
+def _zwei_familien():
+    d = {"section_marks": {}}
+    sm.set_mark(d, "z1", "2026-08-05", "endurance", 0, LAPS, set_at="2026-08-05")
+    sm.set_mark(d, "z1", "2026-08-05", "sweetspot", 600, LAPS, set_at="2026-08-05")
+    sm.set_measurement(d, "z1", family="endurance",
+                       hours=[{"hour": 1, "p075": 150.0}], measured_at="2026-08-06", window_s=0)
+    sm.set_measurement(d, "z1", family="sweetspot",
+                       blocks=[{"start_index": 600, "alpha": 0.7, "watts": 190}],
+                       measured_at="2026-08-06", window_s=0)
+    return d
+_d = _zwei_familien()
+_vor = _copy.deepcopy(sm.entry_for(_d, "z1"))
+ok("F1.8 Fixture: beide Familien tragen eine Messung",
+   bool(_vor["measure"]["endurance"].get("hours")) and bool(_vor["measure"]["sweetspot"].get("blocks")))
+
+# 1 · TREFFER: ein zweiter SweetSpot-Haken - die Grundlagen-Messung bleibt bitgleich.
+sm.set_mark(_d, "z1", "2026-08-05", "sweetspot", 1290, LAPS, set_at="2026-08-07")
+_e = sm.entry_for(_d, "z1")
+check("F1.8 Treffer: die Messung der UNBERUEHRTEN Familie steht noch",
+      (_e.get("measure") or {}).get("endurance"), _vor["measure"]["endurance"])
+check("F1.8 Treffer: die Messung der geaenderten Familie faellt",
+      (_e.get("measure") or {}).get("sweetspot"), None)
+check("F1.8 Treffer: lost = changed", _e.get("lost"), sm.LOST_CHANGED)
+check("F1.8 Treffer: die neue Marke steht", _e["marks"]["sweetspot"], [600, 1290])
+check("F1.8 Treffer: measured_at bleibt (gilt fuer den ganzen Eintrag - F1.10, sichtbar, nicht geloest)",
+      _e.get("measured_at"), "2026-08-06")
+
+# 2 · TREFFER: eine Marke ZURUECKNEHMEN - dieselbe Regel.
+_d2 = _zwei_familien()
+sm.unset_mark(_d2, "z1", "sweetspot", 600)
+ok("F1.8 Ruecknahme: bei einer Familie mit einer Marke faellt die Familie",
+   "sweetspot" not in sm.entry_for(_d2, "z1")["marks"])
+check("F1.8 Ruecknahme: die andere Messung steht noch",
+      sm.entry_for(_d2, "z1")["measure"].get("endurance"), _vor["measure"]["endurance"])
+
+# 3 · F1.8b: dieselbe Marke noch einmal setzen aendert NICHTS.
+_d3 = _zwei_familien()
+_vor3 = _copy.deepcopy(sm.entry_for(_d3, "z1"))
+sm.set_mark(_d3, "z1", "2026-08-05", "sweetspot", 600, LAPS, set_at="2026-08-09")
+check("F1.8b: eine schon gesetzte Marke laesst den Eintrag bitgleich",
+      sm.entry_for(_d3, "z1"), _vor3)
+
+# 4 · GEGENPROBE: ein Haken auf einer Fahrt OHNE Messung traegt keinen `lost`.
+_d4 = {"section_marks": {}}
+sm.set_mark(_d4, "z2", "2026-08-05", "endurance", 0, LAPS, set_at="2026-08-05")
+sm.set_mark(_d4, "z2", "2026-08-05", "endurance", 600, LAPS, set_at="2026-08-05")
+ok("F1.8 Gegenprobe: ohne Messung kein lost", "lost" not in sm.entry_for(_d4, "z2"))
+
+# 5 · GEGENPROBE: Haken in derselben Familie faellt weiter (das war nie strittig).
+_d5 = _zwei_familien()
+sm.set_mark(_d5, "z1", "2026-08-05", "endurance", 1290, LAPS, set_at="2026-08-07")
+check("F1.8 Gegenprobe: dieselbe Familie verliert ihre Messung",
+      sm.entry_for(_d5, "z1")["measure"].get("endurance"), None)
+check("F1.8 Gegenprobe: ... und die andere behaelt sie",
+      sm.entry_for(_d5, "z1")["measure"].get("sweetspot"), _vor["measure"]["sweetspot"])
+
+# 6 · EIGENSCHAFT: der Anker bleibt entry-weit, alter Stand gewinnt je Abschnitt.
+check("F1.8 Anker: die alten Abschnitte stehen unveraendert",
+      [s for s in _e["anchor"]["sections"] if s["i"] in (0, 600)],
+      [s for s in _vor["anchor"]["sections"] if s["i"] in (0, 600)])
+
 print(f"test_section_marks: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

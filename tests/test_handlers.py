@@ -467,6 +467,25 @@ check("F1.11 Satz: laps_missing sagt, dass die Messung stehen bleibt",
 check("F1.11 Grundmenge: laps_missing ist keine festgestellte Drift",
       "laps_missing" not in sm.DRIFT_FOUND and sm.DRIFT_FOUND == {"lap_count", "section_moved"})
 
+
+# --- F1.8b · der Handler speichert nicht, wenn sich nichts geaendert hat ------
+_c8 = FakeCoordinator(_marked_archive())
+_c8.archive = SaveArchive(_c8.archive.data)
+_c8.client = _LapClient(_lap_payload(_LAPS))
+_c8.archive.data["activities"]["f1"] = {"start_date_local": "2026-09-12T08:00:00"}
+ws._pick = lambda hass, athlete_id: _c8
+_dt_saved8 = ws.dt_util
+ws.dt_util = types.SimpleNamespace(now=lambda: __import__("datetime").datetime(2026, 9, 20))
+_before8 = _copy.deepcopy(sm.entry_for(_c8.archive.data, "f1"))
+for _i in range(2):
+    _cn = FakeConn()
+    asyncio.run(ws.websocket_set_section_mark(None, _cn, {
+        "id": 1, "activity_id": "f1", "family": "tempo", "start_index": 600, "mark": True}))
+    check(f"F1.8b Handler: Durchlauf {_i + 1} ohne Fehler", not _cn.errors)
+eq("F1.8b Handler: dieselbe Marke zweimal - kein Speichervorgang", _c8.archive.saves, 0)
+eq("F1.8b Handler: der Eintrag ist bitgleich", sm.entry_for(_c8.archive.data, "f1"), _before8)
+ws.dt_util = _dt_saved8
+
 print(f"test_handlers: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

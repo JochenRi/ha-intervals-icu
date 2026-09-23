@@ -6,6 +6,8 @@ which keeps hundreds of days of history out of the state machine.
 
 from __future__ import annotations
 
+import copy
+
 from datetime import date, timedelta
 from typing import Any
 
@@ -1611,6 +1613,11 @@ async def websocket_set_section_mark(hass, connection, msg) -> None:
     data = coordinator.archive.data
     activity_id = str(msg["activity_id"])
 
+    # GESPEICHERT WIRD NUR IM AENDERUNGSFALL (J7): seit 0.66.2 gibt `_write`
+    # bei einer schon gesetzten Marke den alten Eintrag zurueck (F1.8b), und
+    # ein No-op darf keinen Speichervorgang ausloesen.
+    before = copy.deepcopy(marks_lib.entry_for(data, activity_id))
+
     if not msg["mark"]:
         try:
             entry = marks_lib.unset_mark(
@@ -1618,7 +1625,8 @@ async def websocket_set_section_mark(hass, connection, msg) -> None:
         except ValueError as err:
             connection.send_error(msg["id"], "invalid_format", str(err))
             return
-        await coordinator.archive.async_save_now()
+        if entry != before:
+            await coordinator.archive.async_save_now()
         connection.send_result(msg["id"], {"activity_id": activity_id, "entry": entry})
         return
 
@@ -1652,7 +1660,8 @@ async def websocket_set_section_mark(hass, connection, msg) -> None:
     except ValueError as err:
         connection.send_error(msg["id"], "invalid_format", str(err))
         return
-    await coordinator.archive.async_save_now()
+    if entry != before:
+        await coordinator.archive.async_save_now()
     connection.send_result(msg["id"], {
         "activity_id": activity_id,
         "entry": entry,

@@ -799,8 +799,37 @@ def _open(data: dict[str, Any], activity_id: Any):
 def _write(block: dict[str, Any], key: str, old: dict[str, Any] | None,
            date: str, marks: dict[str, list[int]], laps: Any,
            set_at: str) -> dict[str, Any]:
-    """Den Eintrag schreiben - EINE Stelle, damit es nur eine Bauart gibt."""
+    """Den Eintrag schreiben - EINE Stelle, damit es nur eine Bauart gibt.
+
+    SEIT 0.66.2 FAELLT NUR DIE BERUEHRTE FAMILIE (Karte F1.8, R2). Bis dahin
+    leerte jeder Haken `measure` fuer den ganzen Eintrag - auch die Familie,
+    deren Marken sich nicht geruehrt hatten; die Maske ist aber seit 0.54.1
+    familienrein, und eine Grundlagen-Messung sitzt nicht auf einem
+    SweetSpot-Abschnitt. Jetzt: je Familie wird die Markenliste vorher/nachher
+    verglichen, unveraenderte Familien behalten ihr Fach, veraenderte
+    verlieren es mit `lost = changed`. Aendert sich KEINE Familie (dieselbe
+    Marke noch einmal, F1.8b), kommt der alte Eintrag unveraendert zurueck -
+    und der Aufrufer speichert dann nicht (J7).
+
+    WAS DABEI SICHTBAR BLEIBT UND NICHT GELOEST IST (F1.10): `measured_at` und
+    `v` gelten fuer den GANZEN Eintrag. Nach einem Teil-Erhalt traegt der
+    Eintrag ein Messdatum, das nur noch fuer die behaltene Familie stimmt.
+    Das ist so und steht hier, statt sich hinter dem Datum zu verstecken.
+    """
     rows = laps if isinstance(laps, list) else []
+
+    # Welche Familien haben sich bewegt? Nur die verlieren ihre Messung.
+    old_marks = {name: marked(old, name) for name in FAMILIES}
+    old_marks = {name: found for name, found in old_marks.items() if found}
+    if old is not None and old_marks == marks:
+        return old
+    changed_families = {name for name in set(old_marks) | set(marks)
+                        if old_marks.get(name) != marks.get(name)}
+    old_measure = (old or {}).get("measure")
+    old_measure = old_measure if isinstance(old_measure, dict) else {}
+    kept_measure = {name: box for name, box in old_measure.items()
+                    if name not in changed_families and name in marks}
+    fell = {name for name in old_measure if name not in kept_measure}
 
     # DER ANKER WIRD JE ABSCHNITT BEIM ERSTEN MAL GESICHERT und danach nicht
     # mehr angefasst. Wuerde ihn jede weitere Marke auffrischen, verschwaende
@@ -829,11 +858,11 @@ def _write(block: dict[str, Any], key: str, old: dict[str, Any] | None,
         "date": date,
         "marks": marks,
         "anchor": anchor,
-        # Eine neue oder zurueckgenommene Marke aendert den Ausschnitt, also
-        # gilt eine vorhandene Messung nicht mehr. Sie faellt SICHTBAR, mit
-        # Grund - nicht still.
+        # Eine neue oder zurueckgenommene Marke aendert den Ausschnitt IHRER
+        # Familie, also gilt deren Messung nicht mehr. Sie faellt SICHTBAR, mit
+        # Grund - nicht still. Die anderen Familien behalten ihr Fach.
         # JE FAMILIE EIN FACH. Leer heisst: noch nichts gemessen.
-        "measure": {},
+        "measure": kept_measure,
         # KEIN Anzeigetext in den Eintrag - siehe NOT_MEASURED.
         "reason": "",
         # WANN zuletzt gemessen wurde, und es UEBERLEBT das Loeschen der
@@ -850,7 +879,7 @@ def _write(block: dict[str, Any], key: str, old: dict[str, Any] | None,
     # War keine da, bleibt ein frueherer Grund stehen - ein Haken auf einer
     # Fahrt, deren Messung beim Versionssprung fiel, macht daraus keine
     # Umhak-Geschichte.
-    lost = LOST_CHANGED if (old or {}).get("measure") else (old or {}).get("lost")
+    lost = LOST_CHANGED if fell else (old or {}).get("lost")
     if lost:
         entry["lost"] = lost
     block[key] = entry
