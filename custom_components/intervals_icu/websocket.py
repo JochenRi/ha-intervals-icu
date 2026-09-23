@@ -1015,6 +1015,17 @@ async def websocket_laps(hass, connection, msg) -> None:
     GESPEICHERT WIRD NUR IM AENDERUNGSFALL. Ein Oeffnen ohne Drift, und ein
     Oeffnen einer gedrifteten Fahrt, deren Messung schon gefallen ist, loesen
     keinen Speichervorgang aus (J7, zweite Auflage).
+
+    GELOESCHT WIRD NUR BEI FESTGESTELLTER DRIFT (seit 0.66.1, Karte F1.11 /
+    R1 Haltung i). `drift` kennt drei Gruende, und nur zwei davon sind ein
+    Befund: `lap_count` und `section_moved`. Der dritte, `laps_missing`, heisst
+    "die Runden sind nicht da" - also NICHT PRUEFBAR, nicht verschoben. Bis
+    0.66.0 fiel die Messung auch dann, mit dem Grund `moved`, den niemand
+    festgestellt hatte; jeder Klick auf eine markierte Fahrt bei einer leeren
+    Antwort von Intervals war eine Loeschung. Jetzt bleibt die Messung stehen,
+    der Befund reist wie bisher mit (`marks_stale`), und benutzt wird sie
+    trotzdem nicht: `usable_hours` gibt bei jedem Driftbefund None. Nicht
+    rechnen ist nicht dasselbe wie loeschen.
     """
     coordinator = _pick(hass, msg.get("athlete_id"))
     if coordinator is None:
@@ -1031,7 +1042,7 @@ async def websocket_laps(hass, connection, msg) -> None:
     data = coordinator.archive.data
     entry = marks_lib.entry_for(data, activity_id)
     stale = marks_lib.drift(entry, result.get("laps") or []) if entry else None
-    if stale and marks_lib.drop_hours(
+    if stale in marks_lib.DRIFT_FOUND and marks_lib.drop_hours(
             data, activity_id, marks_lib.STALE_REASON.get(stale, "")):
         await coordinator.archive.async_save_now()
     # Der Befund reist MIT den Runden, nicht in einer zweiten Payload: er ist

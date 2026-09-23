@@ -362,6 +362,111 @@ check("Stufentest-Handler: der alte Sammelsatz steht im Archiv",
       "auswertbarer Abfall" not in (_bad_entry.get("reason") or ""))
 ws.dt_util = _dt_saved
 
+
+# --- F1.11 · der Leseweg `laps` loescht nur bei FESTGESTELLTER Drift ----------
+# Karte 1 F1.11, Pruefbericht 20.09. (bestaetigt), Entscheidung R1 Haltung (i):
+# "keine Runden" ist kein Drift, sondern "konnte nicht pruefen". Die Messung
+# bleibt stehen, der Befund reist mit, der Grund `moved` wird nur nach einer
+# festgestellten Verschiebung gesetzt. Rote Pruefung zuerst (Regel 6 / Auflage):
+# an 0.66.0 faellt Treffer 1, die Gegenproben A-C sind an 0.66.0 gruen.
+import copy as _copy
+sm = ws.marks_lib
+_LAPS_RAW = [("WARMUP", 0, 600), ("WORK", 600, 1200), ("RECOVERY", 1200, 1290),
+             ("WORK", 1290, 1890), ("COOLDOWN", 1890, 2400)]
+_LAPS = [{"n": i + 1, "label": l, "start_index": s, "end_index": e, "moving_time": e - s}
+         for i, (l, s, e) in enumerate(_LAPS_RAW)]
+
+
+def _lap_payload(laps):
+    return {"id": "f1", "icu_intervals": [
+        {"label": l["label"], "start_index": l["start_index"],
+         "end_index": l["end_index"], "moving_time": l["moving_time"]} for l in laps]}
+
+
+def _marked_archive():
+    data = importer.empty_data("i1")
+    sm.set_mark(data, "f1", "2026-09-12", "tempo", 600, _LAPS, set_at="2026-09-12")
+    sm.set_mark(data, "f1", "2026-09-12", "endurance", 1290, _LAPS, set_at="2026-09-12")
+    sm.set_measurement(data, "f1", family="tempo",
+                       blocks=[{"start_index": 600, "alpha": 0.9, "watts": 180}],
+                       measured_at="2026-09-15", window_s=0)
+    sm.set_measurement(data, "f1", family="endurance",
+                       hours=[{"hour": 1, "p075": 201.0, "hr075": 140}],
+                       measured_at="2026-09-15", window_s=0)
+    return data
+
+
+class _LapClient(FakeClient):
+    def __init__(self, payload):
+        super().__init__()
+        self._payload = payload
+
+    async def async_get_intervals(self, activity_id):
+        return self._payload
+
+
+def _open(payload):
+    coord = FakeCoordinator(_marked_archive())
+    coord.archive = SaveArchive(coord.archive.data)
+    coord.client = _LapClient(payload)
+    before = _copy.deepcopy(sm.entry_for(coord.archive.data, "f1"))
+    ws._pick = lambda hass, athlete_id: coord
+    conn = FakeConn()
+    asyncio.run(ws.websocket_laps(None, conn, {"id": 1, "activity_id": "f1"}))
+    return coord, before, (conn.results or [{}])[0]
+
+
+# Fixture-Beweis: die Messung TRAEGT, und die Runden passen zum Anker.
+_c0, _b0, _r0 = _open(_lap_payload(_LAPS))
+check("F1.11 Fixture: beide Familien tragen Zahlen",
+      bool(((_b0.get("measure") or {}).get("tempo") or {}).get("blocks"))
+      and bool(((_b0.get("measure") or {}).get("endurance") or {}).get("hours")))
+eq("F1.11 Fixture: passende Runden sind kein Drift", _r0.get("marks_stale"), None)
+
+# 1 · TREFFER: keine Runden -> Messung unveraendert, nichts gespeichert, Befund gemeldet.
+_c1, _b1, _r1 = _open({"id": "f1", "icu_intervals": []})
+_e1 = sm.entry_for(_c1.archive.data, "f1")
+eq("F1.11 Treffer: der Befund reist mit", _r1.get("marks_stale"), "laps_missing")
+eq("F1.11 Treffer: die Messung steht noch (bitgleich)", _e1.get("measure"), _b1.get("measure"))
+eq("F1.11 Treffer: kein Speichervorgang", _c1.archive.saves, 0)
+check("F1.11 Treffer: `lost` ist nicht `moved` - nichts wurde festgestellt",
+      _e1.get("lost") != sm.LOST_MOVED)
+eq("F1.11 Treffer: die Stundenliste ist die von vorher (festgehaltener Sollwert)",
+   (_e1.get("measure") or {}).get("endurance", {}).get("hours"),
+   [{"hour": 1, "p075": 201.0, "hr075": 140}])
+
+# 2 · GEGENPROBE A: andere Rundenzahl -> Messung faellt MIT Grund, ein Speichervorgang.
+_c2, _b2, _r2 = _open(_lap_payload(_LAPS[:-1]))
+_e2 = sm.entry_for(_c2.archive.data, "f1")
+eq("F1.11 Gegenprobe A: Grund lap_count", _r2.get("marks_stale"), "lap_count")
+eq("F1.11 Gegenprobe A: die Messung faellt", _e2.get("measure"), {})
+eq("F1.11 Gegenprobe A: lost = moved", _e2.get("lost"), sm.LOST_MOVED)
+eq("F1.11 Gegenprobe A: ein Speichervorgang", _c2.archive.saves, 1)
+
+# 3 · GEGENPROBE B: ein markierter Abschnitt hat eine andere Dauer.
+_moved = _copy.deepcopy(_LAPS)
+_moved[1]["moving_time"] = 555
+_c3, _b3, _r3 = _open(_lap_payload(_moved))
+_e3 = sm.entry_for(_c3.archive.data, "f1")
+eq("F1.11 Gegenprobe B: Grund section_moved", _r3.get("marks_stale"), "section_moved")
+eq("F1.11 Gegenprobe B: die Messung faellt", _e3.get("measure"), {})
+eq("F1.11 Gegenprobe B: ein Speichervorgang", _c3.archive.saves, 1)
+
+# 4 · GEGENPROBE C: passende Runden -> nichts faellt, nichts gespeichert.
+eq("F1.11 Gegenprobe C: die Messung bleibt",
+   sm.entry_for(_c0.archive.data, "f1").get("measure"), _b0.get("measure"))
+eq("F1.11 Gegenprobe C: kein Speichervorgang", _c0.archive.saves, 0)
+
+# 5 · EIGENSCHAFT: behalten heisst nicht benutzen - ohne Runden keine brauchbaren Stunden.
+eq("F1.11 Eigenschaft: usable_hours ohne Runden ist None",
+   sm.usable_hours(_e1, []), None)
+# 6 · DER SATZ AN DER EINHEIT sagt, dass die Messung steht und nicht verwendet wird.
+check("F1.11 Satz: laps_missing sagt, dass die Messung stehen bleibt",
+      "bleibt stehen" in sm.STALE_REASON["laps_missing"]
+      and "nicht verwendet" in sm.STALE_REASON["laps_missing"])
+check("F1.11 Grundmenge: laps_missing ist keine festgestellte Drift",
+      "laps_missing" not in sm.DRIFT_FOUND and sm.DRIFT_FOUND == {"lap_count", "section_moved"})
+
 print(f"test_handlers: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

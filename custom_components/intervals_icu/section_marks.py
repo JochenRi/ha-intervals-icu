@@ -298,13 +298,20 @@ def selection(from_marks: bool) -> dict[str, Any]:
 # Warum eine vorhandene Messung nicht mehr gilt.
 STALE_REASON = {
     "laps_missing": "Die Runden dieser Fahrt sind nicht geladen — ohne sie ist "
-                    "nicht zu prüfen, ob die Markierung noch sitzt.",
+                    "nicht zu prüfen, ob die Markierung noch sitzt. Die Messung "
+                    "bleibt stehen und wird nicht verwendet, bis die Runden da sind.",
     "lap_count": "Die Fahrt hat jetzt eine andere Zahl von Abschnitten als beim "
                  "Markieren — die Zuordnung ist zu bestätigen oder neu zu setzen.",
     "section_moved": "Mindestens ein markierter Abschnitt hat eine andere Dauer "
                      "als beim Markieren — die Zuordnung ist zu bestätigen oder "
                      "neu zu setzen.",
 }
+
+# Welche Gruende eine FESTGESTELLTE Verschiebung sind - nur bei diesen darf eine
+# Messung fallen. `laps_missing` steht bewusst nicht drin: wer nicht pruefen
+# kann, hat nichts festgestellt (F1.11, R1 Haltung i). Wer hier einen Grund
+# ergaenzt, ergaenzt eine Loeschung.
+DRIFT_FOUND = frozenset({"lap_count", "section_moved"})
 
 
 def _valid_day(day: Any) -> bool:

@@ -1740,6 +1740,32 @@ const acts = F.activities(), thr = F.thresholds();
   ok(!/data-act="smconf"/.test(q._marksBlock(act)),
      "bestätigen: der Befund steht nach dem Bestätigen weiter da");
 
+  // ── F1.11 · "keine Runden" ist kein Drift (R1, Haltung i) ────────────
+  // Der Handler löscht seit der Reparatur nur bei festgestellter Drift; die
+  // Kachel darf bei `laps_missing` nicht so tun, als säße die Zuordnung nicht
+  // mehr, und keinen Ausweg anbieten, der gegen leere Runden neu verankert.
+  // Rote Prüfung an 0.66.0: Überschrift und Bestätigen-Knopf stehen da.
+  q._msOk = null; q._msErr = null;
+  q._smarks = payload({ measure: { endurance: { hours: [{ hour: 1, p075: 201 }] } } });
+  q._smarks.stale_reason.laps_missing = "RUNDEN NICHT GELADEN — NICHT ZU PRÜFEN";
+  q._laps = { a1: { laps: [], marks_stale: "laps_missing" } };
+  const ohneRunden = q._marksBlock(act);
+  H.clean(ohneRunden, "laps_missing");
+  ok(/RUNDEN NICHT GELADEN/.test(ohneRunden),
+     "laps_missing: der Grund aus der Payload steht nicht an der Einheit");
+  ok(!/sitzt nicht mehr/.test(ohneRunden),
+     "laps_missing: die Kachel behauptet eine Drift, die nicht festgestellt wurde");
+  ok(!/data-act="smconf"/.test(ohneRunden),
+     "laps_missing: der Bestätigen-Knopf würde gegen leere Runden neu verankern");
+  const mbtn3 = /<button[^>]*data-act="smmeasure"[^>]*>/.exec(ohneRunden);
+  ok(mbtn3 !== null && /disabled/.test(mbtn3[0]),
+     "laps_missing: der Messknopf ist bedienbar, obwohl der Messweg ohne Runden aussteigt");
+  // Dass die Messung STEHEN BLEIBT, sagt der Satz aus `section_marks`
+  // (test_handlers prüft ihn) — das Panel trägt ihn nur durch. Hier nur die
+  // Überschrift, die dem Panel gehört.
+  ok(/konnte nicht geprüft werden/.test(ohneRunden),
+     "laps_missing: die Überschrift nennt den Zustand nicht (nicht prüfbar)");
+
   // ── DIE MARKIERUNGEN WIRKEN NOCH NICHT, und das steht da ─────────────
   // Er hat weiter markiert und geglaubt, es passiere etwas. Solange nichts
   // passiert, gehört das an die Kachel — bei JEDER Familie.

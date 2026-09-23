@@ -5167,7 +5167,16 @@ class IntervalsIcuPanel extends HTMLElement {
     // woanders liegt, ist einer, aus dem man nicht herauskommt. Genau das war
     // `confirm_section_marks` drei Releases lang - gebaut und nie bedienbar.
     const stale = ((this._laps[a.id] || {}).marks_stale) || null;
-    const drift = !(cur && stale) ? "" : `<div class="err pad">
+    // NICHT PRUEFBAR IST NICHT VERSCHOBEN (F1.11, R1 Haltung i, seit 0.66.1).
+    // `laps_missing` heisst: Intervals hat keine Runden geliefert. Dann steht
+    // die Messung noch (der Handler loescht nur bei festgestellter Drift),
+    // und ein Bestaetigen-Knopf haette nichts, wogegen er verankern koennte -
+    // er wuerde die Messung gegen leere Runden fallen lassen. Also: der Grund
+    // aus der Payload, kein Ausweg, und der Messknopf bleibt gesperrt.
+    const unpruefbar = stale === "laps_missing";
+    const drift = !(cur && stale) ? "" : unpruefbar ? `<div class="err pad">
+        <b>Die Zuordnung konnte nicht geprüft werden.</b>
+        ${esc((sm.stale_reason || {})[stale] || "")}</div>` : `<div class="err pad">
         <b>Die Zuordnung sitzt nicht mehr.</b>
         ${esc((sm.stale_reason || {})[stale] || "")}
         ${cfErr ? `<br>${esc(cfErr)}` : ""}
