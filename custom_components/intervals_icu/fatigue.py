@@ -293,6 +293,7 @@ def _marked_rides(data: dict[str, Any]) -> dict[str, Any]:
         # weil der Versionszaehler nur Code-Aenderungen traegt und nicht das
         # Umlegen eines athletenweisen Schalters.
         if isinstance(hours, list) and hours \
+                and marks_lib.window_matters("endurance") \
                 and marks_lib.window_of(entry, "endurance") != derive.watt_window(data):
             dropped.setdefault(WINDOW_CHANGED_REASON, []).append(row)
             continue

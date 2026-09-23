@@ -859,10 +859,13 @@ _drei = sm.pending_remeasure(_bestand({"H": {
     "measure": {**_neu, **_block}}}), 120)
 ok("neu messen Randfall: drei Familien, eine fehlt",
    len(_drei) == 1 and _drei[0]["open_families"] == ["vo2max"])
-# GEGENPROBE: in der ANDEREN Schalterstellung kehrt sich A und B um.
+# GEGENPROBE: in der ANDEREN Schalterstellung kehrt sich A und B um. E und F
+# (Blockfamilien) stehen seit 0.66.3 in KEINER Stellung darin - ihre Zahl
+# haengt nicht an der Achse (F1.9); bis dahin schrieb diese Zeile den Leerlauf
+# als Sollverhalten fest.
 _aus = sm.pending_remeasure(_d, 0)
 ok("neu messen Gegenprobe: bei der anderen Achse ist es umgekehrt",
-   [r["activity_id"] for r in _aus] == ["B", "C", "E", "F", "G"])
+   [r["activity_id"] for r in _aus] == ["B", "C", "G"])
 ok("neu messen: passt alles, ist die Liste leer",
    sm.pending_remeasure(_bestand({"B": {"marks": {"endurance": [0]}, "measure": _neu}}), 120) == [])
 ok("neu messen: eine einzige Einheit ist auch eine Liste",
@@ -960,6 +963,32 @@ check("F1.8 Gegenprobe: ... und die andere behaelt sie",
 check("F1.8 Anker: die alten Abschnitte stehen unveraendert",
       [s for s in _e["anchor"]["sections"] if s["i"] in (0, 600)],
       [s for s in _vor["anchor"]["sections"] if s["i"] in (0, 600)])
+
+
+# --- F1.9 · die Wattachse gilt nur fuer die Kurve --------------------------------
+# `dfa_blocks` kennt kein Wattfenster (derive.py): ein Blockmedian ist auf beiden
+# Achsen dieselbe Zahl. Trotzdem stempelte der Messweg `w` fuer jede Familie und
+# `pending_remeasure` meldete nach dem Rechenschalter VO2max/SweetSpot/Tempo als
+# "andere Wattachse" - die Neumessung lieferte dieselben Zahlen. Rote Pruefung.
+ok("F1.9 Regel: welche Familien an der Wattachse haengen, steht im Modul",
+   tuple(getattr(sm, "WINDOW_FAMILIES", ())) == ("endurance",))
+_f19 = _bestand({
+    "S": {"marks": {"sweetspot": [0]}, "measure": {"sweetspot": {"hours": None, "blocks": [{"start_index": 0}], "reason": "", "w": 0}}},
+    "V": {"marks": {"vo2max": [0]}, "measure": {"vo2max": {"hours": None, "blocks": [{"start_index": 0}], "reason": "", "w": 120}}},
+    "E": {"marks": {"endurance": [0]}, "measure": {"endurance": {"hours": [{"hour": 1}], "blocks": None, "reason": "", "w": 0}}},
+    "M": {"marks": {"sweetspot": [0], "endurance": [1]}, "measure": {
+        "sweetspot": {"hours": None, "blocks": [{"start_index": 0}], "reason": "", "w": 0},
+        "endurance": {"hours": [{"hour": 1}], "blocks": None, "reason": "", "w": 0}}},
+})
+_p120 = {r["activity_id"]: r for r in sm.pending_remeasure(_f19, 120)}
+ok("F1.9 Treffer: eine SweetSpot-Messung auf der alten Achse ist NICHT offen", "S" not in _p120)
+ok("F1.9 Treffer: eine VO2max-Messung auf der neuen Achse bei Schalter aus ist NICHT offen",
+   "V" not in {r["activity_id"] for r in sm.pending_remeasure(_f19, 0)})
+ok("F1.9 Gegenprobe: die Grundlage auf der alten Achse IST offen", "E" in _p120 and _p120["E"]["reason"] == "window")
+ok("F1.9 gemischt: nur die Kurvenfamilie ist offen, nicht der Block",
+   "M" in _p120 and _p120["M"]["open_families"] == ["endurance"])
+ok("F1.9 Gegenprobe: bei passender Achse ist nichts offen",
+   sm.pending_remeasure(_bestand({"E": {"marks": {"endurance": [0]}, "measure": {"endurance": {"hours": [{"hour": 1}], "blocks": None, "reason": "", "w": 120}}}}), 120) == [])
 
 print(f"test_section_marks: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:

@@ -108,6 +108,22 @@ MEASURE_WINDOW_KEY = "w"
 # markieren, und sie hat mit ramp_tests ihren eigenen Block.
 FAMILIES: tuple[str, ...] = ("vo2max", "sweetspot", "tempo", "endurance")
 
+# WELCHE Familien an der WATTACHSE haengen (0.66.3, F1.9): nur die Kurve.
+# `dfa_hours` liest die Leistung bei alpha ueber die Achse, die der
+# Rechenschalter waehlt; `dfa_blocks` bildet Mediane ueber Rohwatt und kennt
+# kein Fenster. Ein Blockmedian ist auf beiden Achsen dieselbe Zahl. Bis
+# 0.66.2 verglich `pending_remeasure` trotzdem jede Familie gegen die
+# Schalterstellung, und nach jedem Umlegen standen VO2max, SweetSpot und
+# Tempo im Sammellauf - eine Neumessung im Leerlauf. Das Feld `w` bleibt an
+# jeder Messung stehen (es sagt, unter welcher Stellung gemessen wurde);
+# GEFRAGT wird es nur hier.
+WINDOW_FAMILIES: tuple[str, ...] = ("endurance",)
+
+
+def window_matters(family: str) -> bool:
+    """True, wenn die Messung dieser Familie von der Wattachse abhaengt."""
+    return family in WINDOW_FAMILIES
+
 # STILLGELEGT am 15.09.2026, und der GRUND gehoert hierher, nicht nur die
 # Entscheidung - sonst baut sie jemand beim naechsten Umbau zurueck:
 #
@@ -433,7 +449,8 @@ def pending_remeasure(data: dict[str, Any], window_s: int) -> list[dict[str, Any
         # Wattwerte") ist gemessen - ein zweiter Lauf aendert daran nichts.
         fehlt = [fam for fam in familien if not isinstance(measurement(entry, fam), dict)]
         achse = [fam for fam in familien
-                 if isinstance(measurement(entry, fam), dict)
+                 if window_matters(fam)
+                 and isinstance(measurement(entry, fam), dict)
                  and window_of(entry, fam) != window_s]
         if not fehlt and not achse:
             continue
