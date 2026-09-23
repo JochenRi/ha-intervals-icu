@@ -244,8 +244,34 @@ eq("lost: das Umlegen der Rechnung hat seinen eigenen Satz",
       bool(_lost.get(sys.modules["iv.section_marks"].LOST_WINDOW)), True)
 eq("lost: die Saetze kommen aus dem Modul",
       _lost, dict(sys.modules["iv.section_marks"].LOST_TEXT))
-check("A1: der Blocksatz steht in beiden Stellungen",
+check("A1: der Blocksatz steht in beiden Stellungen des KURVENschalters",
       bool(aus.get("blocks")) and bool(an.get("blocks")))
+
+
+# --- F1.14 · der Blocksatz haengt am BLOCKschalter, nicht an der Steuerung ----
+# "an deinen Marken vorbei" ist eine Aussage darueber, ob die Blockreihe die
+# Marken liest - das entscheidet `blocks_from_marks` (blocks.series). Bis
+# 0.66.2 hing der Satz an `steering_v2`: bei Blockschalter an und Steuerung
+# aus stand er neben einer Reihe, die laengst auf den Marken rechnete; bei
+# Blockschalter aus und Steuerung an fehlte er, obwohl die Marken nichts
+# taten. Rote Pruefung: die zwei Kreuzstellungen fallen.
+def blocks_sentence(blocks_from_marks, steering_on):
+    data = importer.empty_data("i1")
+    data["settings"] = {ws.blocks_lib.BLOCK_SWITCH: blocks_from_marks,
+                        ws.steering_lib.STEERING_SWITCH: steering_on}
+    coordinator = FakeCoordinator(data)
+    conn = FakeConn()
+    ws._pick = lambda hass, athlete_id: coordinator
+    ws.websocket_section_marks(None, conn, {"id": 1})
+    return "blocks" in ((conn.results[0] if conn.results else {}).get("not_active") or {})
+
+
+check("F1.14: Blockschalter aus, Steuerung aus - der Satz steht", blocks_sentence(False, False))
+check("F1.14: Blockschalter aus, Steuerung AN - der Satz steht trotzdem (Marken tun nichts)",
+      blocks_sentence(False, True))
+check("F1.14: Blockschalter an, Steuerung aus - der Satz ist fort (die Reihe liest die Marken)",
+      not blocks_sentence(True, False))
+check("F1.14: Blockschalter an, Steuerung an - der Satz ist fort", not blocks_sentence(True, True))
 
 # --- A2 · jeder Grund der markierten Auswahl hat ein Wort -------------------
 fat = _load("fatigue")

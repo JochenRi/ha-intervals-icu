@@ -1536,11 +1536,14 @@ def websocket_section_marks(hass, connection, msg) -> None:
         # Der Kurvensatz haengt an der SCHALTERSTELLUNG. In 0.56.0 stand er
         # bedingungslos da und sagte bei umgelegtem Schalter, die Kurve lese
         # die Marken nicht - das Gegenteil dessen, was sie tat (§7).
-        # Der Blocksatz haengt jetzt am STEUERUNGSSCHALTER - bis 0.60.0 stand
-        # er bedingungslos da und sagte auch dann, die Blockmessung gehe an
-        # den Marken vorbei, wenn sie laengst auf ihnen rechnete. Dieselbe
-        # Klasse wie der Kurvensatz in 0.56.0 (§7).
-        "not_active": {**({} if steering_lib.steering_on(data)
+        # Der Blocksatz haengt am BLOCKSCHALTER (seit 0.66.3, F1.14): "an
+        # deinen Marken vorbei" sagt, ob die Blockreihe die Marken liest, und
+        # das entscheidet `blocks_from_marks` in blocks.series - nicht die
+        # Steuerung. Von 0.60.0 bis 0.66.2 hing er an `steering_v2`: bei
+        # Blockschalter an und Steuerung aus stand er neben einer Reihe, die
+        # laengst auf den Marken rechnete. Davor stand er bedingungslos da.
+        # Dieselbe Klasse wie der Kurvensatz in 0.56.0 (§7).
+        "not_active": {**({} if blocks_lib.blocks_from_marks(data)
                           else {"blocks": marks_lib.NOT_ACTIVE_BLOCKS}),
                        **({} if fatigue.curve_from_marks(data)
                           else {"curve": marks_lib.NOT_ACTIVE_CURVE})},
