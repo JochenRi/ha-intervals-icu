@@ -1713,8 +1713,13 @@ class IntervalsIcuPanel extends HTMLElement {
     // "Fuer eine Spanne braucht es 3 Einheiten" UND "keine Vorgabe" - der erste
     // ist fuer eine Familie ohne Startwert falsch (sie bekommt nie eine Spanne),
     // und er verwies auf eine Vorgabe, die daneben als "-" stand.
+    // EIN STARTWERT, DER NOCH ENTSTEHT (0.66.3, Michael-Befund), ist keine
+    // Familie ohne Vorgabe: der Satz kommt aus dem Zustand ("noch kein
+    // Startwert - n von 3"), keine Vorgabe, kein "daran aendert sich nichts".
     const saetze = an
-      ? (st.no_target
+      ? (st.anchor_pending
+          ? esc(st.note || "")
+          : st.no_target
           ? esc(w.tile_no_target || "")
           : `${esc(satz(w.tile_ride, { watts }))} ${band
               ? esc(satz(w.tile_inside, { low: band.low, high: band.high, need: w.need,
@@ -4789,7 +4794,9 @@ class IntervalsIcuPanel extends HTMLElement {
     const seit = fams.map((fam) => {
       const x = st[fam] || {};
       const l = (FAM[fam] || {}).l || fam;
-      return `${l}: Startwert ${fmt(x.anchor_w)} W vom ${dMed(x.anchor_date)}, `
+      if (x.anchor_pending) return `${l}: ${x.note || "noch kein Startwert"}`;
+      return `${l}: Startwert ${fmt(x.anchor_w)} W vom ${dMed(x.anchor_date)}`
+        + `${x.anchor_source ? ` (${esc(x.anchor_source)})` : ""}, `
         + `${fmt(x.n_since)} ${x.n_since === 1 ? "Einheit" : "Einheiten"} seither, `
         + `${fmt(x.moves)} ${x.moves === 1 ? "Bewegung" : "Bewegungen"}`;
     }).join(" · ");

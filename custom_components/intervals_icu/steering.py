@@ -36,8 +36,10 @@ try:  # inside the package (Home Assistant)
     from . import derive
     from .const import (
         BLOCK_CORRIDORS,
-        STEERING_ANCHOR_DATE,
-        STEERING_ANCHOR_W,
+        LEGACY_ANCHOR_TOLERANCE,
+        LEGACY_STEERING_ANCHOR,
+        STEERING_ANCHOR_MIN_UNITS,
+        STEERING_ANCHOR_UNITS,
         STEERING_BAND_MIN_N,
         STEERING_BAND_QUOTE_MIN_N,
         STEERING_BAND_WINDOW,
@@ -53,8 +55,10 @@ except ImportError:  # standalone (test suite loads this file directly)
     import derive  # type: ignore[no-redef]
     from const import (  # type: ignore[no-redef]
         BLOCK_CORRIDORS,
-        STEERING_ANCHOR_DATE,
-        STEERING_ANCHOR_W,
+        LEGACY_ANCHOR_TOLERANCE,
+        LEGACY_STEERING_ANCHOR,
+        STEERING_ANCHOR_MIN_UNITS,
+        STEERING_ANCHOR_UNITS,
         STEERING_BAND_MIN_N,
         STEERING_BAND_QUOTE_MIN_N,
         STEERING_BAND_WINDOW,
@@ -76,7 +80,114 @@ STEERING_SWITCH = "steering_v2"
 # Die Familien, fuer die es ueberhaupt eine Blockvorgabe gibt. Tempo steht
 # nicht darin: seine Zahl kommt aus der FTP, und eine Steuerung ohne eigene
 # Messung waere eine Zahl mit falschem Etikett.
-STEERING_FAMILIES = tuple(STEERING_ANCHOR_W)
+STEERING_FAMILIES = ("sweetspot", "vo2max")
+
+# DER STARTWERT JE ATHLET (0.66.3, Michael-Befund). Er steht im Archiv unter
+# settings.steering_anchor, je Familie {w, date, source, units}. Er entsteht
+# beim Einschalten der Steuerung aus den letzten eigenen Einheiten - und
+# spaeter, sobald eine Familie genug hat - und bleibt danach stehen: der
+# Stichtag ist der Tag seiner Entstehung, alles davor zaehlt fuer C6 nicht
+# (Begruendung: ohne Stichtag verschiebt ein Nachtrag alter Fahrten die
+# heutige Vorgabe; simuliert in 292 von 300 Laeufen um 9,2 W). Ausschalten
+# loescht ihn nicht.
+ANCHOR_KEY = "steering_anchor"
+ANCHOR_PENDING_NOTE = ("noch kein Startwert — {n} von {min} Einheiten seit dem "
+                       "Markieren; mit der dritten entsteht er aus deinen "
+                       "letzten Einheiten")
+ANCHOR_SOURCE = "aus deinen letzten {n} Einheiten"
+
+
+def anchors(data: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Die gespeicherten Startwerte je Familie - {} wenn keiner da ist."""
+    box = (data or {}).get("settings")
+    got = box.get(ANCHOR_KEY) if isinstance(box, dict) else None
+    if not isinstance(got, dict):
+        return {}
+    out: dict[str, dict[str, Any]] = {}
+    for family, row in got.items():
+        if family in STEERING_FAMILIES and isinstance(row, dict) \
+                and isinstance(row.get("w"), (int, float)) and row.get("date"):
+            out[family] = dict(row)
+    return out
+
+
+def derive_anchor(points: list[dict[str, Any]], family: str, today: str) -> dict[str, Any] | None:
+    """Ein Startwert aus den eigenen Einheiten - oder None, wenn es zu wenige sind."""
+    usable = [r for r in unit_rows(points, family) if r.get("usable")]
+    if len(usable) < STEERING_ANCHOR_MIN_UNITS:
+        return None
+    last = usable[-STEERING_ANCHOR_UNITS:]
+    watts = [float(r.get("watts_raw", r["watts"])) for r in last]
+    return {"w": int(round(derive._median(watts))), "date": str(today),
+            "source": ANCHOR_SOURCE.format(n=len(last)),
+            "units": [r["date"] for r in last]}
+
+
+def ensure_anchors(data: dict[str, Any], series: dict[str, Any], today: str) -> bool:
+    """Startwerte anlegen, wo noch keiner steht und genug Einheiten da sind.
+
+    GIBT ZURUECK, OB SICH ETWAS GEAENDERT HAT - der Aufrufer speichert nur
+    dann (J7). Ein vorhandener Startwert wird NIE ueberschrieben.
+    """
+    box = (data or {}).setdefault("settings", {})
+    if not isinstance(box, dict):
+        box = data["settings"] = {}
+    stored = box.get(ANCHOR_KEY)
+    if not isinstance(stored, dict):
+        stored = {}
+    have = anchors(data)
+    changed = False
+    families = ((series or {}).get("families") or {})
+    for family in STEERING_FAMILIES:
+        if family in have:
+            continue
+        fresh = derive_anchor((families.get(family) or {}).get("points") or [], family, today)
+        if fresh is None:
+            continue
+        stored[family] = fresh
+        changed = True
+    if changed:
+        box[ANCHOR_KEY] = stored
+    return changed
+
+
+def migrate_legacy_anchor(data: dict[str, Any]) -> bool:
+    """Die UEBERNAHME fuer Archive, die vor 0.66.3 mit eingeschalteter Steuerung liefen.
+
+    Dort GALT der Startwert aus dem Code schon (0.62.0 bis 0.66.2); die
+    Reparatur darf ihn nicht neu entstehen lassen, sonst bewegte sich die
+    Vorgabe des ersten Athleten. Bedingung ist allein der Schalter: stand er
+    aus, hat der Code-Startwert nie eine Vorgabe getragen, und ein zweiter
+    Athlet bekommt keine fremde Zahl untergeschoben. Laeuft genau einmal.
+    """
+    box = (data or {}).get("settings")
+    if not isinstance(box, dict) or not box.get(STEERING_SWITCH):
+        return False
+    if isinstance(box.get(ANCHOR_KEY), dict) and box[ANCHOR_KEY]:
+        return False
+    # ZWEITE BEDINGUNG: der Code-Startwert muss zum Bestand passen. Der eigene
+    # Startwert aus den letzten Einheiten VOR dem alten Stichtag wird gerechnet;
+    # weicht er je Familie um mehr als LEGACY_ANCHOR_TOLERANCE ab, gibt es
+    # keine Uebernahme - ein zweiter Athlet, dessen Schalter beim Update
+    # zufaellig an steht, bekommt so keine fremde Zahl (Michael-Befund).
+    try:
+        from . import blocks as blocks_lib
+    except ImportError:
+        import blocks as blocks_lib  # type: ignore[no-redef]
+    legacy = LEGACY_STEERING_ANCHOR
+    families = ((blocks_lib.series(data, with_other=False) or {}).get("families") or {})
+    taken: dict[str, dict[str, Any]] = {}
+    for family, w in legacy["w"].items():
+        points = [p for p in ((families.get(family) or {}).get("points") or [])
+                  if str(p.get("date") or "") <= legacy["date"]]
+        own = derive_anchor(points, family, legacy["date"])
+        if own is None or abs(own["w"] - int(w)) > LEGACY_ANCHOR_TOLERANCE * int(w):
+            continue
+        taken[family] = {"w": int(w), "date": legacy["date"], "source": legacy["source"], "units": []}
+    if not taken:
+        return False
+    box[ANCHOR_KEY] = taken
+    return True
 
 SINGLE_BLOCK_NOTE = "nur ein Block gemessen — keine Vorgabe"
 TOO_FEW_NOTE = "noch keine Toleranz"
@@ -119,7 +230,7 @@ TILE_OFF = ("Die Steuerung ist aus — diese Zahl ist der Wert deiner letzten "
 # DER SATZ FUER EINE FAMILIE OHNE STARTWERT. Er sagt beides in einem: keine
 # Vorgabe, und deshalb auch keine Spanne - und ausdruecklich, dass weitere
 # Einheiten daran nichts aendern. Das ist keine Vertroestung, sondern die
-# Bauart: STEERING_ANCHOR_W kennt die Familie nicht, also ist `watts` None,
+# Bauart: STEERING_FAMILIES kennt die Familie nicht, also ist `watts` None,
 # also gibt `family_state` kein Band aus, egal bei welchem n.
 TILE_NO_TARGET = ("Für diese Familie wird keine Vorgabe geführt — ihre Zahl kommt "
                   "aus der FTP. Ohne Vorgabe gibt es auch keine Spanne, und daran "
@@ -232,26 +343,35 @@ def unit_rows(points: list[dict[str, Any]], family: str) -> list[dict[str, Any]]
     return rows
 
 
-def c6(rows: list[dict[str, Any]], family: str) -> dict[str, Any]:
+def c6(rows: list[dict[str, Any]], family: str,
+       anchor: dict[str, Any] | None = None) -> dict[str, Any]:
     """Die Regel. Ab Startwert, ueber die Einheiten NACH dem Stichtag.
 
     Bezug ist die VORGABE: der Schritt von 5 W wird auf sie gerechnet, nicht
     auf die gefahrenen Watt. Ohne diesen Bezug faellt die Vorgabe bei
     geregelten Einheiten mit den gefahrenen Watt ab (Kreuzprobe, -18 W).
     """
-    # Familien OHNE Startwert (Tempo) bekommen keine Vorgabe - ihre Zeilen
-    # werden trotzdem gerechnet, damit der Verlauf ab Block 2 fuer jede
-    # Blockfamilie gezeichnet werden kann.
-    anchor = STEERING_ANCHOR_W.get(family)
-    if anchor is None:
-        since_only = [r for r in rows if r.get("usable")
-                      and str(r.get("date") or "") > STEERING_ANCHOR_DATE]
-        return {"watts": None, "anchor_w": None, "anchor_date": STEERING_ANCHOR_DATE,
-                "n_since": len(since_only), "min_units": STEERING_MIN_UNITS,
+    # Familien OHNE Vorgabe (Tempo) bekommen keine - ihre Zeilen werden
+    # trotzdem gerechnet, damit der Verlauf ab Block 2 fuer jede Blockfamilie
+    # gezeichnet werden kann. Familien MIT Vorgabe, deren Startwert noch nicht
+    # entstanden ist (zu wenige Einheiten), sagen das - `anchor_pending`.
+    usable = [r for r in rows if r.get("usable")]
+    if family not in STEERING_FAMILIES:
+        return {"watts": None, "anchor_w": None, "anchor_date": None,
+                "n_since": 0, "min_units": STEERING_MIN_UNITS,
                 "steps": [], "moves": 0, "sides": [], "note": None,
                 "no_target": True}
-    since = [r for r in rows if r.get("usable") and str(r.get("date") or "") > STEERING_ANCHOR_DATE]
-    target = anchor
+    if not anchor:
+        return {"watts": None, "anchor_w": None, "anchor_date": None,
+                "n_since": 0, "min_units": STEERING_MIN_UNITS,
+                "steps": [], "moves": 0, "sides": [],
+                "note": ANCHOR_PENDING_NOTE.format(n=len(usable), min=STEERING_ANCHOR_MIN_UNITS),
+                "anchor_pending": True, "anchor_min_units": STEERING_ANCHOR_MIN_UNITS,
+                "n_units_total": len(usable)}
+    anchor_w = int(anchor["w"])
+    anchor_date = str(anchor["date"])
+    since = [r for r in usable if str(r.get("date") or "") > anchor_date]
+    target = anchor_w
     steps: list[dict[str, Any]] = []
     hist: list[int] = []
     for row in since:
@@ -274,7 +394,8 @@ def c6(rows: list[dict[str, Any]], family: str) -> dict[str, Any]:
         note = (f"erst {len(since)} von {STEERING_MIN_UNITS} Einheiten seit dem "
                 "Startwert — die Vorgabe bewegt sich noch nicht")
     return {
-        "watts": target, "anchor_w": anchor, "anchor_date": STEERING_ANCHOR_DATE,
+        "watts": target, "anchor_w": anchor_w, "anchor_date": anchor_date,
+        "anchor_source": anchor.get("source"),
         "n_since": len(since), "min_units": STEERING_MIN_UNITS,
         "steps": steps, "moves": len(steps),
         "sides": [r["side"] for r in since], "note": note,
@@ -326,11 +447,12 @@ def t_band(values: list[float], digits: int = 0,
     }
 
 
-def family_state(points: list[dict[str, Any]], family: str) -> dict[str, Any]:
+def family_state(points: list[dict[str, Any]], family: str,
+                 anchor: dict[str, Any] | None = None) -> dict[str, Any]:
     """Alles, was eine Familie unter der neuen Steuerung traegt."""
     rows = unit_rows(points, family)
     usable = [r for r in rows if r.get("usable")]
-    state = c6(rows, family)
+    state = c6(rows, family, anchor)
     state["rows"] = rows
     state["n_units"] = len(usable)
     state["single_block"] = [r["date"] for r in rows if not r.get("usable")]
@@ -349,18 +471,19 @@ def family_state(points: list[dict[str, Any]], family: str) -> dict[str, Any]:
     return state
 
 
-def state(series: dict[str, Any]) -> dict[str, Any]:
-    """Je Familie die neue Vorgabe - gerechnet aus der Blockreihe."""
+def state(series: dict[str, Any], anchors_by_family: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Je Familie die neue Vorgabe - gerechnet aus der Blockreihe und dem Startwert des Athleten."""
     families = (series or {}).get("families") or {}
+    got = anchors_by_family or {}
     out: dict[str, Any] = {}
     for family, box in families.items():
         if family not in BLOCK_CORRIDORS:
             continue
-        out[family] = family_state(box.get("points") or [], family)
+        out[family] = family_state(box.get("points") or [], family, got.get(family))
     return out
 
 
-def compare(series: dict[str, Any]) -> dict[str, Any]:
+def compare(series: dict[str, Any], anchors_by_family: dict[str, Any] | None = None) -> dict[str, Any]:
     """ALT neben NEU, je Familie - fuer die Parallelanzeige.
 
     ALT ist die heutige Rechnung, Zeichen fuer Zeichen dieselbe Quelle wie in
@@ -370,7 +493,7 @@ def compare(series: dict[str, Any]) -> dict[str, Any]:
     Schalter tut - statt dass eine Zahl still eine andere ersetzt.
     """
     families = (series or {}).get("families") or {}
-    steering = state(series)
+    steering = state(series, anchors_by_family)
     out: dict[str, Any] = {}
     for family, box in families.items():
         latest = box.get("latest") or {}
@@ -386,7 +509,11 @@ def compare(series: dict[str, Any]) -> dict[str, Any]:
             "new_hr_band": (new or {}).get("hr_band"),
             "new_note": (new or {}).get("note"),
             "steered": bool(new),
-            "delta": (None if (new is None or old_w is None)
+            # None, wenn es keine Vorgabe gibt - eine Familie ohne Startwert
+            # (Tempo, oder ein Athlet, dessen Startwert noch entsteht) hat
+            # nichts, wogegen sich der Median vergleichen liesse (F2.1: bis
+            # 0.66.2 fiel hier der ganze `blocks`-Befehl mit TypeError).
+            "delta": (None if (new is None or old_w is None or new.get("watts") is None)
                       else round(new["watts"] - old_w)),
         }
     return out

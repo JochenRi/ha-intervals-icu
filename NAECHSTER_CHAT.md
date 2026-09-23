@@ -4,8 +4,9 @@
 > · **PROJEKTSTAND §10, Kopf der Liste** — der Befund „aus Grundlagenfahrten ist die
 >   Schwelle nicht bestimmbar" (29 W Fenster, 150 W nötig), die vier Stellen, die er
 >   miterklärt, und was damit gestrichen ist.
-> · **PROJEKTSTAND §13 — Bauregeln.** Fünf Regeln aus 0.63.0–0.65.2. Vor dem nächsten Bau
->   lesen; jede kommt aus einem Fehler, der ausgeliefert war.
+> · **PROJEKTSTAND §13 — Bauregeln.** Zehn Regeln: fünf aus 0.63.0–0.65.2, vier aus dem
+>   Prüfstandsbefund der Karte (P1–P4), Regel 10 „für einen Athleten gebaut". Vor dem
+>   nächsten Bau lesen; jede kommt aus einem Fehler, der ausgeliefert war.
 > · **PROJEKTSTAND §7, vierzigster Fall** — die Auslieferung, die Messungen gelöscht hat,
 >   und die fünf weiteren Stellen derselben Bauart.
 > · **docs/rechenwege.md K5** — die Umkehrung: Rechenweg, Livestand, die zwei Bandfehler,
@@ -17,6 +18,46 @@
 > · **PROJEKTSTAND §10, ganz oben** — der grösste offene Punkt: die Vorgabe folgt der
 >   Form nicht. Eigene Runde, nicht als Nebensatz einer anderen.
 
+
+## 0.66.3 — Paket 1 der Reparaturphase und der Michael-Befund (23.09.2026)
+
+Prüfstand **24 Dateien / 7.865 / 0** (vorher 7.685). Sieben Befunde, jeder nach dem
+Fünfschritt: Prüfung schreiben → **rot am alten Code** → bauen → grün → Mutation über
+Dateikopie, wieder rot. **Johannes' Zahlen sind unverändert und am Livebestand nachgerechnet:**
+SweetSpot 190 W, VO2max 250 W, Pulsfenster 159–174 und 180–189, Bänder 186–194 und 235–265,
+Anker-Puls und Ermüdungskette unberührt (keine Rechnung geändert).
+
+### Was repariert ist (PROJEKTSTAND §7, Fälle 41–47)
+
+| # | Befund | Kurz |
+|---|---|---|
+| F1.11 | Öffnen einer markierten Fahrt löschte die Messung, wenn Intervals keine Runden lieferte | `DRIFT_FOUND`: gelöscht wird nur bei festgestellter Drift; „konnte nicht prüfen" bleibt stehen, sichtbar, ohne Bestätigen-Knopf |
+| F1.8 | ein Haken in Familie A leerte die Messung von Familie B | `_write` vergleicht je Familie; No-op speichert nicht (F1.8b) |
+| F1.5 | drei Versionszähler verglichen auf „ungleich" — ein HACS-Downgrade hätte `dfa` und Stufentests geleert | `versions.py`: eine Regel „älter", nie nach unten; **Downgrade ist damit ein sicherer Rückweg** |
+| F1.6 | der Abgleich räumte drei von sechs id-Blöcken — gelöschte Fahrten lebten über Marke/Stufentest weiter | `reconcile.ID_BLOCKS`; `plan` sagt Marke und Stufentest vorher an |
+| F1.9 | nach dem Rechenschalter standen Blockfamilien im Sammellauf (Leerlauf) | `WINDOW_FAMILIES = ("endurance",)` |
+| F1.14 | „an deinen Marken vorbei" hing an der Steuerung statt am Blockschalter | `not_active.blocks` folgt `blocks_from_marks` |
+| **Michael** | **Johannes' Startwerte (190/250) und Stichtag (17.09.) standen im Code — ein zweiter Athlet sah sie im Kachelkopf** | Startwert je Athlet im Archiv (`settings.steering_anchor`), entsteht beim Einschalten aus den eigenen Einheiten; Übernahme für Johannes nur bei Schalter an **und** passendem Bestand; F2.1 (Absturz `compare`) mit erledigt; **Bauregel 10**, neue Gattung `test_zweiter_athlet.py` |
+
+### Was Michael nach dem Update sieht
+
+Schalter „Wattvorgabe" an: die Kachel sagt je Familie „noch kein Startwert — n von 3" oder,
+ab drei gemessenen Einheiten, **seinen** Startwert (Median der letzten vier) mit dem
+Einschalttag als Stichtag. Johannes' Zahlen kommen in seinen Payloads nicht mehr vor — auch
+dann nicht, wenn sein Schalter beim Update an stand (Bestandsprobe). Er muss nichts tun; wer
+die Vorgabe will, schaltet ein, sobald drei Einheiten einer Familie gemessen sind.
+
+### Offen — nicht in diesem Release
+
+- **Das Umrechnungs-Paket** (Entscheidung 23.09.): Leiter weg, Stufentest allein, Setzung
+  beschriftet, Verfall nach sechs Monaten als Konstante, Tempo-Kachel aus, Leiter als Gegenprobe
+  im Rechenweg. Zahlen vorher/nachher stehen in der Vorlage (Kette 173,6 → 170,0 W in Stunde 1).
+  **Eigenes Release.**
+- Paket 2 der Reparaturphase ([V], KARTE_5 §7): F1.1 (`max_hr`) nach Entscheidung, F3.2/F3.3
+  Wochenplan, F3.1 Tempo-Watt nach S12, F4a.6 Lastgrenze; die vier Entscheidungen S1/S3/S5/S13.
+- Messanweisungen S2/S6/S12 an die lesende Bau-Sitzung (MESSANWEISUNGEN_S2_S6_S12.md).
+- Bauregel 10, Verwandte ohne Vorgabe: `BRIDGE_*`, `DECLINE_PER_HOUR`, `SETTINGS_NOTE`
+  „13 Fahrten" — fallen zum Teil mit dem Umrechnungs-Paket, der Rest ist Paket 3/4.
 
 ## 0.66.0 — drei kleine Reparaturen, keine davon an einer Rechnung (20.09.2026)
 

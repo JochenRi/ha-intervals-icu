@@ -341,9 +341,12 @@ def websocket_blocks(hass, connection, msg) -> None:
     # AUCH bei ausgeschaltetem Schalter mit, denn sonst koennte die Karte den
     # Vergleich nicht zeigen, ohne dass er schon wirkt.
     result["steering_on"] = steering_lib.steering_on(data)
-    result["steering"] = steering_lib.state(result)
-    result["compare"] = steering_lib.compare(result)
-    result["steering_anchor_date"] = steering_lib.STEERING_ANCHOR_DATE
+    # DER STARTWERT JE ATHLET aus dem Archiv (0.66.3, Michael-Befund) - nicht
+    # aus dem Code. Fehlt er, sagt `state` je Familie, dass er noch entsteht.
+    anchors = steering_lib.anchors(data)
+    result["steering"] = steering_lib.state(result, anchors)
+    result["compare"] = steering_lib.compare(result, anchors)
+    result["steering_anchors"] = anchors
     # Die Saetze zum Schalter kommen AUS DEM MODUL - eine Fassung im Frontend
     # waere die zweite Wahrheit aus 0.52.0, und die Versionsangabe darin stuende
     # dann an zwei Stellen.
@@ -774,10 +777,19 @@ async def websocket_set_steering_source(hass, connection, msg) -> None:
         box = {}
         data["settings"] = box
     want = bool(msg["on"])
+    changed = False
     if bool(box.get(steering_lib.STEERING_SWITCH)) != want:
         box[steering_lib.STEERING_SWITCH] = want
+        changed = True
+    # BEIM EINSCHALTEN ENTSTEHT DER STARTWERT (0.66.3): aus den letzten
+    # eigenen Einheiten je Familie, am heutigen Tag. Ein vorhandener bleibt.
+    if want and steering_lib.ensure_anchors(
+            data, blocks_lib.series(data, with_other=False), dt_util.now().date().isoformat()):
+        changed = True
+    if changed:
         await coordinator.archive.async_save_now()
-    connection.send_result(msg["id"], {"on": steering_lib.steering_on(data)})
+    connection.send_result(msg["id"], {"on": steering_lib.steering_on(data),
+                                       "anchors": steering_lib.anchors(data)})
 
 
 @websocket_api.websocket_command(
@@ -1299,7 +1311,7 @@ def _session_inputs(data: dict[str, Any]) -> dict[str, Any]:
         # Wert None - und `scaled()` betritt den neuen Zweig gar nicht erst,
         # statt ihn zu betreten und dort dasselbe zu tun wie vorher. Ein
         # Schalter, der die alte Rechnung nachbaut, ist kein Rueckweg.
-        "steering": (steering_lib.state(series)
+        "steering": (steering_lib.state(series, steering_lib.anchors(data))
                      if steering_lib.steering_on(data) else None),
     }
 
@@ -1844,6 +1856,12 @@ async def websocket_measure_section_marks(hass, connection, msg) -> None:
             return
         results[family] = {"hours": hours, "blocks": blocks, "reason": reason}
 
+    # Mit der dritten gemessenen Einheit einer Familie kann der Startwert
+    # entstehen (0.66.3) - hier, weil hier ohnehin geschrieben wird, nicht in
+    # einem Leseweg (F1.11-Klasse).
+    if steering_lib.steering_on(data):
+        steering_lib.ensure_anchors(data, blocks_lib.series(data, with_other=False),
+                                    dt_util.now().date().isoformat())
     await coordinator.archive.async_save_now()
     connection.send_result(msg["id"], {
         "activity_id": activity_id,

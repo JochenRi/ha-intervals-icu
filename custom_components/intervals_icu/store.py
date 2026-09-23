@@ -13,7 +13,7 @@ from typing import Any
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
-from . import day_context, importer, plan, ramp_tests, section_marks
+from . import day_context, importer, plan, ramp_tests, section_marks, steering
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
@@ -77,6 +77,14 @@ class IntervalsArchive:
             # maths changes. A no-op returns None and must not save.
             if (tests := ramp_tests.migrate(self.data.get(ramp_tests.BLOCK))) is not None:
                 self.data[ramp_tests.BLOCK] = tests
+                self.schedule_save()
+            # DER STARTWERT DER STEUERUNG (0.66.3, Michael-Befund): Archive, die
+            # von 0.62.0 bis 0.66.2 mit eingeschalteter Steuerung liefen, hatten
+            # ihn im Code. Die Uebernahme schreibt ihn EINMAL ins Archiv, damit
+            # die Vorgabe des ersten Athleten nicht neu entsteht; ein Archiv mit
+            # ausgeschaltetem Schalter bekommt nichts - dort entsteht er beim
+            # Einschalten aus den eigenen Einheiten.
+            if steering.migrate_legacy_anchor(self.data):
                 self.schedule_save()
             # Fuenfter Block, dieselben zwei Auflagen. Die Migration traegt
             # hier dieselbe Trennung wie bei ramp_tests, nur eine Ebene

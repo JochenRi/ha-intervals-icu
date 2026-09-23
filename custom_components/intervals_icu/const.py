@@ -39,7 +39,7 @@ PANEL_COMPONENT = "intervals-icu-panel"
 PANEL_FILE = "intervals-panel.js"
 PANEL_TITLE = "Intervals"
 PANEL_ICON = "mdi:chart-timeline-variant"
-PANEL_VERSION = "0.66.2"
+PANEL_VERSION = "0.66.3"
 
 # --- thresholds shared by backend and panel -----------------------------------
 # One definition per number, here, because the panel has to show several of them
@@ -191,17 +191,35 @@ BLOCK_ORDER_TOLERANCE = 0.05
 # Wer auf ihm regelt, regelt auf dem frischesten Moment statt auf der Einheit.
 # Er bleibt sichtbar und beschriftet, er zaehlt nur nicht mit.
 STEERING_FIRST_BLOCK_COUNTS = False
-# Die Startwerte. SweetSpot 190 W ist der Familienpunkt aus Block 2 der letzten
-# vier Einheiten (189/190/192/194 W), VO2max 250 W der bisherige Kachelwert.
-# Beide sind STARTWERTE, keine laufende Regel - ab hier bewegt sie nur C6.
-STEERING_ANCHOR_W = {"sweetspot": 190, "vo2max": 250}
-# Der Stichtag, ab dem die Regel laeuft. Er ist noetig, weil die Startwerte
-# AUS dem Bestand bis hierher gerechnet wurden: liesse man die Regel noch
-# einmal ueber dieselben Einheiten laufen, waere der Startwert doppelt
-# verrechnet. Und er haelt das Nachmarkieren alter Fahrten folgenlos fuer die
-# Vorgabe - simuliert: ohne Stichtag verschiebt ein Nachtrag die heutige
-# Vorgabe in 292 von 300 Laeufen, im Mittel um 9,2 W.
-STEERING_ANCHOR_DATE = "2026-09-17"
+# DER STARTWERT ENTSTEHT JE ATHLET IM ARCHIV, NICHT HIER (0.66.3, Michael-
+# Befund, Bauregel 10). Bis 0.66.2 standen hier zwei Konstanten mit Johannes'
+# Startwerten (SweetSpot 190, VO2max 250) und seinem Stichtag (17.09.2026),
+# fest im Code. Ein zweiter Athlet sah im Kachelkopf eine
+# fremde Vorgabe und seine eigenen Einheiten darunter, und alles vor dem
+# 17.09.2026 zaehlte fuer ihn nicht. Jetzt entsteht der Startwert aus den
+# eigenen Einheiten am Tag des Einschaltens (steering.ensure_anchors) und
+# steht im Archiv (settings.steering_anchor).
+#
+# Was bleibt, ist die UEBERNAHME fuer Archive, die von 0.62.0 bis 0.66.2 mit
+# eingeschalteter Steuerung liefen: dort GALT der Startwert schon, und er darf
+# durch die Reparatur nicht neu entstehen (er laege bei 191/250 statt 190/250).
+# Gelesen wird diese Konstante ausschliesslich in steering.migrate_legacy_anchor,
+# ein Waechter in test_steering haelt das fest.
+LEGACY_STEERING_ANCHOR = {"w": {"sweetspot": 190, "vo2max": 250}, "date": "2026-09-17",
+                          "source": "übernommen aus 0.62.0"}
+# Die Uebernahme greift nur, wenn der Code-Startwert zum BESTAND des Archivs
+# passt: der eigene Startwert (letzte vier Einheiten vor dem Stichtag) darf
+# hoechstens um diesen Anteil abweichen. Beim ersten Athleten sind es 0,5 %
+# (191 gegen 190) und 2,4 % (244 gegen 250); ein anderer Athlet mit 150 W
+# liegt 21 % daneben und bekommt keine fremde Zahl - unabhaengig davon, wie
+# sein Schalter beim Update steht.
+LEGACY_ANCHOR_TOLERANCE = 0.10
+# Wie viele der letzten eigenen Einheiten den Startwert bilden, und ab wie
+# vielen er ueberhaupt entsteht. Vier, weil 0.62.0 ihn fuer den ersten
+# Athleten so gebildet hat (Block 2 der letzten vier Einheiten); drei als
+# Mindestzahl, dieselbe Schranke wie BLOCK_MIN_FOR_SOURCE.
+STEERING_ANCHOR_UNITS = 4
+STEERING_ANCHOR_MIN_UNITS = 3
 # C6: ein Schritt von 5 W, und nur dann, wenn MINDESTENS ZWEI der letzten DREI
 # Einheiten derselben Familie auf DERSELBEN Seite ausserhalb des Korridors
 # liegen. Bezug ist die VORGABE, nicht die gefahrenen Watt.

@@ -100,6 +100,9 @@ def _load(name):
 importer = _load("importer")
 W = _load("workouts")
 ws = _load("websocket")
+# Das ECHTE blocks.series, bevor einzelne Abschnitte es stubben - der
+# Michael-Befund unten braucht es zurueck (ein Stub kennt keine Marken).
+_REAL_SERIES = ws.blocks_lib.series
 
 
 class FakeConn:
@@ -155,7 +158,7 @@ def set_inputs(ftp, curve, blocks, anchors=None):
     ws._max_hr = lambda data: 190.0
     ws.coach_module.anchors = lambda data: dict(anchors or {"aerobic_hr": 146})
     ws.fatigue.curve = lambda data, **kw: curve
-    ws.blocks_lib.series = lambda data: blocks
+    ws.blocks_lib.series = lambda data, **kw: blocks
     ws.ramp_lib.latest = lambda data: None
 
 
@@ -321,7 +324,7 @@ check("B2b-2: der Schalter steht im Archiv, nicht in den Integrationsoptionen",
 
 # WELCHE Familien ihre Watt aus den Bloecken beziehen - aus der Quellenkette.
 _bl = FakeConn()
-ws.blocks_lib.series = lambda data: {"families": {}}
+ws.blocks_lib.series = lambda data, **kw: {"families": {}}
 ws._pick = lambda hass, athlete_id: FakeCoordinator(importer.empty_data("i1"))
 ws.websocket_blocks(None, _bl, {"id": 1})
 eq("B2b-2: feeds_watts kommt aus SOURCE_CHAIN",
@@ -511,6 +514,57 @@ for _i in range(2):
 eq("F1.8b Handler: dieselbe Marke zweimal - kein Speichervorgang", _c8.archive.saves, 0)
 eq("F1.8b Handler: der Eintrag ist bitgleich", sm.entry_for(_c8.archive.data, "f1"), _before8)
 ws.dt_util = _dt_saved8
+
+
+# --- Michael-Befund (0.66.3) · der Startwert entsteht beim Einschalten ---------
+# Ein ZWEITER, erfundener Athlet: drei gemessene SweetSpot-Einheiten bei
+# ~150 W, Blockschalter auf Marken, Steuerung aus. Beim Einschalten entsteht
+# sein Startwert aus SEINEN Einheiten und wird gespeichert; 190 W kommt nirgends
+# vor. Rot vor dem Bau (der Handler kannte keine Anker).
+def _michael_archive():
+    d = importer.empty_data("i2")
+    d["settings"] = {ws.blocks_lib.BLOCK_SWITCH: True, ws.steering_lib.STEERING_SWITCH: False}
+    for i, (day, w) in enumerate((("2026-08-20", 148), ("2026-08-28", 150), ("2026-09-05", 152))):
+        aid = f"m{i}"
+        d["activities"][aid] = {"start_date_local": day + "T08:00:00", "name": "SweetSpot", "type": "Ride"}
+        sm.set_mark(d, aid, day, "sweetspot", 600, _LAPS, set_at=day)
+        sm.set_mark(d, aid, day, "sweetspot", 1290, _LAPS, set_at=day)
+        sm.set_measurement(d, aid, family="sweetspot", measured_at=day, window_s=0,
+                           blocks=[{"start_index": 600, "alpha": 0.72, "watts": w + 2, "hr": 150, "minutes": 10},
+                                   {"start_index": 1290, "alpha": 0.68, "watts": w, "hr": 152, "minutes": 10}])
+    return d
+
+
+# Der globale Stub von oben (`series = lambda data: {}`) wird hier durch das
+# ECHTE Modul ersetzt - der Startwert muss aus echten Marken entstehen.
+ws.blocks_lib.series = _REAL_SERIES
+_cm = FakeCoordinator(_michael_archive())
+_cm.archive = SaveArchive(_cm.archive.data)
+ws._pick = lambda hass, athlete_id: _cm
+_dtm = ws.dt_util
+ws.dt_util = types.SimpleNamespace(now=lambda: __import__("datetime").datetime(2026, 9, 23))
+_cn = FakeConn()
+asyncio.run(ws.websocket_set_steering_source(None, _cn, {"id": 1, "on": True}))
+_ancm = (_cn.results or [{}])[0].get("anchors") or {}
+check("Michael: der Handler meldet den entstandenen Startwert", "sweetspot" in _ancm)
+eq("Michael: der Startwert ist SEIN Median (nicht 190)", (_ancm.get("sweetspot") or {}).get("w"), 150)
+eq("Michael: der Stichtag ist der Einschalttag", (_ancm.get("sweetspot") or {}).get("date"), "2026-09-23")
+eq("Michael: einmal gespeichert (Schalter + Anker)", _cm.archive.saves, 1)
+check("Michael: VO2max ohne Einheiten hat keinen Startwert", "vo2max" not in _ancm)
+# Die Blockkachel danach: Vorgabe 150, und 190 kommt in der Payload nicht vor.
+_cb = FakeConn()
+ws.websocket_blocks(None, _cb, {"id": 2})
+_stm = ((_cb.results or [{}])[0]).get("steering") or {}
+eq("Michael: die Kachel zeigt seinen Startwert", (_stm.get("sweetspot") or {}).get("watts"), 150)
+check("Michael: 190 und 250 stehen nirgends in der Steuerungs-Payload",
+      "190" not in str(_stm) and "250" not in str(_stm))
+ok_json = str(((_cb.results or [{}])[0]).get("compare") or {})
+check("Michael: auch nicht in der Vorschau", "190" not in ok_json and "250" not in ok_json)
+# Ausschalten loescht den Startwert nicht.
+asyncio.run(ws.websocket_set_steering_source(None, FakeConn(), {"id": 3, "on": False}))
+eq("Michael: Ausschalten laesst den Startwert stehen",
+   ws.steering_lib.anchors(_cm.archive.data).get("sweetspot", {}).get("w"), 150)
+ws.dt_util = _dtm
 
 print(f"test_handlers: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:

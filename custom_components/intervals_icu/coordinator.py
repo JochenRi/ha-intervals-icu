@@ -12,7 +12,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from . import derive, importer
+from . import blocks, derive, importer, steering
 from .api import IntervalsAuthError, IntervalsClient, IntervalsError
 from .const import (
     DEFAULT_SCAN_INTERVAL,
@@ -165,6 +165,12 @@ class IntervalsCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
 
             importer.mark_activities_current(self.archive.data)
+            # Neue Einheiten aus der Namenserkennung koennen einen Startwert
+            # vollmachen (0.66.3, Michael-Befund) - der Sync schreibt ohnehin.
+            if steering.steering_on(self.archive.data):
+                steering.ensure_anchors(self.archive.data,
+                                        blocks.series(self.archive.data, with_other=False),
+                                        today.isoformat())
             self.archive.data["last_import"] = today.isoformat()
             if full:
                 self.archive.data["full_import_done"] = True

@@ -2610,6 +2610,26 @@ const acts = F.activities(), thr = F.thresholds();
   ok(tempo.includes("keine Vorgabe"), "tempo-kachel: der Satz zur fehlenden Vorgabe fehlt");
   ok(/weitere Einheiten/.test(tempo),
      "tempo-kachel: sie sagt nicht, dass weitere Einheiten daran nichts aendern");
+
+  // MICHAEL-BEFUND (0.66.3): ein STARTWERT, DER NOCH ENTSTEHT, ist etwas anderes
+  // als eine Familie ohne Vorgabe. Die Kachel sagt den Satz aus dem Zustand
+  // ("noch kein Startwert - 2 von 3 ...") und nicht "Fahr die - W" und nicht
+  // "daran aendern weitere Einheiten nichts". Rot vor dem Bau.
+  const bP = laden({ sweetspot: { watts: null, anchor_pending: true, anchor_min_units: 3, n_units_total: 2,
+                                  note: "NOCH KEIN STARTWERT - 2 von 3 EINHEITEN", band_note: "keine Vorgabe, keine Spanne",
+                                  n_units: 2, single_block: [], first_block_counts: false, band: null } },
+                   { sweetspot: { steered: true, new_watts: null, new_band: null, delta: null } });
+  const pend = q._famValue(bP, "sweetspot");
+  ok(/NOCH KEIN STARTWERT/.test(pend), "startwert-kachel: der Satz aus dem Zustand fehlt");
+  ok(!/Fahr die/.test(pend), "startwert-kachel: 'Fahr die - W' steht da, obwohl es keine Vorgabe gibt");
+  ok(!/weitere Einheiten daran nichts/.test(pend),
+     "startwert-kachel: behauptet, weitere Einheiten aenderten nichts - sie bilden den Startwert");
+  // Und die Basis-Zeile im Quellen-Reiter nennt Herkunft und Datum des Startwerts.
+  q._blocks = laden({ sweetspot: { watts: 150, anchor_w: 150, anchor_date: "2026-09-23",
+                                   anchor_source: "AUS DEINEN LETZTEN 4 EINHEITEN", n_since: 0, moves: 0 } },
+                    { sweetspot: { steered: true, new_watts: 150 } });
+  const basis = q._steeringSwitch(q._blocks);
+  ok(/AUS DEINEN LETZTEN 4 EINHEITEN/.test(basis), "quellen: die Herkunft des Startwerts fehlt in der Basis-Zeile");
   ok(!tempo.includes("Fahr die"),
      "tempo-kachel: 'Fahr die - W' steht noch da, obwohl es keine Zahl gibt");
   ok(tempo.includes("keine Vorgabe, keine Spanne"),

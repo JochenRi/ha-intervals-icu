@@ -12,7 +12,7 @@ import blocks  # noqa: E402
 import steering  # noqa: E402
 import workouts as WK  # noqa: E402
 from const import (  # noqa: E402
-    STEERING_ANCHOR_DATE, STEERING_ANCHOR_W, STEERING_BAND_MIN_N,
+    STEERING_BAND_MIN_N,
     STEERING_BAND_WINDOW, STEERING_MIN_UNITS, STEERING_STEP_W,
 )
 
@@ -70,9 +70,17 @@ VO_REAL = [
           [179, 184, 186, 187], [3.9] * 4),
 ]
 
+
+# DER STARTWERT ALS FIXTURE, nicht aus dem Code (0.66.3, Michael-Befund): die
+# Zahlen sind die des ersten Athleten am 17.09.2026 - hier als Prueffall, im
+# Paket nur noch als Uebernahme fuer sein Archiv (LEGACY_STEERING_ANCHOR).
+JO_W = {"sweetspot": 190, "vo2max": 250}
+JO_DATE = "2026-09-17"
+JO_ANCHORS = {f: {"w": w, "date": JO_DATE, "source": "Fixture"} for f, w in JO_W.items()}
+
 print("=== 1. BLOCK 1 STEUERT NICHT ===")
-_ss = steering.family_state(SS_REAL, "sweetspot")
-_vo = steering.family_state(VO_REAL, "vo2max")
+_ss = steering.family_state(SS_REAL, "sweetspot", JO_ANCHORS.get("sweetspot"))
+_vo = steering.family_state(VO_REAL, "vo2max", JO_ANCHORS.get("vo2max"))
 check("SS: Block 1 faellt aus der Steuerung (alpha der Zeilen)",
       [r["alpha"] for r in _ss["rows"]], [0.657, 0.696, 0.68, 0.699, 0.658])
 check("SS: die gesteuerten Watt sind die OHNE Block 1",
@@ -84,8 +92,8 @@ ok("Gegenprobe: mit Block 1 waere der alpha-Median ein anderer",
 check("Block 1 zaehlt laut Zustand nicht mit", _ss["first_block_counts"], False)
 
 print("\n=== 2. DIE VORGABE: Startwert, Stichtag, C6 ===")
-check("SS steht auf dem Startwert", _ss["watts"], STEERING_ANCHOR_W["sweetspot"])
-check("VO2max steht auf dem Startwert", _vo["watts"], STEERING_ANCHOR_W["vo2max"])
+check("SS steht auf dem Startwert", _ss["watts"], JO_W["sweetspot"])
+check("VO2max steht auf dem Startwert", _vo["watts"], JO_W["vo2max"])
 check("keine Einheit nach dem Stichtag", (_ss["n_since"], _vo["n_since"]), (0, 0))
 check("also auch keine Bewegung", (_ss["moves"], _vo["moves"]), (0, 0))
 ok("und die Karte sagt warum", bool(_ss["note"]))
@@ -96,31 +104,31 @@ ok("alle echten Einheiten liegen im Korridor",
 _hart = VO_REAL + [point("2026-09-20", [0.9, 0.18, 0.17], [250, 250, 248], [180, 184, 186]),
                    point("2026-09-27", [0.9, 0.19, 0.18], [250, 250, 248], [180, 184, 186]),
                    point("2026-10-04", [0.9, 0.40, 0.42], [250, 250, 248], [180, 184, 186])]
-_s2 = steering.family_state(_hart, "vo2max")
+_s2 = steering.family_state(_hart, "vo2max", JO_ANCHORS.get("vo2max"))
 check("C6 nach unten: zwei von drei unter dem Korridor",
-      _s2["watts"], STEERING_ANCHOR_W["vo2max"] - STEERING_STEP_W)
+      _s2["watts"], JO_W["vo2max"] - STEERING_STEP_W)
 check("und genau EINE Bewegung, nicht zwei", _s2["moves"], 1)
 # GEGENPROBE: dieselben drei Einheiten INNERHALB des Korridors bewegen nichts.
 _weich = VO_REAL + [point(d, [0.9, 0.40, 0.42], [250, 250, 248], [180, 184, 186])
                     for d in ("2026-09-20", "2026-09-27", "2026-10-04")]
 check("Gegenprobe: im Korridor bewegt sich nichts",
-      steering.family_state(_weich, "vo2max")["watts"], STEERING_ANCHOR_W["vo2max"])
+      steering.family_state(_weich, "vo2max", JO_ANCHORS.get("vo2max"))["watts"], JO_W["vo2max"])
 
 # DAS FENSTER WIRD GELEERT: sechs zu harte Einheiten geben nicht sechs Schritte.
 _sechs = VO_REAL + [point(f"2026-1{i // 3}-{(i % 3) * 9 + 2:02d}", [0.9, 0.18, 0.17],
                           [250, 250, 248], [180, 184, 186]) for i in range(6)]
-_s6 = steering.family_state(_sechs, "vo2max")
+_s6 = steering.family_state(_sechs, "vo2max", JO_ANCHORS.get("vo2max"))
 # Nach jedem Schritt faengt das Fenster neu an: je DREI Einheiten ein Schritt,
 # aus sechs werden also drei - nicht sechs (Ratsche) und nicht zwei.
 check("Fenster leeren: sechs zu harte Einheiten geben DREI Schritte", _s6["moves"], 3)
 check("und die Vorgabe steht drei Schritte tiefer",
-      _s6["watts"], STEERING_ANCHOR_W["vo2max"] - 3 * STEERING_STEP_W)
+      _s6["watts"], JO_W["vo2max"] - 3 * STEERING_STEP_W)
 ok("ohne Leeren waeren es mehr (Ratsche)", _s6["moves"] < 6)
 # GEGENPROBE, GEZAEHLT: dieselbe Reihe ohne Leeren haette nach der zweiten
 # Einheit bei JEDER weiteren geschoben - vier Schritte mehr.
 _ohne_leeren, _hist, _n = 0, [], 0
 for _r in _s6["rows"]:
-    if not _r.get("usable") or str(_r["date"]) <= STEERING_ANCHOR_DATE:
+    if not _r.get("usable") or str(_r["date"]) <= JO_DATE:
         continue
     _n += 1
     _hist.append(_r["side"])
@@ -131,23 +139,23 @@ check("Gegenprobe Ratsche: ohne Leeren waeren es vier Schritte statt drei", _ohn
 print("\n=== 3. RANDFAELLE ===")
 _zwei = VO_REAL + [point("2026-09-20", [0.9, 0.18], [250, 248], [180, 186]),
                    point("2026-09-27", [0.9, 0.19], [250, 248], [180, 186])]
-_s3 = steering.family_state(_zwei, "vo2max")
+_s3 = steering.family_state(_zwei, "vo2max", JO_ANCHORS.get("vo2max"))
 check("unter drei Einheiten seit dem Startwert: keine Bewegung",
-      (_s3["watts"], _s3["moves"]), (STEERING_ANCHOR_W["vo2max"], 0))
+      (_s3["watts"], _s3["moves"]), (JO_W["vo2max"], 0))
 ok("und ein Hinweis steht dabei", str(STEERING_MIN_UNITS) in str(_s3["note"]))
 ok("Gegenprobe: mit der dritten Einheit bewegt sich dieselbe Reihe",
    steering.family_state(_zwei + [point("2026-10-04", [0.9, 0.18], [250, 248], [180, 186])],
-                         "vo2max")["moves"] == 1)
+                         "vo2max", JO_ANCHORS["vo2max"])["moves"] == 1)
 
-_ein = steering.family_state([point("2026-09-20", [0.42], [250], [184])], "vo2max")
+_ein = steering.family_state([point("2026-09-20", [0.42], [250], [184])], "vo2max", JO_ANCHORS.get("vo2max"))
 check("Familie mit nur EINEM Block: keine Vorgabe ueber den Startwert hinaus",
-      (_ein["watts"], _ein["n_units"]), (STEERING_ANCHOR_W["vo2max"], 0))
+      (_ein["watts"], _ein["n_units"]), (JO_W["vo2max"], 0))
 check("und die Einheit wird gemeldet statt uebergangen",
       _ein["single_block"], ["2026-09-20"])
 
 check("Familienwechsel: SweetSpot rechnet nicht mit VO2max-Zeilen",
-      steering.family_state(VO_REAL, "sweetspot")["watts"],
-      STEERING_ANCHOR_W["sweetspot"])
+      steering.family_state(VO_REAL, "sweetspot", JO_ANCHORS.get("sweetspot"))["watts"],
+      JO_W["sweetspot"])
 check("der Korridor bleibt, wie er war", (_vo["corridor"], _ss["corridor"]),
       ([0.2, 0.5], [0.5, 0.75]))
 ok("Nachmarkierung vor dem Stichtag bewegt die Vorgabe NICHT",
@@ -155,12 +163,12 @@ ok("Nachmarkierung vor dem Stichtag bewegt die Vorgabe NICHT",
        [point("2026-05-02", [0.9, 0.17, 0.18], [250, 250, 248], [180, 184, 186]),
         point("2026-05-09", [0.9, 0.17, 0.18], [250, 250, 248], [180, 184, 186]),
         point("2026-05-16", [0.9, 0.17, 0.18], [250, 250, 248], [180, 184, 186])]
-       + VO_REAL, "vo2max")["watts"] == STEERING_ANCHOR_W["vo2max"])
+       + VO_REAL, "vo2max", JO_ANCHORS["vo2max"])["watts"] == JO_W["vo2max"])
 ok("Gegenprobe: dieselben drei NACH dem Stichtag bewegen sie sehr wohl",
    steering.family_state(
        VO_REAL + [point(d, [0.9, 0.17, 0.18], [250, 250, 248], [180, 184, 186])
                   for d in ("2026-09-20", "2026-09-27", "2026-10-04")],
-       "vo2max")["watts"] != STEERING_ANCHOR_W["vo2max"])
+       "vo2max", JO_ANCHORS["vo2max"])["watts"] != JO_W["vo2max"])
 
 print("\n=== 4. DAS T-BAND ===")
 check("SS-Watt-Band trifft die nachgerechneten Zahlen",
@@ -190,7 +198,7 @@ check("die BREITE bleibt dieselbe - nur der Aufhaengepunkt wandert",
 check("VO2max-Pulsband", (_vo["hr_band"]["low"], _vo["hr_band"]["high"]), (178, 189))
 check("unter drei Einheiten gibt es kein Band", steering.t_band([190, 192]), None)
 ok("und die Karte sagt es statt zu schweigen",
-   steering.family_state(SS_REAL[:2], "sweetspot")["band_note"] is not None)
+   steering.family_state(SS_REAL[:2], "sweetspot", JO_ANCHORS.get("sweetspot"))["band_note"] is not None)
 check("ab drei schon", steering.t_band([190, 192, 194]) is None, False)
 # Das Band ist das VORHERSAGEband: mit dem Zusatzglied breiter als ohne.
 _b = steering.t_band([190, 192, 194, 196])
@@ -211,7 +219,7 @@ _series = {"families": {"vo2max": {"points": VO_REAL, "source_ok": True,
                                    "hr_window": {"low": 174, "high": 186}}}}
 _vo4x4 = WK.BY_KEY["vo2_4x4"]
 _ohne = WK.scaled(_vo4x4, 194, 146, blocks=_series)
-_mit_st = WK.scaled(_vo4x4, 194, 146, blocks=_series, steering=steering.state(_series))
+_mit_st = WK.scaled(_vo4x4, 194, 146, blocks=_series, steering=steering.state(_series, JO_ANCHORS))
 check("Schalter aus: Quelle bleibt blocks", _ohne["watt_source"], "blocks")
 check("Schalter an: Quelle heisst steering", _mit_st["watt_source"], "steering")
 ok("und die Zahlen unterscheiden sich wirklich (Trefferzusicherung)",
@@ -224,7 +232,7 @@ check("Blockschalter und Steuerungsschalter sind zwei verschiedene Schluessel",
       steering.STEERING_SWITCH == blocks.BLOCK_SWITCH, False)
 
 print("\n=== 6. EHRLICHE ETIKETTEN ===")
-_st = steering.state(_series)
+_st = steering.state(_series, JO_ANCHORS)
 for key, src in (("vo2_3030", "ftp"), ("vo2_3015", "ftp"),
                  ("vo2_5x4", "steering"), ("vo2_4x8", "steering"),
                  ("vo2_4x4", "steering")):
@@ -280,7 +288,7 @@ _anders[-1] = dict(_anders[-1], block_watts_each=[299] + list(_anders[-1]["block
                    first_watts=299)
 _ser2 = {"families": {"vo2max": {**_series["families"]["vo2max"], "points": _anders,
                                  "latest": _anders[-1]}}}
-_st2 = steering.state(_ser2)
+_st2 = steering.state(_ser2, JO_ANCHORS)
 check("Gegenprobe: Block 1 um 42 W hoeher aendert das gesteuerte Ende NICHT",
       WK.ramp_protocol(194, None, _ser2, None, _st2)["end_w"], _p_an["end_w"])
 ok("Gegenprobe-Zusicherung: ohne Schalter haette derselbe Block 1 es sehr wohl bewegt",
@@ -288,7 +296,7 @@ ok("Gegenprobe-Zusicherung: ohne Schalter haette derselbe Block 1 es sehr wohl b
 # GEGENPROBE 2: bewegt sich die Vorgabe, bewegt sich das Ende mit.
 _tief = VO_REAL + [point(d, [0.9, 0.17, 0.18], [250, 250, 248], [180, 184, 186])
                    for d in ("2026-09-20", "2026-09-27", "2026-10-04")]
-_st3 = {"vo2max": steering.family_state(_tief, "vo2max")}
+_st3 = {"vo2max": steering.family_state(_tief, "vo2max", JO_ANCHORS.get("vo2max"))}
 check("die Vorgabe sinkt um einen Schritt - das Ende sinkt mit",
       WK.ramp_protocol(194, None, _series, None, _st3)["end_w"],
       _p_an["end_w"] - STEERING_STEP_W)
@@ -296,11 +304,11 @@ check("ohne Vorgabe faellt die Kette zurueck auf Block 1",
       WK.ramp_protocol(194, None, _series, None, {})["end_source"]["kind"], "blocks")
 
 print("\n=== 7. PARALLELANZEIGE ===")
-_cmp = steering.compare(_series)["vo2max"]
+_cmp = steering.compare(_series, JO_ANCHORS)["vo2max"]
 check("alt ist die heutige Rechnung", _cmp["old_watts"], VO_REAL[-1]["median_watts"])
-check("neu ist die Vorgabe", _cmp["new_watts"], STEERING_ANCHOR_W["vo2max"])
+check("neu ist die Vorgabe", _cmp["new_watts"], JO_W["vo2max"])
 check("und der Unterschied wird beziffert",
-      _cmp["delta"], STEERING_ANCHOR_W["vo2max"] - VO_REAL[-1]["median_watts"])
+      _cmp["delta"], JO_W["vo2max"] - VO_REAL[-1]["median_watts"])
 ok("beide Baender reisen mit", bool(_cmp["new_band"] and _cmp["new_hr_band"]))
 ok("die Steuerung sagt, worauf sie ruht", _cmp["steered"])
 
@@ -333,7 +341,7 @@ _load("derive")
 importer = _load("importer")
 
 check("und `state` auf einer leeren Reihe ist leer", steering.state({"families": {}}), {})
-ok("compare ebenfalls", steering.compare({"families": {}}) == {})
+ok("compare ebenfalls", steering.compare({"families": {}}, JO_ANCHORS) == {})
 
 
 def _blk(start, alpha, watts, hr, label="WORK"):
@@ -369,14 +377,14 @@ ok("Gegenprobe: dasselbe Archiv MIT gesetztem Schalter liest sich als an",
    steering.steering_on({**_migriert, "settings": {steering.STEERING_SWITCH: True}}))
 
 _reihe = blocks.series(ARCHIV)
-_zustand = steering.state(_reihe)["vo2max"]
+_zustand = steering.state(_reihe, JO_ANCHORS)["vo2max"]
 check("am echten Archiv: vier Einheiten seit dem Stichtag", _zustand["n_since"], 4)
 # Vier Einheiten unter dem Korridor geben ZWEI Schritte: nach der zweiten
 # greift die Regel (zwei von drei auf derselben Seite), das Fenster wird
 # geleert, nach der vierten greift sie erneut.
 check("und die Vorgabe steht zwei Schritte tiefer",
       (_zustand["watts"], _zustand["moves"]),
-      (STEERING_ANCHOR_W["vo2max"] - 2 * STEERING_STEP_W, 2))
+      (JO_W["vo2max"] - 2 * STEERING_STEP_W, 2))
 check("Block 1 blieb draussen (alpha der Zeilen)",
       [r["alpha"] for r in _zustand["rows"]], [0.18] * 4)
 
@@ -386,10 +394,10 @@ _vo4x4_e = WK.BY_KEY["vo2_4x4"]
 _aus1 = WK.scaled(_vo4x4_e, 194, 146, blocks=_reihe, steering=None)
 ARCHIV["settings"][steering.STEERING_SWITCH] = True
 _an = WK.scaled(_vo4x4_e, 194, 146, blocks=_reihe,
-                steering=(steering.state(_reihe) if steering.steering_on(ARCHIV) else None))
+                steering=(steering.state(_reihe, JO_ANCHORS) if steering.steering_on(ARCHIV) else None))
 ARCHIV["settings"][steering.STEERING_SWITCH] = False
 _aus2 = WK.scaled(_vo4x4_e, 194, 146, blocks=_reihe,
-                  steering=(steering.state(_reihe) if steering.steering_on(ARCHIV) else None))
+                  steering=(steering.state(_reihe, JO_ANCHORS) if steering.steering_on(ARCHIV) else None))
 check("Rueckweg 1: ausgeschaltet ist die Einheit bit-identisch", _aus2, _aus1)
 check("Rueckweg 2: dieselben Watt und dasselbe Pulsfenster",
       (_aus2.get("blocks_w"), _aus2.get("hr_window")),
@@ -415,13 +423,13 @@ def _punkte(n, fam_alpha, watt=170, hr=160):
              "block_watts_each": [watt + 3, watt], "block_hr": [hr - 2, hr + 2],
              "block_minutes": [20.0, 20.0]} for i in range(n)]
 
-_tempo1 = steering.family_state(_punkte(1, 0.87), "tempo")
+_tempo1 = steering.family_state(_punkte(1, 0.87), "tempo", JO_ANCHORS.get("tempo"))
 check("A1: Tempo hat keine Vorgabe", _tempo1["watts"], None)
 check("A2: Tempo bekommt kein Band", _tempo1["band"], None)
 check("A3: Tempo sagt NICHT 'noch keine Toleranz'",
       _tempo1["band_note"], steering.NO_TARGET_NOTE)
 # DER KERN: auch mit reichlich Einheiten bleibt es dabei. "noch" waere gelogen.
-_tempo9 = steering.family_state(_punkte(9, 0.87), "tempo")
+_tempo9 = steering.family_state(_punkte(9, 0.87), "tempo", JO_ANCHORS.get("tempo"))
 check("A4: Tempo bekommt auch bei neun Einheiten kein Band", _tempo9["band"], None)
 check("A5: und denselben Satz wie bei einer", _tempo9["band_note"], steering.NO_TARGET_NOTE)
 ok("A6: der Satz sagt, dass weitere Einheiten nichts aendern",
@@ -430,14 +438,14 @@ ok("A7: und er nennt die Spanne ausdruecklich, nicht nur die Vorgabe",
    "Spanne" in steering.TILE_NO_TARGET)
 # GEGENPROBE: eine Familie MIT Startwert und zu wenigen Einheiten behaelt den
 # alten Satz. Der Fix darf nicht jede duenne Belegung stumm schalten.
-_ss2 = steering.family_state(_punkte(2, 0.65, watt=190, hr=165), "sweetspot")
+_ss2 = steering.family_state(_punkte(2, 0.65, watt=190, hr=165), "sweetspot", JO_ANCHORS.get("sweetspot"))
 check("A8 GEGENPROBE: SweetSpot mit 2 Einheiten hat eine Vorgabe",
-      _ss2["watts"], STEERING_ANCHOR_W["sweetspot"])
+      _ss2["watts"], JO_W["sweetspot"])
 check("A9 GEGENPROBE: und behaelt 'noch keine Toleranz'",
       _ss2["band_note"], steering.TOO_FEW_NOTE)
 ok("A10 GEGENPROBE: sie ist NICHT als no_target markiert", not _ss2.get("no_target"))
 # TREFFERZUSICHERUNG: mit genug Einheiten faellt der Satz ganz weg.
-_ss4 = steering.family_state(_punkte(4, 0.65, watt=190, hr=165), "sweetspot")
+_ss4 = steering.family_state(_punkte(4, 0.65, watt=190, hr=165), "sweetspot", JO_ANCHORS.get("sweetspot"))
 ok("A11 Trefferzusicherung: SweetSpot mit 4 Einheiten hat ein Band",
    _ss4["band"] is not None)
 check("A12 Trefferzusicherung: und gar keinen Hinweis mehr", _ss4["band_note"], None)
@@ -469,6 +477,123 @@ ok("C7 Trefferzusicherung: die Regel selbst ist n >= Schranke, nicht 'nie'",
    (9 >= STEERING_BAND_QUOTE_MIN_N) is True)
 ok("C8: der Ersatzsatz nennt die Zahl der Einheiten",
    "{n}" in steering.TILE_BAND_NO_QUOTE and "t-Band" in steering.TILE_BAND_NO_QUOTE)
+
+print("\n=== M. DER ZWEITE ATHLET: kein Startwert aus dem Code ===")
+# Michael-Befund (23.09.2026): JO_W / _DATE waren Johannes' Zahlen
+# im Code. Ein zweiter Athlet sah im Kachelkopf 190 / 250 W und seine eigenen
+# Einheiten darunter; alles vor dem 17.09.2026 zaehlte fuer ihn nicht.
+# Die Gattung ist neu: ein ERFUNDENER zweiter Athlet mit anderer Wattlage und
+# anderem Kalender laeuft durch dieselben Wege. Rote Pruefung an 0.66.2+.
+import re as _re
+from pathlib import Path as _P
+import derive as _derive
+
+def _unit(d, w, a, fam="SweetSpot"):
+    return {"date": d, "name": fam, "n_blocks": 2, "block_alphas": [a + 0.1, a],
+            "block_watts_each": [w + 2, w], "block_watts": [w + 2, w], "block_hr": [150, 152],
+            "block_minutes": [20, 20], "median_watts": w + 1, "median_alpha": a + 0.05}
+
+MICH_SS = [_unit("2026-08-20", 148, 0.72), _unit("2026-08-28", 150, 0.70), _unit("2026-09-05", 152, 0.69),
+           _unit("2026-09-19", 151, 0.68), _unit("2026-09-21", 149, 0.71)]
+MICH_VO = [_unit("2026-08-22", 198, 0.45, "VO2max"), _unit("2026-09-02", 200, 0.42, "VO2max"),
+           _unit("2026-09-20", 202, 0.40, "VO2max")]
+MICH_SERIES = {"families": {
+    "sweetspot": {"points": MICH_SS, "source_ok": True, "sessions": 5, "latest": MICH_SS[-1],
+                  "hr_window": {"low": 145, "high": 158}},
+    "vo2max": {"points": MICH_VO, "source_ok": True, "sessions": 3, "latest": MICH_VO[-1],
+               "hr_window": {"low": 170, "high": 185}}}}
+JOHANNES_W = {190, 250}
+
+# 1 · OHNE Startwert im Archiv gibt es keine Vorgabe - und keine fremde Zahl.
+_mich = {"settings": {steering.STEERING_SWITCH: True}}
+check("M1: ein Archiv ohne Startwert hat keine Anker", steering.anchors(_mich), {})
+_st0 = steering.state(MICH_SERIES, steering.anchors(_mich))
+ok("M1: ohne Startwert keine Vorgabe (SweetSpot)", _st0["sweetspot"]["watts"] is None)
+ok("M1: ... und die Kachel sagt, dass der Startwert noch entsteht",
+   _st0["sweetspot"].get("anchor_pending") is True)
+ok("M1: Johannes' Zahlen kommen nirgends vor",
+   not (JOHANNES_W & ({_st0[f].get("watts") for f in _st0} | {_st0[f].get("anchor_w") for f in _st0})))
+
+# 2 · Der Startwert ENTSTEHT aus den eigenen Einheiten - am Tag, an dem er entsteht.
+_changed = steering.ensure_anchors(_mich, MICH_SERIES, today="2026-09-23")
+ok("M2: ensure_anchors meldet die Aenderung", _changed is True)
+_anc = steering.anchors(_mich)
+_erw_ss = round(_derive._median([150, 152, 151, 149]))   # letzte vier, Block 2
+_erw_vo = round(_derive._median([198, 200, 202]))
+check("M2: SweetSpot-Startwert aus den letzten vier eigenen Einheiten", _anc["sweetspot"]["w"], _erw_ss)
+check("M2: VO2max-Startwert aus den eigenen drei", _anc["vo2max"]["w"], _erw_vo)
+check("M2: der Stichtag ist der Tag der Entstehung", (_anc["sweetspot"]["date"], _anc["vo2max"]["date"]),
+      ("2026-09-23", "2026-09-23"))
+ok("M2: die Herkunft steht am Anker", bool(_anc["sweetspot"].get("source")))
+_st1 = steering.state(MICH_SERIES, _anc)
+check("M2: die Vorgabe steht auf dem eigenen Startwert", (_st1["sweetspot"]["watts"], _st1["vo2max"]["watts"]),
+      (_erw_ss, _erw_vo))
+check("M2: keine Einheit nach dem eigenen Stichtag", _st1["sweetspot"]["n_since"], 0)
+ok("M2: ensure_anchors ein zweites Mal aendert nichts", steering.ensure_anchors(_mich, MICH_SERIES, today="2026-09-24") is False)
+check("M2: ... und der Startwert bleibt", steering.anchors(_mich)["sweetspot"]["w"], _erw_ss)
+
+# 3 · Unter drei Einheiten entsteht KEIN Startwert - die Kachel sagt, was fehlt.
+_wenig = {"settings": {steering.STEERING_SWITCH: True}}
+_wenig_series = {"families": {"vo2max": {"points": MICH_VO[:2], "source_ok": False, "sessions": 2, "latest": MICH_VO[1]}}}
+ok("M3: mit zwei Einheiten entsteht kein Startwert", steering.ensure_anchors(_wenig, _wenig_series, today="2026-09-23") is False)
+_st2 = steering.state(_wenig_series, steering.anchors(_wenig))
+ok("M3: die Kachel nennt die Zahl, die fehlt", "2" in str(_st2["vo2max"].get("note")) and "3" in str(_st2["vo2max"].get("note")))
+ok("M3: und keine Vorgabe", _st2["vo2max"]["watts"] is None)
+
+# 4 · Gegenprobe: eine Familie OHNE Vorgabe (Tempo) bleibt no_target, nicht pending.
+_tempo = steering.family_state([_unit("2026-09-13", 169, 0.87, "Tempo")], "tempo", None)
+ok("M4: Tempo bleibt eine Familie ohne Vorgabe", _tempo.get("no_target") is True and not _tempo.get("anchor_pending"))
+
+# 5 · TREFFERZUSICHERUNG JOHANNES: sein Archiv lief mit eingeschalteter Steuerung;
+#     die Uebernahme aus 0.62.0 seedet GENAU 190 / 250 vom 17.09.2026 - und die
+#     Vorgabe ist danach bitgleich mit der von 0.66.2.
+_jo = {"settings": {steering.STEERING_SWITCH: True}}
+_jo_series = {"families": {"sweetspot": {"points": SS_REAL}, "vo2max": {"points": VO_REAL}}}
+# Die Uebernahme fragt den BESTAND (blocks.series) - hier gestellt: fuer _jo die
+# echten Punkte des ersten Athleten, fuer jedes andere Archiv die des zweiten.
+import blocks as _blocks_mod  # noqa: E402
+_series_saved = _blocks_mod.series
+_blocks_mod.series = lambda data, **kw: _jo_series if data is _jo else MICH_SERIES
+ok("M5: die Uebernahme meldet die Aenderung", steering.migrate_legacy_anchor(_jo) is True)
+_ja = steering.anchors(_jo)
+check("M5: Johannes' Startwerte", ({f: a["w"] for f, a in _ja.items()}), {"sweetspot": 190, "vo2max": 250})
+check("M5: Johannes' Stichtag", {a["date"] for a in _ja.values()}, {"2026-09-17"})
+_jst = steering.state(_jo_series, _ja)
+check("M5: SweetSpot-Vorgabe wie 0.66.2", _jst["sweetspot"]["watts"], 190)
+check("M5: VO2max-Vorgabe wie 0.66.2", _jst["vo2max"]["watts"], 250)
+check("M5: n_since wie 0.66.2", (_jst["sweetspot"]["n_since"], _jst["vo2max"]["n_since"]), (0, 0))
+ok("M5: die Uebernahme laeuft nicht zweimal", steering.migrate_legacy_anchor(_jo) is False)
+_aus = {"settings": {steering.STEERING_SWITCH: False}}
+ok("M5 Gegenprobe: Schalter aus -> keine Uebernahme", steering.migrate_legacy_anchor(_aus) is False and steering.anchors(_aus) == {})
+ok("M5 Gegenprobe: leeres Archiv -> keine Uebernahme", steering.migrate_legacy_anchor({}) is False)
+# DIE ZWEITE BEDINGUNG: der zweite Athlet mit Schalter AN beim Update bekommt
+# den Code-Startwert NICHT - sein eigener Bestand (150/210) passt nicht zu
+# 190/250. Ohne diese Bedingung haengt Michaels Vorgabe daran, wie sein
+# Schalter am Tag des Updates steht.
+_mich_an = {"settings": {steering.STEERING_SWITCH: True}}
+ok("M5 Bestandsprobe: Schalter an, fremder Bestand -> keine Uebernahme",
+   steering.migrate_legacy_anchor(_mich_an) is False and steering.anchors(_mich_an) == {})
+_blocks_mod.series = _series_saved
+
+# 6 · WAECHTER: kein Modul liest Johannes' Zahlen zur Laufzeit.
+_comp = _P(__file__).resolve().parents[1] / "custom_components" / "intervals_icu"
+_srcs = {p.name: p.read_text(encoding="utf-8") for p in _comp.glob("*.py")}
+ok("M6: STEERING_ANCHOR_W / STEERING_ANCHOR_DATE gibt es nicht mehr",
+   not any(_re.search(r"STEERING_ANCHOR_(W|DATE)\b", t) for t in _srcs.values()))
+_leser = sorted(n for n, t in _srcs.items() if "LEGACY_STEERING_ANCHOR" in t and n != "const.py")
+check("M6: die Uebernahme-Konstante liest nur steering.py", _leser, ["steering.py"])
+_st_src = _srcs.get("steering.py", "")
+_body = _st_src[_st_src.index("def migrate_legacy_anchor"):] if "def migrate_legacy_anchor" in _st_src else ""
+_body = _body[:_body.index("\ndef ")] if "\ndef " in _body else _body
+_outside = _st_src.replace(_body, "")
+_outside_uses = [m.start() for m in _re.finditer(r"LEGACY_STEERING_ANCHOR", _outside)]
+ok("M6: ... und dort nur in migrate_legacy_anchor (sonst nur im Import)",
+   all("import" in _outside[max(0, i - 120):i] for i in _outside_uses))
+
+# 7 · compare bei Schalter AUS zeigt keine fremde Zahl (Michael vor dem Update).
+_cmp = steering.compare(MICH_SERIES, {})
+ok("M7: ohne Anker keine 'neue' Wattzahl in der Vorschau", _cmp["sweetspot"]["new_watts"] is None)
+ok("M7: ... und kein Delta", _cmp["sweetspot"]["delta"] is None)
 
 print(f"\ntest_steering: {CHECKS} Prüfungen, {len(failures)} Fehler")
 print("FEHLER:", failures if failures else "keine")
