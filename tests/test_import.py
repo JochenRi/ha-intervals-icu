@@ -240,6 +240,34 @@ async def main():
     await importer.async_import_dfa(client, data)
     check("neu berechnet", len(data["dfa"]), 242)
 
+    # --- F1.5 · der Vergleich steht auf AELTER, nicht auf UNGLEICH ---------------
+    # Richtungsentscheidung 19.09.: der Rueckweg ist das HACS-Downgrade. Eine
+    # Zeile unter NEUERER Marke ist dann kein Altbestand, sondern der Stand,
+    # den der Rueckweg gerade heilen soll (§7, vierzigster Fall, dort fuer die
+    # Marken schon gebaut). Rote Pruefung an 0.66.2: die zwei Treffer fallen.
+    data["dfa_version"] = importer.DFA_ALGO_VERSION + 1
+    _vorher = len(data["dfa"])
+    check("F1.5 dfa: eine NEUERE Marke wirft nichts weg (Rueckweg)", importer.drop_outdated_dfa(data), 0)
+    check("F1.5 dfa: der Bestand steht noch", len(data["dfa"]), _vorher)
+    check("F1.5 dfa: die Marke wird nicht heruntergeschrieben",
+          data["dfa_version"], importer.DFA_ALGO_VERSION + 1)
+    data["dfa_version"] = importer.DFA_ALGO_VERSION
+    data["fields_version"] = importer.ACTIVITY_FIELDS_VERSION + 1
+    check("F1.5 Felder: eine NEUERE Marke loest keinen Neuabruf aus",
+          importer.needs_activity_refetch(data), False)
+    importer.mark_activities_current(data)
+    check("F1.5 Felder: mark_activities_current schreibt nicht nach unten",
+          data["fields_version"], importer.ACTIVITY_FIELDS_VERSION + 1)
+    # Gegenproben: aelter und fehlend sind weiterhin "verwerfen" / "neu holen".
+    data["fields_version"] = importer.ACTIVITY_FIELDS_VERSION - 1
+    check("F1.5 Gegenprobe: aeltere Feldmarke -> Neuabruf", importer.needs_activity_refetch(data), True)
+    del data["fields_version"]
+    check("F1.5 Gegenprobe: fehlende Feldmarke -> Neuabruf", importer.needs_activity_refetch(data), True)
+    importer.mark_activities_current(data)
+    data["dfa_version"] = None
+    check("F1.5 Gegenprobe: dfa-Marke None gilt als uralt", importer.drop_outdated_dfa(data), 242)
+    await importer.async_import_dfa(client, data)
+
     # --- series for the panel ---------------------------------------------------
     pmc = importer.pmc_series(data)
     check("PMC-Reihe Laenge", len(pmc), 498)

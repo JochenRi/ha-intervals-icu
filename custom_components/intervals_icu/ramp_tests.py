@@ -37,6 +37,11 @@ from __future__ import annotations
 
 from typing import Any
 
+try:
+    from . import versions
+except ImportError:  # Pruefstand laedt die Module flach
+    import versions  # type: ignore[no-redef]
+
 BLOCK = "ramp_tests"
 
 # Wird erhoeht, wenn sich die MESSUNG aendert - nicht die Anzeige. Eintraege
@@ -193,9 +198,11 @@ def migrate(block: Any) -> dict[str, Any] | None:
             "reason": str(entry.get("reason") or "")[:NOTE_LIMIT],
             "note": str(entry.get("note") or "")[:NOTE_LIMIT],
             "set_at": str(entry.get("set_at") or ""),
-            "v": MEASURE_VERSION,
+            # NIE NACH UNTEN, und verworfen wird nur, was AELTER ist (F1.5,
+            # dieselbe Regel wie bei den Marken seit 0.63.3, jetzt aus `versions`).
+            "v": versions.keep_newest(entry.get("v"), MEASURE_VERSION),
         }
-        if entry.get("v") != MEASURE_VERSION and row["result"] is not None:
+        if versions.is_older(entry.get("v"), MEASURE_VERSION) and row["result"] is not None:
             row["result"] = None
             row["reason"] = ("Nach einer Änderung der Messung neu zu messen — "
                              "die Ströme liegen nicht im Archiv.")

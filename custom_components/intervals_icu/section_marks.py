@@ -51,6 +51,11 @@ from __future__ import annotations
 
 from typing import Any
 
+try:
+    from . import versions
+except ImportError:  # Pruefstand laedt die Module flach
+    import versions  # type: ignore[no-redef]
+
 BLOCK = "section_marks"
 
 # Wird erhoeht, wenn sich die MESSUNG aendert - nicht die Anzeige. Ein Eintrag
@@ -334,14 +339,12 @@ def _index(value: Any) -> int | None:
 def _version_of(entry: Any) -> int:
     """Die Messmarke eines Eintrags - fehlend heisst 0, also "aelter als alles".
 
-    Eigene Funktion, weil an ihr seit 0.63.3 eine Entscheidung haengt: es wird
-    auf AELTER geprueft und nicht auf UNGLEICH. Ungleich traf auch den
-    NEUEREN Stand, und genau der entsteht auf dem geplanten Rueckweg
-    (HACS-Downgrade) - wer zurueckrollt, haette damit die Messungen ein
-    zweites Mal verloren.
+    Seit 0.66.3 nur noch ein Durchgriff auf `versions.as_mark`: die Regel
+    AELTER-statt-UNGLEICH stand seit 0.63.3 hier und sonst nirgends, und
+    genau das war F1.5 - drei andere Zaehler verglichen weiter auf ungleich.
+    Jetzt liegt sie in EINEM Modul, und dieses hier liest sie nur.
     """
-    got = _index((entry or {}).get("v") if isinstance(entry, dict) else entry)
-    return 0 if got is None else got
+    return versions.as_mark((entry or {}).get("v") if isinstance(entry, dict) else None)
 
 
 def _seconds(lap: Any) -> int | None:
@@ -700,7 +703,7 @@ def usable_hours(entry: Any, laps: Any) -> list[Any] | None:
     # NUR AELTER ist ungueltig. `!=` traf auch den NEUEREN Stand - und genau
     # der entsteht auf dem geplanten Rueckweg (HACS-Downgrade). Wer
     # zurueckrollt, verlaengert damit den Schaden statt ihn zurueckzunehmen.
-    if _version_of(entry) < MEASURE_VERSION:
+    if versions.is_older(_version_of(entry), MEASURE_VERSION):
         return None
     if drift(entry, laps) is not None:
         return None
@@ -1071,11 +1074,11 @@ def migrate(block: Any) -> dict[str, Any] | None:
             # NIE NACH UNTEN. Ein Eintrag, der unter einer hoeheren Marke
             # geschrieben wurde, behaelt sie - sonst schriebe ein Rueckweg ihn
             # herunter, und der naechste echte Bump loeschte ihn doch noch.
-            "v": max(_version_of(entry), MEASURE_VERSION),
+            "v": versions.keep_newest(_version_of(entry), MEASURE_VERSION),
         }
         if entry.get("lost") in (LOST_CHANGED, LOST_MOVED, LOST_VERSION):
             row["lost"] = entry["lost"]
-        if _version_of(entry) < MEASURE_VERSION and row["measure"]:
+        if versions.is_older(_version_of(entry), MEASURE_VERSION) and row["measure"]:
             row["measure"] = {}
             row["reason"] = ("Nach einer Änderung der Messung neu zu messen — "
                              "die Ströme liegen nicht im Archiv. Die Zuordnung "

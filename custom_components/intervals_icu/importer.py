@@ -13,6 +13,7 @@ from typing import Any, Callable
 
 from . import derive
 from . import fatigue_v2
+from . import versions
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -131,23 +132,29 @@ def should_full_import(data: dict[str, Any]) -> bool:
 
 
 def drop_outdated_dfa(data: dict[str, Any]) -> int:
-    """Discard DFA summaries computed by an older version of the maths."""
-    if data.get("dfa_version") == DFA_ALGO_VERSION:
+    """Discard DFA summaries computed by an OLDER version of the maths.
+
+    AELTER, nicht UNGLEICH (0.66.3, F1.5): Zeilen unter einer neueren Marke
+    sind der Rueckweg (HACS-Downgrade), kein Altbestand - sie bleiben, und
+    die Marke wird nicht heruntergeschrieben. Die Regel steht in `versions`.
+    """
+    stored = data.get("dfa_version")
+    if not versions.is_older(stored, DFA_ALGO_VERSION):
         return 0
     dropped = len(data.get("dfa") or {})
     data["dfa"] = {}
-    data["dfa_version"] = DFA_ALGO_VERSION
+    data["dfa_version"] = versions.keep_newest(stored, DFA_ALGO_VERSION)
     return dropped
 
 
 def needs_activity_refetch(data: dict[str, Any]) -> bool:
     """Return True when stored activities predate the current field list."""
-    return data.get("fields_version") != ACTIVITY_FIELDS_VERSION
+    return versions.is_older(data.get("fields_version"), ACTIVITY_FIELDS_VERSION)
 
 
 def mark_activities_current(data: dict[str, Any]) -> None:
-    """Record that the archive now holds the current activity field set."""
-    data["fields_version"] = ACTIVITY_FIELDS_VERSION
+    """Record that the archive now holds the current activity field set - nie nach unten."""
+    data["fields_version"] = versions.keep_newest(data.get("fields_version"), ACTIVITY_FIELDS_VERSION)
 
 
 def is_unavailable(activity: dict[str, Any]) -> bool:

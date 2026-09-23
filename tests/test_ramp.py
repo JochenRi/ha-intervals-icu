@@ -623,6 +623,28 @@ ok("Widerspruch: der Satz gleicht einem Grund fuer ein leeres Ergebnis",
 for _wort in ("zu locker", "Fehler", "Mangel", "leider", "nicht ausreich"):
     ok(f"Widerspruch: gesperrtes Wort ({_wort})", _wort not in _ctext)
 ok("Widerspruch: der Satz ist laenger als das Archivfeld", 0 < len(_ctext) <= ramp_tests.NOTE_LIMIT)
+
+# --- F1.5 · ramp_tests.migrate prueft AELTER, nicht UNGLEICH ---------------------
+# Dieselbe Falle wie der vierzigste Fall, hier noch ungeprueft (PROJEKTSTAND §7,
+# Tabelle "fuenf weitere Stellen"). Rote Pruefung an 0.66.2: Treffer faellt.
+_res = {"hrvt1": {"alpha": 0.75, "seconds": 1630, "watts": 213.0, "hr": 178.0}}
+_neu = {"i1": {"date": "2026-09-16", "result": dict(_res), "reason": "", "note": "",
+               "set_at": "2026-09-19", "v": ramp_tests.MEASURE_VERSION + 1}}
+_out = ramp_tests.migrate(_neu)
+_row = (_out or _neu)["i1"]
+check("F1.5 Stufentest: ein Ergebnis unter NEUERER Marke ueberlebt den Rueckweg", _row.get("result"), _res)
+check("F1.5 Stufentest: die Marke wird nicht heruntergeschrieben", _row.get("v"), ramp_tests.MEASURE_VERSION + 1)
+_alt = {"i2": {"date": "2026-09-16", "result": dict(_res), "reason": "", "note": "",
+               "set_at": "2026-09-19", "v": ramp_tests.MEASURE_VERSION - 1}}
+_out2 = ramp_tests.migrate(_alt)
+check("F1.5 Gegenprobe: ein Ergebnis unter AELTERER Marke faellt weiter", (_out2 or _alt)["i2"].get("result"), None)
+_ohne = {"i3": {"date": "2026-09-16", "result": dict(_res), "reason": "", "note": "", "set_at": "2026-09-19"}}
+_out3 = ramp_tests.migrate(_ohne)
+check("F1.5 Gegenprobe: ohne Marke gilt als uralt", (_out3 or _ohne)["i3"].get("result"), None)
+_gleich = {"i4": {"date": "2026-09-16", "result": dict(_res), "reason": "", "note": "",
+                  "set_at": "2026-09-19", "v": ramp_tests.MEASURE_VERSION}}
+check("F1.5 Gegenprobe: gleiche Marke ist ein No-op", ramp_tests.migrate(_gleich), None)
+
 ok("Widerspruch: die Meldung verschluckt HRVT1 - das Ergebnis bleibt stehen",
    at(res_mulde, "hrvt1") is not None)
 # GEGENPROBEN: melden darf NUR der Widerspruch, nicht jede leere HRVT2.
