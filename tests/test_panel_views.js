@@ -1733,6 +1733,26 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   contains(dlg, "DFA-Auswertungen", "abgleich vollzug: DFA-Stelle nicht beziffert");
   contains(dlg, "Platzhalter", "abgleich vollzug: unavailable-Stelle nicht beziffert");
 
+  // F1.6 · der Abgleich raeumt seit 0.66.3 auch Marken und Stufentests — und
+  // sagt es vorher (Befund) und nachher (Vollzug). Rot an 0.66.2+F1.5.
+  s._syncDlg = { state: "report", report: REP({ missing: [
+    Object.assign({}, MISS[0], { marks: true, ramp: true }), MISS[1] ] }) };
+  dlg = s._syncPopover();
+  clean(dlg, "abgleich befund marken");
+  contains(dlg, "Markierung", "abgleich befund: die Markierung der fehlenden Einheit wird nicht angesagt");
+  contains(dlg, "Stufentest", "abgleich befund: der Stufentest der fehlenden Einheit wird nicht angesagt");
+  s._syncDlg = { state: "done", report: REP({ applied: true,
+                 removed: { activities: 2, dfa: 1, unavailable: 1, section_marks: 1, ramp_tests: 1, dfa_failed: 0 } }) };
+  dlg = s._syncPopover();
+  clean(dlg, "abgleich vollzug marken");
+  contains(dlg, "Markierung", "abgleich vollzug: entfernte Markierungen nicht beziffert");
+  contains(dlg, "Stufentest", "abgleich vollzug: entfernte Stufentests nicht beziffert");
+  // Gegenprobe: ohne Marken/Stufentests kein Wort davon.
+  s._syncDlg = { state: "done", report: REP({ applied: true,
+                 removed: { activities: 2, dfa: 1, unavailable: 1, section_marks: 0, ramp_tests: 0, dfa_failed: 0 } }) };
+  dlg = s._syncPopover();
+  ok(!/Markierung|Stufentest/.test(dlg), "abgleich vollzug Gegenprobe: nennt Marken/Stufentests ohne Treffer");
+
   // 6 - der Schreibweg am simulierten Ereignis, nicht am Quelltext
   const r = new M.Panel();
   r._nowIso = F.TODAY;

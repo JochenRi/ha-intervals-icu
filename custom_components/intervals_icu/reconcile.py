@@ -161,6 +161,11 @@ def plan(
                 "name": activity.get("name") or "",
                 "type": activity.get("type") or "",
                 "dfa": key in (data.get("dfa") or {}),
+                # Was mit der Einheit faellt, wird VORHER angesagt (0.66.3,
+                # F1.6): Marken und Stufentests sind Athleteneingaben, die
+                # apply() jetzt ebenfalls raeumt - nicht still.
+                "marks": key in (data.get("section_marks") or {}),
+                "ramp": key in (data.get("ramp_tests") or {}),
             }
         )
     missing.sort(key=lambda item: (item["date"] or "", item["id"]))
@@ -202,29 +207,40 @@ def plan(
     }
 
 
+# ALLE Bloecke, die mit der Aktivitaets-id geschluesselt sind - an EINER
+# Stelle (0.66.3, F1.6). Bis 0.66.2 raeumte apply() "all three tidy-up sites"
+# und meinte activities, dfa, unavailable; id-geschluesselt waren aber sechs.
+# Eine in Intervals geloeschte Fahrt lebte ueber ihre Marke weiter
+# (blocks._marked_sessions baut fuer eine Marke ohne Aktivitaet eine
+# Ersatzzeile) und ueber ihren Stufentest (ramp_tests.latest fragt die
+# Aktivitaet nicht) - in Blockreihe, Steuerung und Umrechnung. Wer einen
+# Block mit Aktivitaets-ids anlegt, traegt ihn HIER ein; ein Waechter im
+# Pruefstand haelt die Liste fest.
+ID_BLOCKS = ("activities", "dfa", "dfa_failed", "ramp_tests", "section_marks")
+
+
 def apply(data: dict[str, Any], ids: Iterable[str]) -> dict[str, int]:
-    """Remove the given ids from all three tidy-up sites.
+    """Remove the given ids from EVERY id-keyed block, plus the unavailable list.
 
     ``activities`` is the obvious one. The DFA block hangs off the activity id
     and the ``unavailable`` list holds ids too - leave either standing and the
-    header counts two numbers that do not add up.
+    header counts two numbers that do not add up. Since 0.66.3 the same goes
+    for ``section_marks``, ``ramp_tests`` and ``dfa_failed``: what the athlete
+    marked on a ride that no longer exists is an orphan, and plan() says so
+    before the click (``marks`` / ``ramp`` on every missing item).
     """
     wanted = {str(key) for key in ids}
-    removed = {"activities": 0, "dfa": 0, "unavailable": 0}
+    removed = {name: 0 for name in ID_BLOCKS}
+    removed["unavailable"] = 0
     if not wanted:
         return removed
 
-    activities = data.get("activities")
-    if isinstance(activities, dict):
-        for key in wanted & set(activities):
-            del activities[key]
-            removed["activities"] += 1
-
-    dfa = data.get("dfa")
-    if isinstance(dfa, dict):
-        for key in wanted & set(dfa):
-            del dfa[key]
-            removed["dfa"] += 1
+    for name in ID_BLOCKS:
+        block = data.get(name)
+        if isinstance(block, dict):
+            for key in wanted & set(block):
+                del block[key]
+                removed[name] += 1
 
     unavailable = data.get("unavailable")
     if isinstance(unavailable, list):

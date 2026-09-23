@@ -329,7 +329,8 @@ report = reconcile.plan(data, remote_rows(data), OLDEST, NEWEST)
 eq("No-op: kein Befund", report["missing"], [])
 eq("No-op: nichts freigegeben", report["removable"], [])
 removed = reconcile.apply(data, report["removable"])
-eq("No-op: apply() meldet keine Entfernung", removed, {"activities": 0, "dfa": 0, "unavailable": 0})
+eq("No-op: apply() meldet keine Entfernung", removed,
+   {name: 0 for name in (*reconcile.ID_BLOCKS, "unavailable")})
 check("No-op: changed() ist falsch", reconcile.changed(removed) is False)
 eq("No-op: der Bestand ist bit-identisch", fingerprint(data), before)
 
@@ -537,7 +538,7 @@ coordinator = FakeCoordinator(data, remote_rows(data))
 conn = run(coordinator, {"confirm": []})
 check("No-op (Handler): der Lauf gilt als vollzogen", conn.results[0]["applied"] is True)
 eq("No-op (Handler): nichts entfernt", conn.results[0]["removed"],
-   {"activities": 0, "dfa": 0, "unavailable": 0})
+   {"activities": 0, "dfa": 0, "dfa_failed": 0, "ramp_tests": 0, "section_marks": 0, "unavailable": 0})
 eq("No-op (Handler): kein Speichervorgang", coordinator.archive.saves, 0)
 eq("No-op (Handler): keine Auffrischung", coordinator.listeners, 0)
 
@@ -571,6 +572,53 @@ check("Grenze: der Abgleich schickt nichts nach Intervals",
       "async_create_event" not in reconcile_source and "method=" not in reconcile_source)
 check("Grenze: apply() ist nur über plan() erreichbar",
       ws_source.index("reconcile_lib.plan(") < ws_source.index("reconcile_lib.apply("))
+
+
+# --- F1.6 · der Abgleich raeumt ALLE id-geschluesselten Bloecke ----------------
+# Karte 1 F1.6 / W1.6: `apply` nannte sich "all three tidy-up sites", id-
+# geschluesselt sind aber sechs. Eine in Intervals geloeschte Fahrt lebte ueber
+# ihre Marken (blocks._marked_sessions baut eine Ersatzzeile) und ihren
+# Stufentest (ramp_tests.latest fragt die Aktivitaet nicht) weiter in
+# Blockreihe, Steuerung und Umrechnung. Rote Pruefung an 0.66.2+F1.5.
+import copy as _copy
+data6 = build_archive()
+t6 = ALL_KEYS[0]
+u6 = ALL_KEYS[1]
+data6.setdefault("section_marks", {})[t6] = {"date": OLDEST.isoformat(), "marks": {"sweetspot": [600]},
+    "anchor": {"laps": 3, "sections": [{"i": 600, "s": 600}]},
+    "measure": {"sweetspot": {"hours": None, "blocks": [{"start_index": 600, "alpha": 0.7, "watts": 190}], "reason": "", "w": 0}},
+    "reason": "", "measured_at": "2026-09-01", "set_at": "2026-09-01", "v": 3}
+data6["section_marks"][u6] = _copy.deepcopy(data6["section_marks"][t6])
+data6.setdefault("ramp_tests", {})[t6] = {"date": OLDEST.isoformat(), "result": {"hrvt1": {"alpha": 0.75, "watts": 213}},
+    "reason": "", "note": "", "set_at": "2026-09-01", "v": 2}
+data6.setdefault("dfa_failed", {})[t6] = {"reason": "x", "date": OLDEST.isoformat()}
+rep6 = reconcile.plan(data6, remote_rows(data6, drop={t6}), OLDEST, NEWEST)
+item6 = rep6["missing"][0]
+check("F1.6 Fixture: die fehlende Einheit traegt Marke, Stufentest und Fehlfach",
+      t6 in data6["section_marks"] and t6 in data6["ramp_tests"] and t6 in data6["dfa_failed"])
+# 1 · VORHER ANSAGEN: der Befund nennt, was mit der Einheit faellt (wie `dfa` heute).
+check("F1.6 Befund: sagt die Markierung an", item6.get("marks") is True)
+check("F1.6 Befund: sagt den Stufentest an", item6.get("ramp") is True)
+# 2 · TREFFER: apply raeumt alle sechs Bloecke.
+removed6 = reconcile.apply(data6, rep6["removable"])
+check("F1.6 apply: die Marke ist weg", t6 not in data6["section_marks"])
+check("F1.6 apply: der Stufentest ist weg", t6 not in data6["ramp_tests"])
+check("F1.6 apply: das Fehlfach ist weg", t6 not in data6["dfa_failed"])
+eq("F1.6 apply: zaehlt die Marke", removed6.get("section_marks"), 1)
+eq("F1.6 apply: zaehlt den Stufentest", removed6.get("ramp_tests"), 1)
+eq("F1.6 apply: zaehlt das Fehlfach", removed6.get("dfa_failed"), 1)
+# 3 · GEGENPROBE: die andere markierte Einheit bleibt bitgleich.
+check("F1.6 Gegenprobe: die Marke der vorhandenen Einheit steht noch",
+      u6 in data6["section_marks"] and data6["section_marks"][u6]["measure"]["sweetspot"]["blocks"][0]["watts"] == 190)
+# 4 · EIGENSCHAFT: `changed` sieht die neuen Zaehler; ein Lauf ohne Treffer bleibt No-op.
+check("F1.6 changed: eine entfernte Marke gilt als Aenderung",
+      reconcile.changed({"activities": 0, "dfa": 0, "unavailable": 0, "section_marks": 1, "ramp_tests": 0, "dfa_failed": 0}))
+eq("F1.6 No-op: nichts zu entfernen, nichts gezaehlt",
+   set(reconcile.apply(data6, []).values()), {0})
+# 5 · FESTGEHALTENER SOLLWERT: welche Bloecke id-geschluesselt sind, steht an EINER Stelle.
+eq("F1.6 Register: die id-geschluesselten Bloecke",
+   tuple(getattr(reconcile, "ID_BLOCKS", ())),
+   ("activities", "dfa", "dfa_failed", "ramp_tests", "section_marks"))
 
 print(f"test_reconcile: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:

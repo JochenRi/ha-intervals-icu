@@ -2264,7 +2264,9 @@ class IntervalsIcuPanel extends HTMLElement {
     return `<li class="syncrow">
       ${sport ? ico(sport.ic, sport.c, 15) : ico("na", C.tx3, 15)}
       <b>${esc(when)}</b><span class="cn">${esc(what)}</span>
-      ${item.dfa ? `<em class="tn">inkl. DFA</em>` : ""}</li>`;
+      ${item.dfa ? `<em class="tn">inkl. DFA</em>` : ""}
+      ${item.marks ? `<em class="tn">inkl. Markierung</em>` : ""}
+      ${item.ramp ? `<em class="tn">inkl. Stufentest</em>` : ""}</li>`;
   }
 
   _syncPopover() {
@@ -2280,11 +2282,19 @@ class IntervalsIcuPanel extends HTMLElement {
         wenn die Antwort vollständig und fehlerfrei vorliegt.</p>`;
     } else if (dlg.state === "done") {
       const r = dlg.report.removed || {};
-      const n = (r.activities || 0) + (r.dfa || 0) + (r.unavailable || 0);
+      // Seit 0.66.3 (F1.6) raeumt der Abgleich auch Marken, Stufentests und
+      // das Fehlfach - jede Stelle mit Treffer wird beziffert, keine still.
+      const extra = [
+        [r.section_marks || 0, "Markierung", "Markierungen"],
+        [r.ramp_tests || 0, "Stufentest", "Stufentests"],
+        [r.dfa_failed || 0, "offener Abruf", "offene Abrufe"],
+      ].filter(([k]) => k > 0).map(([k, one, many]) => `, <b>${fmt(k)}</b> ${k === 1 ? one : many}`).join("");
+      const n = (r.activities || 0) + (r.dfa || 0) + (r.unavailable || 0)
+        + (r.section_marks || 0) + (r.ramp_tests || 0) + (r.dfa_failed || 0);
       body = n
         ? `<p class="ctxcur">${ico("ok", C.green, 15)} Entfernt: <b>${fmt(r.activities || 0)}</b>
              ${r.activities === 1 ? "Einheit" : "Einheiten"}, <b>${fmt(r.dfa || 0)}</b> DFA-Auswertungen,
-             <b>${fmt(r.unavailable || 0)}</b> Platzhalter.</p>
+             <b>${fmt(r.unavailable || 0)}</b> Platzhalter${extra}.</p>
            <p class="ctxwhy">Das Archiv steht jetzt auf Gleichstand mit Intervals.</p>`
         : `<p class="ctxcur">${ico("ok", C.green, 15)} Nichts zu tun - das Archiv war bereits im Gleichstand.</p>`;
     } else {
