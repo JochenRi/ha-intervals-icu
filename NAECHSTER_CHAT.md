@@ -19,6 +19,20 @@
 >   Form nicht. Eigene Runde, nicht als Nebensatz einer anderen.
 
 
+## Offener Widerspruch, Klasse „zwei Zahlen für dieselbe Sache" (24.09.2026, kein Bau)
+
+**Die Grundlagen-Vorgabe steht auf der p075-Kette, die Kachel zeigt bei Rechenschalter an die
+Umkehrung.** `curve["plan"]` (Kette A) ist die Kette der `p075`-Werte je Fahrtstunde — die
+Gerade durch die alpha-Bins einer Grundlagenfahrt, bei 0,75 gelesen (`fatigue._plan_chain`,
+`derive.dfa_hours`). Das ist eine Ablesung im Bereich, in dem alpha laut §10 und der
+Umrechnungs-Vorlage (Weg a) keine Information über die Last trägt. Die Umkehrung
+(`fatigue_v2.reversal`, 170 / 163 / 150 W) fragt „bei welchen Watt bleibe ich über alpha 1,0" —
+eine andere Frage, aus dem Stufentest umgerechnet. Heute: z2_60 trägt 133 W = 0,90 × 148
+(p075-Kette) = 0,78 × 170 (Umkehrung); bei Schalter an sieht Johannes auf der Kachel 170 und auf
+der Karte 133, ohne Verweis. **Bauentscheidung nach Paket 2**, keine Reparatur: welche der
+beiden Fragen die Grundlageneinheit beantworten soll — und ob die 0,90 dann noch die richtige
+Zahl ist.
+
 ## 0.67.4 — S3 (eine Kette) und F2.9 (Form absolut) (24.09.2026)
 
 Prüfstand **24 / 7.977 / 0**. **Es ändert Zahlen:** (1) F2.9: Ampel amber → **grün**,
