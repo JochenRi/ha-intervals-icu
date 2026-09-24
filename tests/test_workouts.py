@@ -1303,6 +1303,24 @@ eq(W.explain(W.BY_KEY["vo2_4x4"], 215, None, None, None), None,
 for _wort in ("zu locker", "Fehler", "Mangel", "leider", "nicht ausreich"):
     check(all(_wort not in t + x for _, t, x in W.CYCLE), f"B2c: gesperrtes Wort im Kreislauf ({_wort})")
 
+
+# --- S4 · EINE Wattzahl je Karte (F3.3): text_w folgt blocks_w, auch gestreckt --
+# Karte 3, F3.3 / Sollzustand S4: `rate_sessions` ueberschrieb text_w bei einer
+# gestreckten Wocheneinheit mit steps_text(stretched, ftp) - also FTP x Prozent -,
+# waehrend blocks_w die Kurve trug (S3: 130 gegen 134 W auf einer Karte). Rot an
+# 0.67.1: Treffer faellt, Gegenprobe (ungestreckt) ist gruen.
+_curveS4 = {"measured": [{"hour": 1, "t": 0.5, "watts": 150.0, "n": 12}, {"hour": 2, "t": 1.5, "watts": 145.0, "n": 10}],
+            "paired": [{"from_hour": 1, "to_hour": 2, "delta": -6.0, "n": 8, "enough": True}],
+            "literature": [{"hour": 2, "t": 1.5, "watts": 146.0}, {"hour": None, "t": 3.0, "watts": 138.0}]}
+_gestreckt = W.rate_sessions([{"workout": "z2_150", "hours": 4.0}], "ready", ftp=200, aerobic_hr=140, curve=_curveS4)[0]
+_ungestreckt = W.rate_sessions([{"workout": "z2_150", "hours": 2.5}], "ready", ftp=200, aerobic_hr=140, curve=_curveS4)[0]
+check(_gestreckt.get("stretched") is True, "S4 Fixture: die Einheit ist gestreckt")
+check(any(b[1] != round(200 * pct / 100) for b, (_, pct, *_r) in zip(_gestreckt["blocks_w"], _gestreckt["blocks"])),
+      "S4 Fixture: blocks_w traegt die Kurve, nicht die FTP")
+eq(_gestreckt["text_w"], W.watts_text(_gestreckt["blocks_w"]), "S4 Treffer: text_w der gestreckten Karte ist die Wattliste von blocks_w")
+eq(_ungestreckt["text_w"], W.watts_text(_ungestreckt["blocks_w"]), "S4 Gegenprobe: ungestreckt war es schon so")
+check(sum(b[0] for b in _gestreckt["blocks_w"]) == _gestreckt["minutes"], "S4 Eigenschaft: die gestreckten Minuten stehen in blocks_w")
+
 print(f"test_workouts: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

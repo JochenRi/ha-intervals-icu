@@ -1622,8 +1622,11 @@ def rate_sessions(sessions: list[dict[str, Any]], state: str,
             template["minutes"] = sum(block[0] for block in stretched)
             template["text"] = steps_text(stretched, None)
         full = scaled(template, ftp, aerobic_hr, max_hr, curve, blocks, ramp, steering)
-        if stretched and ftp:
-            full["text_w"] = steps_text(stretched, ftp)
+        # KEINE ZWEITE WATTFASSUNG (0.67.2, F3.3 / S4): bis 0.67.1 stand hier
+        # `steps_text(stretched, ftp)` - FTP x Prozent - ueber der Wattliste,
+        # die scaled() aus Kurve/Bloecken/Steuerung gebaut hatte; die Karte trug
+        # dann 130 W in der Liste und 134 W im Kalendertext. scaled() hat
+        # text_w schon richtig gesetzt (die gestreckte Vorlage ging hinein).
         load = session_load(entry, session.get("hours"))
         verdict, reason = fit_for(
             family, state, entry.get("intensity") or 0,

@@ -3052,7 +3052,17 @@ class IntervalsIcuPanel extends HTMLElement {
      numbers underneath are this athlete's watts, not percentages to convert
      in your head. */
   _woBar(entry, ftp) {
+    // EINE WATTZAHL JE ABSCHNITT (0.67.2, Sollzustand S4): der Balken liest
+    // `blocks_w` - dieselbe Zahl wie die Schrittliste darunter und wie der
+    // Kalendertext. Bis 0.67.1 rechnete er seinen Tooltip aus FTP x Katalog-
+    // prozent, also eine dritte Fassung derselben Zahl auf einer Karte (W4a.2),
+    // und im Wochenplan ohne FTP stand "% FTP" (F4a.4). Hoehe und Farbe bleiben
+    // am Katalogprozent (die FORM der Einheit), die Zahl kommt aus blocks_w.
     const blocks = entry.blocks || [];
+    const wattsAt = (i) => {
+      const bw = (entry.blocks_w || [])[i];
+      return bw && bw[1] != null ? Math.round(bw[1]) : null;
+    };
     const total = blocks.reduce((sum, b) => sum + b[0], 0) || 1;
     const colFor = (pct) => pct < 60 ? C.slate : pct < 76 ? C.cyan
       : pct < 90 ? C.blue : pct < 101 ? C.violet : C.magenta;
@@ -3080,7 +3090,8 @@ class IntervalsIcuPanel extends HTMLElement {
       } else {
         s = `<i class="wob" style="left:${x}%;width:${Math.max(0.6, w - 0.25)}%;
           height:${hFor(pct)}%;background:${colFor(pct)}"
-          title="${esc(label)} · ${min} min · ${ftp ? Math.round(ftp * pct / 100) + " W" : pct + " % FTP"}"></i>`;
+          title="${esc(label)} · ${min} min · ${wattsAt(i) != null ? wattsAt(i) + " W"
+            : (ftp ? Math.round(ftp * pct / 100) + " W" : pct + " % FTP")}"></i>`;
       }
       x += w;
       return s;

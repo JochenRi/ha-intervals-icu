@@ -1177,12 +1177,29 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   q._nowIso = F.TODAY;
   const base = F.workouts().workouts[0];
   const ausKurve = { ...base, watt_source: "curve", family: "long",
-    blocks_w: [[12, 118, "Einrollen"], [130, 142, "gleichmäßig", true]],
+    // blocks_w spiegelt blocks Abschnitt fuer Abschnitt (so baut scaled() es);
+    // die Fixture hatte bis 0.67.1 nur zwei Eintraege gegen drei Abschnitte.
+    blocks_w: [[12, 118, "Einrollen"], [130, 142, "gleichmäßig", true], [8, 108, "Ausrollen"]],
     curve_share: 0.9,
     curve_blocks: [{ label: "gleichmäßig", watts: 128, threshold: 142, share: 0.9,
                      source: "measured", n: 12, hour: 2 }] };
   const opts = { toggleAct: "wodetail", ftp: 215 };
   const karte = String(q._sessionCard(ausKurve, opts));
+  // S4 (0.67.2, W4a.2 / F4a.4): der Balken liest blocks_w - dieselbe Zahl wie
+  // die Schrittliste -, nicht FTP x Katalogprozent. Rot an 0.67.1.
+  {
+    const w = ausKurve.blocks_w.map((b) => b[1]);
+    const tips = [...karte.matchAll(/class="wob"[^>]*title="([^"]*)"/g)].map((m) => m[1]);
+    ok(tips.length === ausKurve.blocks_w.length, `S4 Balken: ${tips.length} Segmente gegen ${ausKurve.blocks_w.length} Abschnitte`);
+    ok(tips.every((t, i) => new RegExp(`\\b${w[i]} W`).test(t)),
+       `S4 Balken: die Tooltips tragen nicht die Watt der Schrittliste (${tips.join(" | ")})`);
+    ok(!/% FTP/.test(karte), "S4 Balken: Prozent statt Watt");
+    // ohne FTP (Wochenplan bis 0.67.1): dieselben Watt, kein Prozent
+    const ohneFtp = String(q._sessionCard(ausKurve, { ...opts, ftp: undefined }));
+    const tips2 = [...ohneFtp.matchAll(/class="wob"[^>]*title="([^"]*)"/g)].map((m) => m[1]);
+    ok(tips2.every((t, i) => new RegExp(`\\b${w[i]} W`).test(t)) && !/% FTP/.test(ohneFtp),
+       `S4 Balken ohne FTP: nicht die Watt der Schrittliste (${tips2.join(" | ")})`);
+  }
   clean(karte, "einheit aus der kurve");
   contains(karte, "aus deiner eigenen", "L4: die Karte sagt nicht, dass die Watt aus der Messung kommen");
   // 0.47.1: die Karte nennt den ANTEIL und die Schwelle, aus der er folgt -
