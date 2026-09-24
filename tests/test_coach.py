@@ -1312,6 +1312,47 @@ check('data.get("activities")' not in recovery_src,
 check('data.get("activities")' in recovery_src + '\nfor a in data.get("activities"): pass',
       "erholung Gegenprobe: der Wächter findet einen eingebauten Durchlauf nicht")
 
+
+# --- S2 · EINE Tageslast (Sollzustand S2, Messung M-S2 vom 24.09.) -------------
+# Vier Wege rechneten die Tageslast: analytics.daily_load (ctlLoad, Luecken 0),
+# coach._acwr_local (ctlLoad -> load, keine Luecken), coach._day_load
+# (Aktivitaeten -> load), Plan/Kalender-Woche (Aktivitaetssumme). Am Livebestand
+# sind ctlLoad und Aktivitaetssumme an 60 von 60 Tagen gleich - die Wahl ist
+# Bauhygiene: EIN Erzeuger, analytics.daily_load. Die Fixture stellt beide
+# Reihen absichtlich VERSCHIEDEN, damit jeder Leser zeigt, wen er liest.
+import analytics as _an  # noqa: E402
+_d2 = {"wellness": {}, "activities": {}, "dfa": {}, "section_marks": {}, "settings": {}, "goal": {}}
+import datetime as _dt
+_base = _dt.date(2026, 8, 1)
+for i in range(40):
+    d = (_base + _dt.timedelta(days=i)).isoformat()
+    _d2["wellness"][d] = {"ctlLoad": 50 + i, "load": 999, "hrv": 60, "restingHR": 50, "ctl": 40, "atl": 40}
+    if i % 2 == 0:
+        _d2["activities"][f"a{i}"] = {"start_date_local": d + "T08:00:00", "icu_training_load": 5, "moving_time": 3600,
+                                      "type": "Ride", "icu_intensity": 60, "name": "x"}
+# ein Tag ohne ctlLoad: der Erzeuger faellt auf die Aktivitaetssumme des Tages
+# (5) zurueck, der alte Signale-Weg nahm wellness.load (999)
+_d2["wellness"][(_base + _dt.timedelta(days=36)).isoformat()]["ctlLoad"] = None
+check({r["date"]: r["load"] for r in _an.daily_load(_d2)}[(_base + _dt.timedelta(days=36)).isoformat()] == 5.0,
+      "S2 Regel: ohne ctlLoad zaehlt die Aktivitaetssumme des Tages")
+_today = (_base + _dt.timedelta(days=39)).isoformat()
+_erz = {r["date"]: r["load"] for r in _an.daily_load(_d2)}
+check(_erz[_today] == 89 and _erz[(_base + _dt.timedelta(days=38)).isoformat()] == 88, "S2 Fixture: der Erzeuger liest ctlLoad")
+# 1 · Heute-Reiter: die Tageslast der letzten 7 Tage kommt vom Erzeuger
+_t = coach.today(_d2, {"recommended": 60}) if "coach" in globals() else None
+_recent = {r["date"]: r["load"] for r in (_t or {}).get("recent") or []}
+eq(_recent.get(_today), 89, "S2 Treffer Heute: die Tageslast ist die des Erzeugers (ctlLoad), nicht die Aktivitaetssumme")
+# 2 · Signale-Reiter: dasselbe ACWR wie der Belastungs-Reiter (analytics.acwr_series)
+_sig = coach.signals(_d2)
+_ac_sig = {r["date"]: r.get("acwr") for r in _sig.get("days") or []}
+_ac_an = {r["date"]: r.get("ratio") for r in _an.acwr_series(_d2)}
+eq(_ac_sig.get(_today), _ac_an.get(_today), "S2 Treffer Signale: das ACWR ist das des Erzeugers")
+# 3 · Kalender-Woche: die Wochenlast ist die Summe der Tageslasten des Erzeugers
+_cal = _an.calendar_days(_d2, [])
+_wk = [w for w in (_cal.get("weeks") or []) if w.get("start") and w["start"] <= _today][-1] if (_cal.get("weeks") or []) else None
+_tage = [r for r in _an.daily_load(_d2) if _wk and _wk["start"] <= r["date"] < (_dt.date.fromisoformat(_wk["start"]) + _dt.timedelta(days=7)).isoformat()]
+eq(_wk["load"] if _wk else None, float(sum(r["load"] for r in _tage)), "S2 Treffer Kalender: die Wochenlast ist die Summe der Tageslasten")
+
 print(f"test_coach: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

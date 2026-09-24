@@ -86,12 +86,37 @@ def _week_key(day: str) -> str:
     return f"{year}-W{week:02d}"
 
 
+def load_by_day(data: dict[str, Any]) -> dict[str, float]:
+    """Die Tageslast als Woerterbuch Tag -> Last - derselbe Erzeuger wie daily_load.
+
+    EINE Tageslast (0.67.2, Sollzustand S2): bis 0.67.1 rechneten vier Stellen
+    sie verschieden - hier ctlLoad mit Luecken = 0, `coach._acwr_local`
+    ctlLoad mit Rueckfall auf `load` ohne Luecken, `coach._day_load` aus den
+    Aktivitaeten, Plan und Kalender-Woche aus der Aktivitaetssumme. Am
+    Livebestand (Messung 24.09.) sind ctlLoad und Aktivitaetssumme an 60 von 60
+    Tagen gleich; die Wahl ist Bauhygiene. Alle lesen jetzt hier.
+    """
+    return {row["date"]: float(row.get("load") or 0.0) for row in daily_load(data)}
+
+
 def daily_load(data: dict[str, Any]) -> list[dict[str, Any]]:
-    """Return the daily training load, oldest first, gaps filled with zero."""
+    """Return the daily training load, oldest first, gaps filled with zero.
+
+    DIE EINE REGEL (0.67.2, S2): `wellness.ctlLoad`, und wo Intervals den Tag
+    nicht gefuellt hat, die Summe der Aktivitaetslasten dieses Tages. Der
+    Rueckfall traegt den Fall aus 0.29.0 ("0 Last in sieben Tagen" auf einem
+    Konto ohne das Feld); am Livebestand sind beide Reihen an 60 von 60 Tagen
+    gleich (Messung 24.09.), dort ist er ohne Wirkung.
+    """
     wellness = data.get("wellness") or {}
     days = sorted(wellness)
     if not days:
         return []
+    from_activities: dict[str, float] = {}
+    for activity in (data.get("activities") or {}).values():
+        day_key = str(activity.get("start_date_local") or "")[:10]
+        if day_key:
+            from_activities[day_key] = from_activities.get(day_key, 0.0) + float(activity.get("icu_training_load") or 0)
 
     start = date.fromisoformat(days[0])
     end = date.fromisoformat(days[-1])
@@ -101,6 +126,8 @@ def daily_load(data: dict[str, Any]) -> list[dict[str, Any]]:
         key = current.isoformat()
         row = wellness.get(key) or {}
         value = row.get("ctlLoad")
+        if value is None:
+            value = from_activities.get(key, 0.0)
         series.append({"date": key, "load": float(value) if value else 0.0})
         current += timedelta(days=1)
     return series
@@ -926,8 +953,10 @@ def calendar_days(
              "sessions": 0, "planned_load": 0.0, "ctl": None, "atl": None, "form": None,
              "start": day["date"]},
         )
+        # Die Wochenlast ist die Summe der TAGESLASTEN (ein Erzeuger, S2) -
+        # nicht mehr die Aktivitaetssumme neben Tageszellen aus ctlLoad (F4a.9).
+        bucket["load"] += float(day.get("load") or 0)
         for activity in day["activities"]:
-            bucket["load"] += float(activity.get("load") or 0)
             bucket["seconds"] += float(activity.get("moving_time") or 0)
             bucket["distance"] += float(activity.get("distance") or 0)
             bucket["sessions"] += 1

@@ -1319,16 +1319,22 @@ def _session_inputs(data: dict[str, Any]) -> dict[str, Any]:
     }
 
 def _latest_ftp(data: dict[str, Any]) -> float | None:
-    """The most recent FTP Intervals recorded on an activity."""
-    best_day, best = "", None
+    """The most recent FTP Intervals recorded on an activity.
+
+    VERGLICHEN WIRD DER ZEITPUNKT, nicht der Tag (0.67.2, F3.11): bis 0.67.1
+    stand hier `day < best_day`, und bei zwei Aktivitaeten desselben Tages
+    gewann die Archivreihenfolge. Jetzt gilt die spaetere; eine ohne FTP-Feld
+    faellt durch, statt den Stand zu halten.
+    """
+    best_at, best = "", None
     for activity in (data.get("activities") or {}).values():
-        day = str(activity.get("start_date_local") or "")[:10]
-        if not day or day < best_day:
+        at = str(activity.get("start_date_local") or "")
+        if not at or at <= best_at:
             continue
         for field in ("icu_ftp", "icu_rolling_ftp"):
             value = activity.get(field)
             if value:
-                best_day, best = day, float(value)
+                best_at, best = at, float(value)
                 break
     return best
 

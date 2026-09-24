@@ -103,6 +103,7 @@ ws = _load("websocket")
 # Das ECHTE blocks.series, bevor einzelne Abschnitte es stubben - der
 # Michael-Befund unten braucht es zurueck (ein Stub kennt keine Marken).
 _REAL_SERIES = ws.blocks_lib.series
+_REAL_LATEST_FTP = ws._latest_ftp
 
 
 class FakeConn:
@@ -565,6 +566,29 @@ asyncio.run(ws.websocket_set_steering_source(None, FakeConn(), {"id": 3, "on": F
 eq("Michael: Ausschalten laesst den Startwert stehen",
    ws.steering_lib.anchors(_cm.archive.data).get("sweetspot", {}).get("w"), 150)
 ws.dt_util = _dtm
+
+
+# --- F3.11 · _latest_ftp: zwei Aktivitaeten am selben Tag ------------------------
+# Karte 3 F3.11: verglichen wurde nur der TAG (`day < best_day`); bei gleichem Tag
+# gewann die Archivreihenfolge. Zwei Aktivitaeten eines Tages mit verschiedener
+# FTP (Rad/Lauf, oder eine geaenderte Einstellung dazwischen): die spaetere
+# gilt. Rot an 0.67.1: die Reihenfolge im dict entscheidet, hier absichtlich
+# gegen die Zeit sortiert.
+_real_latest = _REAL_LATEST_FTP if "_REAL_LATEST_FTP" in globals() else None
+_d11 = {"activities": {
+    "b": {"start_date_local": "2026-09-20T18:00:00", "icu_ftp": 210},
+    "a": {"start_date_local": "2026-09-20T07:00:00", "icu_ftp": 200},
+    "c": {"start_date_local": "2026-09-19T09:00:00", "icu_ftp": 195}}}
+_d11b = {"activities": {
+    "a": {"start_date_local": "2026-09-20T07:00:00", "icu_ftp": 200},
+    "b": {"start_date_local": "2026-09-20T18:00:00", "icu_ftp": 210}}}
+eq("F3.11 Treffer: die spaetere Aktivitaet des Tages gilt (Archivreihenfolge b,a)", _real_latest(_d11), 210.0)
+eq("F3.11 Treffer: ... unabhaengig von der Archivreihenfolge (a,b)", _real_latest(_d11b), 210.0)
+eq("F3.11 Gegenprobe: ein juengerer Tag gewinnt weiter", _real_latest({"activities": {
+    "x": {"start_date_local": "2026-09-21T06:00:00", "icu_ftp": 205}, **_d11["activities"]}}), 205.0)
+eq("F3.11 Gegenprobe: ohne FTP-Feld faellt die Aktivitaet durch", _real_latest({"activities": {
+    "x": {"start_date_local": "2026-09-21T06:00:00"}, **_d11["activities"]}}), 210.0)
+eq("F3.11 Randfall: leeres Archiv", _real_latest({}), None)
 
 print(f"test_handlers: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:

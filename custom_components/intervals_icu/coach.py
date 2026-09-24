@@ -1314,7 +1314,8 @@ def signals(data: dict[str, Any], days_back: int = 180) -> dict[str, Any]:
             "decoupling": _f(activity.get("decoupling")),
         })
 
-    acwr = {row["date"]: row.get("ratio") for row in _acwr_local(data)}
+    # EIN ACWR (S2): dasselbe wie im Belastungs-Reiter und in der Ampel.
+    acwr = {row["date"]: row.get("ratio") for row in analytics.acwr_series(data)}
     rows = []
     for day in order:
         acts = per_day.get(day, [])
@@ -1345,28 +1346,6 @@ def signals(data: dict[str, Any], days_back: int = 180) -> dict[str, Any]:
             "load_signals": LOAD_SIGNALS,
             "bands": bands_out,
             "swc": 0.5}
-
-
-def _acwr_local(data: dict[str, Any]) -> list[dict[str, Any]]:
-    """Acute:chronic per day, computed here so this module stays standalone."""
-    wellness = data.get("wellness") or {}
-    days = sorted(wellness)
-    loads = []
-    for day in days:
-        value = _f((wellness.get(day) or {}).get("ctlLoad"))
-        if value is None:
-            value = _f((wellness.get(day) or {}).get("load")) or 0.0
-        loads.append({"date": day, "load": value or 0.0})
-    out = []
-    for index, row in enumerate(loads):
-        if index < 27:
-            out.append({"date": row["date"], "ratio": None})
-            continue
-        acute = mean([r["load"] for r in loads[index - 6:index + 1]])
-        chronic = mean([r["load"] for r in loads[index - 27:index + 1]])
-        out.append({"date": row["date"],
-                    "ratio": (acute / chronic) if chronic > 0 else None})
-    return out
 
 
 # --- what the night after an activity showed ----------------------------------
@@ -1806,15 +1785,13 @@ def today(data: dict[str, Any], budget: dict[str, Any] | None = None) -> dict[st
         if key:
             by_day.setdefault(key, []).append(activity)
 
+    # EINE TAGESLAST (0.67.2, S2): der Erzeuger ist analytics.daily_load. Bis
+    # 0.67.1 rechnete diese Kachel aus den Aktivitaeten mit Rueckfall auf
+    # wellness.load - ein vierter Weg zur selben Zahl.
+    _loads = analytics.load_by_day(data)
+
     def _day_load(day_key: str) -> float:
-        """One way to the day's load, used by both the 7-day strip and the
-        42-day event track. Two callers computing this separately is exactly
-        the defect class that produced "0 load in seven days"."""
-        sessions = by_day.get(day_key, [])
-        load = sum(_f(a.get("icu_training_load")) or 0 for a in sessions)
-        if not load:
-            load = _f((wellness.get(day_key) or {}).get("load")) or 0
-        return load
+        return _loads.get(day_key, 0.0)
 
     recent = []
     for day_key in days[-7:]:

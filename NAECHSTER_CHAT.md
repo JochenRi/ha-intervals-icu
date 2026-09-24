@@ -19,6 +19,30 @@
 >   Form nicht. Eigene Runde, nicht als Nebensatz einer anderen.
 
 
+## 0.67.2 — Paket 2, erster Teil (24.09.2026)
+
+Prüfstand **24 / 7.947 / 0**. Drei Messungen und vier Befunde. **Johannes' Vorgaben unbewegt**
+(190/250, Pulsfenster, Kette 170,0/163,1/…). Eine Anzeige ändert sich: die **Wochenkarte**
+SweetSpot zeigt 190 statt des Medians der letzten Einheit (196) — dieselbe Zahl wie die
+Trainer-Karte (F3.2).
+
+| Messung | Zahl | erledigt |
+|---|---|---|
+| M-S2 Tageslast | ctlLoad = Aktivitätssumme an 60/60 Tagen | S2 → gebaut als Bauhygiene (ein Erzeuger) |
+| M-S6 Anker-Sportfilter | 3 Walk-Zeilen mit alpha, keine unter den letzten 5; Anker alle = nur Rad = 160,8 | S6 bleibt Vorlage, heute folgenlos |
+| M-S12 Tempo | 1 Einheit in beiden Stellungen | F3.1/S12 nicht erreicht, bleibt offen |
+
+| # | Befund | Kurz |
+|---|---|---|
+| S4 | W4a.2 / F3.3 / F4a.4 — drei Wattfassungen auf einer Karte | Balken und Kalendertext lesen `blocks_w` (§7 Fall 50) |
+| F3.2 | Wochenplan ohne Steuerung | `websocket_goal` liest `_session_inputs` (Fall 51) |
+| F3.11 | `_latest_ftp` gleicher Tag | Zeitpunkt statt Tag (Fall 52) |
+| S2 | vier Wege zur Tageslast | `analytics.load_by_day`, eine Regel mit Rückfall (Fall 53) |
+
+**Offen in Paket 2, mit Grund:** F4a.6 (S5) · F3.6 (S13) · F1.1 (Entscheidung: soll `max_hr`
+greifen) · F3.10 (S6, folgenlos) · F3.1 (S12, nicht erreicht) · F2.11/F2.12/F3.12 (Rechnung/
+Entscheidung) · F2.9 (Form absolut/relativ) · F2.10 (heute in „sechs davor").
+
 ## 0.67.1 — der Aufbau der Ermüdungskachel (24.09.2026)
 
 Prüfstand **24 / 7.922 / 0**. Kopf auf Stunde 1, Zeigerleiste auf Stunde 8 („zuletzt") — auf

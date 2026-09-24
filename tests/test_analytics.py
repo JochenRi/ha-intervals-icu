@@ -282,7 +282,13 @@ check("geplante Einheit einsortiert", morgen["planned"][0]["name"], "volumen")
 check("geplant und noch offen", morgen["planned"][0]["done"], False)
 
 woche = next(item for item in grid["weeks"] if item["week"] == analytics._week_key(today.isoformat()))
-check("Wochenlast summiert", woche["load"], 83)
+# 0.67.2 (S2): die Wochenlast ist die Summe der TAGESLASTEN des Erzeugers
+# (ctlLoad, hier 60 an jedem dritten Tag), nicht mehr die Aktivitaetssumme (83)
+# neben Tageszellen aus ctlLoad. Der Erzeuger steht in analytics.load_by_day.
+_tage = analytics.load_by_day(cal_data)
+_soll = sum(v for d, v in _tage.items() if analytics._week_key(d) == woche["week"])
+check("Wochenlast summiert (aus dem einen Erzeuger)", woche["load"], _soll)
+check("Wochenlast summiert: Fixture-Beweis - Aktivitaetssumme und Tageslast sind verschieden", _soll != 83, True)
 check("Wochenstunden", woche["hours"], 1.2)
 check("geplante Last der Woche zählt getrennt", woche["planned_load"] >= 0, True)
 check("Wochen chronologisch", [item["week"] for item in grid["weeks"]] ==
