@@ -19,6 +19,13 @@
 >   Form nicht. Eigene Runde, nicht als Nebensatz einer anderen.
 
 
+## 0.67.1 — der Aufbau der Ermüdungskachel (24.09.2026)
+
+Prüfstand **24 / 7.922 / 0**. Kopf auf Stunde 1, Zeigerleiste auf Stunde 8 („zuletzt") — auf
+dem Handy dauerhaft. Behoben über den **Ruhepunkt** einer Gruppe (`restIndex`, „(Ausgangswert)");
+Umkehrung und alte Kachel sagen die Stunde des Kopfs an. Klasse „die Prüfung deckt den Aufbau
+nicht ab" (§7, neunundvierzigster Fall). Keine Zahl ändert sich.
+
 ## 0.67.0 — das Umrechnungs-Paket (24.09.2026)
 
 Prüfstand **24 Dateien / 7.916 / 0** (vorher 7.865). Entscheidung vom 23.09. nach der Vorlage

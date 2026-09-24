@@ -2797,6 +2797,23 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
     : (/data-lead="fatv2"/.test(sel) ? box : null));
   ok(qz._grp.fatv2.pts.length === rv.plan.length,
      `Umkehrung Zeiger: ${qz._grp.fatv2.pts.length} Rasterpunkte gegen ${rv.plan.length}`);
+  // ── DER AUFBAU OHNE ZEIGERBEWEGUNG (0.67.1). Was der Kopf zeigt (Stunde 1,
+  //    die bestbelegte), muessen Zustandszeile, Toleranz, Streifen, Satz,
+  //    Rechenweg UND die Zeigerleiste zeigen - so, wie das Panel es nach dem
+  //    Rendern und beim Verlassen des Zeigers selbst aufruft
+  //    (_fillReadout(name, null)). Die Hover-Pruefung darunter deckte nur den
+  //    Zustand NACH einer Bewegung ab; auf dem Handy bewegt niemand den Zeiger.
+  qz._fillReadout("fatv2", null);
+  const aufbau = { ...felder, rdox: sx, rdov: sv };
+  ok(/1,00 h/.test(aufbau.ldl), `Aufbau: der Kopf steht nicht auf Stunde 1 (${aufbau.ldl})`);
+  ok(/1,00 h/.test(aufbau.rdox), `Aufbau: die Zeigerleiste steht nicht auf der Stunde des Kopfs (${aufbau.rdox})`);
+  ok(new RegExp(`${M.fmt(rv.plan[0].watts)}`).test(aufbau.rdov) && !new RegExp(`${M.fmt(rv.plan[rv.plan.length - 1].watts)}`).test(aufbau.rdov),
+     `Aufbau: die Zeigerleiste traegt die Zahlen der letzten Stunde (${aufbau.rdov.replace(/<[^>]+>/g, " ")})`);
+  ok(!aufbau.tol.includes(an.v2.estimate_words.state) && /±/.test(aufbau.tol),
+     `Aufbau: die Zustandszeile gehoert zu einer fortgeschriebenen Stunde (${aufbau.tol})`);
+  ok(aufbau.formel.startsWith("1 h ="), `Aufbau: der Rechenweg gehoert nicht zu Stunde 1 (${aufbau.formel.slice(0, 40)})`);
+  ok(/1,00 h|Stunde 1|1 h/.test(aufbau.satz) || /gehalten haben/.test(aufbau.satz),
+     `Aufbau: der Klartextsatz gehoert zu einer fortgeschriebenen Stunde (${aufbau.satz.slice(0, 60)})`);
   qz._fillReadout("fatv2", 0);
   const eins = { ...felder };
   qz._fillReadout("fatv2", 1);

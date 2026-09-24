@@ -1241,6 +1241,13 @@ class IntervalsIcuPanel extends HTMLElement {
       : "";
     this._grp.fat = {
       xy: true, n: grid.length,
+      // Ruhepunkt = die Stunde des Kopfs (die erste GEMESSENE Rasterstelle),
+      // wie bei der Umkehrung (0.67.1): eine Stundenachse hat kein "zuletzt".
+      // Das Raster beginnt bei 0,5 h mit Studienform - das ist nicht der Kopf.
+      restIndex: Math.max(0, (() => {
+        const amKopf = grid.findIndex((q) => erster && Math.abs(q.t - erster.hours) < 0.01);
+        return amKopf >= 0 ? amKopf : grid.findIndex((q, i) => planAt[i] != null);
+      })()),
       pts: grid.map((q) => ({ x: q.t, y: q.watts })),
       xl: (i) => fmt(grid[i].t, 2) + " h geplante Dauer"
         + (planAt[i] == null ? " — Studienform, keine Messung" : ""),
@@ -1521,6 +1528,9 @@ class IntervalsIcuPanel extends HTMLElement {
 
     this._grp.fatv2 = {
       xy: true, n: plan.length,
+      // Ruhepunkt = Stunde 1, dieselbe wie der Kopf (die bestbelegte Stunde) -
+      // nicht die letzte, die eine Fortschreibung ist (0.67.1).
+      restIndex: 0,
       pts: plan.map((r) => ({ x: r.hours, y: r.watts })),
       xl: (i) => fmt(plan[i].hours, 2) + " h Fahrtdauer"
         + (plan[i].observed ? "" : " — " + (ew.state || "")),
@@ -2896,15 +2906,27 @@ class IntervalsIcuPanel extends HTMLElement {
     const meta = this._grp[name];
     if (!meta) return;
     let i = idx;
+    // OHNE ZEIGER steht die Leiste auf dem RUHEPUNKT der Gruppe. Fuer eine
+    // Zeitreihe ist das der juengste Wert ("zuletzt") - fuer eine Kachel, deren
+    // Achse Fahrtstunden sind, ist es die Stunde, die der Kopf zeigt. Bis 0.67.0
+    // stand die Ermuedungskachel beim Aufbau mit dem Kopf auf Stunde 1 und mit
+    // der Leiste auf Stunde 8 (der letzten, fortgeschriebenen) - und auf dem
+    // Handy bewegt niemand den Zeiger, dort stand es dauerhaft so. Die Gruppe
+    // sagt es an (`restIndex`); ohne Ansage bleibt es die Zeitreihen-Regel.
+    const ruhe = meta.restIndex != null;
     if (i == null) {
-      i = meta.n - 1;
-      const first = meta.rows[0];
-      if (first) while (i > 0 && first.vals[i] == null) i--;
+      if (ruhe) {
+        i = meta.restIndex;
+      } else {
+        i = meta.n - 1;
+        const first = meta.rows[0];
+        if (first) while (i > 0 && first.vals[i] == null) i--;
+      }
     }
     const strip = this.shadowRoot.querySelector(`[data-rdo="${name}"]`);
     if (strip) {
       const xs = strip.querySelector(".rdox"), vs = strip.querySelector(".rdov");
-      if (xs) xs.textContent = meta.xl(i) + (idx == null ? " (zuletzt)" : "");
+      if (xs) xs.textContent = meta.xl(i) + (idx == null ? (ruhe ? " (Ausgangswert)" : " (zuletzt)") : "");
       if (vs) {
         vs.innerHTML = meta.rows.map((r) => {
           const v = r.vals[i];

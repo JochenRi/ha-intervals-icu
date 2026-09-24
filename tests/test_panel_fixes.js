@@ -1235,9 +1235,11 @@ const acts = F.activities(), thr = F.thresholds();
      `zeiger ausserhalb: unter dem Diagramm kommt immer noch ein Index (${idxDrunter})`);
   onMove({ clientX: 400, clientY: 900,
            target: { closest: (sel) => (sel === "[data-grp]" ? gFat : null) } });
-  ok(/zuletzt/.test(stripFat._s.x),
-     `zeiger ausserhalb: die Leiste bleibt auf einem abgelesenen Wert stehen (${stripFat._s.x})`);
-  ok(merk !== stripFat._s.x || /zuletzt/.test(merk),
+  // 0.67.1: der Ruhezustand der Ermuedungskachel ist der AUSGANGSWERT (Stunde 1,
+  // wie der Kopf), nicht "zuletzt" - eine Stundenachse hat kein zuletzt.
+  ok(/Ausgangswert/.test(stripFat._s.x) && !/keine Messung/.test(stripFat._s.x),
+     `zeiger ausserhalb: die Leiste steht nicht auf einer gemessenen Stunde (${stripFat._s.x})`);
+  ok(merk !== stripFat._s.x || /Ausgangswert/.test(merk),
      "zeiger ausserhalb: der Ruhezustand ist nicht erkennbar");
 
   // --- Punkt 3, zweite Stelle: die Zeile der Wertetabelle -----------------
