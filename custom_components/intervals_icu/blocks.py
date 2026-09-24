@@ -77,6 +77,17 @@ def family_of(name: str | None) -> str | None:
 # stehen - ein Bauteil, nicht zwei.
 BLOCK_SWITCH = "blocks_from_marks"
 
+# FAMILIEN OHNE KACHEL (0.67.0, Entscheidung 23.09.): Tempo wird weiter
+# gemessen - Marken bleiben, die Messung laeuft, die Reihe entsteht -, aber es
+# TRAEGT NICHTS: keine Wattvorgabe (SOURCE_CHAIN: ftp), keine Sprosse der
+# Umrechnung (0.67.0: nur der Stufentest), keine Kachel. Wer die Familie sucht:
+# Quellen-Reiter (Zeile unter dem Blockschalter), Rechenweg der Ermuedungskachel,
+# PROJEKTSTAND §2. Die Liste steht HIER, das Panel liest sie aus der Payload.
+HIDDEN_FAMILIES: tuple[str, ...] = ("tempo",)
+HIDDEN_NOTE = ("Tempo wird weiter gemessen — Marken und Messung bleiben —, trägt aber "
+               "nichts mehr: keine Wattvorgabe, keine Kachel, keine Sprosse der "
+               "Umrechnung (seit 0.67.0).")
+
 
 def blocks_from_marks(data: dict[str, Any]) -> bool:
     """Steht der Blockschalter auf AN?"""

@@ -347,6 +347,9 @@ def websocket_blocks(hass, connection, msg) -> None:
     result["steering"] = steering_lib.state(result, anchors)
     result["compare"] = steering_lib.compare(result, anchors)
     result["steering_anchors"] = anchors
+    # Familien ohne Kachel (0.67.0): das Panel liest die Liste, statt sie zu kennen.
+    result["hidden_families"] = list(blocks_lib.HIDDEN_FAMILIES)
+    result["hidden_note"] = blocks_lib.HIDDEN_NOTE
     # Die Saetze zum Schalter kommen AUS DEM MODUL - eine Fassung im Frontend
     # waere die zweite Wahrheit aus 0.52.0, und die Versionsangabe darin stuende
     # dann an zwei Stellen.
@@ -406,7 +409,7 @@ def websocket_fatigue(hass, connection, msg) -> None:
     # So sieht die Kachel in EINEM Abruf beide Stellungen. Steht der Schalter
     # aus, ist `v2["on"]` false und die Kachel zeigt unveraendert das heutige
     # Verhalten - der Block kostet dann nur seine Zeilen.
-    result["v2"] = fatigue_v2.curve(data)
+    result["v2"] = fatigue_v2.curve(data, dt_util.now().date().isoformat())
     _stats = importer.archive_stats(data)
     result["v2"]["switch_note"] = fatigue_v2.switch_note(
         data, rides=_stats["dfa_done"] + _stats["dfa_pending"], batch=DFA_BATCH_SIZE)

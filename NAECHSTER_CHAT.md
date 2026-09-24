@@ -19,6 +19,36 @@
 >   Form nicht. Eigene Runde, nicht als Nebensatz einer anderen.
 
 
+## 0.67.0 — das Umrechnungs-Paket (24.09.2026)
+
+Prüfstand **24 Dateien / 7.916 / 0** (vorher 7.865). Entscheidung vom 23.09. nach der Vorlage
+zur Umrechnung alpha → Watt. **Es ändert Zahlen — eine, gewollt:**
+
+| Größe | vorher | nachher |
+|---|---|---|
+| Ermüdungskette h1–h5 | 173,6 / 165,8 / 150,6 / 146,6 / 130,0 W | **170,0 / 163,1 / 149,5 / 145,8 / 131,8 W** |
+| „0,1 alpha ≈ … W" | 10,1 | 9,1 |
+| Band der Umkehrung | Streuung + Brückenanteil | nur Streuung (`from_bridge` 0), etwas enger |
+| Kachelkopf Steuerung SweetSpot / VO2max | 190 / 250 | **190 / 250** |
+| Pulsfenster Steuerung | 159–174 / 180–189 | unverändert |
+| Anker-Puls, Kette B der Grundlage, FTP-Rückfälle | — | unverändert |
+| Tempo-Kachel | gezeichnet | **aus** (Familie bleibt, Einheit vom 13.09. bleibt) |
+
+1. **Eine Quelle:** `bridges_alpha` trägt nur den Stufentest (90,6). Kein Rückfall auf die
+   Leiter; ohne Test keine Wattzahl — die Kachel zeigt den Verlauf in alpha und den Grund.
+2. **Die Leiter als Gegenprobe** (111,7) mit Satz im Rechenweg; Störungsprobe im Prüfstand.
+3. **Setzung, nicht gemessen:** `observed` statt `measured`; Wortlaut, Literatursatz (van Rassel
+   2025, Gronwald 2024, Ajayi 2025, Rogers 2021), Rampensatz mit Datum und Rate.
+4. **Verfall:** `RAMP_BRIDGE_MAX_AGE_MONTHS = 6` — bei Johannes am **16.03.2027**; ein neuer
+   markierter Stufentest hebt es auf.
+5. **Tempo:** `blocks.HIDDEN_FAMILIES`, Satz im Quellen-Reiter; F3.1/S12 bleiben als
+   Bauhinweis offen (die Familie bekommt ab drei Einheiten Blockwatt in `scaled`).
+
+**Was Johannes auf der Kachel anders sieht:** Stunde 1 sagt 170 statt 174 W, alle Stunden 1–4
+um 1–4 W tiefer, Stunde 5 um 2 W höher; „verwendet 90,6 W je alpha" mit dem Stufentest vom
+16.09. daneben, die Blockleiter als „Gegenprobe, rechnet nicht"; die Zustandszeile heißt
+„Setzung: Umrechnung aus deinem Stufentest"; die Tempo-Kachel fehlt.
+
 ## 0.66.3 — Paket 1 der Reparaturphase und der Michael-Befund (23.09.2026)
 
 Prüfstand **24 Dateien / 7.865 / 0** (vorher 7.685). Sieben Befunde, jeder nach dem
@@ -49,10 +79,7 @@ die Vorgabe will, schaltet ein, sobald drei Einheiten einer Familie gemessen sin
 
 ### Offen — nicht in diesem Release
 
-- **Das Umrechnungs-Paket** (Entscheidung 23.09.): Leiter weg, Stufentest allein, Setzung
-  beschriftet, Verfall nach sechs Monaten als Konstante, Tempo-Kachel aus, Leiter als Gegenprobe
-  im Rechenweg. Zahlen vorher/nachher stehen in der Vorlage (Kette 173,6 → 170,0 W in Stunde 1).
-  **Eigenes Release.**
+- ~~Das Umrechnungs-Paket~~ → **0.67.0**, siehe oben.
 - Paket 2 der Reparaturphase ([V], KARTE_5 §7): F1.1 (`max_hr`) nach Entscheidung, F3.2/F3.3
   Wochenplan, F3.1 Tempo-Watt nach S12, F4a.6 Lastgrenze; die vier Entscheidungen S1/S3/S5/S13.
 - Messanweisungen S2/S6/S12 an die lesende Bau-Sitzung (MESSANWEISUNGEN_S2_S6_S12.md).

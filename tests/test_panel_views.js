@@ -2762,7 +2762,7 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
     reversal: { ...rv, alpha_floor: 0.9, floor_step_watts: 12.5, slope_per_hour: -7.7,
       bridges: { ramp: 80.0, ladder: 100.0, mid: 90.0, spread: 20.0, sources: ["x"] },
       plan: [{ hours: 1, watts: 201.4, load_w: 150.0, alpha: 1.5, n: 9, form_watts: 201.4,
-               measured: true, lower: null,
+               observed: true, lower: null,
                band: { half: 12.3, from_spread: 12.0, from_bridge: 2.6, n: 9 } }],
       covered_until_hours: 1 } });
   const zweit = String(new M.Panel().rFatigueV2(F.fatigue({ v2: anders }), anders));
@@ -2823,7 +2823,7 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
      "Umkehrung Fixture-Beweis: die Kette der Fixture ist nicht nachrechenbar");
 
   // ── UNTER DER MINDESTBELEGUNG KEINE SPANNE.
-  const iOhne = rv.plan.findIndex((r) => r.measured && !r.band);
+  const iOhne = rv.plan.findIndex((r) => r.observed && !r.band);
   ok(iOhne >= 0 && rv.plan[iOhne].n < rv.min_rides_for_band,
      "Umkehrung Fixture-Beweis: keine Stunde unter der Mindestbelegung");
   qz._fillReadout("fatv2", iOhne);
@@ -2849,7 +2849,7 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   ok(/±/.test(felder.tol), "Umkehrung Quote: ohne Quote fehlt auch die Spanne");
 
   // ── JENSEITS DER MESSUNG.
-  const iEst = rv.plan.findIndex((r) => !r.measured);
+  const iEst = rv.plan.findIndex((r) => !r.observed);
   ok(iEst > 0, "Umkehrung Fixture-Beweis: keine fortgeschriebene Stunde");
   qz._fillReadout("fatv2", iEst);
   ok(felder.tol.includes(an.v2.estimate_words.state) && !/±/.test(felder.tol),
@@ -2872,6 +2872,56 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
      `Umkehrung Setzungen: ${getroffen} von ${an.v2.settings.length} stehen wörtlich da`);
   ok(html.includes(`${M.fmt(rv.floor_step, 1)} alpha ≈ ${M.fmt(rv.floor_step_watts)} W`),
      "Umkehrung: der Ausschlag der Grenze steht nicht auf der Kachel");
+
+  // ── 0.67.0 · DAS UMRECHNUNGS-PAKET (rot an 0.66.3) ─────────────────────
+  // U1/U2: der Rechenweg zeigt die Leiter als GEGENPROBE, verwendet den
+  // Stufentest, und ein fehlender Stufentest laesst die Kachel den Verlauf in
+  // alpha zeigen - mit dem Grund aus der Payload, nicht mit einer leeren Kachel.
+  {
+    const rw = an.v2.reversal_words || {};
+    ok(/Gegenprobe/.test(html), "Umrechnung: die Leiter steht nicht als Gegenprobe im Rechenweg");
+    ok(!/verwendet\s+<\/?b?>?\s*111/.test(html) && /verwendet[^<]*90,6/.test(html.replace(/<[^>]+>/g, "")),
+       "Umrechnung: verwendet wird nicht der Stufentest (90,6)");
+    ok(html.includes(rw.state || "SETZUNG") && !/aus gemessenem alpha/.test(html),
+       "Umrechnung: die Kachel nennt die Umrechnung noch \"gemessen\"");
+    ok(html.includes(rw.literature || "LITERATURSATZ"), "Umrechnung: der Literatursatz fehlt im Rechenweg");
+    ok(html.includes(rw.ramp_note || rv.bridges.ramp_note || "RAMPENSATZ"), "Umrechnung: Datum/Rampe des Stufentests fehlen");
+    // ohne Stufentest: Verlauf in alpha, Grund sichtbar, keine Wattzahl
+    const ohneRampe = F.fatigueV2Block({ reversal: { ...rv,
+      bridges: { ramp: null, ladder: 111.7, mid: null, spread: null, sources: [], missing: "GRUND: KEIN STUFENTEST",
+                 ladder_note: rv.bridges.ladder_note, ramp_note: null, ramp_date: null },
+      plan: rv.plan.filter((r) => r.observed).map((r) => ({ ...r, watts: null, band: null, form_watts: null })),
+      slope_per_hour: null, floor_step_watts: null } });
+    const oHtml = String(new M.Panel().rFatigueV2(F.fatigue({ v2: ohneRampe }), ohneRampe));
+    clean(oHtml, "umkehrung ohne stufentest");
+    ok(/GRUND: KEIN STUFENTEST/.test(oHtml), "Umrechnung ohne Stufentest: der Grund aus der Payload fehlt");
+    ok(!/>170</.test(oHtml) && !/>17[0-9] W/.test(oHtml), "Umrechnung ohne Stufentest: es steht trotzdem eine Wattzahl da");
+    ok(/alpha/.test(oHtml) && /1,3/.test(oHtml), "Umrechnung ohne Stufentest: der Verlauf in alpha fehlt");
+  }
+  // U5 Quellen-Reiter: unter dem Blockschalter steht, dass Tempo weiter
+  // gemessen wird, aber nichts traegt - der Satz aus der Payload.
+  {
+    const qq = new M.Panel(); qq._smarks = { marks: [], families: ["vo2max", "sweetspot", "tempo"], stale_reason: {},
+      min_for_source: 3, corridor_state: {}, corridors: {} };
+    const bQ = F.blocks(); bQ.hidden_families = ["tempo"]; bQ.hidden_note = "TEMPO-SATZ AUS DEM MODUL.";
+    const qHtml = String(qq.rQuellen(F.fatigue(), bQ));
+    ok(/TEMPO-SATZ AUS DEM MODUL/.test(qHtml), "Quellen: der Satz zu Tempo ohne Kachel fehlt");
+  }
+  // U5: die Tempo-Kachel ist aus - die Familie bleibt in der Payload.
+  {
+    const bT = F.blocks();
+    const tPt = { date: "2026-09-13", n_blocks: 2, block_alphas: [1.346, 0.868], block_watts: [172, 169],
+                  block_watts_each: [172, 169], block_hr: [150, 152], block_minutes: [20, 20], activity_id: "t13",
+                  median_watts: 170, median_alpha: 1.107, median_hr: 151, first_watts: 172, first_alpha: 1.346 };
+    bT.families.tempo = { corridor: [0.75, 1.0], sessions: 1, spread: 0, trend: false, source_ok: false,
+      points: [tPt], latest: tPt, hr_window: null, from: "a", to: "b", suggested_watts: null, step_pct: null };
+    bT.steering = { ...bT.steering, tempo: { watts: null, no_target: true, note: null, rows: [], n_units: 1, band: null } };
+    bT.hidden_families = ["tempo"]; bT.hidden_note = "TEMPO-SATZ AUS DEM MODUL.";
+    const bHtml = String(new M.Panel().rBlocks(bT));
+    clean(bHtml, "blocks ohne tempo-kachel");
+    ok(!/Tempo/.test(bHtml.replace(/<!--[\s\S]*?-->/g, "")), "Tempo: die Kachel wird noch gezeichnet");
+    ok(/SweetSpot/.test(bHtml) && /VO2max/.test(bHtml), "Tempo aus: die anderen Kacheln fehlen");
+  }
 
   // ── DER LEERFALL.
   const leer = F.fatigueV2Block({ reversal: { ...rv, plan: [] } });

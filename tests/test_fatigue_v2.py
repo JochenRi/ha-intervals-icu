@@ -365,8 +365,10 @@ check("Setzungen: die Grenze der Umkehrung steht darin",
       any("alpha 1,0" in x for x in v2.SETTINGS_NOTE), True)
 check("Setzungen: der Stundenschnitt ist als quellenlos benannt",
       any("keine Quelle" in line for line in v2.SETTINGS_NOTE), True)
-check("Setzungen: die Umrechnung steht mit ihrer Spanne da",
-      any("0,9 bis 7,7" in line for line in v2.SETTINGS_NOTE), True)
+# 0.67.0: die Umrechnung ist eine Setzung aus dem Stufentest - die alte Zeile
+# ("0,9 bis 7,7 W je Stunde", zwei Verfahren) beschrieb die gemittelten Bruecken.
+check("Setzungen: die Umrechnung steht als Setzung aus dem Stufentest da",
+      any("Stufentest" in line and "Setzung" in line for line in v2.SETTINGS_NOTE), True)
 check("Setzungen: die quadratische Zusammenlegung ist benannt",
       any("quadratisch" in line for line in v2.SETTINGS_NOTE), True)
 
@@ -463,8 +465,10 @@ check("Trockenlauf: beide Seiten tragen die Umkehrung",
       [("reversal" in _erg["tiles"][k]) for k in ("off", "on")], [True, True])
 # OHNE BRUECKE KEINE WATTZAHL. Dieser Bestand hat weder Stufentest noch
 # Bloecke - dann bleibt die Kette leer, statt eine Umrechnung zu erfinden.
-check("Trockenlauf ohne Bruecke: keine Kette",
-      [len((_erg["tiles"][k].get("reversal") or {}).get("plan") or []) for k in ("off", "on")], [0, 0])
+# 0.67.0: ohne Bruecke bleibt der VERLAUF IN ALPHA - eine Zeile je belegter
+# Stunde, ohne Watt. Vorher war die Kette leer.
+check("Trockenlauf ohne Bruecke: der alpha-Verlauf bleibt, ohne Watt",
+      [[r.get("watts") for r in ((_erg["tiles"][k].get("reversal") or {}).get("plan") or [])] for k in ("off", "on")], [[None], [None]])
 check("Trockenlauf ohne Bruecke: und keine Umrechnung",
       ((_erg["tiles"]["on"].get("reversal") or {}).get("bridges") or {}).get("mid"), None)
 # MIT Stufentest entsteht sie. Die Kette reicht dann bis zum Horizont.
@@ -478,7 +482,7 @@ check("Trockenlauf mit Bruecke: die Umrechnung steht da",
       (_rvM.get("bridges") or {}).get("ramp"), round(abs((213.0 - 183.0) / (1.081 - 0.75)), 1))
 check("Trockenlauf mit Bruecke: die gemessene Stunde traegt eine Zahl",
       (len(_rvM.get("plan") or []), (_rvM.get("plan") or [{}])[0].get("hours"),
-       (_rvM.get("plan") or [{}])[0].get("measured")),
+       (_rvM.get("plan") or [{}])[0].get("observed")),
       (1, 1, True))
 check("Trockenlauf mit Bruecke: die Zahl ergibt sich aus Last, alpha und Umrechnung",
       (_rvM.get("plan") or [{}])[0].get("watts"),
@@ -549,6 +553,109 @@ check("B8 Ermuedungsband bitgleich (zweiseitig, t=2,353)",
       v2.reversal_band(_werteB)["from_spread"],
       round(2.353 * _sdB * (1 + 1 / 4) ** 0.5, 1))
 check("B9 Trefferzusicherung: die zwei Quantile ergeben verschiedene Breiten", bool(round(1.638 * _sdB * (1 + 1 / 4) ** 0.5, 1) != v2.reversal_band(_werteB)["from_spread"]), True)
+
+
+# ═══ 0.67.0 · DAS UMRECHNUNGS-PAKET (Entscheidung 23.09.) ═══════════════════
+# Rote Pruefungen an 0.66.3. Die Fixture stellt Umkehrung und Bruecken direkt:
+# `reversal(data, today)` liest ramp_tests und blocks.series - hier gestubbt,
+# damit die Leiter (Tempo+SweetSpot) und der Stufentest bekannte Zahlen tragen.
+import blocks as _bl  # noqa: E402
+import ramp_tests as _rt  # noqa: E402
+_LIVE_RAMP = {"date": "2026-09-16", "result": {"hrvt1": {"alpha": 0.75, "watts": 213.0, "seconds": 1630},
+                                                "hrvt1_pers": {"alpha": 1.081, "watts": 183.0, "seconds": 1324},
+                                                "hrvt2": {"alpha": 0.5, "watts": 233.0, "seconds": 1861}}}
+def _fam(pts): return {"points": [{"block_alphas": a, "block_watts": w} for a, w in pts]}
+_LIVE_FAMS = {"vo2max": _fam([([1.032, 0.571, 0.497, 0.409, 0.477], [278, 264, 260, 256, 246]),
+                              ([0.426, 0.399, 0.338, 0.431], [260, 251, 236, 230])]),
+              "sweetspot": _fam([([0.651, 0.657], [188, 167]), ([0.809, 0.696], [194, 189]), ([0.73, 0.68], [194, 190]),
+                                 ([0.915, 0.699], [194, 192]), ([0.869, 0.658], [198, 194])]),
+              "tempo": _fam([([1.346, 0.868], [172, 169])])}
+_series_saved, _latest_saved = _bl.series, _rt.latest
+def _stell(fams, ramp):
+    _bl.series = lambda data, with_other=False: {"families": fams}
+    _rt.latest = lambda data: ramp
+# Stundenzeilen wie am Livebestand (load_w / alpha je Stunde, n Fahrten)
+_STD = {1: (139.6, 1.336, 18), 2: (139.6, 1.259, 13), 3: (139.8, 1.107, 4), 4: (138.7, 1.078, 3), 5: (146.8, 0.834, 1)}
+def _rows():
+    out = []
+    for i in range(18):
+        hours = [{"hour": h, "alpha": a, "load_w": w} for h, (w, a, n) in _STD.items() if i < n]
+        out.append({"activity_id": f"R{i}", "date": "2026-08-01", "hours": hours, "first": hours[0]["alpha"], "last": hours[-1]["alpha"]})
+    return out
+_rr_saved = v2.reading_rows
+v2.reading_rows = lambda data: _rows()
+
+print("\n=== U1. DIE LEITER FAELLT WEG: nur der Stufentest rechnet ===")
+_stell(_LIVE_FAMS, _LIVE_RAMP)
+_br = v2.bridges_alpha({}, today="2026-09-24")
+check("U1 Fixture: der Stufentest ergibt 90,6", _br.get("ramp"), 90.6)
+check("U1 Fixture: die Leiter (Tempo+SweetSpot) ergibt 111,7", _br.get("ladder"), 111.7)
+check("U1 Treffer: verwendet wird der Stufentest allein", _br.get("mid"), 90.6)
+check("U1 Treffer: keine Spanne zwischen zwei Quellen mehr", _br.get("spread") in (None, 0, 0.0), True)
+check("U1 Treffer: die Quelle heisst Stufentest, sonst nichts", _br.get("sources"), ["Stufentest"])
+_rv = v2.reversal({}, today="2026-09-24")
+check("U1 Kette am Livebestand: 170,0 / 163,1 / 149,5 / 145,8 / 131,8",
+      [r["watts"] for r in _rv["plan"][:5]], [170.0, 163.1, 149.5, 145.8, 131.8])
+check("U1: das Band traegt keinen Bruecken-Anteil mehr",
+      {(r["band"] or {}).get("from_bridge") for r in _rv["plan"] if r.get("band")}, {0.0})
+check("U1: 0,1 alpha sind rund 9,1 W", _rv.get("floor_step_watts"), 9.1)
+# Randfall: kein Stufentest -> KEIN Rueckfall auf die Leiter, keine Wattzahl, die Kachel sagt es
+_stell(_LIVE_FAMS, None)
+_br0 = v2.bridges_alpha({}, today="2026-09-24")
+check("U1 Randfall ohne Stufentest: keine Umrechnung", _br0.get("mid"), None)
+check("U1 Randfall ohne Stufentest: die Leiter rechnet NICHT ein", _br0.get("ladder") == 111.7 and _br0.get("mid") is None, True)
+check("U1 Randfall ohne Stufentest: der Grund steht dran", bool(_br0.get("missing")), True)
+_rv0 = v2.reversal({}, today="2026-09-24")
+check("U1 Randfall ohne Stufentest: der Verlauf in alpha bleibt sichtbar (Stunden mit alpha, ohne Watt)",
+      [(r["hours"], r["alpha"], r["watts"]) for r in _rv0["plan"][:2]], [(1, 1.336, None), (2, 1.259, None)])
+
+print("\n=== U2. DIE LEITER ALS GEGENPROBE: sichtbar, ohne eine Kachelzahl zu beruehren ===")
+_stell(_LIVE_FAMS, _LIVE_RAMP)
+_brL = v2.bridges_alpha({}, today="2026-09-24")
+check("U2: die Leiter steht mit ihrer Zahl im Rechenweg", _brL.get("ladder"), 111.7)
+check("U2: ... und mit dem Satz, warum sie nicht rechnet", bool(_brL.get("ladder_note")), True)
+# Stoerungsprobe: die Leiter um das Doppelte verschoben -> keine Kachelzahl bewegt sich
+_fams2 = dict(_LIVE_FAMS); _fams2["tempo"] = _fam([([1.346, 0.868], [172, 120])])
+_stell(_fams2, _LIVE_RAMP)
+_rv2 = v2.reversal({}, today="2026-09-24")
+check("U2 Stoerung: eine andere Leiter aendert keine Wattzahl",
+      [r["watts"] for r in _rv2["plan"][:5]], [170.0, 163.1, 149.5, 145.8, 131.8])
+check("U2 Stoerung: ... aber die Gegenprobe zeigt es", _rv2["bridges"].get("ladder") != 111.7, True)
+
+print("\n=== U3. DIE UMRECHNUNG IST EINE SETZUNG ===")
+_stell(_LIVE_FAMS, _LIVE_RAMP)
+_rv3 = v2.reversal({}, today="2026-09-24")
+check("U3: keine Zeile traegt mehr `measured`", any("measured" in r for r in _rv3["plan"]), False)
+check("U3: belegte Stunden heissen `observed`, fortgeschriebene nicht",
+      ([r.get("observed") for r in _rv3["plan"][:5]], _rv3["plan"][-1].get("observed")), ([True] * 5, False))
+check("U3: die Umrechnung heisst Setzung", "Setzung" in v2.REVERSAL_WORDS["state"] and "gemessen" not in v2.REVERSAL_WORDS["state"], True)
+check("U3: der Rechenweg nennt die vier Arbeiten", all(n in v2.REVERSAL_WORDS.get("literature", "")
+      for n in ("Rassel", "Gronwald", "Ajayi", "Rogers")), True)
+check("U3: die Setzung steht in den Setzungen der Kachel", any("Stufentest" in x and "Setzung" in x for x in v2.SETTINGS_NOTE), True)
+check("U3: die Zahl der Rampe ist beschriftet (Datum, Rampe, Strecke)",
+      all(k in _rv3["bridges"] for k in ("ramp_date", "ramp_note")), True)
+
+print("\n=== U4. VERFALL: sechs Monate ohne Stufentest ===")
+check("U4: die Frist ist eine benannte Konstante", getattr(v2, "RAMP_BRIDGE_MAX_AGE_MONTHS", None), 6)
+_stell(_LIVE_FAMS, _LIVE_RAMP)
+_vor = v2.reversal({}, today="2027-03-15")
+_nach = v2.reversal({}, today="2027-03-16")
+check("U4 knapp davor (15.03.2027): die Kette steht", [r["watts"] for r in _vor["plan"][:2]], [170.0, 163.1])
+check("U4 am Stichtag (16.03.2027): keine Wattzahl mehr", [r["watts"] for r in _nach["plan"][:2]], [None, None])
+check("U4 am Stichtag: der Verlauf in alpha bleibt", [r["alpha"] for r in _nach["plan"][:2]], [1.336, 1.259])
+check("U4 am Stichtag: die Kachel sagt, dass ein Test fehlt", "expired" in str(_nach["bridges"].get("missing")) or bool(_nach["bridges"].get("ramp_expired")), True)
+check("U4 Gegenprobe: ein frischer Test hebt den Verfall auf",
+      [r["watts"] for r in (_stell(_LIVE_FAMS, {**_LIVE_RAMP, "date": "2027-03-10"}) or v2.reversal({}, today="2027-03-16"))["plan"][:1]], [170.0])
+
+print("\n=== U5. TEMPO: gemessen, traegt nichts ===")
+_stell({"vo2max": _LIVE_FAMS["vo2max"], "sweetspot": _LIVE_FAMS["sweetspot"]}, _LIVE_RAMP)
+_rv5 = v2.reversal({}, today="2026-09-24")
+check("U5 Randfall Tempo nicht markiert: dieselbe Kette", [r["watts"] for r in _rv5["plan"][:2]], [170.0, 163.1])
+_stell({"sweetspot": _LIVE_FAMS["sweetspot"]}, _LIVE_RAMP)
+_rv5b = v2.reversal({}, today="2026-09-24")
+check("U5 Randfall nur eine Familie markiert: dieselbe Kette, Leiter leer",
+      ([r["watts"] for r in _rv5b["plan"][:2]], _rv5b["bridges"].get("ladder")), ([170.0, 163.1], None))
+_bl.series, _rt.latest, v2.reading_rows = _series_saved, _latest_saved, _rr_saved
 
 print(f"test_fatigue_v2: {CHECKS} Prüfungen, {len(failures)} Fehler")
 print("FEHLER:", failures if failures else "keine")

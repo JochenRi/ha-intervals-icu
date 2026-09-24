@@ -1395,8 +1395,32 @@ class IntervalsIcuPanel extends HTMLElement {
         ${this._fatigueIncomplete(f)}
         <p>Für diese Kachel braucht es eine Ablesestelle: mindestens
         ${fmt(v2.load_band_w, 0)} W um die Leistung, die du gehalten hast, mit genug
-        Punkten darin — und mindestens eine eigene Messung für die Umrechnung
+        Punkten darin — und einen markierten Stufentest für die Umrechnung
         alpha → Watt. Eines von beidem fehlt noch.</p>
+        ${this._fatigueDropped(f)}</div>`;
+    }
+    // OHNE UMRECHNUNG KEINE WATTZAHL (0.67.0): kein markierter Stufentest, oder
+    // er ist aelter als die Frist. Dann zeigt die Kachel den VERLAUF IN ALPHA
+    // je Stunde - Last, alpha, Belegung - und den Grund aus der Payload. Keine
+    // Zahl wird erfunden, kein Bild ueber leere Watt gezeichnet.
+    if (br.mid == null) {
+      const zeilen = plan.filter((r) => r.observed).map((r) => `<tr>
+          <td>${fmt(r.hours)} h</td><td class="tn">alpha ${fmt(r.alpha, 2)}</td>
+          <td class="tn">${fmt(r.load_w)} W gehalten</td>
+          <td>${fmt(r.n)} ${r.n === 1 ? "Fahrt" : "Fahrten"}</td></tr>`).join("");
+      return `<div class="card pad" data-grp="fatv2"><h3 class="secname">Leistung über der Fahrtdauer</h3>
+        ${this._fatigueIncomplete(f)}
+        <span class="state">${esc(rw.state || "")}</span>
+        <p class="warn">${esc(br.missing || "")}</p>
+        <table class="dtbl"><thead><tr><th>Dauer</th><th>alpha im Mittel</th>
+          <th>Last</th><th>Belegung</th></tr></thead><tbody>${zeilen}</tbody></table>
+        <details class="more"><summary>Wattzahlen aus anderen Messungen</summary>
+          <p class="rsatz">${esc(rw.others || "")}</p>
+          <div class="rchips">
+            ${br.ladder != null ? `<span class="rchip">Blockleiter ${fmt(br.ladder, 1)} W je alpha — Gegenprobe, rechnet nicht</span>` : ""}
+          </div>
+          ${br.ladder_note ? `<p class="fcap">${esc(br.ladder_note)}</p>` : ""}
+          <p class="fcap">${esc(rw.literature || "")}</p></details>
         ${this._fatigueDropped(f)}</div>`;
     }
     const at = (i) => plan[i == null ? 0 : i] || plan[0];
@@ -1409,7 +1433,7 @@ class IntervalsIcuPanel extends HTMLElement {
     const fWatt = (i) => fmt(at(i).watts);
     const fTol = (i) => {
       const r = at(i);
-      if (!r.measured) {
+      if (!r.observed) {
         return `<b>${esc(ew.state || "")}</b> · ${esc(ew.rides || "")}`;
       }
       // UNTER DER MINDESTBELEGUNG VERSCHWINDET DIE ZEILE GANZ. Am Bestand
@@ -1442,7 +1466,7 @@ class IntervalsIcuPanel extends HTMLElement {
     // EIN Satz. Was er nicht sagt, steht im Aufklappteil darunter.
     const fSatz = (i) => {
       const r = at(i);
-      if (!r.measured) {
+      if (!r.observed) {
         return `Für diese Länge hast du noch keine Fahrt — die Zahl ist fortgeschrieben.
           ${esc(ew.first_ride || "")}`;
       }
@@ -1453,7 +1477,7 @@ class IntervalsIcuPanel extends HTMLElement {
     // DIE FORMELZEILE MUSS DIE ZAHL ERGEBEN, die oben steht.
     const fFormel = (i) => {
       const r = at(i);
-      if (!r.measured) {
+      if (!r.observed) {
         return `${fmt(r.hours)} h = fortgeschrieben mit <b>${fmt(rv.slope_per_hour, 1)} W</b>
           je Stunde &nbsp;·&nbsp; ${esc(ew.form || "")} <b>${fmt(r.form_watts)} W</b>`;
       }
@@ -1466,8 +1490,8 @@ class IntervalsIcuPanel extends HTMLElement {
     // ── das Bild: blau die gemessenen Stunden, graues BAND als Streuung
     //    zwischen den Fahrten, duenn und grau die Studienform, gestrichelt die
     //    Fortschreibung. Punktgroesse nach Belegung, duenner Ring wo n < 2.
-    const ist = plan.filter((r) => r.measured);
-    const schaetz = plan.filter((r) => !r.measured);
+    const ist = plan.filter((r) => r.observed);
+    const schaetz = plan.filter((r) => !r.observed);
     const brueck = ist.length ? [ist[ist.length - 1]] : [];
     const lows = [...plan.map((r) => (r.band ? r.watts - r.band.half : r.watts)),
                   ...plan.map((r) => r.form_watts)].filter((v) => v != null);
@@ -1499,7 +1523,7 @@ class IntervalsIcuPanel extends HTMLElement {
       xy: true, n: plan.length,
       pts: plan.map((r) => ({ x: r.hours, y: r.watts })),
       xl: (i) => fmt(plan[i].hours, 2) + " h Fahrtdauer"
-        + (plan[i].measured ? "" : " — " + (ew.state || "")),
+        + (plan[i].observed ? "" : " — " + (ew.state || "")),
       lead: {
         base: fWatt(null), baseColor: ROLE.series, baseLabel: fDauer(null),
         baseNote: "", note: () => "",
@@ -1569,10 +1593,13 @@ class IntervalsIcuPanel extends HTMLElement {
       <details class="more"><summary>Wattzahlen aus anderen Messungen</summary>
         <p class="rsatz">${esc(rw.others || "")}</p>
         <div class="rchips">
-          ${br.ramp != null ? `<span class="rchip">Stufentest ${fmt(br.ramp, 1)} W je alpha</span>` : ""}
-          ${br.ladder != null ? `<span class="rchip">Blockleiter ${fmt(br.ladder, 1)} W je alpha</span>` : ""}
+          ${br.ramp != null ? `<span class="rchip">Stufentest ${fmt(br.ramp, 1)} W je alpha${br.ramp_date ? ` (${dMed(br.ramp_date)})` : ""}</span>` : ""}
+          ${br.ladder != null ? `<span class="rchip">Blockleiter ${fmt(br.ladder, 1)} W je alpha — Gegenprobe, rechnet nicht</span>` : ""}
           <span class="rchip">verwendet ${fmt(br.mid, 1)} W je alpha</span>
-        </div></details>
+        </div>
+        ${br.ramp_note ? `<p class="fcap">${esc(br.ramp_note)}</p>` : ""}
+        ${br.ladder_note ? `<p class="fcap">${esc(br.ladder_note)}</p>` : ""}
+        <p class="fcap">${esc(rw.literature || "")}</p></details>
 
       <details class="more"><summary>Rechenweg</summary>
         <p class="rsatz">Gehaltene Last der Stunde, plus der Weg von dem alpha, das dabei
@@ -1863,7 +1890,11 @@ class IntervalsIcuPanel extends HTMLElement {
   rBlocks(b) {
     if (!b) return this._dataGap("blocks", "Die Blockmessung");
     const fam = b.families || {};
-    const keys = Object.keys(fam);
+    // TEMPO OHNE KACHEL (0.67.0, Entscheidung 23.09.): die Familie bleibt in
+    // der Payload - sie wird weiter gemessen, ihre Marken bleiben, sie traegt
+    // aber nichts mehr (keine Vorgabe, keine Leiter). Welche Familien ohne
+    // Kachel sind, sagt das Backend (`hidden_families`), nicht eine Liste hier.
+    const keys = Object.keys(fam).filter((k) => !((b.hidden_families || []).includes(k)));
     const pr = b.progress || {};
     if (!keys.length) {
       if (pr.pending) {
@@ -4639,7 +4670,10 @@ class IntervalsIcuPanel extends HTMLElement {
       if (min == null) return `${(FAM[fam] || {}).l || fam}: ${fmt(n)}`;
       return `${(FAM[fam] || {}).l || fam}: ${fmt(n)} von ${fmt(min)}`
         + (n >= min ? "" : ` — noch ${fmt(min - n)}`);
-    }).join(" · ");
+    }).join(" · ")
+      // Familien ohne Kachel (0.67.0): der Satz kommt aus der Payload und
+      // steht HIER, wo jemand die fehlende Tempo-Kachel suchen wuerde.
+      + ((b || {}).hidden_note ? ` · ${(b || {}).hidden_note}` : "");
     // DIE KORRIDOR-GEGENÜBERSTELLUNG. Keine Automatik: der Bereich steht fest,
     // das alpha ist gemessen, verglichen werden zwei Zahlen. Kein Wort, das
     // nach Mangel klingt — nur die Zahl und die FOLGE, und beides aus der

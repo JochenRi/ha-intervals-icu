@@ -309,6 +309,14 @@ Fahrt von X Stunden.**
 Diese Kausa hat nicht die Vier-Spalten-Form von K1–K4: es gibt keine Quelle, gegen die
 abzugleichen wäre. Die Frage ist neu gestellt, die Herleitung steht am eigenen Code.
 
+> **Nachtrag 0.67.0 (24.09.2026):** die Umrechnung alpha → Watt kommt nur noch aus dem
+> Stufentest (90,6 W je alpha); die Blockleiter (111,7) steht als Gegenprobe im Rechenweg und
+> rechnet nicht mehr. Sie ist eine **Setzung** (Rampensteigung, über Stunden angewendet — keine
+> Arbeit belegt das), verfällt sechs Kalendermonate nach dem letzten Test
+> (`RAMP_BRIDGE_MAX_AGE_MONTHS`), und die Tempo-Kachel ist aus (Familie bleibt, trägt nichts).
+> Kette am Livebestand seither 170,0 / 163,1 / 149,5 / 145,8 / 131,8 W. Vorlage und Zahlen:
+> `VORLAGE_umrechnung_alpha_watt_tempo.md` im Projekt; PROJEKTSTAND §7, achtundvierzigster Fall.
+
 ### K5.1 · Der Rechenweg, und warum er trägt
 
 Gerechnet wird aus **Gemessenem**, je Stunde:

@@ -370,7 +370,7 @@ def groups(rows: list[dict[str, Any]], covered_until: int) -> dict[str, Any]:
             "covered_until_hours": covered_until}
 
 
-def curve(data: dict[str, Any]) -> dict[str, Any]:
+def curve(data: dict[str, Any], today: str | None = None) -> dict[str, Any]:
     """Die ganze Kachel in einem Stueck."""
     rows = reading_rows(data)
     by_hour = alpha_by_hour(rows)
@@ -401,7 +401,7 @@ def curve(data: dict[str, Any]) -> dict[str, Any]:
             "switch_words": SWITCH_WORDS,
             # DIE UMKEHRUNG (0.64.0). Sie reist im selben Block mit, weil
             # sie dieselbe Ablesestelle liest - nur die Frage ist gedreht.
-            "reversal": reversal(data),
+            "reversal": reversal(data, today),
             "reversal_words": REVERSAL_WORDS,
             "band_share_words": BAND_SHARE_WORDS,
             "min_hours_for_trend": MIN_HOURS_FOR_TREND,
@@ -415,7 +415,8 @@ SETTINGS_NOTE = [
     "der Schnitt nach Fahrtstunden (keine Quelle)",
     "das Lastfenster ± 5 W",
     "ein gerader Abfall ab Stunde 2 (bis dahin an 13 Fahrten belegt)",
-    "die Umrechnung alpha → Watt (je nach Verfahren 0,9 bis 7,7 W je Stunde)",
+    "die Umrechnung alpha → Watt: Setzung aus deinem Stufentest (Minuten, steigende Last), "
+    "hier über Stunden angewendet — verfällt ohne neuen Test nach sechs Monaten",
     "die Spanne quadratisch aus Streuung und Umrechnung zusammengelegt",
     "die Studienform hinter dem belegten Bereich, verankert an Stunde 1",
     # 0.64.0: die Grenze der Umkehrung. Der Ausschlag ist GERECHNET und in
@@ -494,7 +495,7 @@ def tile_numbers(data: dict[str, Any]) -> dict[str, Any]:
             "slope_per_hour": rv.get("slope_per_hour"),
             "bridges": rv.get("bridges"),
             "plan": [{k: row.get(k) for k in ("hours", "watts", "load_w", "alpha",
-                                              "n", "band", "form_watts", "measured")}
+                                              "n", "band", "form_watts", "observed")}
                      for row in (rv.get("plan") or [])],
             "groups": {"carries": sum(1 for r in (rv.get("rides") or []) if r.get("carries")),
                        "supports": sum(1 for r in (rv.get("rides") or [])
@@ -581,11 +582,37 @@ def _shadow(data: dict[str, Any], hours_by_key: dict[str, Any],
 # das ist der ganze Grund, warum diese Kachel eine Zahl nennen darf.
 ALPHA_FLOOR = 1.0
 
+# DER VERFALL DER UMRECHNUNG (0.67.0). Die einzige Quelle der Umrechnung ist
+# der Stufentest; ohne einen markierten Test binnen dieser Frist zeigt die
+# Kachel den Verlauf in alpha und sagt, dass ein Test fehlt. Sechs Monate,
+# als Kalendermonate gerechnet (16.09. -> 16.03.): am Stichtag selbst ist er
+# verfallen. Eine Setzung - es gibt keine Arbeit, die eine Haltbarkeit der
+# Rampensteigung nennt; die Frist ist die Entscheidung vom 23.09.
+RAMP_BRIDGE_MAX_AGE_MONTHS = 6
+
+
+def _months_later(day: str, months: int) -> str:
+    """Dasselbe Tagesdatum `months` Monate spaeter (Monatsende wird gekappt).
+
+    Ohne das Modul `calendar`: im flach geladenen Pruefstand hiesse das die
+    HA-Kalenderdatei dieses Pakets.
+    """
+    import datetime as _dt
+    d = _dt.date.fromisoformat(str(day)[:10])
+    m = d.month - 1 + months
+    y, m = d.year + m // 12, m % 12 + 1
+    letzter = (_dt.date(y + (m == 12), m % 12 + 1, 1) - _dt.timedelta(days=1)).day
+    return _dt.date(y, m, min(d.day, letzter)).isoformat()
+
 # DIE WOERTER DER KACHEL. Sie stehen hier, nicht im Panel - wie bei den
 # Setzungen und den Schalterwoertern. Sichtbar ist EIN Satz; alles andere
 # klappt auf, und zwar in der Reihenfolge, in der gefragt wird.
 REVERSAL_WORDS = {
-    "state": "aus gemessenem alpha",
+    # SETZUNG, nicht "gemessen" (0.67.0): gemessen sind Last und alpha der
+    # Stunde; die Umrechnung von alpha zu Watt stammt aus dem Stufentest
+    # (Minuten, steigende Last) und wird hier ueber Stunden angewendet. Dass
+    # sie dort gilt, belegt keine Arbeit - siehe `literature`.
+    "state": "Setzung: Umrechnung aus deinem Stufentest",
     "lead": "Für eine Fahrt von",
     "unit_note": "so lange bleibst du über alpha {floor}",
     # NICHT "8 von 10 Fahrten". Der Weglass-Rueckblick am Bestand trifft mit
@@ -610,8 +637,26 @@ REVERSAL_WORDS = {
     "rides": ("Es zählen nur Fahrten mit einer Ablesestelle: mindestens 20 Punkte im "
               "Lastfenster um die Leistung, die du gehalten hast. Ohne die gibt es "
               "keine Zahl, und die Stunde fehlt."),
-    "others": ("Zwei eigene Messungen sagen, wieviel Watt ein Schritt von 1,0 alpha "
-               "wert ist. Sie werden gemittelt; ihr Abstand steckt im Band."),
+    "others": ("Wieviel Watt ein Schritt von 1,0 alpha wert ist, sagt allein dein "
+               "Stufentest — die Steigung seiner Fitgeraden zwischen alpha 0,75 und der "
+               "persönlichen Schwelle. Die Blockleiter aus deinen Blockeinheiten steht "
+               "daneben als Gegenprobe; sie rechnet seit 0.67.0 nicht mehr mit."),
+    "ladder_note": ("Gegenprobe, rechnet nicht mit: die Leiter stand auf zwei Sprossen, die "
+                    "weit von alpha 1,0 entfernt lagen (eine davon ein einzelner Tempo-Block), "
+                    "und sie sprang um bis zu 60 W je alpha, wenn eine Sprosse fehlte."),
+    "literature": ("Dass eine Steigung aus einer Rampe von Minuten auch in Stunde 3 einer "
+                   "Grundlagenfahrt gilt, ist eine Annahme: van Rassel 2025, Gronwald 2024, "
+                   "Ajayi 2025 und Rogers 2021 zeigen für Dauerbelastung, dass alpha bei "
+                   "gleicher Last mit der Zeit fällt — keine gibt eine Umrechnung Watt je "
+                   "alpha her. Deine eigenen Fahrten zeigen in diesem Bereich keinen "
+                   "Zusammenhang zwischen alpha und Watt."),
+    "missing_no_ramp": ("Kein markierter Stufentest — ohne ihn gibt es keine Umrechnung "
+                        "und keine Wattzahl. Gezeigt wird dein Verlauf in alpha."),
+    "missing_expired": ("Dein letzter Stufentest ist älter als {months} Monate ({date}) — "
+                        "die Umrechnung ist verfallen. Ein neuer Test bringt die Wattzahl "
+                        "zurück; bis dahin steht dein Verlauf in alpha."),
+    "ramp_note": ("Umrechnung aus dem Stufentest vom {date}, Rampe {rate} W/min, "
+                  "gemessen zwischen alpha {a_lo} und {a_hi}."),
     "why": ("Warum diese Frage und nicht „wo liegt meine Schwelle“: die alte Zahl "
             "musste von deinem alpha weit hinaus gerechnet werden, hier ist der Weg "
             "kurz. Über diese kurze Strecke sind sich die beiden Messungen fast "
@@ -643,22 +688,23 @@ MIN_RIDES_FOR_BAND = 4
 BAND_QUOTE_MIN_N = 9
 
 
-def bridges_alpha(data: dict[str, Any]) -> dict[str, Any]:
-    """Die Umrechnung alpha -> Watt, aus ZWEI eigenen Messungen.
+def bridges_alpha(data: dict[str, Any], today: str | None = None) -> dict[str, Any]:
+    """Die Umrechnung alpha -> Watt: EINE Quelle, der Stufentest (0.67.0).
 
-    Nicht aus den Stundenfits: die sind mit Median-R2 0,32 zwanzigmal flacher
-    als beide Messungen und behaupten umgerechnet 1,89 alpha je 10 W, wo
-    Stufentest und Leiter 0,009 sagen. Das ist Rauschen, das als Gerade
-    gelesen wird, und es wird hier ausdruecklich NICHT benutzt.
+    Bis 0.66.3 wurden zwei Quellen gemittelt - der Stufentest und eine
+    "Blockleiter" aus den Blockfamilien. Die Leiter stand am Bestand auf zwei
+    Sprossen weit von alpha 1,0 (eine davon ein einzelner Tempo-Block), sprang
+    ohne Regel um bis zu 60 W je alpha und trug die Haelfte der Kachelzahl.
+    Entscheidung 23.09.: sie faellt weg. Sie wird weiter GERECHNET und reist
+    als Gegenprobe mit (`ladder`, `ladder_note`), aber `mid` ist der
+    Stufentest allein. Kein Stufentest, oder aelter als
+    RAMP_BRIDGE_MAX_AGE_MONTHS: keine Umrechnung, keine Wattzahl - die Kachel
+    sagt es (`missing`).
 
-    `ramp` kommt aus dem eigenen Stufentest (zwei Ablesungen in EINER Fahrt),
-    `ladder` aus den eingeschwungenen Bloecken zweier Familien. Beide werden
-    am Bestand gerechnet; fehlt eine, traegt die andere allein, fehlen beide,
-    gibt es keine Umrechnung und damit keine Wattzahl.
+    Die Umrechnung ist eine SETZUNG: Steigung der Fitgeraden zwischen zwei
+    Ablesungen einer Rampe (Minuten), angewendet ueber Stunden. Siehe
+    REVERSAL_WORDS["literature"].
     """
-    # SPAET geladen und in BEIDEN Formen - dasselbe Muster wie im Importblock
-    # oben: im Paket relativ, im Pruefstand flach. Spaet, weil `blocks` seinen
-    # eigenen Weg zu `section_marks` hat und ein Import oben einen Ring baut.
     try:
         from . import blocks as blocks_lib
         from . import ramp_tests
@@ -666,41 +712,54 @@ def bridges_alpha(data: dict[str, Any]) -> dict[str, Any]:
         import blocks as blocks_lib  # type: ignore[no-redef]
         import ramp_tests  # type: ignore[no-redef]
 
-    out: dict[str, Any] = {"ramp": None, "ladder": None, "mid": None, "sources": []}
-    got = (ramp_tests.latest(data) or {}).get("result") or {}
+    out: dict[str, Any] = {"ramp": None, "ramp_date": None, "ramp_note": None,
+                           "ramp_expired": False, "ramp_expires": None,
+                           "ladder": None, "ladder_note": REVERSAL_WORDS["ladder_note"],
+                           "mid": None, "spread": None, "sources": [], "missing": None}
+    row = ramp_tests.latest(data) or {}
+    got = row.get("result") or {}
     eins, pers = got.get("hrvt1") or {}, got.get("hrvt1_pers") or {}
     wa, wb = eins.get("watts"), pers.get("watts")
     aa, ab = eins.get("alpha"), pers.get("alpha")
     if None not in (wa, wb, aa, ab) and abs(ab - aa) > 1e-6:
         out["ramp"] = round(abs((wa - wb) / (ab - aa)), 1)
-        out["sources"].append("Stufentest")
+        out["ramp_date"] = str(row.get("date") or "")[:10] or None
+        rate = ((got.get("protocol") or {}).get("ramp_w_per_min")
+                or (row.get("protocol") or {}).get("ramp_w_per_min"))
+        out["ramp_note"] = REVERSAL_WORDS["ramp_note"].format(
+            date=out["ramp_date"] or "?", rate=("%.1f" % rate).replace(".", ",") if rate else "?",
+            a_lo=("%.2f" % min(aa, ab)).replace(".", ","), a_hi=("%.2f" % max(aa, ab)).replace(".", ","))
+        if out["ramp_date"] and today:
+            out["ramp_expires"] = _months_later(out["ramp_date"], RAMP_BRIDGE_MAX_AGE_MONTHS)
+            out["ramp_expired"] = str(today)[:10] >= out["ramp_expires"]
 
+    # DIE LEITER - nur noch Gegenprobe. Gerechnet wie bis 0.66.3, damit die
+    # Zahl im Rechenweg steht; sie geht in `mid` NICHT ein.
     fams = (blocks_lib.series(data, with_other=False) or {}).get("families") or {}
     sprossen = []
     for box in fams.values():
         alphas, watts = [], []
         for point in box.get("points") or []:
-            # AB BLOCK 2 - der erste Block ist noch nicht eingeschwungen, das
-            # ist die Regel der Blockkacheln und sie gilt hier genauso.
             alphas += list((point.get("block_alphas") or [])[1:])
             watts += list((point.get("block_watts") or [])[1:])
         if alphas and watts:
             sprossen.append((derive._median(alphas), derive._median(watts)))
     sprossen.sort()
     if len(sprossen) >= 2:
-        # Die beiden Sprossen, die ALPHA_FLOOR am naechsten liegen: ueber eine
-        # kurze Strecke gemessen ist besser als ueber die ganze Leiter, weil
-        # die Beziehung nicht gerade ist.
         naechste = sorted(sprossen, key=lambda s: abs(s[0] - ALPHA_FLOOR))[:2]
         (a1, w1), (a2, w2) = sorted(naechste)
         if abs(a2 - a1) > 1e-6:
             out["ladder"] = round(abs((w2 - w1) / (a2 - a1)), 1)
-            out["sources"].append("Blockleiter")
 
-    beide = [v for v in (out["ramp"], out["ladder"]) if v is not None]
-    if beide:
-        out["mid"] = round(sum(beide) / len(beide), 1)
-        out["spread"] = round(max(beide) - min(beide), 1)
+    if out["ramp"] is None:
+        out["missing"] = REVERSAL_WORDS["missing_no_ramp"]
+    elif out["ramp_expired"]:
+        out["missing"] = REVERSAL_WORDS["missing_expired"].format(
+            months=RAMP_BRIDGE_MAX_AGE_MONTHS, date=out["ramp_date"])
+    else:
+        out["mid"] = out["ramp"]
+        out["spread"] = 0.0
+        out["sources"] = ["Stufentest"]
     return out
 
 
@@ -737,7 +796,7 @@ def reversal_band(values: list[float], bridge_half: float = 0.0) -> dict[str, An
             "quote_shown": n >= BAND_QUOTE_MIN_N}
 
 
-def reversal(data: dict[str, Any]) -> dict[str, Any]:
+def reversal(data: dict[str, Any], today: str | None = None) -> dict[str, Any]:
     """Die Kette der Umkehrung: je Stunde die Watt, bei denen alpha 1,0 bleibt.
 
     Gerechnet aus der GEHALTENEN Last der Stunde und dem dort GEMESSENEN alpha
@@ -752,7 +811,7 @@ def reversal(data: dict[str, Any]) -> dict[str, Any]:
     dafuer ist gemessen: im Weglass-Rueckblick trifft das Band 82 % (Stunde 1)
     und 85 % (Stunde 2) der weggelassenen Fahrten.
     """
-    br = bridges_alpha(data)
+    br = bridges_alpha(data, today)
     mid = br.get("mid")
     rows = reading_rows(data)
     je_stunde: dict[int, list[tuple[float, float]]] = {}
@@ -763,11 +822,35 @@ def reversal(data: dict[str, Any]) -> dict[str, Any]:
                 continue
             je_stunde.setdefault(int(hour.get("hour") or 0), []).append((float(last), float(alpha)))
     je_stunde.pop(0, None)
-    if not je_stunde or mid is None:
+    rides_out = [{"activity_id": row.get("activity_id"), "date": row.get("date"),
+                  "name": row.get("name"), "virtual": bool(row.get("virtual")),
+                  "minutes": row.get("minutes"),
+                  "load_w": derive._median([h["load_w"] for h in (row.get("hours") or [])
+                                            if h.get("load_w") is not None] or [0]),
+                  "alpha_from": row.get("first"), "alpha_to": row.get("last"),
+                  "hours": len(row.get("hours") or []),
+                  "carries": bool(row.get("carries_trend"))}
+                 for row in rows]
+    if not je_stunde:
         return {"plan": [], "bridges": br, "alpha_floor": ALPHA_FLOOR,
                 "floor_step": ALPHA_FLOOR_STEP, "floor_step_watts": None,
                 "min_rides_for_band": MIN_RIDES_FOR_BAND, "covered_until_hours": 0,
-                "slope_per_hour": None, "rides": []}
+                "slope_per_hour": None, "rides": rides_out}
+
+    # OHNE UMRECHNUNG KEINE WATTZAHL - aber der Verlauf in alpha bleibt (0.67.0):
+    # je Stunde Last, alpha und Belegung, Watt und Band leer. Die Kachel zeigt
+    # dann den alpha-Verlauf und den Grund (`bridges.missing`).
+    if mid is None:
+        plan = [{"hours": hour, "watts": None, "band": None,
+                 "load_w": round(derive._median([w for w, _ in je_stunde[hour]]), 1),
+                 "alpha": round(derive._median([a for _, a in je_stunde[hour]]), 3),
+                 "n": len(je_stunde[hour]), "observed": True, "lower": None, "form_watts": None}
+                for hour in sorted(je_stunde)]
+        return {"plan": plan, "bridges": br, "alpha_floor": ALPHA_FLOOR,
+                "floor_step": ALPHA_FLOOR_STEP, "floor_step_watts": None,
+                "min_rides_for_band": MIN_RIDES_FOR_BAND,
+                "covered_until_hours": max(je_stunde),
+                "slope_per_hour": None, "rides": rides_out}
 
     spanne = br.get("spread") or 0.0
     plan = []
@@ -781,9 +864,12 @@ def reversal(data: dict[str, Any]) -> dict[str, Any]:
         # gehaltene Last streut mit, und genau die fehlte bis 0.64.2.
         band = reversal_band([w + (a - ALPHA_FLOOR) * mid for w, a in paare],
                              abs(alpha - ALPHA_FLOOR) * spanne / 2)
+        # `observed` heisst: fuer diese Stunde gibt es Fahrten. Bis 0.66.3
+        # hiess das Feld `measured` - und die Umrechnung darin ist nicht
+        # gemessen, sondern gesetzt (REVERSAL_WORDS["state"]).
         plan.append({"hours": hour, "watts": round(watts, 1),
                      "load_w": round(last, 1), "alpha": round(alpha, 3),
-                     "n": n, "band": band, "measured": True, "lower": None,
+                     "n": n, "band": band, "observed": True, "lower": None,
                      "form_watts": None})
 
     # Die Fortschreibung: eine Gerade durch die gemessenen Stunden. Daneben die
@@ -809,7 +895,7 @@ def reversal(data: dict[str, Any]) -> dict[str, Any]:
             form = round(basis * fatigue.literature_factor(float(hour)), 1)
             plan.append({"hours": hour, "watts": gerade, "form_watts": form,
                          "load_w": None, "alpha": None, "n": 0, "band": None,
-                         "measured": False,
+                         "observed": False,
                          "lower": "form" if form <= gerade else "chain"})
     return {"plan": plan, "bridges": br, "alpha_floor": ALPHA_FLOOR,
             "floor_step": ALPHA_FLOOR_STEP,
@@ -817,12 +903,4 @@ def reversal(data: dict[str, Any]) -> dict[str, Any]:
             "min_rides_for_band": MIN_RIDES_FOR_BAND,
             "covered_until_hours": covered,
             "slope_per_hour": None if steigung is None else round(steigung, 1),
-            "rides": [{"activity_id": row.get("activity_id"), "date": row.get("date"),
-                       "name": row.get("name"), "virtual": bool(row.get("virtual")),
-                       "minutes": row.get("minutes"),
-                       "load_w": derive._median([h["load_w"] for h in (row.get("hours") or [])
-                                          if h.get("load_w") is not None] or [0]),
-                       "alpha_from": row.get("first"), "alpha_to": row.get("last"),
-                       "hours": len(row.get("hours") or []),
-                       "carries": bool(row.get("carries_trend"))}
-                      for row in rows]}
+            "rides": rides_out}

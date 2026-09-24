@@ -302,20 +302,21 @@ function fatigueV2Block(over) {
   // NACHRECHENBAR gebaut, damit die Formelzeile gegen die Zahl gehalten werden
   // kann; Stunde 4 traegt DREI Fahrten und deshalb KEINE Spanne.
   const m = (hours, watts, load_w, alpha, n, form_watts, band) => ({
-    hours, watts, load_w, alpha, n, form_watts, band, measured: true, lower: null });
+    hours, watts, load_w, alpha, n, form_watts, band, observed: true, lower: null });
   const g = (hours, watts, form_watts) => ({
     hours, watts, form_watts, load_w: null, alpha: null, n: 0, band: null,
-    measured: false, lower: form_watts <= watts ? "form" : "chain" });
+    observed: false, lower: form_watts <= watts ? "form" : "chain" });
   const plan = [
-    m(1, 172.7, 139.6, 1.327, 17, 172.7,
-      { half: 28.7, from_spread: 28.5, from_bridge: 3.4, n: 17, quote_shown: true }),
-    m(2, 166.1, 140.2, 1.256, 14, 167.7,
-      { half: 26.7, from_spread: 26.6, from_bridge: 2.7, n: 12, quote_shown: true }),
-    m(3, 150.6, 139.8, 1.107, 4, 160.7,
-      { half: 11.6, from_spread: 11.5, from_bridge: 1.1, n: 4, quote_shown: false }),
+    // 0.67.0: Umrechnung = Stufentest allein (90,6), from_bridge = 0.
+    m(1, 169.2, 139.6, 1.327, 17, 169.2,
+      { half: 28.5, from_spread: 28.5, from_bridge: 0, n: 17, quote_shown: true }),
+    m(2, 163.4, 140.2, 1.256, 14, 164.3,
+      { half: 26.6, from_spread: 26.6, from_bridge: 0, n: 12, quote_shown: true }),
+    m(3, 149.5, 139.8, 1.107, 4, 157.4,
+      { half: 11.5, from_spread: 11.5, from_bridge: 0, n: 4, quote_shown: false }),
     // Drei Fahrten: unter der Mindestbelegung, also KEIN Band.
-    m(4, 146.6, 138.7, 1.078, 3, 151.6, null),
-    m(5, 130.0, 146.8, 0.834, 1, 140.5, null),
+    m(4, 145.8, 138.7, 1.078, 3, 148.5, null),
+    m(5, 131.8, 146.8, 0.834, 1, 137.6, null),
     g(6, 121.7, 127.3), g(7, 111.2, 112.0), g(8, 100.7, 94.7),
   ];
   return Object.assign({
@@ -331,8 +332,11 @@ function fatigueV2Block(over) {
     reversal: {
       plan, covered_until_hours: 5, alpha_floor: 1.0, floor_step: 0.1,
       floor_step_watts: 10.1, min_rides_for_band: 4, slope_per_hour: -10.5,
-      bridges: { ramp: 90.6, ladder: 111.7, mid: 101.2, spread: 21.1,
-                 sources: ["Stufentest", "Blockleiter"] },
+      // 0.67.0: eine Quelle (Stufentest), die Leiter nur als Gegenprobe.
+      bridges: { ramp: 90.6, ramp_date: "2026-09-16", ramp_note: "RAMPENSATZ AUS DEM MODUL.",
+                 ramp_expired: false, ramp_expires: "2027-03-16",
+                 ladder: 111.7, ladder_note: "LEITERSATZ AUS DEM MODUL (Gegenprobe).",
+                 mid: 90.6, spread: 0.0, sources: ["Stufentest"], missing: null },
       rides: [
         { activity_id: "r1", date: "2026-08-08", name: "volumen", virtual: false,
           minutes: 260, load_w: 146.8, alpha_from: 1.234, alpha_to: 0.834,
@@ -346,13 +350,16 @@ function fatigueV2Block(over) {
       ],
     },
     reversal_words: {
-      state: "aus gemessenem alpha", lead: "F\u00fcr eine Fahrt von",
+      state: "SETZUNG AUS DEM MODUL", lead: "F\u00fcr eine Fahrt von",
       unit_note: "so lange bleibst du \u00fcber alpha {floor}",
       band_share: "8 von 10 Fahrten", band_no_quote: "t-Band \u00fcber {n} Fahrten",
       no_band: "unter {min} Fahrten keine Spanne",
       mean: "BEDEUTUNGSSATZ AUS DEM MODUL {floor}.", form: "FORMSATZ AUS DEM MODUL.",
       rides: "FAHRTENSATZ AUS DEM MODUL.", others: "MESSUNGSSATZ AUS DEM MODUL.",
-      why: "WARUMSATZ AUS DEM MODUL.",
+      why: "WARUMSATZ AUS DEM MODUL.", literature: "LITERATURSATZ AUS DEM MODUL.",
+      ladder_note: "LEITERSATZ AUS DEM MODUL (Gegenprobe).",
+      missing_no_ramp: "OHNE-STUFENTEST-SATZ.", missing_expired: "VERFALLSSATZ {months} {date}.",
+      ramp_note: "RAMPENSATZ AUS DEM MODUL.",
     },
     estimate_words: {
       state: "gesch\u00e4tzt, keine Messung",
