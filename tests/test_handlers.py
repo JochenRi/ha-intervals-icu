@@ -146,7 +146,9 @@ CURVE = {"measured": [{"hour": 1, "t": 0.5, "watts": 152.5, "n": 26},
                       {"hour": 2, "t": 1.5, "watts": 142.2, "n": 23}],
          "literature": [{"hour": 1, "t": 0.5, "watts": 152.5},
                         {"hour": 2, "t": 1.5, "watts": 149.1}],
-         "solid_until_hour": 2, "thin_until_hour": 2}
+         "solid_until_hour": 2, "thin_until_hour": 2,
+         # 0.67.4 (S3): die Kette der Kachel, aus der die Einheit liest
+         "plan": [{"hours": 1, "watts": 152.5}, {"hours": 2, "watts": 142.2}]}
 BLOCKS = {"families": {"vo2max": {
     "source_ok": True, "sessions": 6, "from": "2026-07-23", "to": "2026-09-08",
     "hr_window": {"low": 176, "high": 185, "n": 6},

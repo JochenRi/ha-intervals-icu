@@ -72,6 +72,32 @@ def form_zone(form: float | None) -> str | None:
     return None
 
 
+def form_state(ctl: float | None, atl: float | None) -> dict[str, Any] | None:
+    """Die Form-Einstufung - EIN Erzeuger fuer Belastungs-Reiter und Ampel (0.67.4, F2.9).
+
+    ABSOLUT (Entscheidung 24.09.): `form = ctl - atl` gegen FORM_ZONES. Bis
+    0.67.3 stufte der Belastungs-Reiter absolut und die Ampel relativ
+    (form / ctl); bei CTL um 30 ist relativ dreimal so grob (6,8 Last = 21,5 %),
+    und beide Reiter widersprachen sich ("Grauzone" gegen "Uebergang, amber").
+    Der relative Wert reist als `percent` mit, entscheidet aber nicht.
+    """
+    if ctl is None or atl is None:
+        return None
+    form = float(ctl) - float(atl)
+    zone = form_zone(form)
+    if zone is None:
+        return None
+    return {
+        "form": form,
+        "percent": form_percent(ctl, atl),
+        "zone": zone,
+        "state": {"high_risk": "red", "optimal": "green", "grey": "green",
+                  "fresh": "green", "transition": "amber"}[zone],
+        "label": {"high_risk": "hohes Risiko", "optimal": "optimal", "grey": "Grauzone",
+                  "fresh": "frisch", "transition": "Übergang, lange ohne Reiz"}[zone],
+    }
+
+
 def form_percent(ctl: float | None, atl: float | None) -> float | None:
     """Return form as a percentage of fitness, the Intervals.icu default."""
     if ctl is None or atl is None or not ctl:
@@ -458,7 +484,8 @@ def summary(data: dict[str, Any]) -> dict[str, Any]:
         "ramp_rate": ramp_rate(data),
         "form": (ctl - atl) if ctl is not None and atl is not None else None,
         "form_percent": form_percent(ctl, atl),
-        "form_zone": form_zone((ctl - atl) if ctl is not None and atl is not None else None),
+        # ein Erzeuger (F2.9): dieselbe Einstufung wie die Ampel
+        "form_zone": (form_state(ctl, atl) or {}).get("zone"),
         "intensity": _safe("intensity", intensity_distribution, data),
         "dfa_distribution": _safe("dfa_distribution", dfa_distribution, data),
         "decoupling": (_safe("decoupling", decoupling_series, data, default=[]) or [])[-40:],
@@ -587,23 +614,18 @@ def readiness(data: dict[str, Any], today: str | None = None) -> dict[str, Any]:
     latest_row = (data.get("wellness") or {}).get(days[-1]) if days else {}
     ctl = (latest_row or {}).get("ctl")
     atl = (latest_row or {}).get("atl")
-    form = (ctl - atl) if ctl is not None and atl is not None else None
-    relative = form_percent(ctl, atl)
-    zone = form_zone(relative if relative is not None else form)
-    if zone is None:
+    fs = form_state(ctl, atl)
+    if fs is None:
         components.append({"id": "form", "label": "Form", "state": "unknown",
                            "detail": "keine Daten", "source": ""})
     else:
-        state = {"high_risk": "red", "optimal": "green", "grey": "green",
-                 "fresh": "green", "transition": "amber"}[zone]
-        label = {"high_risk": "hohes Risiko", "optimal": "optimal", "grey": "Grauzone",
-                 "fresh": "frisch", "transition": "Übergang, lange ohne Reiz"}[zone]
         components.append({
-            "id": "form", "label": "Form", "state": state,
-            "value": round(relative, 1) if relative is not None else None,
-            "reference": None, "detail": label,
-            "source": "Zonen nach Joe Friel, hier relativ zur Fitness gerechnet wie in Intervals. "
-                      "Faustregel, keine Wissenschaft.",
+            "id": "form", "label": "Form", "state": fs["state"],
+            "value": round(fs["form"], 1),
+            "reference": None, "detail": fs["label"],
+            "percent": round(fs["percent"], 1) if fs.get("percent") is not None else None,
+            "source": "Zonen nach Joe Friel, absolut (CTL − ATL) — dieselbe Einstufung wie im "
+                      "Belastungs-Reiter. Faustregel, keine Wissenschaft.",
         })
 
     # --- acute against chronic --------------------------------------------------------

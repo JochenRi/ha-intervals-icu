@@ -552,52 +552,52 @@ def _family_of(key: str | None) -> str | None:
     return None
 
 
-def curve_watts(curve: dict[str, Any] | None, hours: float) -> dict[str, Any] | None:
-    """Return the measured threshold power at `hours` into a ride.
+# DIE KETTE HAT EINEN ERZEUGER (0.67.4, Sollzustand S3 - Entscheidung 24.09.,
+# "Wahl 2 mit Schranke"): die Einheit liest die Kette der Ermuedungskachel
+# (`curve["plan"]`, Kette A) bei der GEPLANTEN DAUER - dieselbe Frage wie die
+# Kachel ("welche Leistung haelt sich ueber eine Fahrt dieser Laenge"). Bis
+# 0.67.3 baute `curve_watts` eine ZWEITE Kette aus `measured`/`paired` (Abbruch
+# unter 6 Paaren, Stundenmitte des Hauptabschnitts, Studienform darueber
+# hinaus) - zwei Antworten aus denselben Stunden (Karte F2.3, W3.3).
+#
+# DIE SCHRANKE: eine Stunde zaehlt als belegt ab CURVE_HOUR_MIN_RIDES Fahrten.
+# Ist die Stunde der Dauer nicht belegt, gilt die letzte gut belegte davor -
+# auch jenseits des belegten Bereichs, statt der Studienform. Grund: sonst laese
+# die 3,5-h-Einheit auf einer Stunde mit einer Fahrt.
+#
+# DIE RUNDUNG: nur VOLLE Stunden zaehlen, mindestens eine (planned_hour). Eine
+# 2,5-h-Fahrt liest bei 2 h - die Kette sagt "fuer eine Fahrt von 2 h", und
+# die dritte Stunde ist bei 2,5 h nicht gefahren.
+CURVE_HOUR_MIN_RIDES = 3
 
-    Gestaffelt wird auf der GEPAARTEN Reihe: die ungepaarte enthält einen
-    nachgewiesenen Auswahlanteil (PROJEKTSTAND §7). Bis zur letzten gemessenen
-    Stunde ist das Messung, darüber Studienform - und welches von beidem, sagt
-    jeder Abschnitt selbst.
+
+def planned_hour(minutes: float) -> int:
+    """Die Kettenstelle einer geplanten Dauer: volle Stunden, mindestens 1."""
+    return max(1, int(float(minutes) // 60))
+
+
+def curve_watts(curve: dict[str, Any] | None, hours: float) -> dict[str, Any] | None:
+    """Die Schwelle der Kette (Kette A) fuer eine Fahrt der GEPLANTEN Dauer `hours`.
+
+    Liest `curve["plan"]` (die Leitzahl der Kachel) an planned_hour(hours), und
+    faellt auf die letzte Stunde mit >= CURVE_HOUR_MIN_RIDES Fahrten zurueck.
+    Gibt None, wenn keine Stunde belegt ist - dann traegt die FTP.
     """
     if not curve:
         return None
-    measured = curve.get("measured") or []
-    if not measured:
+    plan = {int(row["hours"]): float(row["watts"]) for row in (curve.get("plan") or [])
+            if row.get("hours") is not None and row.get("watts") is not None}
+    rides = {int(row["hour"]): int(row.get("n") or 0) for row in (curve.get("measured") or [])
+             if row.get("hour") is not None}
+    if not plan:
         return None
-
-    # Erst die gestaffelte Reihe bauen, SOLANGE die Paare tragen - dann den
-    # Punkt waehlen. Andersherum fiel eine Dauer zwischen zwei Messstunden in
-    # die Literatur, obwohl sie mitten im gemessenen Bereich liegt.
-    steps = [{"t": measured[0]["t"], "hour": measured[0]["hour"],
-              "watts": float(measured[0]["watts"]), "n": measured[0]["n"]}]
-    for step in curve.get("paired") or []:
-        if not step.get("enough"):
-            break
-        row = next((m for m in measured if m["hour"] == step["to_hour"]), None)
-        if row is None:
-            break
-        steps.append({"t": row["t"], "hour": row["hour"],
-                      "watts": steps[-1]["watts"] + float(step["delta"]), "n": row["n"]})
-
-    last = steps[-1]
-    # Innerhalb des gemessenen Bereichs: der naechstgelegene Stundenpunkt.
-    # Eine halbe Stunde Reichweite je Punkt - das ist die Breite der Bins,
-    # aus denen er stammt, nicht eine zusaetzliche Annahme.
-    if hours <= last["t"] + 0.5:
-        near = min(steps, key=lambda r: abs(r["t"] - hours))
-        return {"watts": round(near["watts"]), "source": "measured",
-                "n": near["n"], "hour": near["hour"]}
-
-    # Darueber: die Studienform, am zuletzt GEMESSENEN Punkt verankert.
-    lit = curve.get("literature") or []
-    here = min(lit, key=lambda r: abs(r["t"] - hours), default=None)
-    anchor = next((r for r in lit if r.get("hour") == last["hour"]), None)
-    if here is None or anchor is None or not anchor.get("watts"):
-        return {"watts": round(last["watts"]), "source": "measured",
-                "n": last["n"], "hour": last["hour"]}
-    return {"watts": round(last["watts"] * here["watts"] / anchor["watts"]),
-            "source": "literature", "n": None, "hour": None}
+    hour = planned_hour(float(hours) * 60.0)
+    hour = min(hour, max(plan))
+    while hour >= 1 and (hour not in plan or rides.get(hour, 0) < CURVE_HOUR_MIN_RIDES):
+        hour -= 1
+    if hour < 1:
+        return None
+    return {"watts": round(plan[hour]), "source": "measured", "n": rides.get(hour), "hour": hour}
 
 
 # --- Die Quellenkette je Familie (docs/ausbau.md N2) -------------------------
@@ -705,7 +705,7 @@ def ramp_protocol(ftp: float | None, curve: dict[str, Any] | None = None,
     start, start_from = None, "ftp"
     for stage_name in RAMP_START_CHAIN:
         if stage_name == "curve":
-            at = curve_watts(curve, 0.5)
+            at = curve_watts(curve, 1.0)  # die erste Stunde der Kette
             if at:
                 start, start_from = round(at["watts"] * CURVE_TARGET_SHARE), "curve"
                 break
@@ -1008,14 +1008,11 @@ def scaled(entry: dict[str, Any], ftp: float | None, aerobic_hr: int | None,
         return out
 
     if curve and fam in CURVE_FAMILIES:
-        staged, elapsed, changed = [], 0.0, False
+        staged, changed = [], False
+        # EINE Stunde fuer die ganze Einheit: die der geplanten Dauer (S3).
+        total = sum(float(block[0]) for block in entry["blocks"]) or float(entry.get("minutes") or 0)
+        at = curve_watts(curve, total / 60.0)
         for block in entry["blocks"]:
-            minutes = float(block[0])
-            # Der Zeitpunkt in der MITTE des Abschnitts: ein Block von 80
-            # Minuten hat keine Leistung, er hat einen Verlauf - die Mitte ist
-            # der ehrlichste einzelne Wert dafür.
-            at = curve_watts(curve, (elapsed + minutes / 2) / 60.0)
-            elapsed += minutes
             # Nur der GLEICHMÄSSIGE Hauptteil kommt aus der Kurve. Ein- und
             # Ausrollen sind Prozentangaben auf eine Schwelle, die dort nicht
             # gemessen wurde.

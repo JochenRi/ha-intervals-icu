@@ -19,6 +19,15 @@
 >   Form nicht. Eigene Runde, nicht als Nebensatz einer anderen.
 
 
+## 0.67.4 — S3 (eine Kette) und F2.9 (Form absolut) (24.09.2026)
+
+Prüfstand **24 / 7.977 / 0**. **Es ändert Zahlen:** (1) F2.9: Ampel amber → **grün**,
+Tagesbudget **10 → 68** — z2_60, Stufentest und Regeneration passen jetzt, die Blockeinheiten
+und z2_150 nicht. (2) S3: die Grundlageneinheit liest die Kette der Kachel bei der geplanten
+Dauer (volle Stunden, ≥ 3 Fahrten je Stunde, sonst die letzte gut belegte): z2_210_late
+**136 → 126 W**, längste Fahrt 5,5 h **131 → 126 W**; z2_60/z2_90/z2_150 unverändert (133/133/136).
+Vorgaben der Blockfamilien (190/250) und Pulsfenster unbewegt. Offen: S1 (HRV-Gewichtung).
+
 ## 0.67.3 — zwei Entscheidungen: Budget und Lastgrenze (24.09.2026)
 
 Prüfstand **24 / 7.960 / 0**. **F2.10:** das Budget ist die Gesamtlast des Tages; die heutige

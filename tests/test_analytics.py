@@ -416,6 +416,28 @@ _gestern = _bestand(0.0); del _gestern["wellness"]["2026-09-24"]
 _g = analytics.load_budget(_gestern, "green", today="2026-09-24")
 check("F2.10 Randfall ohne heutige Zeile: dieselbe Grenze, Verbrauch 0", (_g["recommended"], _g.get("used_today")), (_ohne["recommended"], 0.0))
 
+
+# --- F2.9 · Form ABSOLUT, ein Erzeuger fuer Belastung und Ampel (Entscheidung 24.09.) --
+# Bis 0.67.3 stufte summary() absolut (+6,8 -> grey) und readiness() relativ
+# (+21,5 % -> transition, amber) - dieselbe Tabelle, zwei Eingaben. Bei CTL ~30
+# ist relativ dreimal so grob. Jetzt: analytics.form_state(ctl, atl) als der
+# eine Erzeuger, beide Reiter lesen ihn, absolut. Rot an 0.67.3.
+_f29 = {"wellness": {}, "activities": {}}
+for _i in range(35):
+    _d = (_date(2026, 9, 24) - _td(days=34 - _i)).isoformat()
+    _f29["wellness"][_d] = {"ctl": 31.4, "atl": 24.7, "ctlLoad": 40.0, "hrv": 60.0, "restingHR": 50, "sleepSecs": 25200}
+_fs = analytics.form_state(31.4, 24.7)
+check("F2.9 Erzeuger: die Form ist absolut +6,7 -> grey", (round(_fs["form"], 1), _fs["zone"]), (6.7, "grey"))
+check("F2.9 Erzeuger: relativ steht daneben, entscheidet aber nicht", round(_fs["percent"], 1), 21.3)
+_rd = analytics.readiness(_f29, today="2026-09-24")
+_fc = [c for c in _rd["components"] if c["id"] == "form"][0]
+check("F2.9 Treffer Ampel: die Form-Komponente stuft absolut (grey -> green)", _fc["state"], "green")
+check("F2.9 Treffer Ampel: der Wert ist die absolute Form", _fc.get("value"), 6.7)
+_su = analytics.summary(_f29)
+check("F2.9 Belastung: dieselbe Zone", _su.get("form_zone"), "grey")
+# Gegenprobe: eine Form, die absolut UND relativ in derselben Zone liegt, aendert nichts
+check("F2.9 Gegenprobe: -40 absolut ist high_risk wie zuvor", analytics.form_state(30.0, 70.0)["zone"], "high_risk")
+
 print(f"test_analytics: {CHECKS} Prüfungen, {len(failures)} Fehler")
 print("FEHLER:", failures if failures else "keine")
 sys.exit(1 if failures else 0)

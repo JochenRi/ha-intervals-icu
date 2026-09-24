@@ -706,7 +706,9 @@ check("60-115" in "- 30m ramp 60-115% (5 W/min)",
 # ist. Die Zusicherung haelt jetzt alle drei gegeneinander - und weil die Dauer
 # GERECHNET wird, ist der Widerspruch gar nicht mehr herstellbar.
 _CURVE = {"measured": [{"hour": 1, "t": 0.5, "watts": 152.9, "n": 11},
-                       {"hour": 2, "t": 1.5, "watts": 137.6, "n": 12}], "paired": []}
+                       {"hour": 2, "t": 1.5, "watts": 137.6, "n": 12}], "paired": [],
+          # 0.67.4 (S3): die Kette der Kachel, wie fatigue.curve sie liefert
+          "plan": [{"hours": 1, "watts": 152.9}, {"hours": 2, "watts": 137.6}]}
 _BLOCKS = {"families": {"vo2max": {"source_ok": True, "sessions": 15,
     "from": "2026-06-03", "to": "2026-09-01",
     "latest": {"date": "2026-09-01", "first_watts": 257, "first_alpha": 0.472,
@@ -953,7 +955,8 @@ _CURVE = {"measured": [{"hour": 1, "t": 0.5, "watts": 152.5, "n": 26},
                        {"hour": 2, "t": 1.5, "watts": 142.2, "n": 23}],
           "literature": [{"hour": 1, "t": 0.5, "watts": 152.5},
                          {"hour": 2, "t": 1.5, "watts": 149.1}],
-          "solid_until_hour": 2, "thin_until_hour": 2}
+          "solid_until_hour": 2, "thin_until_hour": 2,
+          "plan": [{"hours": 1, "watts": 152.5}, {"hours": 2, "watts": 142.2}]}
 
 # --- 1 · DIE TABELLE IST VOLLSTAENDIG UND ENDET IMMER BEI DER FTP -------------
 for _fam, _label, _keys in W.FAMILIES:
@@ -1065,18 +1068,23 @@ CURVE = {
                    {"hour": 2, "t": 1.5, "watts": 149.0},
                    {"hour": None, "t": 2.5, "watts": 143.0},
                    {"hour": None, "t": 3.5, "watts": 136.0}],
+    # 0.67.4 (S3): die Einheit liest die KETTE DER KACHEL (Kette A, `plan`) -
+    # die Fixture traegt sie wie fatigue.curve sie baut (153, dann -11 gepaart).
+    "plan": [{"hours": 1, "watts": 153.0}, {"hours": 2, "watts": 142.0}],
 }
 
-erste = W.curve_watts(CURVE, 0.5)
+# 0.67.4 (S3): `curve_watts` liest bei der GEPLANTEN DAUER (volle Stunden), nicht
+# mehr an der Stundenmitte; jenseits der belegten Stunden bleibt die letzte gut
+# belegte - keine Studienform mehr in der Einheit.
+erste = W.curve_watts(CURVE, 1.0)
 eq((erste["watts"], erste["source"]), (153, "measured"), "Stunde 1 kommt aus der Messung")
 eq(erste["n"], 11, "und traegt ihre Belegung")
-zweite = W.curve_watts(CURVE, 1.5)
-eq(zweite["watts"], 142, "Stunde 2 folgt der GEPAARTEN Reihe (-11), nicht der ungepaarten (-15)")
+zweite = W.curve_watts(CURVE, 2.0)
+eq(zweite["watts"], 142, "Stunde 2 folgt der Kette der Kachel (-11 gepaart)")
 eq(zweite["source"], "measured", "auch sie ist Messung")
 spaet = W.curve_watts(CURVE, 3.5)
-eq(spaet["source"], "literature", "jenseits des Gemessenen: Studienform")
-eq(spaet["n"], None, "und ohne Belegung, weil es keine gibt")
-check(spaet["watts"] < zweite["watts"], "die Studienform faellt weiter")
+eq((spaet["hour"], spaet["watts"], spaet["source"]), (2, 142, "measured"),
+   "jenseits des Belegten: die letzte gut belegte Stunde, nicht die Studienform")
 
 # --- 0.47.1: DIE MESSUNG IST NICHT DIE VORGABE -------------------------------
 # Die Kurve liefert die SCHWELLE. Wer dort faehrt, faehrt an der Schwelle und
@@ -1142,13 +1150,11 @@ eq(ohne["watt_source"], "ftp", "ohne Blockmessung: unveraendert FTP")
 # Gegenprobe, GEZAEHLT UND BENANNT: traegt der gepaarte Schritt nicht, wird er
 # NICHT verwendet - sonst staffelte die Vorgabe auf einer Zahl, die die Kachel
 # selbst nicht zeigen darf.
-duenn = {**CURVE, "paired": [{**CURVE["paired"][0], "n": 3, "enough": False}]}
-# Traegt der gepaarte Schritt nicht, wird NICHT auf ihm gestaffelt - die
-# Vorgabe faellt dann auf die Studienform mit Kennzeichnung, nicht auf eine
-# Zahl, die die Kachel selbst nicht zeigen darf.
-eq(W.curve_watts(duenn, 1.5)["source"], "literature",
-   "zu wenige Paare: es wird trotzdem gestaffelt")
-eq(W.curve_watts(duenn, 0.5)["watts"], 153, "die erste Stunde bleibt Messung")
+# 0.67.4 (S3): die Schranke sind FAHRTEN JE STUNDE (>= 3), nicht Paare - eine
+# Stunde mit zwei Fahrten traegt nicht, die Einheit bleibt bei der davor.
+duenn = {**CURVE, "measured": [CURVE["measured"][0], {**CURVE["measured"][1], "n": 2}]}
+eq(W.curve_watts(duenn, 2.0)["hour"], 1, "zu wenige Fahrten in Stunde 2: die Einheit bleibt bei Stunde 1")
+eq(W.curve_watts(duenn, 1.0)["watts"], 153, "die erste Stunde bleibt Messung")
 eq(W.curve_watts(None, 1.5), None, "ohne Kurve gibt es keine Vorgabe daraus")
 
 # Und am Katalog: die Grundlage bekommt Kurvenwatt, die harten Familien nicht.
@@ -1311,7 +1317,8 @@ for _wort in ("zu locker", "Fehler", "Mangel", "leider", "nicht ausreich"):
 # 0.67.1: Treffer faellt, Gegenprobe (ungestreckt) ist gruen.
 _curveS4 = {"measured": [{"hour": 1, "t": 0.5, "watts": 150.0, "n": 12}, {"hour": 2, "t": 1.5, "watts": 145.0, "n": 10}],
             "paired": [{"from_hour": 1, "to_hour": 2, "delta": -6.0, "n": 8, "enough": True}],
-            "literature": [{"hour": 2, "t": 1.5, "watts": 146.0}, {"hour": None, "t": 3.0, "watts": 138.0}]}
+            "literature": [{"hour": 2, "t": 1.5, "watts": 146.0}, {"hour": None, "t": 3.0, "watts": 138.0}],
+            "plan": [{"hours": 1, "watts": 150.0}, {"hours": 2, "watts": 144.0}]}
 _gestreckt = W.rate_sessions([{"workout": "z2_150", "hours": 4.0}], "ready", ftp=200, aerobic_hr=140, curve=_curveS4)[0]
 _ungestreckt = W.rate_sessions([{"workout": "z2_150", "hours": 2.5}], "ready", ftp=200, aerobic_hr=140, curve=_curveS4)[0]
 check(_gestreckt.get("stretched") is True, "S4 Fixture: die Einheit ist gestreckt")
@@ -1320,6 +1327,40 @@ check(any(b[1] != round(200 * pct / 100) for b, (_, pct, *_r) in zip(_gestreckt[
 eq(_gestreckt["text_w"], W.watts_text(_gestreckt["blocks_w"]), "S4 Treffer: text_w der gestreckten Karte ist die Wattliste von blocks_w")
 eq(_ungestreckt["text_w"], W.watts_text(_ungestreckt["blocks_w"]), "S4 Gegenprobe: ungestreckt war es schon so")
 check(sum(b[0] for b in _gestreckt["blocks_w"]) == _gestreckt["minutes"], "S4 Eigenschaft: die gestreckten Minuten stehen in blocks_w")
+
+
+# --- S3 · WAHL 2 MIT SCHRANKE (Entscheidung 24.09.): die Einheit liest die Kette der
+# Kachel (Kette A) bei der GEPLANTEN DAUER, solange die Stunde belegt ist (>= 3
+# Fahrten); darunter bleibt sie bei der letzten gut belegten Stunde - auch jenseits
+# des belegten Bereichs, statt der Studienform. Rundung: nur VOLLE Stunden
+# zaehlen (2,5 h liest bei 2 h), benannt in workouts.planned_hour. Rot an 0.67.3.
+_LIVE = {"measured": [{"hour": h, "t": h - 0.5, "watts": w, "n": n} for h, w, n in
+                      [(1, 148.1, 11), (2, 147.8, 12), (3, 141.1, 4), (4, 135.7, 2), (5, 137.7, 1)]],
+         "paired": [{"from_hour": 1, "to_hour": 2, "delta": 3.0, "n": 10, "enough": True},
+                    {"from_hour": 2, "to_hour": 3, "delta": -11.5, "n": 3, "enough": False}],
+         "literature": [{"hour": None, "t": 2.5, "watts": 156.2}, {"hour": None, "t": 6.0, "watts": 120.9}],
+         "plan": [{"hours": 1, "watts": 148.1}, {"hours": 2, "watts": 151.1}, {"hours": 3, "watts": 139.6},
+                  {"hours": 4, "watts": 133.0}, {"hours": 5, "watts": 133.4}]}
+eq(getattr(W, "CURVE_HOUR_MIN_RIDES", None), 3, "S3 Schranke: benannte Konstante, drei Fahrten")
+eq([W.planned_hour(m) for m in (30, 60, 95, 150, 210, 330, 360)], [1, 1, 1, 2, 3, 5, 6], "S3 Rundung: nur volle Stunden, mindestens eine")
+def _at(minutes):
+    a = W.curve_watts(_LIVE, minutes / 60.0)
+    return (a["hour"], a["watts"], a["source"]) if a else None
+eq(_at(60), (1, 148, "measured"), "S3: 1 h liest Kette A bei Stunde 1")
+eq(_at(95), (1, 148, "measured"), "S3: 95 min = eine volle Stunde -> Stunde 1")
+eq(_at(150), (2, 151, "measured"), "S3: 2,5 h liest bei 2 h (belegt, 12 Fahrten)")
+eq(_at(210), (3, 140, "measured"), "S3 Treffer: 3,5 h liest Stunde 3 (4 Fahrten, belegt) - nicht mehr die Abschnittsmitte")
+eq(_at(240), (3, 140, "measured"), "S3 Schranke: 4 h ist mit 2 Fahrten nicht belegt -> letzte gut belegte Stunde 3")
+eq(_at(360), (3, 140, "measured"), "S3 jenseits des Bereichs: bleibt bei Stunde 3, keine Studienform")
+check(all(x is None or x[2] == "measured" for x in (_at(m) for m in (60, 210, 360))), "S3: keine Zeile heisst mehr Studienform")
+_kurz = {**_LIVE, "measured": [{"hour": 1, "t": 0.5, "watts": 148.1, "n": 2}], "plan": [{"hours": 1, "watts": 148.1}]}
+eq(W.curve_watts(_kurz, 1.0), None, "S3 Randfall: keine belegte Stunde -> keine Kurvenvorgabe (Rueckfall FTP)")
+# die Einheit: alle elastischen Abschnitte lesen DIESELBE Stunde (die der geplanten Dauer)
+_u = W.scaled(W.BY_KEY["z2_210_late"], 200, 140, curve=_LIVE)
+eq({b["hour"] for b in _u["curve_blocks"]}, {3}, "S3 Einheit z2_210_late: ein Abschnitt, eine Stunde - die der Dauer")
+eq(_u["curve_blocks"][0]["watts"], round(140 * 0.9), "S3 Einheit: 0,90 bleibt (126 W)")
+_u2 = W.scaled(W.BY_KEY["z2_150"], 200, 140, curve=_LIVE)
+eq((_u2["curve_blocks"][0]["hour"], _u2["curve_blocks"][0]["watts"]), (2, 136), "S3 Einheit z2_150: Stunde 2, 136 W - wie heute")
 
 print(f"test_workouts: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
