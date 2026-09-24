@@ -1650,6 +1650,12 @@ def rate_sessions(sessions: list[dict[str, Any]], state: str,
             "text": full.get("text"),
             "text_w": full.get("text_w"),
             "hr_window": full.get("hr_window"),
+            # WOHER DIE WATT KOMMEN reist mit (0.67.2, F3.2) - dieselben Felder
+            # wie die Trainer-Karte, damit die Wochenkarte ihre Herkunft nennen
+            # kann statt so auszusehen, als staende sie auf der FTP.
+            **{key: full.get(key) for key in ("watt_source", "steering_source", "block_source",
+                                              "curve_blocks", "curve_share", "ramp_source", "hr_source")
+               if full.get(key) is not None},
             "dfa": entry.get("dfa"),
             "evidence": entry.get("evidence"),
             "limit": entry.get("limit"),

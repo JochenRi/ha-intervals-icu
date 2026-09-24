@@ -1404,10 +1404,15 @@ def websocket_goal(hass, connection, msg) -> None:
     weeks = built.get("weeks") or []
     if built.get("ready") and weeks:
         st = coach_module.state(data)
-        anchors = coach_module.anchors(data)
         lay = coach_module.layoff(data)
         rec = coach_module.recovery_offered(data)
         budget = ((analytics.readiness(data) or {}).get("budget") or {}).get("recommended")
+        # DIESELBEN EINGAENGE WIE DIE TRAINER-KARTE (0.67.2, F3.2): bis 0.67.1
+        # baute dieser Handler seine Eingaenge von Hand - ohne `steering`. Bei
+        # Steuerung an zeigte der Trainer-Reiter den Startwert, der Wochenplan
+        # derselben Familie den Median der letzten Einheit. Eine Stelle.
+        inputs = _session_inputs(data)
+        anchors = inputs["anchors"]
         weeks[0]["sessions"] = workout_lib.rate_sessions(
             weeks[0].get("sessions") or [],
             st.get("state", "unknown"),
@@ -1416,16 +1421,13 @@ def websocket_goal(hass, connection, msg) -> None:
             hard_days_last_7=coach_module._hard_days_recent(data, 7),
             layoff_days=lay.get("days"),
             infection=bool(st.get("infection_suspected")),
-            ftp=_latest_ftp(data) or anchors.get("ftp"),
+            ftp=inputs["ftp"],
             aerobic_hr=anchors.get("aerobic_hr"),
-            max_hr=_max_hr(data),
-            curve=fatigue.curve(data, aerobic_hr=anchors.get("aerobic_hr"),
-                                aerobic_power=anchors.get("aerobic_power")),
-            blocks=blocks_lib.series(data),
-            # Der Stufentest als naechste Stufe der Quellenkette (N2). Er wird
-            # IMMER mitgegeben; ob er greift, entscheidet SOURCE_CHAIN je Familie -
-            # und ohne markierten Test ist er None und aendert nichts.
-            ramp=ramp_lib.latest(data),
+            max_hr=inputs["max_hr"],
+            curve=inputs["curve"],
+            blocks=inputs["blocks"],
+            ramp=inputs["ramp"],
+            steering=inputs["steering"],
         )
         weeks[0]["rated"] = True
         weeks[0]["done"] = analytics.week_done(data, weeks[0]["start"])

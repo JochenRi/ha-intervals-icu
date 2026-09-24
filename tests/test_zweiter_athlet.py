@@ -263,6 +263,27 @@ check("Z3: ihre Arbeitsbloecke stehen auf 150 W", bool(_work) and all(b[1] == 15
 eq("Z3: keine Zahl des ersten Athleten in der Trainer-Payload", leaks(_wp), [])
 ws.dt_util = _dt_saved
 
+print("\n=== Z3b. DER WOCHENPLAN liest dieselben Eingaenge wie die Trainer-Karte (F3.2) ===")
+# Bis 0.67.1 baute websocket_goal seine Eingaenge von Hand - OHNE steering. Bei
+# Steuerung an trug die Trainer-Karte den Startwert (150), die Wocheneinheit
+# derselben Familie den Median der letzten Einheit (154). Rot an 0.67.1.
+ws.dt_util = types.SimpleNamespace(now=lambda: __import__("datetime").datetime(2026, 9, 24))
+_c.archive.data["goal"] = {"goal": "long_ride", "days_per_week": 4, "plan_start": "2026-09-21", "target_date": "2026-11-15", "target_hours": 5}
+_g = FakeConn()
+ws.websocket_goal(None, _g, {"id": 8})
+_gp = (_g.results or [{}])[0]
+eq("Z3b: goal laeuft ohne Fehler", _g.errors, [])
+_w1 = (((_gp.get("plan") or {}).get("weeks") or [{}])[0].get("sessions") or [])
+_ss_week = [x for x in _w1 if x.get("family") == "sweetspot"]
+check("Z3b Fixture: Woche 1 hat eine SweetSpot-Einheit", bool(_ss_week))
+eq("Z3b Treffer: die Wocheneinheit traegt die Steuerung wie die Trainer-Karte",
+   _ss_week[0].get("watt_source") if _ss_week else None, "steering")
+_work_w = [b for b in ((_ss_week[0].get("blocks_w") or []) if _ss_week else []) if str(b[2]).startswith("Block")]
+check("Z3b Treffer: ihre Arbeitsbloecke stehen auf seinem Startwert (150), nicht auf dem Median",
+      bool(_work_w) and all(b[1] == 150 for b in _work_w))
+eq("Z3b: keine Zahl des ersten Athleten im Wochenplan", leaks(_gp), [])
+ws.dt_util = _dt_saved
+
 print("\n=== Z4. EINSCHALTEN am ersten Tag ohne genug Einheiten: die Kachel sagt, was fehlt ===")
 _d4 = importer.empty_data("i3")
 _d4["settings"] = {blocks.BLOCK_SWITCH: True}
