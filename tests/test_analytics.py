@@ -389,6 +389,33 @@ check("Woche: leere Woche zaehlt null Einheiten", empty["sessions"], 0)
 check("Woche: leere Woche zaehlt null Last", empty["load"], 0)
 check("Woche: vergangene Woche ohne Resttage", empty["days_left"], None)
 
+
+# --- F2.10 · BUDGET = Gesamtlast des Tages, nicht Restlast (Entscheidung 24.09.) ---
+# `load_budget` zog `loads[-6:]` ab; liegt der letzte wellness-Tag auf heute (am
+# Livebestand: ja, mit Last 0 bis zum Import), stecken heute und nur FUENF Tage
+# davor in der Summe - und nach dem Import schrumpft das Budget um die eigene
+# Fahrt. Jetzt: die sechs Tage VOR heute, heute als Verbrauch beziffert.
+from datetime import date as _date, timedelta as _td
+def _bestand(heute_last):
+    d = {"wellness": {}, "activities": {}}
+    t0 = _date(2026, 9, 24)
+    for i in range(35):
+        day = (t0 - _td(days=34 - i)).isoformat()
+        d["wellness"][day] = {"ctlLoad": 40.0}
+    d["wellness"][t0.isoformat()]["ctlLoad"] = heute_last
+    return d
+_mit = analytics.load_budget(_bestand(60.0), "green", today="2026-09-24")
+_ohne = analytics.load_budget(_bestand(0.0), "green", today="2026-09-24")
+check("F2.10 Treffer: die heutige Fahrt zaehlt nicht gegen das Budget", _mit["recommended"], _ohne["recommended"])
+check("F2.10 Treffer: der Verbrauch ist beziffert", _mit.get("used_today"), 60.0)
+check("F2.10 Gegenprobe: ohne heutige Fahrt Verbrauch 0", _ohne.get("used_today"), 0.0)
+check("F2.10 Eigenschaft: die sechs Tage davor sind sechs Tage", _mit["last_six_days"], 240.0)
+check("F2.10 Eigenschaft: chronisch ohne heute", _mit["chronic"], 40.0)
+# Randfall: kein Eintrag fuer heute (Reihe endet gestern) -> die sechs letzten sind die sechs davor
+_gestern = _bestand(0.0); del _gestern["wellness"]["2026-09-24"]
+_g = analytics.load_budget(_gestern, "green", today="2026-09-24")
+check("F2.10 Randfall ohne heutige Zeile: dieselbe Grenze, Verbrauch 0", (_g["recommended"], _g.get("used_today")), (_ohne["recommended"], 0.0))
+
 print(f"test_analytics: {CHECKS} Prüfungen, {len(failures)} Fehler")
 print("FEHLER:", failures if failures else "keine")
 sys.exit(1 if failures else 0)

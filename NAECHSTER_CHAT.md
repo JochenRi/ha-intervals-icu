@@ -19,6 +19,15 @@
 >   Form nicht. Eigene Runde, nicht als Nebensatz einer anderen.
 
 
+## 0.67.3 — zwei Entscheidungen: Budget und Lastgrenze (24.09.2026)
+
+Prüfstand **24 / 7.960 / 0**. **F2.10:** das Budget ist die Gesamtlast des Tages; die heutige
+Fahrt zählt nicht dagegen, sie steht als „davon gefahren" daneben. Live heute: Budget 0 → 10,
+keine Karte ändert sich. **S5 (F4a.6 fällt weg):** eine Lastgrenze — `coach.load_ceiling`,
+min(Budget, Zustandsdeckel) — für Heute-Reiter und Trainer-Karten; die Karten sagen
+„Obergrenze". Live heute `ready`, kein Deckel, keine Karte ändert sich. Johannes' Vorgaben
+unbewegt. Offen: S1 (HRV) und S3 (zwei Ketten) — Johannes entscheidet einzeln.
+
 ## 0.67.2 — Paket 2, erster Teil (24.09.2026)
 
 Prüfstand **24 / 7.947 / 0**. Drei Messungen und vier Befunde. **Johannes' Vorgaben unbewegt**

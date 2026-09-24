@@ -2097,7 +2097,8 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   clean(open1, "wochenplan Woche 1");
   contains(open1, plan.stages.stimulus.word, "wochenplan: das Wort der Reiz-Stufe fehlt");
   contains(open1, "Last 159", "wochenplan: die hochgerechnete Last fehlt");
-  contains(open1, "Budget 95", "wochenplan: das Budget steht nicht neben der Last");
+  // 0.67.3 (S5): die Zahl heisst Obergrenze - dieselbe wie im Heute-Reiter.
+  contains(open1, "Obergrenze 95", "wochenplan: die Obergrenze steht nicht neben der Last");
   contains(open1, "Was das bringt", "wochenplan: die Wirkung der Einheit fehlt");
 
   // Die Karte ist dieselbe wie im Trainer-Reiter: Segmentbalken, Schritte in

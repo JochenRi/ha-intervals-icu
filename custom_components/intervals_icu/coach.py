@@ -1744,6 +1744,35 @@ def _signal_bands(data: dict[str, Any], day: str) -> dict[str, Any]:
     return out
 
 
+# DIE OBERGRENZE DES TAGES - ein Erzeuger (0.67.3, Sollzustand S5, Entscheidung
+# 24.09.). Bis 0.67.2 stand der Zustandsdeckel nur im Heute-Reiter, die
+# Trainer-Karten lasen das Budget allein: an einem beanspruchten Tag stand
+# "passt ins Budget" neben "Obergrenze 75" (Karte F4a.6). Der Deckel je Zustand
+# ist eine SETZUNG, kein Befund - so steht es auch auf der Kachel.
+CAPACITY = {
+    "slump": ("Ruhetag", "Heute nichts. Der Einbruch ist akut.", 0),
+    "recovering": ("Locker oder frei", "Wenn überhaupt, dann ganz locker und kurz.", 30),
+    "rebound": ("Ruhig fahren", "Die Erholung läuft. Ruhig fahren geht, hart noch nicht.", 60),
+    "strained": ("Grundlage", "Beansprucht — Umfang ja, Intensität nein.", 75),
+    "ready": ("Alles möglich", "Nichts spricht gegen einen harten Reiz.", None),
+    "elevated": ("Grundlage", "Auffällig hohe Werte — heute ruhig halten.", 70),
+    "unknown": ("Nach Gefühl", "Zu wenige Daten für eine Aussage.", None),
+}
+
+
+def load_ceiling(state_key: str, budget: dict[str, Any] | None) -> dict[str, Any]:
+    """min(Budget, Zustandsdeckel) - die Grenze, nach der Karten und Heute-Reiter urteilen."""
+    ceiling = None
+    if budget and budget.get("recommended") is not None:
+        ceiling = round(budget["recommended"])
+    capacity, capacity_text, cap_load = CAPACITY.get(state_key, CAPACITY["unknown"])
+    if cap_load is not None:
+        ceiling = cap_load if ceiling is None else min(ceiling, cap_load)
+    return {"ceiling": ceiling, "capacity": capacity, "capacity_text": capacity_text,
+            "cap_load": cap_load, "budget": (budget or {}).get("recommended"),
+            "used_today": (budget or {}).get("used_today")}
+
+
 def today(data: dict[str, Any], budget: dict[str, Any] | None = None) -> dict[str, Any]:
     wellness = data.get("wellness") or {}
     if not wellness:
@@ -1817,30 +1846,12 @@ def today(data: dict[str, Any], budget: dict[str, Any] | None = None) -> dict[st
             last_activity = (key, day_key)
     night = night_after(data, last_activity[0]) if last_activity else {"available": False}
 
-    # the ceiling for today
-    ceiling = None
-    if budget and budget.get("recommended") is not None:
-        ceiling = round(budget["recommended"])
+    # EINE LASTGRENZE (0.67.3, S5): Heute-Reiter und Trainer-Karten lesen
+    # dieselbe Funktion - min(Budget, Zustandsdeckel).
+    grenze = load_ceiling(condition["state"], budget)
+    ceiling = grenze["ceiling"]
+    capacity, capacity_text, cap_load = grenze["capacity"], grenze["capacity_text"], grenze["cap_load"]
 
-    CAPACITY = {
-        "slump": ("Ruhetag", "Heute nichts. Der Einbruch ist akut.", 0),
-        "recovering": ("Locker oder frei", "Wenn überhaupt, dann ganz locker und kurz.", 30),
-        "rebound": ("Ruhig fahren", "Die Erholung läuft. Ruhig fahren geht, hart noch nicht.", 60),
-        "strained": ("Grundlage", "Beansprucht — Umfang ja, Intensität nein.", 75),
-        "ready": ("Alles möglich", "Nichts spricht gegen einen harten Reiz.", None),
-        "elevated": ("Grundlage", "Auffällig hohe Werte — heute ruhig halten.", 70),
-        "unknown": ("Nach Gefühl", "Zu wenige Daten für eine Aussage.", None),
-    }
-    capacity, capacity_text, cap_load = CAPACITY.get(
-        condition["state"], CAPACITY["unknown"])
-    if cap_load is not None:
-        ceiling = cap_load if ceiling is None else min(ceiling, cap_load)
-
-    # Where the signals and the verdict disagree, SAY so. A page that prints
-    # "nothing speaks against a hard session" above two signals sitting below
-    # baseline looks broken - and the reason it is not broken is worth one
-    # sentence: a single day below the line is noise, the rule runs on the
-    # three-day mean and on a threshold twice this size.
     tension = None
     unfavourable = [s for s in signals if s["direction"] == "ungünstig"]
     favourable = [s for s in signals if s["direction"] == "günstig"]
@@ -1867,6 +1878,9 @@ def today(data: dict[str, Any], budget: dict[str, Any] | None = None) -> dict[st
         "capacity": capacity,
         "capacity_text": capacity_text,
         "ceiling": ceiling,
+        # Grenze und Verbrauch getrennt (F2.10): das Budget ist die Gesamtlast
+        # des Tages, die heutige Fahrt zaehlt nicht dagegen.
+        "budget_used": (budget or {}).get("used_today"),
         "state": condition["state"],
         "state_label": condition.get("label"),
         "state_text": condition.get("text"),

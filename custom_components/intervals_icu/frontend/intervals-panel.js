@@ -3136,7 +3136,7 @@ class IntervalsIcuPanel extends HTMLElement {
     const st = entry.stage || {};
     const tone = STAGE_TONE[st.key] || "unknown";
     const word = st.key === "stimulus" && opts.budget != null
-      ? `${st.word} (über dem Budget von ${fmt(opts.budget)})`
+      ? `${st.word} (über der Obergrenze von ${fmt(opts.budget)})`
       : `${st.word}${st.key === "green" && opts.todayWord ? " heute" : ""}`;
     const hrw = entry.hr_window;
     const blocks = entry.blocks_w || entry.blocks;
@@ -3148,7 +3148,9 @@ class IntervalsIcuPanel extends HTMLElement {
     const dur = !planned ? `${entry.minutes} min`
       : entry.stretched ? `${fmt(planned, 1)} h`
       : `geplant ${fmt(planned, 1)} h · Vorlage ${entry.template_minutes || entry.minutes} min`;
-    const loadTxt = `Last ${fmt(entry.load)}${opts.budget != null ? ` · Budget ${fmt(opts.budget)}` : ""}`;
+    // "Obergrenze", nicht "Budget" (0.67.3, S5): dieselbe Zahl wie im Heute-Reiter,
+    // min(Budget, Zustandsdeckel).
+    const loadTxt = `Last ${fmt(entry.load)}${opts.budget != null ? ` · Obergrenze ${fmt(opts.budget)}` : ""}`;
     const openKey = opts.openKey || entry.key;
 
     return `<div class="wocard ${opts.recommended ? "first" : ""}">
@@ -3436,7 +3438,7 @@ class IntervalsIcuPanel extends HTMLElement {
     const st = s.stage || {};
     if (!st.key) return "";
     const word = st.key === "stimulus" && s.budget != null
-      ? `${st.word} (über dem Budget von ${fmt(s.budget)})`
+      ? `${st.word} (über der Obergrenze von ${fmt(s.budget)})`
       : st.word;
     return badge(STAGE_TONE[st.key] || "unknown", word);
   }
@@ -4127,11 +4129,15 @@ class IntervalsIcuPanel extends HTMLElement {
         ${t.ceiling != null ? (() => {
           // Bullet graph, not a gauge: actual against a target range is what it
           // was designed for, and it reads on position rather than on an angle.
-          const doneToday = (t.recent || []).slice(-1)[0];
-          const done = doneToday ? doneToday.load : 0;
+          // GRENZE UND VERBRAUCH GETRENNT (0.67.3, F2.10): die Obergrenze ist
+          // die Gesamtlast des Tages, die heutige Fahrt zaehlt nicht dagegen -
+          // sie steht daneben als "davon gefahren".
+          const done = t.budget_used != null ? t.budget_used
+            : (((t.recent || []).slice(-1)[0] || {}).load || 0);
           const scale = Math.max(t.ceiling * 1.4, done * 1.1, 10);
           return `<div class="tceil">
             <span>Obergrenze</span><b class="tn">${fmt(t.ceiling)} Last</b>
+            <span class="mut"> · davon ${fmt(done)} gefahren</span>
             <div class="bullet"><i class="bband" style="width:${(t.ceiling / scale * 100).toFixed(1)}%"></i>
               <i class="bval" style="width:${(done / scale * 100).toFixed(1)}%"></i>
               <i class="bmark" style="left:${(t.ceiling / scale * 100).toFixed(1)}%"></i></div>

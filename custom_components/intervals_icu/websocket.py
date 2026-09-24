@@ -1123,7 +1123,9 @@ def websocket_workouts(hass, connection, msg) -> None:
     ftp = inputs["ftp"]
     max_hr = inputs["max_hr"]
 
-    budget = (ready.get("budget") or {}).get("recommended")
+    # EINE LASTGRENZE (0.67.3, S5): die Karten lesen dieselbe Obergrenze wie der
+    # Heute-Reiter - min(Budget, Zustandsdeckel), aus coach.load_ceiling.
+    budget = coach_module.load_ceiling(st.get("state", "unknown"), ready.get("budget"))["ceiling"]
     # FOUND WHILE BUILDING K: this handler never passed `recovery_offered`, so
     # `stage()` defaulted it to False and the session list for TODAY could not
     # reach the stimulus grade at all - while the week view (which does pass
@@ -1412,7 +1414,8 @@ def websocket_goal(hass, connection, msg) -> None:
         st = coach_module.state(data)
         lay = coach_module.layoff(data)
         rec = coach_module.recovery_offered(data)
-        budget = ((analytics.readiness(data) or {}).get("budget") or {}).get("recommended")
+        budget = coach_module.load_ceiling(
+            st.get("state", "unknown"), (analytics.readiness(data) or {}).get("budget"))["ceiling"]
         # DIESELBEN EINGAENGE WIE DIE TRAINER-KARTE (0.67.2, F3.2): bis 0.67.1
         # baute dieser Handler seine Eingaenge von Hand - ohne `steering`. Bei
         # Steuerung an zeigte der Trainer-Reiter den Startwert, der Wochenplan

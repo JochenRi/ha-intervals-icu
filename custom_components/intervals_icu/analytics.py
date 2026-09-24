@@ -507,7 +507,7 @@ def _recent(data: dict[str, Any], field: str, days: int) -> list[float]:
     return out
 
 
-def readiness(data: dict[str, Any]) -> dict[str, Any]:
+def readiness(data: dict[str, Any], today: str | None = None) -> dict[str, Any]:
     """Return a per-signal traffic light plus a load budget for today."""
     components: list[dict[str, Any]] = []
 
@@ -687,7 +687,7 @@ def readiness(data: dict[str, Any]) -> dict[str, Any]:
     return {
         "overall": overall,
         "components": components,
-        "budget": load_budget(data, overall),
+        "budget": load_budget(data, overall, today),
         "note": "Die einzelnen Signale sind belegt, ihre Kombination ist es nicht: "
                 "keine veröffentlichte Studie verrechnet genau diese Werte, und die "
                 "Bereitschaftswerte kommerzieller Anbieter sind nicht unabhängig validiert. "
@@ -695,7 +695,7 @@ def readiness(data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def load_budget(data: dict[str, Any], state: str = "green") -> dict[str, Any] | None:
+def load_budget(data: dict[str, Any], state: str = "green", today: str | None = None) -> dict[str, Any] | None:
     """Return how much load today may carry, derived from the ACWR definition.
 
     The ratio is the 7-day mean load over the 28-day mean. Solving it for
@@ -707,7 +707,19 @@ def load_budget(data: dict[str, Any], state: str = "green") -> dict[str, Any] | 
     if len(series) < 28:
         return None
 
-    loads = [point["load"] for point in series]
+    # BUDGET = GESAMTLAST DES TAGES, NICHT RESTLAST (0.67.3, F2.10, Entscheidung
+    # 24.09.). Die Reihe endet am letzten wellness-Tag - am Livebestand ist das
+    # HEUTE, mit Last 0 bis zum Import und danach mit der eigenen Fahrt. Bis
+    # 0.67.2 lagen heute und nur fuenf Tage davor in `last_six`, und das Budget
+    # schrumpfte im Lauf des Tages um die Fahrt, die es erlauben sollte. Jetzt
+    # zaehlen die sechs Tage VOR heute; die heutige Last reist als Verbrauch mit.
+    day_today = str(today or date.today().isoformat())[:10]
+    before = [point for point in series if point["date"] < day_today]
+    today_row = [point for point in series if point["date"] == day_today]
+    loads = [point["load"] for point in before]
+    used_today = float(today_row[0]["load"]) if today_row else 0.0
+    if not loads:
+        return None
     chronic = mean(loads[-28:])
     last_six = sum(loads[-6:])
     if chronic <= 0:
@@ -724,6 +736,7 @@ def load_budget(data: dict[str, Any], state: str = "green") -> dict[str, Any] | 
         "last_six_days": round(last_six, 1),
         "target_ratio": target,
         "recommended": allowed(target),
+        "used_today": round(used_today, 1),
         "steady": allowed(1.0),
         "corridor_top": allowed(ACWR_HIGH),
         "risk_top": allowed(ACWR_RISK),

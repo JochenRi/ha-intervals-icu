@@ -307,6 +307,39 @@ check("Z4: die Kachel nennt 2 von 3", "2 von 3" in str((_st4.get("sweetspot") or
 eq("Z4: keine Zahl des ersten Athleten", leaks((_b4.results or [{}])[0]), [])
 ws.dt_util = _dt_saved
 
+print("\n=== Z6. EINE LASTGRENZE (S5): Trainer-Karten und Heute-Reiter nennen dieselbe Obergrenze ===")
+# Entscheidung 24.09.: die Grenze MIT Zustandsdeckel (min(Budget, Deckel)) gilt
+# fuer beide Leser. Bis 0.67.2 lasen die Karten das Budget allein; an einem
+# beanspruchten Tag stand eine Karte "passt ins Budget" neben "Obergrenze 75".
+# Hier: der Zustand wird auf `strained` gestellt (Deckel 75), das Budget liegt
+# darueber. Rot an 0.67.2.
+_a6 = second_athlete(steering_on=False)
+import datetime as _dt6
+for _i in range(40):
+    _d = (_dt6.date(2026, 9, 24) - _dt6.timedelta(days=39 - _i)).isoformat()
+    _a6["wellness"][_d] = {"hrv": 55.0, "restingHR": 52, "ctlLoad": 40.0, "ctl": 40.0, "atl": 40.0, "sleepSecs": 25200}
+_c6 = FakeCoordinator(_a6); _c6.archive = SaveArchive(_c6.archive.data)
+ws._pick = lambda hass, athlete_id: _c6
+_state_saved = ws.coach_module.state
+ws.coach_module.state = lambda data, **kw: {"state": "strained", "label": "beansprucht", "detail": "", "since": None,
+    "week_z": -0.6, "recent_hrv_z": -0.6, "recent_rhr_z": 0.2, "infection_suspected": False, "warnings": [], "explained": [], "context": {}, "baseline_note": ""}
+_ready_saved = ws.analytics.readiness
+ws.analytics.readiness = lambda data, today=None: {"overall": "green", "components": [], "note": "",
+    "budget": {"recommended": 140, "used_today": 0.0, "chronic": 40.0, "last_six_days": 240.0, "target_ratio": 1.3, "steady": 100, "corridor_top": 140, "risk_top": 160, "state": "green"}}
+_t6 = FakeConn(); ws.websocket_today(None, _t6, {"id": 9})
+_heute = (_t6.results or [{}])[0]
+_w6 = FakeConn(); ws.websocket_workouts(None, _w6, {"id": 10})
+_wp6 = (_w6.results or [{}])[0]
+eq("Z6 Fixture: der Heute-Reiter deckelt das Budget mit dem Zustand", _heute.get("ceiling"), 75)
+eq("Z6 Treffer: die Trainer-Karten lesen dieselbe Obergrenze", _wp6.get("budget"), 75)
+_karten = _wp6.get("workouts") or []
+check("Z6 Treffer: eine Karte ueber 75 Last passt nicht mehr",
+      all((k.get("fits_budget") is False) for k in _karten if (k.get("load") or 0) > 75) and any((k.get("load") or 0) > 75 for k in _karten))
+check("Z6 Gegenprobe: eine Karte unter 75 passt weiter",
+      all((k.get("fits_budget") is True) for k in _karten if (k.get("load") or 0) <= 75) and any((k.get("load") or 0) <= 75 for k in _karten))
+eq("Z6: der Verbrauch reist in den Heute-Reiter", _heute.get("budget_used"), 0.0)
+ws.coach_module.state = _state_saved; ws.analytics.readiness = _ready_saved
+
 print("\n=== Z5. DIE UEBERNAHME trifft nur, wer die Vorgabe schon hatte - und zu wem sie passt ===")
 _aus = second_athlete(steering_on=False)
 check("Z5: Schalter aus -> keine Uebernahme des Code-Startwerts",

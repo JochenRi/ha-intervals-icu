@@ -142,6 +142,14 @@ const acts = F.activities();
   for (const src of ["Foster", "Gabbett", "Seiler", "Friel", "ln(rMSSD)"]) contains(bel, src, "belege");
   const heute = p.rHeute(F.today());
   contains(heute, "Zielwahl je Ampelfarbe ist eine Setzung", "belege: Budget ohne Einschränkung");
+  // F2.10 (0.67.3): Grenze und Verbrauch getrennt - "davon N gefahren" aus budget_used.
+  {
+    const tq = new M.Panel(); tq._nowIso = F.TODAY;
+    const tt = F.today(); tt.ceiling = 75; tt.budget_used = 60;
+    const h2 = String(tq.rHeute(tt));
+    contains(h2, "davon 60 gefahren", "heute: der Verbrauch steht nicht neben der Obergrenze");
+    contains(h2, "75", "heute: die Obergrenze fehlt");
+  }
   contains(p.rDfa(thr, "all"), "Rogers", "belege: DFA ohne Quelle");
   ok(!/Rogers und Gronwald(?! 2021a\/b)/.test(p.rDfa(thr, "all")), "belege: DFA-Quelle ohne Arbeit und Sportart");
   // Die zweite Stelle steht im Aktivitätsdetail (_dfaBlock), nicht im Reiter.
