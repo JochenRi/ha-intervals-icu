@@ -133,5 +133,21 @@
         "name": "Geplante Workouts"
       }
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Grundlage: alpha-Regel",
+        "description": "Grenze: darüber fährt die Grundlageneinheit nicht (vorbelegt alpha 1,0). Ziel: dort soll sie liegen — leer heißt, die Einheit zeigt nur die Grenze. Beides ist deine Regel, keine Literaturschwelle (Zone-1-Obergrenze der Literatur: alpha 0,75).",
+        "data": {
+          "ga_alpha_limit": "Grenze (alpha)",
+          "ga_alpha_target": "Ziel (alpha, optional)"
+        }
+      }
+    },
+    "error": {
+      "out_of_range": "Wert außerhalb 0,5–2,0.",
+      "target_not_above_limit": "Das Ziel muss über der Grenze liegen und zwischen 0,5 und 2,0."
+    }
   }
 }

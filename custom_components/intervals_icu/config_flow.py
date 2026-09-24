@@ -7,12 +7,13 @@ from collections.abc import Mapping
 from typing import Any
 
 import voluptuous as vol
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.const import CONF_API_KEY
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import IntervalsAuthError, IntervalsClient, IntervalsError
-from .const import CONF_ATHLETE_ID, DOMAIN
+from .const import (CONF_ATHLETE_ID, DEFAULT_GA_ALPHA_LIMIT, DOMAIN, OPT_GA_ALPHA_LIMIT,
+                    OPT_GA_ALPHA_TARGET)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -32,6 +33,11 @@ class IntervalsConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle the user-facing setup."""
 
     VERSION = 1
+
+    @staticmethod
+    def async_get_options_flow(config_entry: ConfigEntry) -> "IntervalsOptionsFlow":
+        """Die Einstellungen des Athleten (Bauregel 10: Regeln des Athleten sind keine Konstanten)."""
+        return IntervalsOptionsFlow()
 
     async def _async_validate(
         self, api_key: str, athlete_id: str
@@ -112,3 +118,39 @@ class IntervalsConfigFlow(ConfigFlow, domain=DOMAIN):
             data_schema=STEP_REAUTH_SCHEMA,
             errors=errors,
         )
+
+
+class IntervalsOptionsFlow(OptionsFlow):
+    """Die alpha-Regel der Grundlagen-Einheit (0.68.0).
+
+    Grenze: darueber faehrt die Einheit nicht (vorbelegt alpha 1,0). Ziel:
+    dort soll sie liegen (leer = die Einheit traegt nur die Grenze). Beides
+    sind Setzungen des Athleten - keine Literaturschwellen; die Zone-1-
+    Obergrenze der Literatur liegt bei alpha 0,75 (Rogers u. a. 2021).
+    """
+
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Grenze und Ziel eintragen."""
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            limit = float(user_input.get(OPT_GA_ALPHA_LIMIT) or DEFAULT_GA_ALPHA_LIMIT)
+            target_raw = user_input.get(OPT_GA_ALPHA_TARGET)
+            target = float(target_raw) if target_raw not in (None, "", 0) else None
+            if not 0.5 <= limit <= 2.0:
+                errors[OPT_GA_ALPHA_LIMIT] = "out_of_range"
+            elif target is not None and (not 0.5 <= target <= 2.0 or target <= limit):
+                errors[OPT_GA_ALPHA_TARGET] = "target_not_above_limit"
+            if not errors:
+                data = {OPT_GA_ALPHA_LIMIT: limit}
+                if target is not None:
+                    data[OPT_GA_ALPHA_TARGET] = target
+                return self.async_create_entry(title="", data=data)
+        current = self.config_entry.options
+        schema = vol.Schema({
+            vol.Required(OPT_GA_ALPHA_LIMIT,
+                         default=current.get(OPT_GA_ALPHA_LIMIT, DEFAULT_GA_ALPHA_LIMIT)): vol.Coerce(float),
+            vol.Optional(OPT_GA_ALPHA_TARGET,
+                         description={"suggested_value": current.get(OPT_GA_ALPHA_TARGET)}): vol.Coerce(float),
+        })
+        return self.async_show_form(step_id="init", data_schema=schema, errors=errors)
+

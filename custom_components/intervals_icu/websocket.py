@@ -18,6 +18,7 @@ from homeassistant.util import dt as dt_util
 
 from . import analytics, blocks as blocks_lib, coach as coach_module, day_context as day_context_lib, derive, fatigue, fatigue_v2, importer, plan as plan_lib, ramp, ramp_tests as ramp_lib, reconcile as reconcile_lib, section_marks as marks_lib, steering as steering_lib, workouts as workout_lib
 from .api import IntervalsError
+from . import const
 from .const import (
     BLOCK_CORRIDORS,
     BLOCK_MIN_FOR_SOURCE,
@@ -409,7 +410,7 @@ def websocket_fatigue(hass, connection, msg) -> None:
     # So sieht die Kachel in EINEM Abruf beide Stellungen. Steht der Schalter
     # aus, ist `v2["on"]` false und die Kachel zeigt unveraendert das heutige
     # Verhalten - der Block kostet dann nur seine Zeilen.
-    result["v2"] = fatigue_v2.curve(data, dt_util.now().date().isoformat())
+    result["v2"] = fatigue_v2.curve(data, _today_iso())
     _stats = importer.archive_stats(data)
     result["v2"]["switch_note"] = fatigue_v2.switch_note(
         data, rides=_stats["dfa_done"] + _stats["dfa_pending"], batch=DFA_BATCH_SIZE)
@@ -1118,7 +1119,7 @@ def websocket_workouts(hass, connection, msg) -> None:
     # EINE Stelle fuer die Eingaenge, aus denen eine Einheit ihre Zahlen
     # bekommt - dieselbe fuer die Anzeige und fuer den Schreibweg nach
     # Intervals (siehe `_session_inputs`).
-    inputs = _session_inputs(data)
+    inputs = _session_inputs(data, getattr(getattr(coordinator, "config_entry", None), "options", None))
     anchors = inputs["anchors"]
     ftp = inputs["ftp"]
     max_hr = inputs["max_hr"]
@@ -1153,6 +1154,7 @@ def websocket_workouts(hass, connection, msg) -> None:
         # IMMER mitgegeben; ob er greift, entscheidet SOURCE_CHAIN je Familie -
         # und ohne markierten Test ist er None und aendert nichts.
         ramp=inputs["ramp"],
+        ga=inputs["ga"],
     )
     # B2c: je Einheit ihr Nachweis - aus DENSELBEN Eingaengen, aus denen sie
     # gerechnet wurde, nicht aus einer zweiten Rechnung.
@@ -1208,11 +1210,11 @@ async def websocket_plan_workout(hass, connection, msg) -> None:
     # uebereinstimmt, aus der hier gerechnet wird - sonst ist jede Vorgabe der
     # Einheit still falsch. Geschrieben wird, was die Karte zeigt: dieselbe
     # Rechnung aus denselben Eingaengen.
-    inputs = _session_inputs(coordinator.archive.data)
+    inputs = _session_inputs(coordinator.archive.data, getattr(getattr(coordinator, "config_entry", None), "options", None))
     entry = workout_lib.scaled(
         template, inputs["ftp"], inputs["anchors"].get("aerobic_hr"),
         max_hr=inputs["max_hr"], curve=inputs["curve"], blocks=inputs["blocks"],
-        ramp=inputs["ramp"], steering=inputs["steering"],
+        ramp=inputs["ramp"], steering=inputs["steering"], ga=inputs["ga"],
     )
     payload = workout_lib.to_event(
         entry, str(msg["date"]), str(msg.get("sport") or "Ride"),
@@ -1278,7 +1280,28 @@ def websocket_context(hass, connection, msg) -> None:
 
 
 
-def _session_inputs(data: dict[str, Any]) -> dict[str, Any]:
+def _today_iso() -> str:
+    """Der heutige Tag als ISO-Datum - robust gegen eine gestubbte Uhr im Pruefstand."""
+    now = dt_util.now()
+    return (now.date() if hasattr(now, "date") and callable(getattr(now, "date")) else now).isoformat()[:10]
+
+
+def _ga_options(options: Any) -> tuple[float, float | None]:
+    """Grenz- und Ziel-alpha aus den Einstellungen des Athleten (Regel 10)."""
+    box = dict(options or {})
+    try:
+        limit = float(box.get(const.OPT_GA_ALPHA_LIMIT) or const.DEFAULT_GA_ALPHA_LIMIT)
+    except (TypeError, ValueError):
+        limit = const.DEFAULT_GA_ALPHA_LIMIT
+    raw = box.get(const.OPT_GA_ALPHA_TARGET)
+    try:
+        target = float(raw) if raw not in (None, "", 0) else None
+    except (TypeError, ValueError):
+        target = None
+    return limit, target
+
+
+def _session_inputs(data: dict[str, Any], options: Any = None) -> dict[str, Any]:
     """Woraus eine Einheit ihre Watt und ihren Puls bekommt - EINE Stelle.
 
     Anzeige und Schreibweg nach Intervals lesen hier. Bis 0.56.0 las nur die
@@ -1312,6 +1335,9 @@ def _session_inputs(data: dict[str, Any]) -> dict[str, Any]:
                                aerobic_power=anchors.get("aerobic_power")),
         "blocks": series,
         "ramp": ramp_lib.latest(data),
+        # DIE GA-EINHEIT LIEST DIE UMKEHRUNG (0.68.0): Ziel und Grenze je Stunde,
+        # alpha-Werte aus den Einstellungen des Athleten.
+        "ga": fatigue_v2.ga_targets(data, _today_iso(), *_ga_options(options)),
         # DIE STEUERUNG NUR BEI UMGELEGTEM SCHALTER. Steht er aus, ist der
         # Wert None - und `scaled()` betritt den neuen Zweig gar nicht erst,
         # statt ihn zu betreten und dort dasselbe zu tun wie vorher. Ein
@@ -1420,7 +1446,7 @@ def websocket_goal(hass, connection, msg) -> None:
         # baute dieser Handler seine Eingaenge von Hand - ohne `steering`. Bei
         # Steuerung an zeigte der Trainer-Reiter den Startwert, der Wochenplan
         # derselben Familie den Median der letzten Einheit. Eine Stelle.
-        inputs = _session_inputs(data)
+        inputs = _session_inputs(data, getattr(getattr(coordinator, "config_entry", None), "options", None))
         anchors = inputs["anchors"]
         weeks[0]["sessions"] = workout_lib.rate_sessions(
             weeks[0].get("sessions") or [],
@@ -1437,6 +1463,7 @@ def websocket_goal(hass, connection, msg) -> None:
             blocks=inputs["blocks"],
             ramp=inputs["ramp"],
             steering=inputs["steering"],
+            ga=inputs["ga"],
         )
         weeks[0]["rated"] = True
         weeks[0]["done"] = analytics.week_done(data, weeks[0]["start"])

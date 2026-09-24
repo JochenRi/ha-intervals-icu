@@ -149,6 +149,10 @@ CURVE = {"measured": [{"hour": 1, "t": 0.5, "watts": 152.5, "n": 26},
          "solid_until_hour": 2, "thin_until_hour": 2,
          # 0.67.4 (S3): die Kette der Kachel, aus der die Einheit liest
          "plan": [{"hours": 1, "watts": 152.5}, {"hours": 2, "watts": 142.2}]}
+# 0.68.0: die Grundlage liest Ziel und Grenze der Umkehrung - hier als Fixture,
+# das Ziel bei 137 W (die alte 0,90-Zahl), damit die Kalenderprobe unten bleibt.
+GA = {"mid": 90.6, "limit_alpha": 1.0, "target_alpha": 1.3, "missing": None,
+      "hours": [{"hours": 1, "n": 11, "load_w": 150.0, "alpha": 1.16, "limit_w": 164.5, "target_w": 137.0}]}
 BLOCKS = {"families": {"vo2max": {
     "source_ok": True, "sessions": 6, "from": "2026-07-23", "to": "2026-09-08",
     "hr_window": {"low": 176, "high": 185, "n": 6},
@@ -161,6 +165,7 @@ def set_inputs(ftp, curve, blocks, anchors=None):
     ws._max_hr = lambda data: 190.0
     ws.coach_module.anchors = lambda data: dict(anchors or {"aerobic_hr": 146})
     ws.fatigue.curve = lambda data, **kw: curve
+    ws.fatigue_v2.ga_targets = lambda data, today=None, limit_alpha=1.0, target_alpha=None: GA
     ws.blocks_lib.series = lambda data, **kw: blocks
     ws.ramp_lib.latest = lambda data: None
 
@@ -195,8 +200,7 @@ eq("A4: kein Fehler gemeldet", conn.errors, [])
 coord, conn = plan("z2_60")
 desc = (coord.client.events[0] if coord.client.events else {}).get("description", "")
 check(f"A4: Grundlage ohne Prozent im Kalender: {desc!r}", "%" not in desc)
-check("A4: Grundlage traegt 0,90 der gemessenen Kurve (137 W)",
-      f"{round(152.5 * W.CURVE_TARGET_SHARE)}w" in desc)
+check("A4: Grundlage traegt das Ziel der Umkehrung (137 W)", "137w" in desc)
 
 # JEDE Einheit des Katalogs, nicht nur die zwei oben: der Waechter gilt fuer
 # den Weg, nicht fuer die Beispiele. Und die Faelle muessen die gemessenen
@@ -209,9 +213,9 @@ for key in sorted(W.BY_KEY):
     text = (events[0] if events else {}).get("description", "")
     check(f"A4 Katalog: {key} traegt Prozent im Kalender", "%" not in text)
     quellen.add(W.scaled(W.BY_KEY[key], 200.0, 146, max_hr=190.0, curve=CURVE,
-                         blocks=BLOCKS, ramp=None).get("watt_source"))
-check(f"A4 Fixture-Beweis: Katalog laeuft ueber Bloecke, Kurve und FTP ({sorted(map(str, quellen))})",
-      {"blocks", "curve", "ftp"} <= quellen)
+                         blocks=BLOCKS, ramp=None, ga=GA).get("watt_source"))
+check(f"A4 Fixture-Beweis: Katalog laeuft ueber Bloecke, Umkehrung und FTP ({sorted(map(str, quellen))})",
+      {"blocks", "ga", "ftp"} <= quellen)
 
 # --- A4 · ohne Wattzahlen wird NICHT geschrieben -----------------------------
 # Keine FTP, keine Messung: dann gibt es nur Prozent. Die gehen nicht still

@@ -904,3 +904,51 @@ def reversal(data: dict[str, Any], today: str | None = None) -> dict[str, Any]:
             "covered_until_hours": covered,
             "slope_per_hour": None if steigung is None else round(steigung, 1),
             "rides": rides_out}
+
+
+# ═══ DIE GA-EINHEIT LIEST DIE UMKEHRUNG (0.68.0, Entscheidung 24.09.) ═══════════
+# Bis 0.67.4 las die Grundlageneinheit die p075-Kette der alten Kachel
+# (0,90 x Schwelle bei alpha 0,75) - eine Ablesung im Bereich, in dem alpha
+# keine Last-Information traegt (§10), und eine andere Zahl als die Kachel
+# bei Rechenschalter an (133 auf der Karte, 170 auf der Kachel). Jetzt: EIN
+# Erzeuger mit der Kachel. Je Stunde der Umkehrung:
+#   Ziel   = Last + (alpha - ZIEL_ALPHA) x Umrechnung
+#   Grenze = Last + (alpha - GRENZ_ALPHA) x Umrechnung
+# Die alpha-Werte sind EINSTELLUNGEN des Athleten (Options-Flow, Regel 10):
+# Grenze vorbelegt 1,0, Ziel leer - dann zeigt die Einheit nur die Grenze.
+# Die 0,90 faellt weg. Ohne gueltigen Stufentest: keine Zahlen, die Einheit
+# faellt beschriftet auf die FTP.
+GA_WORDS = {
+    "state": "Setzung: Umrechnung aus deinem Stufentest, alpha-Werte aus deiner eigenen Regel",
+    "literature": ("Die Obergrenze der Zone 1 liegt in der Literatur bei alpha 0,75 "
+                   "(Rogers u. a. 2021). Deine Grenze 1,0 und dein Ziel liegen darunter — "
+                   "sie sind deine Regel, keine Literaturschwellen."),
+    "lead": "fahr ~{target} W, nicht über {limit} W",
+    "lead_limit_only": "nicht über {limit} W",
+}
+
+
+def ga_targets(data: dict[str, Any], today: str | None = None,
+               limit_alpha: float = ALPHA_FLOOR, target_alpha: float | None = None) -> dict[str, Any]:
+    """Ziel und Grenze je Fahrtstunde aus der Umkehrung - der eine Erzeuger."""
+    rv = reversal(data, today)
+    br = rv.get("bridges") or {}
+    mid = br.get("mid")
+    out: dict[str, Any] = {"mid": mid, "limit_alpha": float(limit_alpha),
+                           "target_alpha": (None if target_alpha is None else float(target_alpha)),
+                           "missing": br.get("missing"), "words": GA_WORDS, "hours": []}
+    if mid is None:
+        return out
+    for row in rv.get("plan") or []:
+        if not row.get("observed") or row.get("load_w") is None or row.get("alpha") is None:
+            continue
+        last, alpha = float(row["load_w"]), float(row["alpha"])
+        out["hours"].append({
+            "hours": int(row["hours"]), "n": int(row.get("n") or 0),
+            "load_w": round(last, 1), "alpha": round(alpha, 3),
+            "limit_w": round(last + (alpha - float(limit_alpha)) * mid, 1),
+            "target_w": (None if target_alpha is None
+                         else round(last + (alpha - float(target_alpha)) * mid, 1)),
+        })
+    return out
+

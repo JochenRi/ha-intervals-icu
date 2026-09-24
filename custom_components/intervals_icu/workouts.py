@@ -576,28 +576,25 @@ def planned_hour(minutes: float) -> int:
     return max(1, int(float(minutes) // 60))
 
 
-def curve_watts(curve: dict[str, Any] | None, hours: float) -> dict[str, Any] | None:
-    """Die Schwelle der Kette (Kette A) fuer eine Fahrt der GEPLANTEN Dauer `hours`.
+def ga_at(ga: dict[str, Any] | None, minutes: float) -> dict[str, Any] | None:
+    """Ziel und Grenze der Umkehrung fuer eine Fahrt von `minutes` (0.68.0).
 
-    Liest `curve["plan"]` (die Leitzahl der Kachel) an planned_hour(hours), und
-    faellt auf die letzte Stunde mit >= CURVE_HOUR_MIN_RIDES Fahrten zurueck.
-    Gibt None, wenn keine Stunde belegt ist - dann traegt die FTP.
+    Dieselbe Ablesestelle wie 0.67.4: volle Stunden (planned_hour), belegt ab
+    CURVE_HOUR_MIN_RIDES Fahrten, sonst die letzte gut belegte Stunde davor -
+    auch jenseits des belegten Bereichs. None ohne belegte Stunde.
     """
-    if not curve:
+    rows = {int(r["hours"]): r for r in ((ga or {}).get("hours") or []) if r.get("hours") is not None}
+    if not rows:
         return None
-    plan = {int(row["hours"]): float(row["watts"]) for row in (curve.get("plan") or [])
-            if row.get("hours") is not None and row.get("watts") is not None}
-    rides = {int(row["hour"]): int(row.get("n") or 0) for row in (curve.get("measured") or [])
-             if row.get("hour") is not None}
-    if not plan:
-        return None
-    hour = planned_hour(float(hours) * 60.0)
-    hour = min(hour, max(plan))
-    while hour >= 1 and (hour not in plan or rides.get(hour, 0) < CURVE_HOUR_MIN_RIDES):
+    hour = min(planned_hour(minutes), max(rows))
+    while hour >= 1 and (hour not in rows or int(rows[hour].get("n") or 0) < CURVE_HOUR_MIN_RIDES):
         hour -= 1
     if hour < 1:
         return None
-    return {"watts": round(plan[hour]), "source": "measured", "n": rides.get(hour), "hour": hour}
+    r = rows[hour]
+    return {"hour": hour, "n": int(r.get("n") or 0), "load_w": r.get("load_w"), "alpha": r.get("alpha"),
+            "limit": round(float(r["limit_w"])),
+            "target": (None if r.get("target_w") is None else round(float(r["target_w"])))}
 
 
 # --- Die Quellenkette je Familie (docs/ausbau.md N2) -------------------------
@@ -631,8 +628,10 @@ SOURCE_CHAIN: dict[str, tuple[str, ...]] = {
     "sweetspot": ("blocks", "ftp"),
     "tempo":     ("ftp",),
     "threshold": ("ftp",),
-    "endurance": ("curve", "ftp"),
-    "long":      ("curve", "ftp"),
+    # 0.68.0: die Grundlage liest Ziel und Grenze der Umkehrung ("ga"), nicht
+    # mehr die p075-Kette ("curve").
+    "endurance": ("ga", "ftp"),
+    "long":      ("ga", "ftp"),
 }
 
 # Wie jede Stufe heisst, wenn die Karte sie nennt. Eine Zahl OHNE Herkunft ist
@@ -645,13 +644,14 @@ SOURCE_LABEL: dict[str, str] = {
     # seither gerechnet hat.
     "steering": "deine Vorgabe — Startwert plus gerechnete Schritte",
     "curve": "gemessen an deiner Ermüdungskurve",
+    "ga": "Setzung: Ziel und Grenze der Ermüdungskachel für diese Dauer",
     "ramp_hrvt2": "gemessen im Stufentest, zweite Schwelle",
     "ramp_hrvt1": "gemessen im Stufentest, erste Schwelle",
     "ftp": "Rückfall auf die FTP — nicht gemessen",
 }
 
 
-RAMP_START_CHAIN: tuple[str, ...] = ("curve", "ramp_hrvt1", "ftp")
+RAMP_START_CHAIN: tuple[str, ...] = ("ga", "ramp_hrvt1", "ftp")
 # Die Steuerung steht VOR den Bloecken: sie ist dieselbe Messung, nur als
 # Vorgabe gefuehrt. Ohne Schalter ist ihre Stufe nicht erreichbar und die
 # Kette ist die von 0.60.0.
@@ -667,7 +667,8 @@ def _ramp_node(ramp: dict[str, Any] | None, which: str) -> dict[str, Any] | None
 def ramp_protocol(ftp: float | None, curve: dict[str, Any] | None = None,
                   blocks: dict[str, Any] | None = None,
                   ramp: dict[str, Any] | None = None,
-                  steering: dict[str, Any] | None = None) -> dict[str, Any] | None:
+                  steering: dict[str, Any] | None = None,
+                  ga: dict[str, Any] | None = None) -> dict[str, Any] | None:
     """Start- und Endleistung des Stufentests - und die DARAUS gerechnete Dauer.
 
     N1 laesst genau drei feste Zahlen zu: Einrolldauer, Ausrolldauer und die
@@ -704,10 +705,13 @@ def ramp_protocol(ftp: float | None, curve: dict[str, Any] | None = None,
     # --- Start: dieselbe Groesse wie die Grundlagenvorgabe fuer eine Stunde ---
     start, start_from = None, "ftp"
     for stage_name in RAMP_START_CHAIN:
-        if stage_name == "curve":
-            at = curve_watts(curve, 1.0)  # die erste Stunde der Kette
+        if stage_name == "ga":
+            # dieselbe Groesse wie die Grundlagenvorgabe fuer eine Stunde (0.68.0):
+            # das Ziel der Umkehrung, sonst ihre Grenze
+            at = ga_at(ga, 60)
             if at:
-                start, start_from = round(at["watts"] * CURVE_TARGET_SHARE), "curve"
+                start = at["target"] if at.get("target") is not None else at["limit"]
+                start_from = "ga"
                 break
         elif stage_name == "ramp_hrvt1":
             node = _ramp_node(ramp, "hrvt1")
@@ -776,7 +780,7 @@ def ramp_protocol(ftp: float | None, curve: dict[str, Any] | None = None,
         # nach dem Messweg verschluesselt).
         "start_source": {"kind": start_from, "label": SOURCE_LABEL[start_from],
                          "share": CURVE_TARGET_SHARE if start_from != "ftp" else None,
-                         "selection": (curve or {}).get("selection") if start_from == "curve" else None},
+                         "selection": None},
         "end_source": {"kind": end_from, "label": SOURCE_LABEL[end_from],
                        "lead": lead, "reserve_min": RAMP_END_RESERVE_MIN,
                        "reserve_w": round(reserve),
@@ -856,7 +860,8 @@ def scaled(entry: dict[str, Any], ftp: float | None, aerobic_hr: int | None,
            max_hr: float | None = None, curve: dict[str, Any] | None = None,
            blocks: dict[str, Any] | None = None,
            ramp: dict[str, Any] | None = None,
-           steering: dict[str, Any] | None = None) -> dict[str, Any]:
+           steering: dict[str, Any] | None = None,
+           ga: dict[str, Any] | None = None) -> dict[str, Any]:
     """Fill in the athlete's own numbers: watts from the MEASURED curve where
     it carries, from the FTP where it does not - and the origin travels with
     the session, so a changed number is explainable instead of surprising."""
@@ -878,7 +883,7 @@ def scaled(entry: dict[str, Any], ftp: float | None, aerobic_hr: int | None,
     # gemeinsame Mechanik unten kennt nur eine Quelle je Einheit und koennte
     # das nicht abbilden.
     if entry.get("key") == "ramp_test":
-        proto = ramp_protocol(ftp, curve, blocks, ramp, steering)
+        proto = ramp_protocol(ftp, curve, blocks, ramp, steering, ga)
         if proto:
             staged = [
                 (RAMP_WARMUP_MIN, proto["start_w"], "Einrollen, ruhig"),
@@ -1007,35 +1012,33 @@ def scaled(entry: dict[str, Any], ftp: float | None, aerobic_hr: int | None,
             out["hr_source"] = {**window, "family": fam}
         return out
 
-    if curve and fam in CURVE_FAMILIES:
-        staged, changed = [], False
-        # EINE Stunde fuer die ganze Einheit: die der geplanten Dauer (S3).
+    if fam in CURVE_FAMILIES and ga is not None:
+        # DIE GA-EINHEIT LIEST DIE UMKEHRUNG (0.68.0): Ziel und Grenze der
+        # Kachel fuer die geplante Dauer - ein Erzeuger, keine 0,90 mehr. Ohne
+        # gueltigen Stufentest (ga["hours"] leer) bleibt die FTP, beschriftet.
         total = sum(float(block[0]) for block in entry["blocks"]) or float(entry.get("minutes") or 0)
-        at = curve_watts(curve, total / 60.0)
-        for block in entry["blocks"]:
-            # Nur der GLEICHMÄSSIGE Hauptteil kommt aus der Kurve. Ein- und
-            # Ausrollen sind Prozentangaben auf eine Schwelle, die dort nicht
-            # gemessen wurde.
-            if at is None or not (len(block) > 3 and block[3]):
-                staged.append((block[0], round(ftp * block[1] / 100) if ftp else None,
-                               block[2], *block[3:]))
-                continue
-            # DIE MESSUNG IST NICHT DIE VORGABE. `at["watts"]` ist die
-            # gemessene Schwelle; gefahren wird ein ANTEIL davon - sonst sitzt
-            # eine Grundlageneinheit auf der Schwelle statt darunter, und die
-            # Wattseite widerspricht der Pulsseite derselben Karte.
-            target = round(at["watts"] * CURVE_TARGET_SHARE)
-            staged.append((block[0], target, block[2], *block[3:]))
-            changed = True
-            out.setdefault("curve_blocks", []).append(
-                {"label": block[2], "watts": target, "threshold": at["watts"],
-                 "share": CURVE_TARGET_SHARE, "source": at["source"],
-                 "n": at["n"], "hour": at["hour"]})
-        if changed:
-            out["curve_share"] = CURVE_TARGET_SHARE
-            out["blocks_w"] = staged
-            out["text_w"] = watts_text(staged) or out.get("text_w")
-            out["watt_source"] = "curve"
+        at = ga_at(ga, total)
+        if at is None:
+            out["ga_missing"] = ga.get("missing") or "kein gültiger Stufentest"
+        else:
+            staged, changed = [], False
+            value = at["target"] if at.get("target") is not None else at["limit"]
+            for block in entry["blocks"]:
+                if not (len(block) > 3 and block[3]):
+                    staged.append((block[0], round(ftp * block[1] / 100) if ftp else None,
+                                   block[2], *block[3:]))
+                    continue
+                staged.append((block[0], value, block[2], *block[3:]))
+                changed = True
+                out.setdefault("ga_blocks", []).append(
+                    {"label": block[2], "watts": value, "target": at.get("target"),
+                     "limit": at["limit"], "hour": at["hour"], "n": at["n"],
+                     "load_w": at["load_w"], "alpha": at["alpha"], "mid": ga.get("mid"),
+                     "target_alpha": ga.get("target_alpha"), "limit_alpha": ga.get("limit_alpha")})
+            if changed:
+                out["blocks_w"] = staged
+                out["text_w"] = watts_text(staged) or out.get("text_w")
+                out["watt_source"] = "ga"
     # --- Der Stufentest als naechste Stufe (N2) -------------------------------
     # Er steht NACH der Blockmessung und NACH der Kurve, weil SOURCE_CHAIN es
     # so sagt - fuer Tempo und Schwelle ist er die erste Stufe, weil dort
@@ -1512,7 +1515,8 @@ def suggest(state: str, ftp: float | None = None, aerobic_hr: int | None = None,
             curve: dict[str, Any] | None = None,
             blocks: dict[str, Any] | None = None,
             ramp: dict[str, Any] | None = None,
-            steering: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+            steering: dict[str, Any] | None = None,
+            ga: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """One session per family, each judged for today - never filtered away.
 
     The earlier version filtered: in a rebound state everything hard vanished
@@ -1541,7 +1545,7 @@ def suggest(state: str, ftp: float | None = None, aerobic_hr: int | None = None,
 
         key = _variant(keys, state, ftp, budget, hard_days_last_7)
         entry = dict(scaled(BY_KEY[key], ftp, aerobic_hr, max_hr, curve, blocks, ramp,
-                            steering))
+                            steering, ga))
         verdict, reason = fit_for(
             family_key, state, entry["intensity"],
             hard_days_last_7=hard_days_last_7, layoff_days=layoff_days,
@@ -1583,7 +1587,8 @@ def rate_sessions(sessions: list[dict[str, Any]], state: str,
                   curve: dict[str, Any] | None = None,
                   blocks: dict[str, Any] | None = None,
                   ramp: dict[str, Any] | None = None,
-                  steering: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+                  steering: dict[str, Any] | None = None,
+                  ga: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """Grade the planned sessions of the CURRENT week - a view, not a planner.
 
     Every session the plan produced carries a `workout` key into the catalogue.
@@ -1618,7 +1623,7 @@ def rate_sessions(sessions: list[dict[str, Any]], state: str,
             template["blocks"] = stretched
             template["minutes"] = sum(block[0] for block in stretched)
             template["text"] = steps_text(stretched, None)
-        full = scaled(template, ftp, aerobic_hr, max_hr, curve, blocks, ramp, steering)
+        full = scaled(template, ftp, aerobic_hr, max_hr, curve, blocks, ramp, steering, ga)
         # KEINE ZWEITE WATTFASSUNG (0.67.2, F3.3 / S4): bis 0.67.1 stand hier
         # `steps_text(stretched, ftp)` - FTP x Prozent - ueber der Wattliste,
         # die scaled() aus Kurve/Bloecken/Steuerung gebaut hatte; die Karte trug
@@ -1651,7 +1656,7 @@ def rate_sessions(sessions: list[dict[str, Any]], state: str,
             # wie die Trainer-Karte, damit die Wochenkarte ihre Herkunft nennen
             # kann statt so auszusehen, als staende sie auf der FTP.
             **{key: full.get(key) for key in ("watt_source", "steering_source", "block_source",
-                                              "curve_blocks", "curve_share", "ramp_source", "hr_source")
+                                              "curve_blocks", "curve_share", "ga_blocks", "ga_missing", "ramp_source", "hr_source")
                if full.get(key) is not None},
             "dfa": entry.get("dfa"),
             "evidence": entry.get("evidence"),
@@ -1810,6 +1815,22 @@ def explain(entry: dict[str, Any], ftp: float | None, curve: dict[str, Any] | No
             steps.append(f"Pulsfenster {hs.get('low')}–{hs.get('high')} bpm = Median der "
                          f"Einheitspulse {hs.get('median')} bpm ± {BLOCK_HR_WINDOW_SD_FACTOR:g} × "
                          f"Streuung {hs.get('sd')} bpm über {hs.get('n')} Einheiten.")
+    elif src == "ga":
+        stage = "marks"
+        rows = entry.get("ga_blocks") or []
+        g = rows[0] if rows else {}
+        watts = g.get("watts")
+        origin = "aus der Ermüdungskachel: Ziel und Grenze für diese Dauer (Setzung, Umrechnung aus deinem Stufentest)"
+        units = []
+        units_count = g.get("n")
+        for r in rows:
+            a_t = r.get("target_alpha")
+            steps.append(
+                f"{r.get('label')}: Stunde {r.get('hour')} ({r.get('n')} Fahrten) — gehaltene Last "
+                f"{r.get('load_w')} W bei alpha {r.get('alpha')}; Grenze {r.get('limit')} W = Last + "
+                f"(alpha − {r.get('limit_alpha')}) × {r.get('mid')} W/alpha"
+                + (f"; Ziel {r.get('target')} W = Last + (alpha − {a_t}) × {r.get('mid')} W/alpha." if a_t is not None
+                   else "; kein Ziel eingetragen — die Einheit trägt die Grenze."))
     elif src == "curve":
         sel = (curve or {}).get("selection") or {}
         stage = "marks" if sel.get("from_marks") else "alpha"

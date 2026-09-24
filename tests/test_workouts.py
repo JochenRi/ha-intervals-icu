@@ -718,7 +718,7 @@ _BLOCKS = {"families": {"vo2max": {"source_ok": True, "sessions": 15,
 def _ramp_case(label, **kw):
     """Eine skalierte Karte plus ihre Zusicherung ueber die drei Zahlen."""
     entry = W.scaled(W.BY_KEY["ramp_test"], 200.0, 160, None,
-                     kw.get("curve"), kw.get("blocks"), kw.get("ramp"))
+                     kw.get("curve"), kw.get("blocks"), kw.get("ramp"), None, kw.get("ga"))
     proto = entry.get("ramp_protocol") or {}
     if not proto:
         check(False, f"N1 {label}: die Karte traegt kein ramp_protocol")
@@ -739,7 +739,11 @@ def _ramp_case(label, **kw):
 
 
 _ftp_only, _p_ftp = _ramp_case("Rueckfall")
-_full, _p_full = _ramp_case("gemessen", curve=_CURVE, blocks=_BLOCKS)
+# 0.68.0: der Start ist die Grundlagenvorgabe fuer eine Stunde - Ziel der
+# Umkehrung (hier als Fixture 138 W), sonst ihre Grenze.
+_GA_N2 = {"mid": 90.6, "limit_alpha": 1.0, "target_alpha": 1.3, "missing": None,
+          "hours": [{"hours": 1, "n": 11, "load_w": 150.0, "alpha": 1.17, "limit_w": 165.4, "target_w": 138.0}]}
+_full, _p_full = _ramp_case("gemessen", curve=_CURVE, blocks=_BLOCKS, ga=_GA_N2)
 
 # --- 2c · JEDE SEITE IHRE EIGENE KETTE, JEDE STUFE BESCHRIFTET ---------------
 eq(_p_ftp["start_source"]["kind"], "ftp", "N2 Rueckfall: der Start ist nicht die FTP")
@@ -750,8 +754,8 @@ for _side in ("start_source", "end_source"):
 eq([b[1] for b in _ftp_only["blocks_w"]], [120, 230, 120],
    "N2 Rueckfall: der Einsteigerfall hat sich veraendert")
 
-eq(_p_full["start_source"]["kind"], "curve",
-   "N2: der Start kommt nicht aus der Ermuedungskurve")
+eq(_p_full["start_source"]["kind"], "ga",
+   "N2: der Start kommt nicht aus der Umkehrung (Grundlagenvorgabe fuer eine Stunde)")
 eq(_p_full["end_source"]["kind"], "blocks",
    "N2: das Ende kommt nicht aus der Blockmessung")
 eq(_p_full["start_w"], 138, "N2: die Startleistung ist nicht die Grundlagenvorgabe")
@@ -831,7 +835,7 @@ _NOT_FOR_RAMP = {
     # bekommt keine zweite - `explain` ist fuer ihn bewusst None.
     "explain",
 }
-_card = W.scaled(W.BY_KEY["ramp_test"], 200.0, 160, None, _CURVE, _BLOCKS)
+_card = W.scaled(W.BY_KEY["ramp_test"], 200.0, 160, None, _CURVE, _BLOCKS, None, None, _GA_N2)
 for _field in sorted(_panel_fields - _NOT_FOR_RAMP):
     check(_field in _card,
           f"4: die Karte liest entry.{_field}, aber die Payload des Stufentests "
@@ -977,10 +981,12 @@ check("nicht gemessen" in W.SOURCE_LABEL["ftp"],
 # --- 2 · DIE RANGFOLGE WIRD ERZWUNGEN, NICHT BESCHRIEBEN ---------------------
 # Fuer jede Familie: die hoechste Stufe, die Daten hat, muss gewinnen. Geprueft
 # wird nicht der Quelltext, sondern das ERGEBNIS von scaled().
+_GA_N2b = {"mid": 90.6, "limit_alpha": 1.0, "target_alpha": 1.3, "missing": None,
+           "hours": [{"hours": 1, "n": 11, "load_w": 150.0, "alpha": 1.17, "limit_w": 165.4, "target_w": 138.0}]}
 for _fam, _first, _key in (("vo2max", "blocks", "vo2_4x4"),
-                           ("endurance", "curve", "z2_90")):
+                           ("endurance", "ga", "z2_90")):
     _entry = W.BY_KEY[_key]
-    _alles = W.scaled(_entry, 215, 146, curve=_CURVE, blocks=_BLOCKS, ramp=_RAMP)
+    _alles = W.scaled(_entry, 215, 146, curve=_CURVE, blocks=_BLOCKS, ramp=_RAMP, ga=_GA_N2b)
     eq(_alles.get("watt_source"), _first,
        f"N2: bei {_fam} gewinnt nicht die erste Stufe der Kette")
     # Faellt die erste Stufe weg, muss GENAU die zweite greifen. Der Zugriff
@@ -1073,106 +1079,35 @@ CURVE = {
     "plan": [{"hours": 1, "watts": 153.0}, {"hours": 2, "watts": 142.0}],
 }
 
-# 0.67.4 (S3): `curve_watts` liest bei der GEPLANTEN DAUER (volle Stunden), nicht
-# mehr an der Stundenmitte; jenseits der belegten Stunden bleibt die letzte gut
-# belegte - keine Studienform mehr in der Einheit.
-erste = W.curve_watts(CURVE, 1.0)
-eq((erste["watts"], erste["source"]), (153, "measured"), "Stunde 1 kommt aus der Messung")
-eq(erste["n"], 11, "und traegt ihre Belegung")
-zweite = W.curve_watts(CURVE, 2.0)
-eq(zweite["watts"], 142, "Stunde 2 folgt der Kette der Kachel (-11 gepaart)")
-eq(zweite["source"], "measured", "auch sie ist Messung")
-spaet = W.curve_watts(CURVE, 3.5)
-eq((spaet["hour"], spaet["watts"], spaet["source"]), (2, 142, "measured"),
-   "jenseits des Belegten: die letzte gut belegte Stunde, nicht die Studienform")
+# 0.67.4 (S3) -> 0.68.0: dieselbe Ablesestelle, jetzt in `ga_at` auf den Zeilen
+# der Umkehrung (volle Stunden, belegt ab 3 Fahrten, sonst die letzte gut belegte).
+_GA_S = {"mid": 90.6, "limit_alpha": 1.0, "target_alpha": None, "missing": None,
+         "hours": [{"hours": 1, "n": 11, "load_w": 150.0, "alpha": 1.03, "limit_w": 153.0, "target_w": None},
+                   {"hours": 2, "n": 12, "load_w": 150.0, "alpha": 0.91, "limit_w": 142.0, "target_w": None}]}
+erste = W.ga_at(_GA_S, 60)
+eq((erste["limit"], erste["hour"], erste["n"]), (153, 1, 11), "Stunde 1 kommt aus der Umkehrung, mit Belegung")
+zweite = W.ga_at(_GA_S, 120)
+eq((zweite["limit"], zweite["hour"]), (142, 2), "Stunde 2 liest die Zeile der Umkehrung")
+spaet = W.ga_at(_GA_S, 210)
+eq((spaet["hour"], spaet["limit"]), (2, 142), "jenseits des Belegten: die letzte gut belegte Stunde, nicht die Studienform")
+duenn = {**_GA_S, "hours": [_GA_S["hours"][0], {**_GA_S["hours"][1], "n": 2}]}
+eq(W.ga_at(duenn, 120)["hour"], 1, "zu wenige Fahrten in Stunde 2: die Einheit bleibt bei Stunde 1")
+eq(W.ga_at(None, 90), None, "ohne Umkehrung gibt es keine Vorgabe daraus")
 
-# --- 0.47.1: DIE MESSUNG IST NICHT DIE VORGABE -------------------------------
-# Die Kurve liefert die SCHWELLE. Wer dort faehrt, faehrt an der Schwelle und
-# nicht darunter - und die Wattseite widerspraeche der Pulsseite DERSELBEN
-# Karte. Gefahren wird ein Anteil, aus denselben Studien wie die Kurvenform.
-from const import CURVE_TARGET_SHARE  # noqa: E402
-
+# --- 0.47.1 -> 0.68.0: DIE MESSUNG IST NICHT DIE VORGABE, und die Vorgabe der
+# Grundlage ist seit 0.68.0 Ziel/Grenze der Umkehrung, nicht mehr 0,90 x
+# Schwelle der p075-Kette. Die alten Wächter (Anteil der Schwelle, Studienform,
+# Kurvenherkunft je Abschnitt) sind in den GA-Wächtern unten aufgegangen.
 grund = W.scaled(W.BY_KEY["z2_60"], 200, 160, 185, CURVE)
-haupt_w = [b for b in grund["blocks_w"] if len(b) > 3 and b[3]][0][1]
-eq(haupt_w, round(153 * CURVE_TARGET_SHARE), "die Vorgabe ist ein Anteil der Schwelle")
-eq(grund["curve_blocks"][0]["threshold"], 153.0,
-   "die gemessene Schwelle reist getrennt mit")
-eq(grund["curve_share"], CURVE_TARGET_SHARE, "der Anteil reist in der Payload")
-check(haupt_w < 153, "die Vorgabe sitzt auf der Schwelle statt darunter")
-
-# DIE GEGENPROBE, DIE IN 0.47.0 GEFEHLT HAT: Watt- und Pulsseite derselben
-# Einheit muessen denselben relativen Abstand zu IHRER Schwelle haben. Genau
-# ihr Auseinanderlaufen war der Fehler - Puls bei 88-97 %, Watt bei 100 %.
-for key in ("z2_60", "z2_90", "z2_150", "z2_210_late"):
-    entry = W.BY_KEY[key]
-    lo, hi = entry["hr_hint"]
-    check(lo <= CURVE_TARGET_SHARE <= hi,
-          f"{key}: der Wattanteil {CURVE_TARGET_SHARE} liegt ausserhalb des "
-          f"HF-Fensters {lo}-{hi} - beide Seiten meinen verschiedene Intensitaeten")
-# und die Gegenprobe zur Gegenprobe: die Schwelle SELBST faellt durch
-_lo, _hi = W.BY_KEY["z2_60"]["hr_hint"]
-check(not (_lo <= 1.0 <= _hi),
-      "Gegenprobe: ein Anteil von 100 % waere im HF-Fenster - die Pruefung ist blind")
-
-# --- 0.49.0: Watt UND Puls aus DERSELBEN Quelle ------------------------------
-BLK = {"families": {"vo2max": {
-    "source_ok": True, "sessions": 15, "from": "2026-06-03", "to": "2026-09-01",
-    "min_for_source": 3,
-    "latest": {"date": "2026-09-01", "median_alpha": 0.405, "n_blocks": 4, "median_watts": 250},
-    "hr_window": {"low": 171, "high": 186, "median": 178.5, "sd": 3.6, "n": 15,
-                  "source": "measured"}}}}
-vo = W.scaled(W.BY_KEY["vo2_4x4"], 200, 160, 195, None, BLK)
-eq(vo["watt_source"], "blocks", "VO2max: die Watt kommen aus der Blockmessung")
-eq([b[1] for b in vo["blocks_w"] if b[1] == 250].__len__(), 4, "alle vier Bloecke tragen die Messung")
-eq(vo["hr_window"], (171, 186), "und das Pulsfenster ebenfalls")
-eq(vo["hr_source"]["source"], "measured", "die Herkunft des Fensters reist mit")
-eq(vo["block_source"]["date"], "2026-09-01", "die Einheit, aus der die Zahl stammt")
-
-# DER GLEICHSTANDSTEST, umgeschrieben: er prueft die QUELLE, nicht zwei
-# verschiedene Bezugsgroessen. Bis 0.48.1 verglich er den Wattanteil mit dem
-# HF-Faktor - bei den harten Familien sind das Aepfel und Birnen, weil die
-# Watt aus der Messung und der Puls aus der aeroben Schwelle kaemen.
-check(vo.get("watt_source") == "blocks" and vo.get("hr_source", {}).get("source") == "measured",
-      "Gleichstand: Watt gemessen, Puls aber nicht - die Seiten laufen auseinander")
-# GEGENPROBE, GEZAEHLT UND BENANNT: faellt eine Seite auf die FTP zurueck,
-# muss die andere mitfallen. Ein halb umgestelltes Paar waere genau der Fehler.
-duenn = {"families": {"vo2max": {**BLK["families"]["vo2max"], "source_ok": False}}}
-zurueck = W.scaled(W.BY_KEY["vo2_4x4"], 200, 160, 195, None, duenn)
-eq(zurueck["watt_source"], "ftp", "zu duenn belegt: die Watt fallen auf die FTP zurueck")
-check("hr_source" not in zurueck,
-      "Gleichstand: die Watt fielen zurueck, das Pulsfenster blieb gemessen")
-check(zurueck.get("hr_window") != (171, 186),
-      "Gleichstand: das gemessene Fenster steht noch, obwohl die Watt zurueckfielen")
-# Und ohne jede Messung bleibt alles wie bisher.
-ohne = W.scaled(W.BY_KEY["vo2_4x4"], 200, 160, 195, None, None)
-eq(ohne["watt_source"], "ftp", "ohne Blockmessung: unveraendert FTP")
-
-# Gegenprobe, GEZAEHLT UND BENANNT: traegt der gepaarte Schritt nicht, wird er
-# NICHT verwendet - sonst staffelte die Vorgabe auf einer Zahl, die die Kachel
-# selbst nicht zeigen darf.
-# 0.67.4 (S3): die Schranke sind FAHRTEN JE STUNDE (>= 3), nicht Paare - eine
-# Stunde mit zwei Fahrten traegt nicht, die Einheit bleibt bei der davor.
-duenn = {**CURVE, "measured": [CURVE["measured"][0], {**CURVE["measured"][1], "n": 2}]}
-eq(W.curve_watts(duenn, 2.0)["hour"], 1, "zu wenige Fahrten in Stunde 2: die Einheit bleibt bei Stunde 1")
-eq(W.curve_watts(duenn, 1.0)["watts"], 153, "die erste Stunde bleibt Messung")
-eq(W.curve_watts(None, 1.5), None, "ohne Kurve gibt es keine Vorgabe daraus")
-
-# Und am Katalog: die Grundlage bekommt Kurvenwatt, die harten Familien nicht.
-lang = W.scaled(W.BY_KEY["z2_150"], 215, 160, 185, CURVE)
-eq(lang["watt_source"], "curve", "lange Fahrt: Vorgabe aus der Kurve")
-haupt = [b for b in lang["blocks_w"] if len(b) > 3 and b[3]]
-eq(haupt[0][1], round(142 * CURVE_TARGET_SHARE),
-   "der gleichmaessige Hauptteil traegt den Anteil des Kurvenwerts")
-eq(lang["blocks_w"][0][1], round(215 * 55 / 100), "Ein- und Ausrollen bleiben Prozent der FTP")
+eq(grund["watt_source"], "ftp", "ohne GA-Eingang (nur alte Kurve): die Grundlage faellt auf die FTP")
+check("curve_blocks" not in grund and "curve_share" not in grund, "die p075-Kette rechnet nicht mehr in die Einheit")
 sweet = W.scaled(W.BY_KEY["sweetspot_2x20"], 215, 160, 185, CURVE)
-eq(sweet["watt_source"], "ftp", "SweetSpot bleibt bei der FTP - dort traegt der Fit nicht")
+eq(sweet["watt_source"], "ftp", "SweetSpot bleibt bei der FTP")
 eq(sweet["blocks_w"][1][1], round(215 * 90 / 100), "und behaelt seine Blockleistung")
-# Ohne Kurve faellt die Grundlage sichtbar auf die FTP zurueck.
-eq(W.scaled(W.BY_KEY["z2_150"], 215, 160, 185, None)["watt_source"], "ftp", "ohne Kurve: Rueckfall auf die FTP")
-# Die Herkunft reist je Abschnitt mit - sonst stuende in der Karte eine Zahl
-# ohne Auskunft, woher sie kommt.
-eq(sorted({b["source"] for b in lang["curve_blocks"]}), ["measured"], "jeder Kurven-Abschnitt nennt seine Herkunft")
+eq(W.scaled(W.BY_KEY["z2_150"], 215, 160, 185, None)["watt_source"], "ftp", "ohne alles: Rueckfall auf die FTP")
 
+_GA_A3 = {"mid": 90.6, "limit_alpha": 1.0, "target_alpha": 1.3, "missing": None,
+          "hours": [{"hours": 1, "n": 18, "load_w": 139.6, "alpha": 1.336, "limit_w": 170.0, "target_w": 142.9}]}
 # --- A3 · DIE WATTLISTE TRAEGT WATT - AUF JEDEM WEG, NICHT NUR AUF DEM FTP-WEG --
 # Bis 0.56.0 druckte `steps_text(staged, None)` die gestaffelten WATT der
 # gemessenen Wege mit Prozentzeichen: "45m 135%" fuer 135 W. Die Pruefung unter
@@ -1180,7 +1115,7 @@ eq(sorted({b["source"] for b in lang["curve_blocks"]}), ["measured"], "jeder Kur
 # ausschliesslich ueber den FTP-Weg, auf dem der Fehler nicht sitzt (§7).
 _A3_FAELLE = (
     ("vo2_4x4", dict(curve=_CURVE, blocks=_BLOCKS, ramp=_RAMP), "blocks"),
-    ("z2_60", dict(curve=_CURVE, blocks=_BLOCKS, ramp=_RAMP), "curve"),
+    ("z2_60", dict(curve=_CURVE, blocks=_BLOCKS, ramp=_RAMP, ga=_GA_A3), "ga"),
     # Variante B: mit gefuelltem Test laufen beide ueber die FTP (§7, Fall 38).
     ("tempo_2x20", dict(curve=_CURVE, blocks=_BLOCKS, ramp=_RAMP), "ftp"),
     ("z2_90", dict(ramp=_RAMP), "ftp"),
@@ -1208,7 +1143,7 @@ for _key, _kw, _soll in _A3_FAELLE:
     check("%" not in _ev.get("description", ""),
           f"A3: {_key} ({_quelle}) Kalendereintrag traegt Prozent")
 # Die Fixture deckt ALLE Stufen der Kette ab - fehlt eine, ist genau sie ungeprueft.
-eq(sorted(_a3_quellen), sorted({"blocks", "curve", "ftp"}),
+eq(sorted(_a3_quellen), sorted({"blocks", "ga", "ftp"}),
    "A3 Fixture-Beweis: nicht jede Quelle wird durchlaufen")
 # Ohne FTP gibt es keine halbe Wattliste: Ein- und Ausrollen haetten keine Zahl.
 _ohne_ftp = W.scaled(W.BY_KEY["vo2_4x4"], None, 146, curve=_CURVE, blocks=_BLOCKS, ramp=_RAMP)
@@ -1231,17 +1166,19 @@ _blk_lead = {"families": {"vo2max": {**_BLOCKS["families"]["vo2max"],
                                                 "first_watts": 257, "first_alpha": 0.47}}},
              "selection": _nm}
 _rt_mix = W.scaled(W.BY_KEY["ramp_test"], 215, 146, curve={**_CURVE, "selection": _mk},
-                   blocks=_blk_lead)
+                   blocks=_blk_lead, ga=_GA_A3)
 # TREFFERZUSICHERUNG: beide Enden laufen WIRKLICH ueber Kurve und Bloecke.
 eq([((_rt_mix.get("ramp_protocol") or {}).get(k) or {}).get("kind") for k in ("start_source", "end_source")],
-   ["curve", "blocks"], "B2b-2 Fixture: Start und Ende laufen nicht ueber Kurve und Bloecke")
+   ["ga", "blocks"], "B2b-2 Fixture: Start und Ende laufen nicht ueber Umkehrung und Bloecke")
 _herl = " ".join(_rt_mix.get("derivation") or [])
-eq(((_rt_mix.get("ramp_protocol") or {}).get("start_source") or {}).get("selection"), _mk,
-   "B2b-2: der Start traegt die Auswahl der Kurve")
+# 0.68.0: der Start kommt aus der Umkehrung - die hat keine Namens/Marken-Auswahl,
+# ihre Herkunft ist der Stufentest; die Herleitung nennt die Quelle.
+eq(((_rt_mix.get("ramp_protocol") or {}).get("start_source") or {}).get("selection"), None,
+   "B2b-2: der Start traegt keine Auswahl mehr (Umkehrung)")
 eq(((_rt_mix.get("ramp_protocol") or {}).get("end_source") or {}).get("selection"), _nm,
    "B2b-2: das Ende traegt die Auswahl der Bloecke")
-check("Start" in _herl and "AUS DEN MARKEN" in _herl.split("Ende")[0],
-      f"B2b-2: die Herleitung nennt beim Start nicht seine Auswahl ({_herl[:120]})")
+check("Start" in _herl and "Ermüdungskachel" in _herl.split("Ende")[0],
+      f"B2b-2: die Herleitung nennt beim Start nicht seine Quelle ({_herl[:120]})")
 check("AUS DEN NAMEN" in _herl.split("Ende", 1)[-1],
       "B2b-2: die Herleitung nennt beim Ende nicht seine Auswahl")
 # SOURCE_LABEL bleibt der MESSWEG: die Auswahl steht daneben, nicht darin.
@@ -1263,15 +1200,17 @@ _bl = lambda marks: {"families": {"vo2max": _b_fam}, "selection": {"from_marks":
 _cu = lambda marks: {**_CURVE, "selection": {"from_marks": marks, "label": "SEL-KURVE"}, "rides_used": 7,
                      "used": [{"activity_id": "r1", "date": "2026-08-01", "name": "Volumen", "hours_with_value": [1, 2]}]}
 _quellen_b2c = {}
+# 0.68.0: die Grundlage laeuft ueber "ga" (die Umkehrung, Stufe "marks" - sie
+# steht auf den markierten Fahrten und dem Stufentest), nicht mehr ueber "curve".
 for _key, _kw in (("vo2_4x4", dict(blocks=_bl(True))), ("vo2_4x4", dict(blocks=_bl(False))),
-                  ("z2_60", dict(curve=_cu(True))), ("recovery_40", dict())):
+                  ("z2_60", dict(curve=_cu(True), ga=_GA_A3)), ("recovery_40", dict())):
     _e = W.scaled(W.BY_KEY[_key], 215, 146, **_kw)
     _x = W.explain(_e, 215, _kw.get("curve"), _kw.get("blocks"), _kw.get("ramp"))
     _quellen_b2c[(_e.get("watt_source"), (_kw.get("blocks") or _kw.get("curve") or {}).get("selection", {}).get("from_marks"))] = (_e, _x)
 eq(sorted(str(k) for k in _quellen_b2c),
-   sorted(str(k) for k in [("blocks", True), ("blocks", False), ("curve", True), ("ftp", None)]),
+   sorted(str(k) for k in [("blocks", True), ("blocks", False), ("ga", True), ("ftp", None)]),
    "B2c Fixture: nicht jede Quelle und Auswahl wird durchlaufen")
-_soll_stufe = {("blocks", True): "marks", ("blocks", False): "alpha", ("curve", True): "marks",
+_soll_stufe = {("blocks", True): "marks", ("blocks", False): "alpha", ("ga", True): "marks",
                ("ftp", None): "ftp"}
 for _k, (_e, _x) in sorted(_quellen_b2c.items(), key=lambda kv: str(kv[0])):
     _x = _x or {}
@@ -1295,10 +1234,11 @@ check("SEL-B" in (_xb or {}).get("origin", "") and "SEL-N" in ((_quellen_b2c[("b
       "B2c: die Herkunft nennt ihre Auswahl nicht")
 eq(((_xb or {}).get("headline") or {}).get("watts"), (_eb.get("block_source") or {}).get("watts"),
    "B2c: die Kopfzahl ist nicht die Vorgabe der Einheit")
-_ec, _xc = _quellen_b2c[("curve", True)]
-eq((_xc or {}).get("units_count"), 7, "B2c Kurve: Einheiten aus rides_used")
-check(f"= {(_ec.get('curve_blocks') or [{}])[0].get('watts')} W" in " ".join((_xc or {}).get("steps") or []),
-      "B2c Kurve: der Rechenweg endet nicht auf der Vorgabe")
+_ec, _xc = _quellen_b2c[("ga", True)]
+eq((_xc or {}).get("units_count"), 18, "B2c GA: Einheiten = Fahrten der gelesenen Stunde")
+check(f"Ziel {(_ec.get('ga_blocks') or [{}])[0].get('target')} W" in " ".join((_xc or {}).get("steps") or [])
+      and f"Grenze {(_ec.get('ga_blocks') or [{}])[0].get('limit')} W" in " ".join((_xc or {}).get("steps") or []),
+      "B2c GA: der Rechenweg nennt Ziel und Grenze nicht")
 _ef, _xf = _quellen_b2c[("ftp", None)]
 eq((_xf or {}).get("units_count"), 0, "B2c FTP: keine gewerteten Einheiten")
 check("FTP 215 W" in " ".join((_xf or {}).get("steps") or []), "B2c FTP: der Rechenweg nennt die FTP nicht")
@@ -1319,48 +1259,46 @@ _curveS4 = {"measured": [{"hour": 1, "t": 0.5, "watts": 150.0, "n": 12}, {"hour"
             "paired": [{"from_hour": 1, "to_hour": 2, "delta": -6.0, "n": 8, "enough": True}],
             "literature": [{"hour": 2, "t": 1.5, "watts": 146.0}, {"hour": None, "t": 3.0, "watts": 138.0}],
             "plan": [{"hours": 1, "watts": 150.0}, {"hours": 2, "watts": 144.0}]}
-_gestreckt = W.rate_sessions([{"workout": "z2_150", "hours": 4.0}], "ready", ftp=200, aerobic_hr=140, curve=_curveS4)[0]
-_ungestreckt = W.rate_sessions([{"workout": "z2_150", "hours": 2.5}], "ready", ftp=200, aerobic_hr=140, curve=_curveS4)[0]
+_gestreckt = W.rate_sessions([{"workout": "z2_150", "hours": 4.0}], "ready", ftp=200, aerobic_hr=140, ga=_GA_A3)[0]
+_ungestreckt = W.rate_sessions([{"workout": "z2_150", "hours": 2.5}], "ready", ftp=200, aerobic_hr=140, ga=_GA_A3)[0]
 check(_gestreckt.get("stretched") is True, "S4 Fixture: die Einheit ist gestreckt")
 check(any(b[1] != round(200 * pct / 100) for b, (_, pct, *_r) in zip(_gestreckt["blocks_w"], _gestreckt["blocks"])),
-      "S4 Fixture: blocks_w traegt die Kurve, nicht die FTP")
+      "S4 Fixture: blocks_w traegt die Umkehrung, nicht die FTP")
 eq(_gestreckt["text_w"], W.watts_text(_gestreckt["blocks_w"]), "S4 Treffer: text_w der gestreckten Karte ist die Wattliste von blocks_w")
 eq(_ungestreckt["text_w"], W.watts_text(_ungestreckt["blocks_w"]), "S4 Gegenprobe: ungestreckt war es schon so")
 check(sum(b[0] for b in _gestreckt["blocks_w"]) == _gestreckt["minutes"], "S4 Eigenschaft: die gestreckten Minuten stehen in blocks_w")
 
 
-# --- S3 · WAHL 2 MIT SCHRANKE (Entscheidung 24.09.): die Einheit liest die Kette der
-# Kachel (Kette A) bei der GEPLANTEN DAUER, solange die Stunde belegt ist (>= 3
-# Fahrten); darunter bleibt sie bei der letzten gut belegten Stunde - auch jenseits
-# des belegten Bereichs, statt der Studienform. Rundung: nur VOLLE Stunden
-# zaehlen (2,5 h liest bei 2 h), benannt in workouts.planned_hour. Rot an 0.67.3.
-_LIVE = {"measured": [{"hour": h, "t": h - 0.5, "watts": w, "n": n} for h, w, n in
-                      [(1, 148.1, 11), (2, 147.8, 12), (3, 141.1, 4), (4, 135.7, 2), (5, 137.7, 1)]],
-         "paired": [{"from_hour": 1, "to_hour": 2, "delta": 3.0, "n": 10, "enough": True},
-                    {"from_hour": 2, "to_hour": 3, "delta": -11.5, "n": 3, "enough": False}],
-         "literature": [{"hour": None, "t": 2.5, "watts": 156.2}, {"hour": None, "t": 6.0, "watts": 120.9}],
-         "plan": [{"hours": 1, "watts": 148.1}, {"hours": 2, "watts": 151.1}, {"hours": 3, "watts": 139.6},
-                  {"hours": 4, "watts": 133.0}, {"hours": 5, "watts": 133.4}]}
+# --- S3 · WAHL 2 MIT SCHRANKE (24.09.) -> 0.68.0: die Ablesestelle lebt in ga_at
+# (oben geprueft: volle Stunden, belegt ab 3 Fahrten, sonst die letzte gut
+# belegte, keine Studienform). Die Rundung bleibt benannt:
 eq(getattr(W, "CURVE_HOUR_MIN_RIDES", None), 3, "S3 Schranke: benannte Konstante, drei Fahrten")
 eq([W.planned_hour(m) for m in (30, 60, 95, 150, 210, 330, 360)], [1, 1, 1, 2, 3, 5, 6], "S3 Rundung: nur volle Stunden, mindestens eine")
-def _at(minutes):
-    a = W.curve_watts(_LIVE, minutes / 60.0)
-    return (a["hour"], a["watts"], a["source"]) if a else None
-eq(_at(60), (1, 148, "measured"), "S3: 1 h liest Kette A bei Stunde 1")
-eq(_at(95), (1, 148, "measured"), "S3: 95 min = eine volle Stunde -> Stunde 1")
-eq(_at(150), (2, 151, "measured"), "S3: 2,5 h liest bei 2 h (belegt, 12 Fahrten)")
-eq(_at(210), (3, 140, "measured"), "S3 Treffer: 3,5 h liest Stunde 3 (4 Fahrten, belegt) - nicht mehr die Abschnittsmitte")
-eq(_at(240), (3, 140, "measured"), "S3 Schranke: 4 h ist mit 2 Fahrten nicht belegt -> letzte gut belegte Stunde 3")
-eq(_at(360), (3, 140, "measured"), "S3 jenseits des Bereichs: bleibt bei Stunde 3, keine Studienform")
-check(all(x is None or x[2] == "measured" for x in (_at(m) for m in (60, 210, 360))), "S3: keine Zeile heisst mehr Studienform")
-_kurz = {**_LIVE, "measured": [{"hour": 1, "t": 0.5, "watts": 148.1, "n": 2}], "plan": [{"hours": 1, "watts": 148.1}]}
-eq(W.curve_watts(_kurz, 1.0), None, "S3 Randfall: keine belegte Stunde -> keine Kurvenvorgabe (Rueckfall FTP)")
-# die Einheit: alle elastischen Abschnitte lesen DIESELBE Stunde (die der geplanten Dauer)
-_u = W.scaled(W.BY_KEY["z2_210_late"], 200, 140, curve=_LIVE)
-eq({b["hour"] for b in _u["curve_blocks"]}, {3}, "S3 Einheit z2_210_late: ein Abschnitt, eine Stunde - die der Dauer")
-eq(_u["curve_blocks"][0]["watts"], round(140 * 0.9), "S3 Einheit: 0,90 bleibt (126 W)")
-_u2 = W.scaled(W.BY_KEY["z2_150"], 200, 140, curve=_LIVE)
-eq((_u2["curve_blocks"][0]["hour"], _u2["curve_blocks"][0]["watts"]), (2, 136), "S3 Einheit z2_150: Stunde 2, 136 W - wie heute")
+
+# --- 0.68.0 · scaled() liest die GA-Ziele der Umkehrung -------------------------
+_GA = {"mid": 90.6, "limit_alpha": 1.0, "target_alpha": 1.3, "missing": None,
+       "hours": [{"hours": h, "n": n, "load_w": w, "alpha": a, "limit_w": l, "target_w": t} for h, n, w, a, l, t in
+                 [(1, 18, 139.6, 1.336, 170.0, 142.9), (2, 13, 139.6, 1.259, 163.1, 135.9),
+                  (3, 4, 139.8, 1.107, 149.5, 122.3), (4, 3, 138.7, 1.078, 145.8, 118.6), (5, 1, 146.8, 0.834, 131.8, 104.6)]]}
+def _ga_card(key, ga=_GA, minutes=None):
+    e = W.BY_KEY[key]
+    if minutes:
+        e = {**e, "blocks": W.stretch_blocks(e, minutes / 60) or e["blocks"], "minutes": minutes}
+    return W.scaled(e, 200, 140, ga=ga)
+for key, minutes, want in (("z2_60", None, (1, 143, 170)), ("z2_90", None, (1, 143, 170)), ("z2_150", None, (2, 136, 163)),
+                           ("z2_210_late", None, (3, 122, 150)), ("z2_150", 330, (4, 119, 146)), ("z2_150", 360, (4, 119, 146))):
+    c = _ga_card(key, minutes=minutes); g = (c.get("ga_blocks") or [{}])[0]
+    eq((g.get("hour"), g.get("target"), g.get("limit")), want, f"GA {key} {minutes or ''}: Stunde / Ziel / Grenze")
+    eq(c.get("watt_source"), "ga", f"GA {key}: Quelle")
+    check(all(b[1] == want[1] for b in c["blocks_w"] if str(b[2]).startswith("gleich")), f"GA {key}: der Hauptteil traegt das Ziel")
+_ohne_ziel = W.scaled(W.BY_KEY["z2_60"], 200, 140, ga={**_GA, "target_alpha": None, "hours": [{**h, "target_w": None} for h in _GA["hours"]]})
+g0 = (_ohne_ziel.get("ga_blocks") or [{}])[0]
+eq((g0.get("target"), g0.get("limit")), (None, 170), "GA ohne Ziel: nur die Grenze")
+check(all(b[1] == 170 for b in _ohne_ziel["blocks_w"] if str(b[2]).startswith("gleich")), "GA ohne Ziel: der Hauptteil traegt die Grenze")
+_kein = W.scaled(W.BY_KEY["z2_60"], 200, 140, ga={**_GA, "hours": [], "missing": "kein Stufentest"})
+eq(_kein.get("watt_source"), "ftp", "GA ohne Stufentest: Rueckfall auf die FTP")
+check(_kein.get("ga_missing") == "kein Stufentest", "GA ohne Stufentest: der Grund steht an der Karte")
+check("curve_share" not in _ga_card("z2_60") and all(b[1] != round(0.9 * 170) for b in _ga_card("z2_60")["blocks_w"]), "GA: die 0,90 ist weg")
 
 print(f"test_workouts: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:

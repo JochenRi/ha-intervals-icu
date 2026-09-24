@@ -133,5 +133,21 @@
         "name": "Planned workouts"
       }
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Endurance: alpha rule",
+        "description": "Limit: the endurance session stays below it (default alpha 1.0). Target: where it should sit — empty means the session shows only the limit. Both are your rule, not literature thresholds (literature zone-1 ceiling: alpha 0.75).",
+        "data": {
+          "ga_alpha_limit": "Limit (alpha)",
+          "ga_alpha_target": "Target (alpha, optional)"
+        }
+      }
+    },
+    "error": {
+      "out_of_range": "Value outside 0.5–2.0.",
+      "target_not_above_limit": "Target must lie above the limit and within 0.5–2.0."
+    }
   }
 }

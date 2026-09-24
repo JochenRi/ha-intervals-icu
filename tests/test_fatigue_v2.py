@@ -657,6 +657,29 @@ check("U5 Randfall nur eine Familie markiert: dieselbe Kette, Leiter leer",
       ([r["watts"] for r in _rv5b["plan"][:2]], _rv5b["bridges"].get("ladder")), ([170.0, 163.1], None))
 _bl.series, _rt.latest, v2.reading_rows = _series_saved, _latest_saved, _rr_saved
 
+
+# ═══ 0.68.0 · DIE GA-EINHEIT LIEST DIE UMKEHRUNG (Entscheidung 24.09.) ══════════
+# Ziel = Last + (alpha - ZIEL_ALPHA) x Umrechnung, Grenze = Last + (alpha - 1,0) x
+# Umrechnung - EIN Erzeuger mit der Kachel. Die alpha-Werte sind EINSTELLUNGEN
+# (Options-Flow), nicht Code. Rot an 0.67.4. Livezahlen als Sollwerte.
+_stell(_LIVE_FAMS, _LIVE_RAMP)
+v2.reading_rows = lambda data: _rows()
+_ga = v2.ga_targets({}, today="2026-09-24", limit_alpha=1.0, target_alpha=1.3)
+check("GA: der Erzeuger ist die Umkehrung (mid 90,6)", _ga.get("mid"), 90.6)
+check("GA Livebestand, Ziel 1,3 / Grenze 1,0 je Stunde 1-4",
+      [(r["hours"], r["target_w"], r["limit_w"], r["n"]) for r in _ga["hours"][:4]],
+      [(1, 142.9, 170.0, 18), (2, 135.9, 163.1, 13), (3, 122.3, 149.5, 4), (4, 118.6, 145.8, 3)])
+check("GA Probe: bei 1 h haelt er 139,6 W bei alpha 1,336 - das Ziel liegt daneben, nicht darauf",
+      _ga["hours"][0]["load_w"] == 139.6 and _ga["hours"][0]["alpha"] == 1.336 and 140 <= _ga["hours"][0]["target_w"] <= 146, True)
+_nur = v2.ga_targets({}, today="2026-09-24", limit_alpha=1.0, target_alpha=None)
+check("GA ohne Ziel: nur die Grenze, kein Ziel", [(r["target_w"], r["limit_w"]) for r in _nur["hours"][:1]], [(None, 170.0)])
+_stell(_LIVE_FAMS, None)
+check("GA ohne Stufentest: keine Zahlen, Grund dabei", (v2.ga_targets({}, today="2026-09-24", limit_alpha=1.0, target_alpha=1.3)["hours"], bool(v2.ga_targets({}, today="2026-09-24", limit_alpha=1.0, target_alpha=1.3).get("missing"))), ([], True))
+_stell(_LIVE_FAMS, _LIVE_RAMP)
+check("GA: die Woerter nennen die Setzung und die alpha-Regel des Athleten",
+      "Setzung" in v2.GA_WORDS["state"] and "0,75" in v2.GA_WORDS["literature"], True)
+_bl.series, _rt.latest, v2.reading_rows = _series_saved, _latest_saved, _rr_saved
+
 print(f"test_fatigue_v2: {CHECKS} Prüfungen, {len(failures)} Fehler")
 print("FEHLER:", failures if failures else "keine")
 sys.exit(1 if failures else 0)

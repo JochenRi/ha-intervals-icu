@@ -506,3 +506,13 @@ PEER_CALIPER_STAGES = (0.2, 0.4, 0.6, 0.8, 1.0)
 # ihre Kombination zu genau dieser Schwelle ist eine Setzung.
 RECOVERY_QUIET_DAYS = 2        # wie viele Tage "ruhig" gewesen sein muessen
 RECOVERY_MAX_HARD_DAYS_7 = 0   # harte Tage in den letzten sieben, die erlaubt sind
+
+# --- Einstellungen des Athleten (Options-Flow, Bauregel 10) -------------------
+# Die alpha-Werte der Grundlagen-Einheit (0.68.0): Grenze und Ziel der
+# Umkehrung. Vorbelegt ist nur die Grenze (alpha 1,0); das Ziel bleibt leer,
+# dann traegt die Einheit die Grenze. Eine Regel des Athleten, keine
+# Literaturschwelle - die Zone-1-Obergrenze liegt in der Literatur bei 0,75.
+OPT_GA_ALPHA_LIMIT = "ga_alpha_limit"
+OPT_GA_ALPHA_TARGET = "ga_alpha_target"
+DEFAULT_GA_ALPHA_LIMIT = 1.0
+
