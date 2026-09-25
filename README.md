@@ -3,7 +3,7 @@
 Bring your [Intervals.icu](https://intervals.icu) training data into Home Assistant.
 Not affiliated with, endorsed by, or supported by Intervals.icu.
 
-> **Status: 0.51.1 — the ramp test replaces the durability test.** Eight views, opening on today's
+> **Status: 0.69.0 (25.09.2026).** Nine views, opening on today's
 > verdict: a readiness ring made of one segment per signal, the load budget as
 > a bullet graph with its arithmetic laid open, per-activity charts stacked on
 > a shared time axis, and every derived number carrying its source next to it.
@@ -24,6 +24,16 @@ Not affiliated with, endorsed by, or supported by Intervals.icu.
 
 Copy `custom_components/intervals_icu/` into your `config/custom_components/`
 directory and restart Home Assistant.
+
+## Options (since 0.68.0)
+
+Settings → Devices & Services → *Intervals.icu* → **Configure** → *Endurance: alpha rule*.
+**Limit (alpha)**, default 1.0: the endurance session stays below it. **Target (alpha, optional)**:
+where it should sit — empty means the session shows only the limit. Both are your rule, not a
+literature threshold. The watts behind them come from your marked ramp test (target = load +
+(alpha − target) × slope); without a valid ramp test the session falls back to FTP percent and says so.
+**After updating to 0.68.0 or later, set the target once** (the author uses 1.3), otherwise the
+endurance card shows only the limit.
 
 ## Setup
 
@@ -67,7 +77,7 @@ without any additional cards.
 
 The integration adds an **Intervals** entry to the sidebar. It serves its own
 web component and registers it automatically — nothing to install, no Lovelace
-resources to configure. Seven views:
+resources to configure. Nine views (Trainer, Signals, Today, Calendar, Fitness, Activities, Load, DFA, Sources):
 
 - **Today** — a ring of seven segments, one per readiness signal in its own
   traffic-light colour: you see not only *that* it is red, but *what* the red
@@ -125,7 +135,8 @@ Every derived number in the panel carries its origin and its limits:
 | 4 | Sidebar panel: fitness curve, activity list, calendar, DFA views ✅ |
 | 5 | Analysis views with sourced metrics ✅ |
 | 6 | Panel rebuilt: readiness ring, bullet graph, per-activity charts ✅ |
-| next | Webhooks instead of polling; write support (planning workouts) |
+| 7 | Planning workouts to Intervals (one write path), section marks, ramp test, steering, fatigue tile from the inversion, endurance target from the ramp test, weighted HRV baseline ✅ (0.52–0.69) |
+| next | Heart-rate guard for the watt limit; acceptance ride for the endurance inversion (3 h); webhooks instead of polling |
 
 ## Notes
 
@@ -141,7 +152,7 @@ Every derived number in the panel carries its origin and its limits:
 Holt deine Trainingsdaten von [Intervals.icu](https://intervals.icu) nach Home
 Assistant. Kein offizielles Projekt von Intervals.icu.
 
-> **Stand: 0.51.1 — der Stufentest löst den Durability-Test ab.** Acht Ansichten, Startseite ist
+> **Stand: 0.69.0 (25.09.2026).** Neun Ansichten, Startseite ist
 > das Urteil für heute: ein Bereitschaftsring aus je einem Segment pro Signal,
 > das Lastbudget als Bullet-Graph mit offengelegtem Rechenweg, Verlaufskurven
 > je Einheit über einer gemeinsamen Zeitachse, jede Zahl mit ihrer Quelle.
@@ -159,6 +170,16 @@ Assistant. Kein offizielles Projekt von Intervals.icu.
 
 `custom_components/intervals_icu/` nach `config/custom_components/` kopieren und
 Home Assistant neu starten.
+
+## Optionen (seit 0.68.0)
+
+Einstellungen → Geräte & Dienste → *Intervals.icu* → **Konfigurieren** → *Grundlage: alpha-Regel*.
+**Grenze (alpha)**, vorbelegt 1,0: darüber fährt die Grundlageneinheit nicht. **Ziel (alpha, optional)**:
+dort soll sie liegen — leer heißt, die Einheit zeigt nur die Grenze. Beides ist deine Regel, keine
+Literaturschwelle. Die Watt dahinter kommen aus deinem markierten Stufentest (Ziel = Last +
+(alpha − Ziel) × Steigung); ohne gültigen Stufentest fällt die Einheit benannt auf FTP-Prozent.
+**Nach dem Update auf 0.68.0 oder neuer das Ziel einmal eintragen** (der Autor fährt 1,3), sonst
+zeigt die Grundlagen-Karte nur die Grenze.
 
 ## Einrichtung
 
@@ -203,7 +224,7 @@ die PMC-Kurve ohne Zusatzkarte.
 
 Die Integration legt einen Eintrag **Intervals** in der Seitenleiste an. Sie
 liefert ihre eigene Web-Component aus und meldet sie selbst an — nichts zu
-installieren, keine Lovelace-Ressourcen einzutragen. Sieben Ansichten:
+installieren, keine Lovelace-Ressourcen einzutragen. Neun Ansichten (Trainer, Signale, Heute, Kalender, Fitness, Aktivitäten, Belastung, DFA, Quellen):
 
 - **Heute** — ein Ring aus sieben Segmenten, eines je Signal in dessen
   Ampelfarbe: man sieht nicht nur, *dass* es rot ist, sondern *woraus* das Rot
@@ -264,4 +285,5 @@ Jede abgeleitete Zahl im Panel trägt ihre Herkunft und ihre Grenzen mit sich:
 | 4 | Seitenleisten-Panel: Fitness-Kurve, Aktivitätenliste, Kalender, DFA ✅ |
 | 5 | Auswertungsansichten mit belegten Kennzahlen ✅ |
 | 6 | Panel neu gebaut: Bereitschaftsring, Bullet-Graph, Verlaufskurven ✅ |
-| als Nächstes | Webhooks statt Polling; Schreibseite (Workouts planen) |
+| 7 | Workouts nach Intervals planen (ein Schreibweg), Abschnittsmarken, Stufentest, Steuerung, Ermüdungskachel aus der Umkehrung, Grundlagen-Ziel aus dem Stufentest, gewichtete HRV-Basislinie ✅ (0.52–0.69) |
+| als Nächstes | Puls-Schutz zur Wattgrenze; Abnahmefahrt der Grundlagen-Umkehrung (3 h); Webhooks statt Polling |

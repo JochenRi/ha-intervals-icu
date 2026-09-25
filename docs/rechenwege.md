@@ -184,6 +184,14 @@ erweitern, dann läuft K2 genauso im Container wie K1.
 
 ## K3 · Ermüdungskurve und ihre Grundlage
 
+> **Nachtrag 0.68.0 (25.09.2026):** die Ermüdungskurve (Kette B, `p075` je Fahrtstunde) ist nicht
+> mehr die Wattquelle der Grundlageneinheit. Seit 0.68.0 liest die Grundlage Ziel und Grenze der
+> **Umkehrung** (K5) für ihre geplante Dauer: Ziel = Last + (α − Ziel-alpha) × Steigung, Grenze mit
+> α = 1,0, Steigung nur aus dem Stufentest; Ziel/Grenze-alpha sind Integrationsoptionen. Die
+> `0,90 × Schwelle` (`CURVE_TARGET_SHARE`) bleibt nur als Rückfall am Start des Stufentest-Protokolls.
+> Alles unter dieser Überschrift beschreibt die Kurve als Anzeige und Messung, nicht mehr als Vorgabe
+> (PROJEKTSTAND §7 Fall 58, `workouts.py` SOURCE_CHAIN `ga`).
+
 Betroffen: `derive.py` Z. 270–300 (`_read_at`, `DFA_BIN_WIDTH`, `FATIGUE_MIN_BINS`),
 Z. 457–480 (p075-Zweig), `fatigue.py` Z. 49–60 (Gallo-Form), Z. 479–520 (Anker).
 
@@ -561,6 +569,10 @@ Die Vorgaben 190 W und 250 W bewegen sich nicht.
 Vollständig am Code aufgelistet, nicht aus dem Gedächtnis.
 
 ### K7.1 · Die Verbraucher von `t_band`
+
+> **Nachtrag 0.68.0 (25.09.2026):** die Aufzählung in K7 gilt für den Stand 0.62.2. Seither
+> hängt die Grundlage nicht mehr an Kurve oder Steuerfenster, sondern an der Umkehrung (K3-Nachtrag);
+> Verbraucher der Blockvorgaben (VO2max/SweetSpot) sind unverändert. Zeilenangaben sind verschoben.
 
 Es gibt **genau zwei** Aufrufe, beide in `steering.family_state`:
 

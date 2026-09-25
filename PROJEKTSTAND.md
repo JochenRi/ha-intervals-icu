@@ -6,8 +6,13 @@ Auslieferung über HACS aus `github.com/JochenRi/ha-intervals-icu`
 Eine eigene Home-Assistant-Integration, die Trainingsdaten von Intervals.icu lokal
 archiviert, auswertet und in einem eigenen Seitenleisten-Panel darstellt.
 
-**Umfang:** ~18.950 Zeilen, davon ~6.280 Frontend · 34 WebSocket-Befehle · 16 Einheiten in
-9 Familien · 24 Testdateien mit **8.102** gezählten Einzelprüfungen · 88 Releases.
+**Umfang (gezählt am 25.09.2026, 0.69.0):** 23.831 Zeilen, davon 7.396 Frontend · 38 WebSocket-Befehle · 16 Einheiten in
+9 Familien · 24 Testdateien mit **8.102** gezählten Einzelprüfungen · 100 Tags (`git tag | wc -l`).
+
+**Diese Datei ist der Stand.** `NAECHSTER_CHAT.md` ist nur noch ein Kopf mit Verweis hierher;
+`docs/rechenwege.md` und `docs/ausbau.md` sind datierte Momentaufnahmen mit Nachträgen; die
+KARTE-/ZEICHNUNG-Dateien im Projekt tragen einen Kopfvermerk „Momentaufnahme" und beschreiben
+nicht den Bestand.
 
 ---
 
@@ -17,9 +22,9 @@ archiviert, auswertet und in einem eigenen Seitenleisten-Panel darstellt.
 |---|---|
 | API-Client | Wellness, Aktivitäten, Kalender, Streams, Runden; ein Schreibweg (Workout planen) |
 | Archiv | Vollständige Historie lokal in `.storage`, ~300 kB, keine Datenbank |
-| Entitäten | 49 Sensoren + Kalender-Entität für Automationen und Langzeitstatistik |
+| Entitäten | Sensoren (Anzahl je Bestand) + Kalender-Entität für Automationen und Langzeitstatistik |
 | Auswertung | Trainingslast, DFA alpha-1, Zustandserkennung, Lastbudget, Einheitenvorschläge, Nachtreaktion, Einordnung gegen die eigene Historie |
-| Panel | Eintrag „Intervals" in der Seitenleiste, acht Ansichten |
+| Panel | Eintrag „Intervals" in der Seitenleiste, neun Ansichten |
 
 **Datenbestand:** 487 Wellness-Tage · 239 Aktivitäten · 57 DFA-Auswertungen
 
@@ -31,31 +36,36 @@ archiviert, auswertet und in einem eigenen Seitenleisten-Panel darstellt.
 custom_components/intervals_icu/
 ├── api.py            REST-Client: Basic Auth, Drosselung, Wiederholung bei 429/5xx
 │                     — Schreibzugriffe werden NICHT wiederholt (siehe 8.)
-├── config_flow.py    Einrichtung nur mit API-Key, Reauth bei abgelaufenem Schlüssel
+├── config_flow.py    Einrichtung mit API-Key, Reauth; Options-Flow: Grenze/Ziel (alpha) der Grundlage (0.68.0)
 ├── coordinator.py    Abruf im Takt, Auth-Fehler → Reauth, Archiv-Synchronisation
 ├── store.py          Archiv über die offizielle HA-Storage-Schnittstelle, Migrationen
+├── versions.py       Versionsvergleich für Archiv-Migrationen (`is_older`)
 ├── importer.py       Import- und Zusammenführ-Logik, versioniert
 ├── derive.py         Parselogik: Streams, DFA, Runden, maskierter Stundenverlauf (HA-frei)
-├── analytics.py      PMC, ACWR, Monotonie, Bereitschaft (HA-frei)
-├── coach.py          Zustand, Anker, Signalmatrix, Nachtreaktion, Einordnung (HA-frei)
-├── workouts.py       Einheitenbibliothek, scaled(), Quellenkette, Intervals-Syntax (HA-frei)
+├── analytics.py      PMC, ACWR, eine Tageslast, `form_state` (HA-frei)
+├── baseline.py       eine gewichtete HRV-Basislinie für Trainer, Ampel, Signale (0.69.0, HA-frei)
+├── coach.py          Zustand, Anker, Signalmatrix, Nachtreaktion, Nacht-Bewertung, Einordnung (HA-frei)
+├── workouts.py       Einheitenbibliothek, scaled(), Quellenkette, Grundlage aus der Umkehrung, Geländer `guard()` (HA-frei)
 ├── plan.py           Zielprofil und Wochenlogik (HA-frei)
-├── fatigue.py        Ermüdungskurve, Kurvenschalter, Leitzahl nach Dauer (HA-frei)
+├── fatigue.py        Ermüdungskurve, Kurvenschalter (HA-frei)
+├── fatigue_v2.py     Ermüdungsrechnung v2: Umkehrung, Rechenschalter, Verfall der Umrechnung (HA-frei)
 ├── blocks.py         ein Wert je Arbeitsblock, Regelkreis (HA-frei)
+├── steering.py       Steuerung der Blockvorgaben, Steuerungsschalter, Startwert je Athlet (HA-frei)
 ├── section_marks.py  Markierungen je Abschnitt, Anker, Drift, Messung (HA-frei)
 ├── ramp.py           Stufentest-Auswertung (HA-frei)
 ├── ramp_tests.py     Stufentest-Archivblock (HA-frei)
 ├── reconcile.py      Abgleich Archiv gegen Intervals: planen, dann anwenden
 ├── day_context.py    Tagesetiketten und Gewichte
-├── sensor.py         49 Entitäten
+├── entity.py         gemeinsame Entitätsbasis
+├── sensor.py         Sensoren (Anzahl je Bestand: Wellness + je Sportart Schwellen/Schätzungen)
 ├── calendar.py       Kalender-Entität mit geplanten Workouts
-├── websocket.py      34 Kommandos für das Panel
+├── websocket.py      38 Kommandos für das Panel
 └── frontend/
-    └── intervals-panel.js   Panel, eine Datei ohne Abhängigkeiten (6.278 Zeilen)
+    └── intervals-panel.js   Panel, eine Datei ohne Abhängigkeiten (7.396 Zeilen)
 ```
 
-**HA-freie Module** (`derive`, `analytics`, `coach`, `workouts`, `plan`, `fatigue`,
-`blocks`, `section_marks`, `ramp`, `ramp_tests`) importieren
+**HA-freie Module** (`derive`, `analytics`, `baseline`, `coach`, `workouts`, `plan`, `fatigue`,
+`fatigue_v2`, `blocks`, `steering`, `section_marks`, `ramp`, `ramp_tests`) importieren
 nichts von Home Assistant. Jede Rechnung und jede Regel lässt sich außerhalb von HA gegen
 echte Datensätze durchspielen — der gesamte Prüfstand beruht darauf.
 
@@ -90,7 +100,7 @@ Alles am eigenen Konto geprüft, nicht aus Dokumentation übernommen.
 
 ---
 
-## 4. Die acht Ansichten
+## 4. Die neun Ansichten
 
 | Ansicht | Inhalt |
 |---|---|
@@ -102,6 +112,7 @@ Alles am eigenen Konto geprüft, nicht aus Dokumentation übernommen.
 | **Aktivitäten** | Tabelle; je Einheit: Kennzahlen, Runden, Segmentanalyse, Einordnung gegen die eigene Historie, Nachtreaktion, Verlaufskurven |
 | **Belastung** | Wochenlast, ACWR, Intensitätsverteilung zweifach, HRV-Trend, Entkopplung |
 | **DFA** | Schwellenverlauf mit rollierendem Median |
+| **Quellen** | Kurven-, Block-, Rechen- und Steuerungsschalter, Fahrtenliste, Markierungen — welche Fahrten was tragen |
 
 ---
 
@@ -2594,6 +2605,13 @@ verdaut-Schwelle 2 · gekostet→zu viel 1 · zweite Nacht nie gelesen 3 · Kart
 **24 Dateien, 8.102 gezählte Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
 HA-Instanz oder einen Browser.
 
+**Aufruf (seit 0.69.0 verbindlich):** `cd tests`, dann je `test_*.py` mit **`python3.13`** und je
+`test_*.js` mit `node`; je Datei „N Prüfungen" und „N Fehler" lesen, `rc=0`. **Voraussetzung
+Python ≥ 3.12:** `coordinator.py` nutzt die `type`-Anweisung (PEP 695); unter `python3` = 3.11
+brechen `test_suite_hygiene.py` und `test_websocket_registration.py` mit `SyntaxError` und
+`test_projektstand.py` (nimmt `sys.executable`) meldet 7.409 statt 8.102 mit 8 Fehlern — das ist
+der Interpreter, nicht der Code (25.09.2026). HA selbst läuft auf 3.13.
+
 | Datei | prüft | Umfang |
 |---|---|---|
 | `test_derive.py` | Parselogik gegen echte Payloads ; **seit 0.64.2 die Punktschwelle: dass `load_n` STELLEN zählt und eine Stelle bei `sample_secs = 1` eine Sekunde ist, wird am Zähler nachgewiesen (3.600 bei einer vollen Stunde), und die Schwelle wird gegen `DFA_WATT_WINDOW_S` gehalten statt gegen eine Zahl — mit Gegenprobe knapp darunter und knapp darüber** | 50 |
@@ -2742,6 +2760,11 @@ und `scaled()`. Eine Liste ohne Vollständigkeitsprüfung schützt genau bis zur
 
 ### GRÖSSTER OFFENER PUNKT — die Vorgabe folgt der Form nicht (20.09.2026)
 
+> **Nachtrag 25.09.2026:** gilt seit 0.68.0 nur noch für die **Blockfamilien** (VO2max, SweetSpot).
+> Die **Grundlage** liest Ziel und Grenze der Umkehrung für ihre geplante Dauer
+> (Ziel = Last + (α − Ziel-alpha) × Steigung, `workouts.py` SOURCE_CHAIN `ga`, §7 Fall 58) und ist
+> damit an die gefahrene Leistung gebunden. Der Absatz darunter beschreibt den Stand vom 20.09.
+
 **Nichts im Paket bindet die Wattvorgabe an die gefahrenen Watt.** Der Regler (`steering.c6`)
 schrittet auf der **alpha-Seite des Korridors**, nicht auf der Leistung; das Band liest er
 nicht (am Syntaxbaum belegt, `docs/rechenwege.md` K6.7). Solange alpha im Korridor bleibt,
@@ -2825,6 +2848,10 @@ dasteht — erfunden wird nichts.
 
 **0 · NÄCHSTER GROSSER SCHRITT: aus dem Stufentest eine Vorgabe — als ABLESUNG je
 alpha-Korridor, nicht als Anteil einer Schwelle (Johannes, 16.09.2026).**
+
+> **Nachtrag 25.09.2026:** für die **Grundlage** in 0.68.0 gebaut (Umkehrung aus dem Stufentest,
+> Ziel-alpha als Option, ab 3 h „ungeprüft"). Offen bleibt der Punkt für **VO2max/SweetSpot**;
+> „seit 0.60.0 steuert der Stufentest nichts" gilt seit 0.68.0 nicht mehr.
 
 *Warum:* seit 0.60.0 steuert der Stufentest nichts (§7 Fall 38). Der alte Zweig beantwortete
 „welcher Anteil von HRVT2" mit 1,0 für alle. Die Frage ist falsch gestellt. VO2max,
@@ -3090,6 +3117,12 @@ Block 1 nicht steuert.
 ## 11. Betrieb
 
 ### Auslieferungsweg (verbindlich, gilt für jede Version)
+
+> **Ungültig seit 25.09.2026, neuer Ablauf wird am Rechner geklärt.** Die Schritte 5–7 (Push von
+> Tag, Release per API, Token-Handhabung mit `GIT_Intervals.txt` / `x-access-token`) gelten nicht
+> mehr als Anleitung: eine Cloud-Sitzung darf nur `refs/heads/*` pushen und keine Releases
+> anlegen, und der Token-Weg über eine Datei ist abgeschafft. Bis zur Klärung: Claude pusht nur
+> `main`, Johannes legt Tags/Releases an. Der Text darunter bleibt als Beleg stehen.
 
 Arbeitsteilung: **Claude baut, testet, committet, pusht und legt das Release an —
 Johannes aktualisiert über HACS und startet HA neu.** Claude fasst HA nie direkt an;

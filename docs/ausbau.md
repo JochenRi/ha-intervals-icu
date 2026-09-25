@@ -1,6 +1,14 @@
-# Ausbauplan — Pakete A, B, C
+# Ausbauplan — Pakete A bis P, B2b (Spezifikationen, datiert)
 
-**Stand:** 12.09.2026 · gehört zu PROJEKTSTAND.md §12 (Audit-Hauptbuch)
+**Stand:** 12.09.2026 bis 16.09.2026 je Paket · gehört zu PROJEKTSTAND.md §12 (Audit-Hauptbuch)
+
+> **Momentaufnahme (Vermerk 25.09.2026, 0.69.0):** diese Datei ist eine Sammlung von
+> Spezifikationen zum Zeitpunkt ihrer Niederschrift (0.51.1–0.5x). Was davon gebaut ist, steht in
+> PROJEKTSTAND §12 und §7; der Stand ist `PROJEKTSTAND.md`. Bekannte Abweichungen zum Code 0.69.0:
+> Paket P ist gebaut (0.52.0–0.58.0); es gibt einen Options-Flow (Ziel/Grenze alpha, 0.68.0);
+> `SOURCE_CHAIN` für Grundlage/lange Fahrt ist seit 0.68.0 `ga`, `ftp` (Umkehrung statt Kurve);
+> `curve_watts()` existiert nicht mehr (`ga_at()`, `CURVE_HOUR_MIN_RIDES = 3`); die Namen L1/L2
+> hier (Paket L) sind nicht die L1/L2 des Auftrags vom 25.09. (Geländer, Nacht-Bewertung).
 
 Drei Pakete, je ein Chat, je ein Release. Die Entscheidungen stehen hier, damit
 die Umsetzung nicht mit Designfragen anfängt und die Recherche nicht zweimal
@@ -2360,7 +2368,7 @@ nicht nebeneinander sehen konnte (PROJEKTSTAND §7, 0.46.0).
 ### L4 · Die Wattvorgabe kommt aus der Messung (gebaut 0.47.0)
 
 **Welche Familien, und warum genau die.** Grundlage und lange Fahrt beziehen
-ihre Wattvorgabe aus der Kurve, die übrigen bleiben bei der FTP-Skalierung.
+ihre Wattvorgabe aus der Kurve, die übrigen bleiben bei der FTP-Skalierung. *(Nachtrag 0.68.0: heute aus der Umkehrung, nicht aus der Kurve.)*
 
 **Die Begründung ist NICHT „SweetSpot liegt außerhalb des Messbereichs" — das
 ist falsch, und die erste Fassung dieses Abschnitts behauptete es.** Gemessen am
@@ -3279,7 +3287,7 @@ Fall „punkte" schon belegt. **Alle sieben Hashes haben gehalten.**
 ## Paket P — Die Zuordnung trifft der Athlet, überall (SPEZIFIKATION, 15.09.2026)
 
 **Stand bei der Niederschrift: 0.51.1, Prüfstand 19 Dateien / 5.861 Prüfungen
-grün.** Diese Spezifikation ist geschrieben, nicht gebaut. Jede Festlegung ist
+grün.** Diese Spezifikation ist geschrieben, nicht gebaut — **Nachtrag: gebaut als 0.52.0–0.58.0.** Jede Festlegung ist
 am Quelltext geprüft; wo die Auftragsfassung am Code nicht trug, steht die
 Korrektur mit ihrem Grund daneben (Abschnitt „Was die Prüfung dieser
 Spezifikation ergeben hat"). Zwei Punkte sind **bewusst gestrichen** und stehen
@@ -3850,7 +3858,7 @@ Darstellungsbereich, nicht die Messfähigkeit.
 Maskieren nimmt zunächst Punkte weg: weniger Punkte je Stunde → weniger Bins →
 `FATIGUE_MIN_BINS = 3` und die Nicht-Extrapolationsregel greifen häufiger → mehr
 `p075: None`. Das wirkt weiter: `measured[].n` → `_band()` → `paired[].enough` →
-`workouts.curve_watts()` bricht die Staffelung früher ab → **Grundlage und lange
+`workouts.curve_watts()` *(heute `ga_at()`, seit 0.67.4/0.68.0)* bricht die Staffelung früher ab → **Grundlage und lange
 Fahrt fallen eher auf die FTP zurück.**
 
 **Das sagt die Kachel vorher, nicht die Überraschung nach dem Update.**
@@ -4374,7 +4382,7 @@ werden nur noch **VO2max · SweetSpot · Tempo · Grundlage**, dazu der Stufente
 als ganze Fahrt.
 
 - **`long` rechnet mit `endurance` identisch.** Beide tragen in
-  `workouts.SOURCE_CHAIN` dieselbe Kette (`curve`, `ramp_hrvt1`, `ftp`; seit 0.60.0 `curve`, `ftp`) und
+  `workouts.SOURCE_CHAIN` dieselbe Kette (`curve`, `ramp_hrvt1`, `ftp`; seit 0.60.0 `curve`, `ftp`; seit 0.68.0 `ga`, `ftp`) und
   stehen beide in `CURVE_FAMILIES`. Und die Kurve misst **je Fahrtstunde**:
   eine Achtstundenfahrt liefert acht Punkte, eine Zweistundenfahrt zwei — sie
   ordnet sich von selbst ein und braucht kein Etikett. Eine Grenze „ab wann ist
