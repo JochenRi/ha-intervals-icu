@@ -683,6 +683,52 @@ flipped = coach.night_after(lowrhr, hard_keys[-1])
 check(flipped["night"]["rhr"]["z"] > 0,
       f"18 nacht: niedriger Ruhepuls nicht als günstig gewertet ({flipped['night']['rhr']})")
 
+# --- 18b  L2 (0.69.0): die Nacht-Bewertung als ANZEIGE, Setzung, kein Eingang ---
+# Entscheidung 25.09.: verdaut (HRV-z der Nacht danach >= -0,5) · gekostet (< -0,5)
+# · zu viel (< -1,0 ODER zweite Nacht < -0,5). Nur Anzeige - der Trainer liest
+# sie nicht. Die Schwellen sind benannte Konstanten.
+eq((coach.NIGHT_DIGESTED_Z, coach.NIGHT_TOO_MUCH_Z, coach.NIGHT_SECOND_Z), (-0.5, -1.0, -0.5),
+   "18b L2: die Schwellen sind nicht die der Entscheidung")
+_v = result.get("verdict") or {}
+eq(_v.get("key"), "zu_viel", f"18b L2: Nacht bei z {result['night']['hrv']['z']} ist nicht 'zu viel'")
+check(_v.get("setting") is True and "Setzung" in str(_v.get("rule")), "18b L2: die Bewertung ist nicht als Setzung beschriftet")
+check(_v.get("z_hrv") == result["night"]["hrv"]["z"], "18b L2: z der Nacht steht nicht an der Bewertung")
+check(_v.get("z_hrv_next") is not None, "18b L2: die zweite Nacht fehlt, obwohl sie im Bestand liegt")
+# (die zweite Nacht wird auf die Basislinie gesetzt - das Rauschen der Fixture
+# soll nicht ueber die ODER-Regel entscheiden; die zweite Nacht prueft der Fall darunter)
+def _second_flat(d, key):
+    a = d["activities"][key]
+    n2 = (date.fromisoformat(str(a["start_date_local"])[:10]) + timedelta(days=2)).isoformat()
+    d["wellness"][n2]["hrv"] = 49.0
+    return d
+_mild = coach.night_after(_second_flat(night_history(damp=1.0), hard_keys[-2]), hard_keys[-2])
+eq((_mild.get("verdict") or {}).get("key"), "verdaut", f"18b L2: leichte Nacht (z {_mild['night']['hrv']['z']}) nicht 'verdaut'")
+_cost = coach.night_after(_second_flat(night_history(damp=3.2), hard_keys[-2]), hard_keys[-2])
+eq((_cost.get("verdict") or {}).get("key"), "gekostet", f"18b L2: Nacht bei z {_cost['night']['hrv']['z']} nicht 'gekostet'")
+# zweite Nacht: erste Nacht verdaut, zweite unter -0,5 -> zu viel (die Regel sagt ODER)
+_two = night_history(damp=1.0)
+_t_act = _two["activities"][hard_keys[-2]]
+_n2 = (date.fromisoformat(str(_t_act["start_date_local"])[:10]) + timedelta(days=2)).isoformat()
+_two["wellness"][_n2]["hrv"] = 35.0
+_tv = coach.night_after(_two, hard_keys[-2]).get("verdict") or {}
+eq(_tv.get("key"), "zu_viel", f"18b L2: zweite Nacht bei z {_tv.get('z_hrv_next')} nicht 'zu viel'")
+check(_tv.get("z_hrv_next") is not None and _tv["z_hrv_next"] < -0.5, "18b L2 Fixture: zweite Nacht nicht unter -0,5")
+# letzte Einheit ohne zweite Nacht: Bewertung aus der ersten, die zweite als offen benannt
+_last = coach.night_after(base_data, hard_keys[-1]).get("verdict") or {}
+check(_last.get("key") in ("verdaut", "gekostet", "zu_viel") and _last.get("z_hrv_next") is None
+      and "zweite Nacht" in str(_last.get("note")), "18b L2: ohne zweite Nacht keine Bewertung oder kein Hinweis")
+# KEIN EINGANG IN DEN TRAINER: state(), Deckel, Erholung, Urteil lesen die Bewertung nicht
+import ast as _ast2
+_csrc = (Path(__file__).resolve().parents[1] / "custom_components" / "intervals_icu" / "coach.py").read_text(encoding="utf-8")
+_ctree = _ast2.parse(_csrc)
+for _fn in ("state", "state_series", "load_ceiling", "recovery_offered", "assessment", "coach"):
+    _src_fn = _ast2.get_source_segment(_csrc, next(n for n in _ast2.walk(_ctree) if isinstance(n, _ast2.FunctionDef) and n.name == _fn))
+    check(all(tok not in _src_fn for tok in ("night_after(", "night_verdict(", '"verdict"', "NIGHT_DIGESTED_Z", "NIGHT_TOO_MUCH_Z")),
+          f"18b L2: {_fn} liest die Nacht-Bewertung - sie ist nur Anzeige")
+_wsrc = (Path(__file__).resolve().parents[1] / "custom_components" / "intervals_icu" / "workouts.py").read_text(encoding="utf-8")
+check(all(tok not in _wsrc for tok in ("night_after", "night_verdict", '"verdict"', "NIGHT_DIGESTED_Z")),
+      "18b L2: workouts liest die Nacht-Bewertung")
+
 # --- 19  honest refusal where the data cannot carry it -------------------------
 thin = night_history(days=40)
 thin_keys = [k for k, v in thin["activities"].items() if v["icu_training_load"] == 120]

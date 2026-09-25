@@ -1317,6 +1317,45 @@ def _night_z(data: dict[str, Any], day: str) -> dict[str, Any]:
     return out
 
 
+# L2 (0.69.0, Entscheidung 25.09.): DIE NACHT-BEWERTUNG - NUR ANZEIGE, EINE
+# SETZUNG. Die HRV der Nacht danach gegen das eine Band (baseline.py):
+# verdaut ab -0,5 SD · gekostet darunter · zu viel unter -1,0 SD ODER wenn die
+# zweite Nacht unter -0,5 liegt. Die Schwellen sind gesetzt, nicht gemessen
+# (die Naechte nach Johannes' Einheiten trennen VO2max nicht von Grundlage -
+# Zeichnung 24.09., L2). Der Trainer liest diese Bewertung NICHT (test_coach 18b).
+NIGHT_DIGESTED_Z = -0.5
+NIGHT_TOO_MUCH_Z = -1.0
+NIGHT_SECOND_Z = -0.5
+NIGHT_VERDICT_WORDS = {
+    "verdaut": "verdaut — die Nacht danach lag in deinem Band",
+    "gekostet": "hat gekostet — die Nacht danach lag unter deinem Band",
+    "zu_viel": "zu viel — deutlich unter dem Band, oder die zweite Nacht noch darunter",
+    "unbekannt": "keine Bewertung — HRV der Nacht danach fehlt",
+    "rule": ("Setzung: verdaut ab −0,5 SD, gekostet darunter, zu viel unter −1,0 SD oder wenn "
+             "die zweite Nacht unter −0,5 SD liegt — gegen deine Basislinie der 60 Nächte davor, "
+             "gewichtet. Nur Anzeige: der Trainer liest diese Bewertung nicht."),
+    "no_second": "zweite Nacht liegt noch nicht vor",
+}
+
+
+def night_verdict(z_first: float | None, z_second: float | None) -> dict[str, Any]:
+    """Die eine Regel der Nacht-Bewertung (L2) - total ueber ihre Eingaben."""
+    out: dict[str, Any] = {"z_hrv": z_first, "z_hrv_next": z_second, "setting": True,
+                           "rule": NIGHT_VERDICT_WORDS["rule"],
+                           "note": None if z_second is not None else NIGHT_VERDICT_WORDS["no_second"]}
+    if z_first is None:
+        key = "unbekannt"
+    elif z_first < NIGHT_TOO_MUCH_Z or (z_second is not None and z_second < NIGHT_SECOND_Z):
+        key = "zu_viel"
+    elif z_first < NIGHT_DIGESTED_Z:
+        key = "gekostet"
+    else:
+        key = "verdaut"
+    out["key"] = key
+    out["label"] = NIGHT_VERDICT_WORDS[key]
+    return out
+
+
 def night_after(data: dict[str, Any], activity_id: str) -> dict[str, Any]:
     """The night after one session, read against this athlete's usual answer.
 
@@ -1395,6 +1434,11 @@ def night_after(data: dict[str, Any], activity_id: str) -> dict[str, Any]:
         detail = ("Es liegen noch zu wenige frühere Einheiten ähnlicher Last mit gemessener "
                   "Folgenacht vor — mindestens fünf werden gebraucht.")
 
+    # L2: die Bewertung der Nacht (nur Anzeige) - HRV-z der Nacht danach und
+    # der zweiten Nacht gegen das eine Band.
+    second = _night_z(data, (date.fromisoformat(night_day) + timedelta(days=1)).isoformat())
+    verdict = night_verdict((night.get("hrv") or {}).get("z"), (second.get("hrv") or {}).get("z"))
+
     return {
         "available": True,
         "night_date": night_day,
@@ -1402,6 +1446,7 @@ def night_after(data: dict[str, Any], activity_id: str) -> dict[str, Any]:
         "load": round(load), "intensity": round(intensity),
         "night": night,
         "reference": reference,
+        "verdict": verdict,
         "state": state, "headline": headline, "detail": detail,
         "caveat": (
             "Die Nacht direkt nach einer Einheit ist die sauberste Messbedingung, die es "

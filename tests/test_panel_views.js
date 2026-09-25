@@ -712,6 +712,20 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
     ok(/class="cmpverdict worse/.test(nightPart(hard)), "nacht: starke Dämpfung nicht als Warnung");
     contains(hard, "deutlich gedämpfter", "nacht: Urteil fehlt");
 
+    // L2 (0.69.0): die Bewertung der Nacht steht im Block - Wort, beide
+    // z-Werte, die Setzung und "nur Anzeige"; alles aus der Payload.
+    p._night[acts[0].id] = F.night();
+    const bew = nightPart(String(p.rAkt(acts, acts[0]))).replace(/\s+/g, " ");
+    contains(bew, "zu viel — deutlich unter dem Band", "L2: die Bewertung fehlt im Nacht-Block");
+    ok(/-1,5 SD/.test(bew) && /-0,2 SD/.test(bew), "L2: die z-Werte beider Nächte fehlen an der Bewertung");
+    contains(bew, "Setzung: verdaut ab −0,5 SD", "L2: die Setzung steht nicht dabei");
+    contains(bew, "der Trainer liest diese Bewertung nicht", "L2: 'nur Anzeige' fehlt");
+    p._night[acts[0].id] = F.night("verdaut");
+    const vd = nightPart(String(p.rAkt(acts, acts[0]))).replace(/\s+/g, " ");
+    contains(vd, "verdaut — die Nacht danach lag in deinem Band", "L2: 'verdaut' fehlt");
+    contains(vd, "zweite Nacht liegt noch nicht vor", "L2: die fehlende zweite Nacht wird nicht benannt");
+    ok(!/undefined|null SD/.test(vd), "L2: ohne zweite Nacht steht undefined/null im Block");
+
     // without a reference, no verdict is invented
     p._night[acts[0].id] = F.night("ohnereferenz");
     const noref = p.rAkt(acts, acts[0]);

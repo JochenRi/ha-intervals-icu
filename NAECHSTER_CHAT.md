@@ -19,6 +19,23 @@
 >   Form nicht. Eigene Runde, nicht als Nebensatz einer anderen.
 
 
+## 0.69.0 — L1 · S1 · L2: der Zustand entscheidet, eine Basislinie, die Nacht bewertet (25.09.2026)
+
+Prüfstand **24 / 8.102 / 0**. Drei Schritte des Auftrags vom 25.09., je mit Athlet-B-Durchlauf
+(Z8), keiner an einer Vorgabe der Blockfamilien (190/250 unbewegt). **Es ändert Zahlen:**
+(1) **L1** — der Zustand entscheidet die ART, die Last ist ein beschriftetes Geländer an der
+Menge: über der Obergrenze bleibt die Karte grün/gelb und sagt „Art bleibt, Menge kürzen — bis
+~X h passt sie" (`guard`), rot nur noch aus dem Zustand; ohne Zustand (kein HRV) entscheidet die
+Last, beschriftet. 16 von 30 Tagen ändern sich, alle milder (§7 Fall 59). Die erste grüne Karte
+führt, auch über dem Budget. (2) **S1** — eine HRV-Basislinie (`baseline.py`, 60 Nächte davor,
+gewichtet) für Trainer, Ampel, Signale, Heute-Bänder; **SWC = 0,5 × Streuung der Nächte**
+(Plews) statt der 7-Tage-Mittel → die HRV-Komponente der Ampel an 7 Tagen milder (§7 Fall 60,
+**Setzung — von Johannes zu bestätigen**). (3) **L2** — die Nacht-Bewertung als Anzeige:
+verdaut / gekostet / zu viel, aus dem HRV-z der Nacht danach und der zweiten Nacht, Setzung,
+kein Eingang in den Trainer (§7 Fall 61; die ODER-Regel greift am 01.09.: erste Nacht −0,23,
+zweite −0,63 → zu viel). Offen: F2.9-API-Prüfung (Form als Prozent), Puls-Schutz `load_hr`
+bleibt Vorlage, Abnahmefahrt 3 h bei ~122 W.
+
 ## 0.68.0 — die Grundlage liest die Umkehrung (25.09.2026)
 
 Prüfstand **24 / 7.999 / 0**. Der offene Widerspruch von unten ist entschieden (Johannes, 25.09.):

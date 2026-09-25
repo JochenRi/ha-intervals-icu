@@ -886,6 +886,10 @@ function night(kind) {
       rhr: { mean: -1.26, sd: 0.86, n: 12 },
       sleep: { mean: 0.23, sd: 1.13, n: 12 },
     },
+    // L2 (0.69.0): die Bewertung der Nacht - nur Anzeige, Setzung
+    verdict: { key: "zu_viel", label: "zu viel — deutlich unter dem Band, oder die zweite Nacht noch darunter",
+               z_hrv: -1.54, z_hrv_next: -0.2, setting: true, note: null,
+               rule: "Setzung: verdaut ab −0,5 SD, gekostet darunter, zu viel unter −1,0 SD oder wenn die zweite Nacht unter −0,5 SD liegt. Nur Anzeige: der Trainer liest diese Bewertung nicht." },
     state: "usual",
     headline: "Die Nacht sah aus wie sonst nach solchen Einheiten.",
     detail: "Verglichen mit 12 früheren Einheiten ähnlicher Last und Intensität.",
@@ -895,6 +899,10 @@ function night(kind) {
     return { ...base, state: "hard",
       headline: "Die Nacht fiel deutlich gedämpfter aus als sonst nach solchen Einheiten.",
       night: { ...base.night, hrv: { ...base.night.hrv, value: 28.1, z: -3.2 } } };
+  }
+  if (kind === "verdaut") {
+    return { ...base, verdict: { ...base.verdict, key: "verdaut", label: "verdaut — die Nacht danach lag in deinem Band",
+                                 z_hrv: -0.3, z_hrv_next: null, note: "zweite Nacht liegt noch nicht vor" } };
   }
   if (kind === "ohnereferenz") {
     return { ...base, reference: {}, state: "unknown", headline: "Kein Vergleich möglich.",

@@ -4306,7 +4306,8 @@ class IntervalsIcuPanel extends HTMLElement {
     const night = t.night && t.night.available ? `<div class="tnight">
       <div class="tlabel">DIE NACHT NACH DER LETZTEN EINHEIT — Erholung, nicht Bereitschaft</div>
       <p class="tnhead">${esc(t.night.headline)}</p>
-      <p class="hint">${esc(t.night.detail)}</p></div>` : "";
+      <p class="hint">${esc(t.night.detail)}</p>
+      ${this._nightVerdict(t.night.verdict)}</div>` : "";
 
     return `
       <div class="thead">${esc(dLong(t.date))}${
@@ -6107,6 +6108,22 @@ class IntervalsIcuPanel extends HTMLElement {
       </div>`;
   }
 
+  /* L2 (0.69.0) · DIE BEWERTUNG DER NACHT - nur Anzeige, eine Setzung. Wort,
+     z der Nacht danach und der zweiten Nacht, die Regel; alles aus der Payload
+     (coach.night_verdict). Ohne Bewertung kein Kasten. */
+  _nightVerdict(v) {
+    if (!v || !v.key) return "";
+    const TONE = { verdaut: "held", gekostet: "worse", zu_viel: "worse", unbekannt: "held" };
+    const tone = TONE[v.key] || "held";
+    const z1 = v.z_hrv != null ? `${sign(v.z_hrv, 1)} SD` : "–";
+    const z2 = v.z_hrv_next != null ? `${sign(v.z_hrv_next, 1)} SD` : (v.note ? esc(v.note) : "–");
+    return `<div class="nverdict ${tone}">
+      ${ico(tone === "worse" ? "warn" : "ok", tone === "worse" ? C.amber : C.green, 18)}
+      <div><b>${esc(v.label || "")}</b>
+        <span>Nacht danach ${z1} · zweite Nacht ${z2}</span>
+        <span class="mut">${esc(v.rule || "")}</span></div></div>`;
+  }
+
   _nightBlock(a) {
     const n = this._night[a.id];
     if (!n) return "";
@@ -6140,6 +6157,7 @@ class IntervalsIcuPanel extends HTMLElement {
       <div class="cmpverdict ${tone}">
         ${ico(tone === "worse" ? "warn" : "ok", tone === "worse" ? C.amber : C.green, 18)}
         <div><b>${esc(n.headline || "")}</b><span>${esc(n.detail || "")}</span></div></div>
+      ${this._nightVerdict(n.verdict)}
       <div class="nightbox">${rows}
         <details class="more"><summary>Wie das zu lesen ist</summary>
           <p class="src">${esc(n.caveat || "")}</p></details></div>`;
@@ -7197,6 +7215,11 @@ ul.rides span.r{color:${C.tx3};white-space:nowrap}
 .cmpverdict.held{background:${C.green}12;border:1px solid ${C.green}44}
 .cmpverdict b{display:block;margin-bottom:2px}
 .cmpverdict span{color:${C.tx2};font-size:13.5px}
+.nverdict{display:flex;gap:11px;align-items:flex-start;border-radius:10px;padding:11px 13px;margin-top:8px}
+.nverdict.worse{background:${C.amber}12;border:1px solid ${C.amber}44}
+.nverdict.held{background:${C.green}12;border:1px solid ${C.green}44}
+.nverdict b{display:block;margin-bottom:2px}
+.nverdict span{display:block;color:${C.tx2};font-size:13.5px}
 .cmpgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:12px}
 .cmppanel{background:${C.card2};border-radius:10px;padding:8px 6px 4px}
 .cmplab{font-size:13px;font-weight:650;margin:0 0 2px 10px}

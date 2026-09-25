@@ -463,6 +463,12 @@ eq("Z8 S1: readiness laeuft ohne Fehler", _r8.errors, [])
 check("Z8 S1: ohne HRV steht die HRV-Komponente auf unbekannt, keine Vorbemerkung",
       {c.get("id"): c.get("state") for c in (_rp8.get("components") or [])}.get("hrv") == "unknown"
       and _rp8.get("context_note") is None)
+# L2: die Nacht-Bewertung ohne HRV - "keine Bewertung", benannt, kein Absturz
+_n8 = FakeConn(); ws.websocket_night(None, _n8, {"id": 13, "activity_id": "a34"})
+_np8 = (_n8.results or [{}])[0]
+eq("Z8 L2: night laeuft ohne Fehler", _n8.errors, [])
+check("Z8 L2: ohne HRV keine Bewertung, aber benannt",
+      not _np8.get("available") or ((_np8.get("verdict") or {}).get("key") == "unbekannt" and "HRV" in str((_np8.get("verdict") or {}).get("label"))))
 # Johannes' Fall zum Vergleich, am selben Rechenweg: MIT Zustand "ready" sperrt
 # die Last nicht mehr - die Stufe bleibt gruen, das Gelaender kommt dazu.
 _st8 = W.stage("ok", False, False)
