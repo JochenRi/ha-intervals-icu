@@ -49,6 +49,7 @@ try:  # inside the package (Home Assistant)
         RAMP_STEP_W_PER_MIN,
         RAMP_WARMUP_MIN,
         CURVE_TARGET_SHARE,
+        STEERING_STEP_W,
     )
 except ImportError:  # standalone (test suite loads this file directly)
     from const import (  # type: ignore[no-redef]
@@ -62,6 +63,7 @@ except ImportError:  # standalone (test suite loads this file directly)
         RAMP_STEP_W_PER_MIN,
         RAMP_WARMUP_MIN,
         CURVE_TARGET_SHARE,
+        STEERING_STEP_W,
     )
 
 # Each entry: what it is, how it is built, what it should feel like in the
@@ -1475,6 +1477,10 @@ GUARD_WORDS = {
     "over": "Geländer: Last {load} über der Obergrenze {ceiling} — die Art bleibt, die Menge nicht.",
     "fit": " Bis ~{hours} h passt sie unter die Obergrenze.",
     "fixed": " Die Einheit ist nicht kürzbar — heute als Ganzes über der Grenze.",
+    # 0.69.2 (F2): eine ELASTISCHE Einheit, die auch gekuerzt (unter 0,5 h) nicht
+    # mehr unter die Grenze passt, ist nicht "fest" - sie sagt, dass sie nirgends
+    # hinpasst. Bis 0.69.1 stand an der Grundlage "nicht kuerzbar" (Grenze 0).
+    "too_short": " Auch gekürzt passt sie nicht unter die Grenze — unter 0,5 h bleibt keine sinnvolle Fassung.",
     "by_load": "Ohne Zustand (keine HRV-Basislinie) entscheidet die Last: über der Obergrenze — heute nicht.",
     "green_over": "Zustand unauffällig — die Last liegt über der Obergrenze: Art bleibt, Menge kürzen.",
     "yellow_over": "Der Zustand trägt nur bedingt, und die Last liegt über der Obergrenze: Art bleibt, Menge kürzen.",
@@ -1544,6 +1550,10 @@ def guard(entry: dict[str, Any], load: float, ceiling: float | None,
         return out
     text = GUARD_WORDS["over"].format(load=round(load), ceiling=round(ceiling))
     elastic = any(is_elastic(block) for block in (entry.get("blocks") or []))
+    # 0.69.2 (F2): "nicht kuerzbar" heisst FEST - Arbeitsbloecke (Intervalle) oder
+    # der Stufentest. Ein gleichmaessiger Abschnitt ohne elastische Marke (die
+    # Regeneration) ist nicht fest, er traegt nur keine gerechnete Dauer.
+    fixed = entry.get("key") == "ramp_test" or any(_is_work_block(block) for block in (entry.get("blocks") or []))
     minutes = float(entry.get("minutes") or 0)
     planned_h = float(hours) if hours else (minutes / 60.0 if minutes else 0.0)
     if elastic and planned_h > 0 and load > 0:
@@ -1552,9 +1562,11 @@ def guard(entry: dict[str, Any], load: float, ceiling: float | None,
             out["hours_fit"] = fit_h
             text += GUARD_WORDS["fit"].format(hours=("%.1f" % fit_h).replace(".", ","))
         else:
-            text += GUARD_WORDS["fixed"]
-    else:
+            text += GUARD_WORDS["too_short"]
+    elif fixed:
         text += GUARD_WORDS["fixed"]
+    else:
+        text += GUARD_WORDS["too_short"]
     out["text"] = text
     return out
 
@@ -1889,6 +1901,37 @@ def explain(entry: dict[str, Any], ftp: float | None, curve: dict[str, Any] | No
             steps.append(f"Pulsfenster {hs.get('low')}–{hs.get('high')} bpm = Median der "
                          f"Einheitspulse {hs.get('median')} bpm ± {BLOCK_HR_WINDOW_SD_FACTOR:g} × "
                          f"Streuung {hs.get('sd')} bpm über {hs.get('n')} Einheiten.")
+    elif src == "steering":
+        # 0.69.2 (F1): DIE VORGABE ALS QUELLE. Bis 0.69.1 kannte der Nachweis
+        # diesen Zweig nicht und fiel in den FTP-Zweig darunter - die Karte trug
+        # die Vorgabe (190 W) mit dem Etikett "Rueckfall auf die FTP - nicht
+        # gemessen" und zaehlte 0 Einheiten, waehrend die Kachel 190 W aus 6
+        # Einheiten sagte (Livebestand 25.09.). Dieselben Reihen wie die Kachel.
+        ss = entry.get("steering_source") or {}
+        box = ((blocks or {}).get("families") or {}).get(fam) or {}
+        sel = (blocks or {}).get("selection") or {}
+        stage = "marks" if sel.get("from_marks") else "alpha"
+        watts = ss.get("watts")
+        origin = (f"deine Vorgabe — Startwert {ss.get('anchor_w')} W vom {ss.get('anchor_date')} "
+                  f"plus {ss.get('moves') or 0} gerechnete Schritte"
+                  + (f", {sel.get('label')}" if sel.get("label") else ""))
+        units = [{"activity_id": p.get("activity_id"), "date": p.get("date"),
+                  "name": p.get("name"),
+                  "detail": f"{p.get('median_watts')} W bei alpha {p.get('median_alpha')}"}
+                 for p in reversed(box.get("points") or [])]
+        units_count = ss.get("n_units") if ss.get("n_units") is not None else (box.get("sessions") or len(units))
+        steps.append(f"Vorgabe {watts} W = Startwert {ss.get('anchor_w')} W ({ss.get('anchor_date')}) "
+                     f"{'+' if (ss.get('moves') or 0) else '±'} {ss.get('moves') or 0} Schritte × {STEERING_STEP_W} W "
+                     f"(ein Schritt, wenn genug Einheiten auf derselben Seite des alpha-Korridors liegen).")
+        band = ss.get("band") or {}
+        if band.get("low") is not None and band.get("high") is not None:
+            steps.append(f"Toleranz {band.get('low')}–{band.get('high')} W aus den letzten "
+                         f"{band.get('n')} Einheiten (t-Band, zentriert auf die Vorgabe).")
+        hb = ss.get("hr_band") or {}
+        if hb.get("low") is not None and hb.get("high") is not None:
+            steps.append(f"Pulsfenster {hb.get('low')}–{hb.get('high')} bpm aus denselben Einheiten.")
+        if ss.get("note_blocks"):
+            steps.append(str(ss["note_blocks"]))
     elif src == "ga":
         stage = "marks"
         rows = entry.get("ga_blocks") or []
@@ -1934,9 +1977,22 @@ def explain(entry: dict[str, Any], ftp: float | None, curve: dict[str, Any] | No
         work = [w for t, w in zip(entry.get("blocks") or [], entry.get("blocks_w") or [])
                 if t[1] == max(b[1] for b in entry.get("blocks") or [(0, 0)])]
         watts = work[0][1] if work else None
-        origin = "Rückfall auf die FTP — nicht gemessen"
-        units_count = 0
-        units_note = "Keine: die FTP ist eine Eintragung, und für diese Einheit trägt noch keine Messung."
+        ss = entry.get("steering_source") or {}
+        if ss.get("watts"):
+            # 0.69.2 (F1): es GIBT eine Vorgabe - sie gilt fuer Arbeitsbloecke
+            # (Block 1-4), und diese Form (Saetze eines 30/30, 30/15) bekommt sie
+            # nicht (Entscheidung 0.61.0, "Etiketten ehrlich"). Die Karte sagt
+            # das, statt "nicht gemessen" - die Kachel daneben sagt ja das
+            # Gegenteil.
+            origin = (f"Rückfall auf die FTP — deine Vorgabe ({ss['watts']} W aus "
+                      f"{ss.get('n_units') or 0} Einheiten) gilt für Arbeitsblöcke (Block 1–4); "
+                      f"diese Form bekommt sie nicht")
+            units_count = 0
+            units_note = str(ss.get("note_blocks") or "")
+        else:
+            origin = "Rückfall auf die FTP — nicht gemessen"
+            units_count = 0
+            units_note = "Keine: die FTP ist eine Eintragung, und für diese Einheit trägt noch keine Messung."
         pct = max((b[1] for b in entry.get("blocks") or []), default=None)
         # Die FTP wird UEBERGEBEN, nicht aus gerundeten Watt zurueckgerechnet:
         # 108 W / 50 % ergaebe „FTP 216 W" bei einer FTP von 215.

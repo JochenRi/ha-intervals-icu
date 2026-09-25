@@ -1,6 +1,6 @@
 # ha-intervals-icu — Übergabe an den nächsten Chat
 
-**Stand:** 25.09.2026 · **Version:** 0.69.1 · Prüfstand **24 / 8.134 / 0** (python3.13 + node)
+**Stand:** 25.09.2026 · **Version:** 0.69.2 · Prüfstand **24 / 8.174 / 0** (python3.13 + node)
 
 **Der Stand steht in `PROJEKTSTAND.md` — diese Datei ist nur der Einstieg.** Der frühere
 Inhalt (Journal 0.44.0–0.69.0) liegt unverändert in `docs/journal_naechster_chat.md`; er ist
@@ -8,12 +8,12 @@ Historie, keine Anleitung.
 
 ## Zuerst lesen
 1. `PROJEKTSTAND.md` Kopf, §9 (Prüfstand mit Aufruf), §10 (offen), §11 (Betrieb, mit Vermerk), §13 (Bauregeln).
-2. `PROJEKTSTAND.md` §7, Fälle 58–62: was 0.68.0 und 0.69.0 an Zahlen bewegt haben.
+2. `PROJEKTSTAND.md` §7, Fälle 58–63: was 0.68.0 und 0.69.0 an Zahlen bewegt haben.
 3. `docs/rechenwege.md` K5 (Umkehrung, mit Nachträgen 0.67.0/0.68.0) — nur wenn es um die Kachel oder die Grundlagen-Watt geht.
 
 ## Prüfstand
 `cd tests`; je `test_*.py` mit **`python3.13`**, je `test_*.js` mit `node`; je Datei „N Prüfungen" / „N Fehler", `rc=0`.
-Erwartet 24 Dateien, 8.134 Prüfungen, 0 Fehler. **Python ≥ 3.12 ist Pflicht** (`type`-Anweisung in `coordinator.py`);
+Erwartet 24 Dateien, 8.174 Prüfungen, 0 Fehler. **Python ≥ 3.12 ist Pflicht** (`type`-Anweisung in `coordinator.py`);
 mit `python3` = 3.11 fallen zwei Dateien mit `SyntaxError` und `test_projektstand.py` meldet 7.409/8 — Interpreter, nicht Code.
 
 ## Auslieferung
@@ -25,6 +25,8 @@ Push nur `main` nach Freigabe, kein Tag, kein Release aus der Sitzung. Kein Toke
 - Puls-Schutz zur Wattgrenze (`load_hr`, neues Messfeld) — Vorlage, verschiebt sein Pulsfenster.
 - Abnahmefahrt GA-Umkehrung: 3 h bei ~122 W (α in Stunde 3 ≈ 1,3), Gegenfahrt 3 h bei ~150 W — erst danach fällt „ab 3 h ungeprüft".
 - S1-Setzung SWC = 0,5 × Streuung (Plews) — von Johannes zu bestätigen.
+- Vorlage V1 (0.69.2): Block „5“ von `vo2_5x4` fällt auf die FTP (Etikettregel endet bei „4“) — Versehen oder gewollt?
+- Befund B (0.69.2): 4 Blöcke an einer 3×4-Einheit, Block 1 mit alpha 0,85 — live nachsehen, welche Laps die VO2max-Marke tragen.
 - Vorlagen ohne Wirkung heute: S6 Anker-Sportfilter, S12 Tempo-Wattquelle, S13 Konflikthinweis, F1.1 `max_hr`.
 - §10 „Vorgabe folgt der Form nicht" gilt nur noch für VO2max/SweetSpot (Grundlage seit 0.68.0 gebunden).
 

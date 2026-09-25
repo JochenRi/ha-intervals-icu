@@ -461,6 +461,19 @@ eq(_ov["stage"]["key"], "green", "bewertung L1: ueber Budget ohne Erholung ist n
 eq(((_ov.get("guard") or {}).get("over"), (_ov.get("guard") or {}).get("hours_fit")), (True, None),
    "bewertung L1: das Gelaender einer festen Einheit erfindet eine Dauer")
 check("nicht kürzbar" in str((_ov.get("guard") or {}).get("text")), "bewertung L1: die feste Einheit sagt nicht, dass sie nicht kuerzbar ist")
+# F2 (0.69.2): "nicht kuerzbar" nur bei FESTEN Einheiten. Eine elastische Grundlage
+# gegen Obergrenze 0 (live 25.09. nach dem Training) ist kuerzbar, passt nur nirgends
+# hin - und sagt genau das, statt sich fuer fest auszugeben.
+_z0 = W.guard(W.BY_KEY["z2_60"], 60, 0, 1.0) or {}
+check(_z0.get("over") is True and _z0.get("hours_fit") is None, "F2 guard: Grundlage gegen 0 ohne over/None")
+check("nicht kürzbar" not in str(_z0.get("text")), "F2 guard: die elastische Grundlage nennt sich 'nicht kuerzbar'")
+check("gekürzt" in str(_z0.get("text")), "F2 guard: die elastische Grundlage sagt nicht, dass auch gekuerzt nichts passt")
+_r0 = W.guard(W.BY_KEY["recovery_40"], 18, 0, None) or {}
+check("nicht kürzbar" not in str(_r0.get("text")) and "gekürzt" in str(_r0.get("text")), "F2 guard: Regeneration 40 min gegen 0 nennt sich 'nicht kuerzbar'")
+_v0 = W.guard(W.BY_KEY["vo2_4x4"], 80, 0, None) or {}
+check("nicht kürzbar" in str(_v0.get("text")), "F2 guard Gegenprobe: die feste Einheit sagt nicht mehr 'nicht kuerzbar'")
+_z9 = W.guard(W.BY_KEY["z2_60"], 60, 50, 1.0) or {}
+check(_z9.get("hours_fit") == 0.75 and "0,8 h" in str(_z9.get("text")), "F2 guard Gegenprobe: mit Grenze 50 fehlt die passende Dauer")
 # Athlet B ohne Zustand: unknown -> die Last entscheidet, rot am Budget, beschriftet
 _ub = W.rate_sessions([dict(SESSION)], "unknown", budget=50)[0]
 eq((_ub["stage"]["key"], _ub["stage"]["blocked_by"]), ("red", "budget"), "bewertung L1: ohne Zustand entscheidet nicht die Last")
@@ -893,6 +906,10 @@ _NOT_FOR_RAMP = {
     # Seit B2c: der Stufentest hat seine eigene Herleitung (`derivation`) und
     # bekommt keine zweite - `explain` ist fuer ihn bewusst None.
     "explain",
+    # Seit 0.69.2 (F1): die Karte liest `steering_source` fuer den Herkunftsabsatz
+    # der gesteuerten Familien; der Stufentest traegt sein Protokoll (`ramp_protocol`),
+    # keine Steuerung - die Karte prueft das Feld mit `|| {}`.
+    "steering_source",
 }
 _card = W.scaled(W.BY_KEY["ramp_test"], 200.0, 160, None, _CURVE, _BLOCKS, None, None, _GA_N2)
 for _field in sorted(_panel_fields - _NOT_FOR_RAMP):

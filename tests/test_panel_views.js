@@ -1377,6 +1377,22 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   contains(String(q._sessionCard(duenn, opts)).replace(/\s+/g, " "),
            "noch zu wenige gemessene Einheiten",
            "0.49.0: der Rückfall bei den gemessenen Familien wird verschwiegen");
+  // 0.69.2 (F1): gibt es eine Vorgabe (steering_source), gilt "noch zu wenige
+  // Einheiten" nicht - der Absatz nennt den Satz der Steuerung (Bloecke ja, Saetze nein).
+  const satz30 = { ...base, watt_source: "ftp", family: "vo2max", blocks_w: [[10, 210, "Satz 1"]],
+    steering_source: { watts: 250, n_units: 7, anchor_w: 250, anchor_date: "2026-09-17", moves: 0,
+                       note_blocks: "Kein Abschnitt dieser Einheit bekommt die gemessene Vorgabe — die Zahlen stehen auf der FTP." } };
+  const satz30Html = String(q._sessionCard(satz30, opts)).replace(/\s+/g, " ");
+  ok(!/noch zu wenige gemessene Einheiten/.test(satz30Html), "F1 30/30: 'noch zu wenige Einheiten' trotz Vorgabe");
+  contains(satz30Html, "Kein Abschnitt dieser Einheit bekommt die gemessene Vorgabe", "F1 30/30: der Satz der Steuerung fehlt");
+  contains(satz30Html, "250 W", "F1 30/30: die Vorgabe wird nicht genannt");
+  // und die gesteuerte Einheit hat ihren eigenen Herkunftsabsatz (bis 0.69.1: keinen)
+  const gesteuert = { ...base, watt_source: "steering", family: "sweetspot", blocks_w: [[20, 190, "Block 1"]],
+    steering_source: { watts: 190, n_units: 6, anchor_w: 190, anchor_date: "2026-09-17", moves: 0,
+                       band: { low: 186, high: 194, n: 4 }, hr_band: { low: 159, high: 174 }, note_blocks: null } };
+  const gesteuertTxt = String(q._sourceText(gesteuert)).replace(/\s+/g, " ");
+  ok(gesteuertTxt.length > 0 && /Vorgabe/.test(gesteuertTxt) && /190 W/.test(gesteuertTxt) && !/Rückfall/.test(gesteuertTxt),
+     "F1 Steuerung: die gesteuerte Einheit hat keinen Herkunftsabsatz oder einen falschen");
   // Und die gemessene Einheit nennt beide Quellen samt Rolle-Grenze.
   const gemessen = { ...base, watt_source: "blocks", family: "vo2max",
     blocks_w: [[4, 250, "1"]],

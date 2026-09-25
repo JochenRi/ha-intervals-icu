@@ -2125,7 +2125,17 @@ class IntervalsIcuPanel extends HTMLElement {
   /* Die Herkunft der Watt als Absatz — bis B2c stand er immer offen in der Karte.
      Seitdem ist er der Rechenweg im aufgeklappten Teil; der Text ist unverändert. */
   _sourceText(entry) {
-    return entry.watt_source === "blocks"
+    const ss = entry.steering_source || {};
+    return entry.watt_source === "steering"
+        ? `<p class="fitwhy">${ico("info", C.blue, 14)} <b>Watt und Puls kommen aus deiner
+            Vorgabe</b> — ${fmt(ss.watts)} W: Startwert ${fmt(ss.anchor_w)} W vom
+            ${dMed(ss.anchor_date)} plus ${fmt(ss.moves || 0)} gerechnete Schritte, aus
+            ${fmt(ss.n_units || 0)} Einheiten${ss.band && ss.band.low != null
+              ? `; Toleranz ${fmt(ss.band.low)}–${fmt(ss.band.high)} W` : ""}${
+            ss.hr_band && ss.hr_band.low != null
+              ? `; Pulsfenster ${fmt(ss.hr_band.low)}–${fmt(ss.hr_band.high)} bpm aus denselben Einheiten` : ""}.
+            ${ss.note_blocks ? esc(ss.note_blocks) : ""} Ein- und Ausrollen bleiben Prozent der FTP.</p>`
+        : entry.watt_source === "blocks"
         ? `<p class="fitwhy">${ico("info", C.blue, 14)} <b>Watt und Puls kommen aus deiner
             Blockmessung</b> — ${fmt((entry.block_source || {}).watts)} W bei alpha
             ${fmt((entry.block_source || {}).alpha, 3)}, gemessen am
@@ -2166,9 +2176,15 @@ class IntervalsIcuPanel extends HTMLElement {
                 ? `${esc(entry.ga_missing)} — die Watt kommen bis dahin aus der FTP.`
                 : `Für diese Einheit liegt keine tragfähige eigene Messung vor.`}</p>`
           : entry.watt_source === "ftp" && (entry.family === "vo2max" || entry.family === "sweetspot")
-            ? `<p class="fitwhy">${ico("warn", C.amber, 14)} <b>Rückfall auf die FTP — nicht gemessen:</b> noch zu
+            ? (ss.watts
+              // 0.69.2 (F1): es GIBT eine Vorgabe - sie gilt fuer Arbeitsbloecke, diese
+              // Form (Saetze) bekommt sie nicht. Der Satz kommt aus dem Backend.
+              ? `<p class="fitwhy">${ico("warn", C.amber, 14)} <b>Rückfall auf die FTP:</b> deine Vorgabe
+                  (${fmt(ss.watts)} W aus ${fmt(ss.n_units || 0)} Einheiten) gilt für Arbeitsblöcke (Block 1–4).
+                  ${esc(ss.note_blocks || "")}</p>`
+              : `<p class="fitwhy">${ico("warn", C.amber, 14)} <b>Rückfall auf die FTP — nicht gemessen:</b> noch zu
                 wenige gemessene Einheiten dieser Familie — bis dahin bleibt die alte Vorgabe
-                stehen, statt halb umgestellt zu werden.</p>`
+                stehen, statt halb umgestellt zu werden.</p>`)
             : "";
   }
 

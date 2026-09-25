@@ -1751,6 +1751,32 @@ def load_ceiling(state_key: str, budget: dict[str, Any] | None) -> dict[str, Any
             "used_today": (budget or {}).get("used_today")}
 
 
+def session_ceiling(data: dict[str, Any], state_key: str,
+                    ready: dict[str, Any] | None) -> dict[str, Any]:
+    """Die Obergrenze, nach der die Einheiten-Karten urteilen - EINE Stelle (0.69.2, F2).
+
+    Ist heute schon trainiert, gelten die Karten fuer MORGEN (so sagt es der
+    Reiter seit Paket I) - dann muss auch die Grenze die von morgen sein: das
+    Budget mit heute als einem der sechs Tage davor (F2.10), Verbrauch 0. Bis
+    0.69.1 lasen die Karten trotzdem das heutige Budget - nach einer harten
+    Einheit "Obergrenze 0" bis hinunter zur Regeneration (Livebestand 25.09.).
+    Vor dem Training: das heutige Budget aus der Bereitschaft, bitgenau wie
+    zuvor. Der Zustand bleibt der von heute - fuer morgen gibt es keinen.
+    """
+    ready = ready or {}
+    budget = ready.get("budget")
+    trained = _trained_today(data)
+    order = sorted(data.get("wellness") or {})
+    day = order[-1] if order else None
+    if trained and day:
+        day = (date.fromisoformat(day) + timedelta(days=1)).isoformat()
+        budget = analytics.load_budget(data, ready.get("overall", "unknown"), today=day)
+    out = load_ceiling(state_key, budget)
+    out["for_tomorrow"] = trained
+    out["day"] = day
+    return out
+
+
 def today(data: dict[str, Any], budget: dict[str, Any] | None = None) -> dict[str, Any]:
     wellness = data.get("wellness") or {}
     if not wellness:

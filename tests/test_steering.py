@@ -269,6 +269,54 @@ ok("Pausen und Einrollen tauchen im Rueckfallsatz NICHT auf",
    "Pause" not in str(_f5["steering_source"]["note_blocks"])
    and "Einrollen" not in str(_f5["steering_source"]["note_blocks"]))
 
+print("\n=== 6c. DIE KARTE NENNT DIE VORGABE (0.69.2, F1) ===")
+# Live 25.09.: die SweetSpot-Karte trug 190 W (= die Vorgabe) mit dem Etikett
+# "Rueckfall auf die FTP - nicht gemessen", die VO2max-Karte (30/30) sagte "noch zu
+# wenige gemessene Einheiten", waehrend die Kachel 250 W aus 7 Einheiten zeigte.
+# Ursache: explain() kannte die Quelle "steering" nicht (Rueckfall auf den FTP-Zweig).
+_series_ss = {"families": {"vo2max": _series["families"]["vo2max"],
+                           "sweetspot": {"points": SS_REAL, "source_ok": True, "latest": SS_REAL[-1],
+                                         "sessions": len(SS_REAL), "from": SS_REAL[0]["date"],
+                                         "to": SS_REAL[-1]["date"], "hr_window": {"low": 160, "high": 172}}},
+              "selection": {"from_marks": True, "label": "SEL-M"}}
+_st2 = steering.state(_series_ss, JO_ANCHORS)
+_ss_e = WK.scaled(WK.BY_KEY["sweetspot_2x20"], 200, 146, blocks=_series_ss, steering=_st2)
+check("F1 SweetSpot: Quelle steering", _ss_e["watt_source"], "steering")
+_ss_x = WK.explain(_ss_e, 200, None, _series_ss, None) or {}
+ok("F1 SweetSpot: die Herkunft sagt 'Rueckfall auf die FTP'", "Rückfall" not in str(_ss_x.get("origin")))
+ok("F1 SweetSpot: die Herkunft nennt die Vorgabe nicht", "Vorgabe" in str(_ss_x.get("origin")))
+check("F1 SweetSpot: Stufe im Kreislauf = marks (Auswahl aus Markierungen)", _ss_x.get("stage"), "marks")
+check("F1 SweetSpot: Kopfzahl = Vorgabe", (_ss_x.get("headline") or {}).get("watts"), _st2["sweetspot"]["watts"])
+check("F1 SweetSpot: gewertete Einheiten = n_units der Steuerung", _ss_x.get("units_count"), _st2["sweetspot"]["n_units"])
+ok("F1 SweetSpot: der Rechenweg nennt Startwert und Schritte",
+   "Startwert" in " ".join(_ss_x.get("steps") or []) and f"{STEERING_STEP_W} W" in " ".join(_ss_x.get("steps") or []))
+ok("F1 SweetSpot: der Rechenweg rechnet in Prozent", "%" not in " ".join(_ss_x.get("steps") or []))
+ok("F1 SweetSpot: die Einheiten stehen da, neueste zuerst",
+   [u.get("date") for u in _ss_x.get("units") or []] == [p["date"] for p in reversed(SS_REAL)])
+# 30/30: die Vorgabe gilt fuer ARBEITSBLOECKE (Block 1-4); Saetze bekommen sie nicht
+# (Entscheidung 0.61.0, "Etiketten ehrlich"). Die Karte muss DAS sagen - nicht "nicht gemessen".
+_v30 = WK.scaled(WK.BY_KEY["vo2_3030"], 200, 146, blocks=_series_ss, steering=_st2)
+check("F1 30/30: Quelle bleibt ftp (Entscheidung 0.61.0)", _v30["watt_source"], "ftp")
+_v30_x = WK.explain(_v30, 200, None, _series_ss, None) or {}
+ok("F1 30/30: die Herkunft sagt 'nicht gemessen'", "nicht gemessen" not in str(_v30_x.get("origin")))
+ok("F1 30/30: die Herkunft nennt die Vorgabe und dass sie nur fuer Bloecke gilt",
+   f"{_st2['vo2max']['watts']} W" in str(_v30_x.get("origin")) and "Block" in str(_v30_x.get("origin")))
+ok("F1 30/30: der Einheiten-Hinweis ist der Satz der Steuerung",
+   _v30_x.get("units_note") == _v30["steering_source"]["note_blocks"])
+check("F1 30/30: Kopfzahl = FTP-Watt des Satzes", (_v30_x.get("headline") or {}).get("watts"), round(200 * 105 / 100))
+# GEGENPROBE: Familie ohne Messung faellt weiter auf die FTP und sagt es
+_none = WK.scaled(WK.BY_KEY["vo2_4x4"], 200, 146, blocks=None, steering=None)
+_none_x = WK.explain(_none, 200, None, None, None) or {}
+check("F1 Gegenprobe: ohne Messung Quelle ftp", _none["watt_source"], "ftp")
+ok("F1 Gegenprobe: ohne Messung 'nicht gemessen'", "nicht gemessen" in str(_none_x.get("origin")))
+check("F1 Gegenprobe: ohne Messung 0 Einheiten", _none_x.get("units_count"), 0)
+# und eine Steuerung OHNE Vorgabe (unter 3 Einheiten, watts None) ist keine Quelle
+_thin = {"families": {"vo2max": {**_series["families"]["vo2max"], "points": VO_REAL[:2], "latest": VO_REAL[1], "sessions": 2}}}
+_st_thin = steering.state(_thin, JO_ANCHORS)
+_thin_e = WK.scaled(WK.BY_KEY["vo2_4x4"], 200, 146, blocks=_thin, steering=_st_thin)
+ok("F1 Gegenprobe duenn: mit Vorgabe (Startwert) heisst die Quelle steering, sonst blocks/ftp",
+   _thin_e["watt_source"] in ("steering", "blocks", "ftp"))
+
 print("\n=== 6b. DAS RAMPENENDE FOLGT DER VORGABE ===")
 _res = WK.RAMP_END_RESERVE_MIN * WK.RAMP_STEP_W_PER_MIN
 _p_aus = WK.ramp_protocol(194, None, _series, None)

@@ -743,7 +743,7 @@ _last = coach.night_after(base_data, hard_keys[-1]).get("verdict") or {}
 check(_last.get("key") in ("verdaut", "gekostet", "zu_viel") and _last.get("z_hrv_next") is None
       and "zweite Nacht" in str(_last.get("note")), "18b L2: ohne zweite Nacht keine Bewertung oder kein Hinweis")
 # KEIN EINGANG IN DEN TRAINER: state(), Deckel, Erholung, Urteil lesen die Bewertung nicht
-import ast as _ast2
+import ast as _ast2  # noqa: E402
 _csrc = (Path(__file__).resolve().parents[1] / "custom_components" / "intervals_icu" / "coach.py").read_text(encoding="utf-8")
 _ctree = _ast2.parse(_csrc)
 for _fn in ("state", "state_series", "load_ceiling", "recovery_offered", "assessment", "coach"):
@@ -753,6 +753,55 @@ for _fn in ("state", "state_series", "load_ceiling", "recovery_offered", "assess
 _wsrc = (Path(__file__).resolve().parents[1] / "custom_components" / "intervals_icu" / "workouts.py").read_text(encoding="utf-8")
 check(all(tok not in _wsrc for tok in ("night_after", "night_verdict", '"verdict"', "NIGHT_DIGESTED_Z")),
       "18b L2: workouts liest die Nacht-Bewertung")
+
+# --- 18c  F2 (0.69.2): NACH DEM TRAINING GILT DIE OBERGRENZE VON MORGEN -------------
+# Live 25.09. nach einer VO2max-Einheit: die Karten sagten "gelten fuer morgen",
+# rechneten aber mit der Obergrenze von HEUTE (Obergrenze 0, "nicht kuerzbar" bis
+# zur Regeneration). Eine Stelle entscheidet: coach.session_ceiling - ist heute
+# trainiert, liest sie das Budget fuer morgen (heute zaehlt dann zu den sechs
+# Tagen davor, F2.10), sonst das heutige Budget bitgenau wie bisher.
+import analytics as _an  # noqa: E402
+import ast as _ast2  # noqa: E402
+_f2 = build()
+_f2_today = sorted(_f2["wellness"])[-1]
+# (Last 60 wie die uebrigen Fahrten: eine harte Einheit wuerde die Ampel rot machen und
+# beide Budgets auf 0 setzen - dann unterschiede die Fixture nichts mehr)
+_f2["activities"]["heute"] = {"id": "heute", "start_date_local": _f2_today + "T17:00:00", "type": "Ride",
+                              "moving_time": 4500, "icu_intensity": 62, "icu_training_load": 60,
+                              "average_heartrate": 140, "icu_average_watts": 135}
+_f2_ready = _an.readiness(_f2, today=_f2_today) or {}
+_f2_state = coach.state(_f2).get("state", "unknown")
+_sc = coach.session_ceiling(_f2, _f2_state, _f2_ready)
+check(_sc.get("for_tomorrow") is True, "18c F2: nach dem Training gilt die Grenze nicht fuer morgen")
+_morgen = (date.fromisoformat(_f2_today) + timedelta(days=1)).isoformat()
+eq(_sc.get("day"), _morgen, "18c F2: der Tag der Grenze ist nicht morgen")
+_soll = coach.load_ceiling(_f2_state, _an.load_budget(_f2, _f2_ready.get("overall", "unknown"), today=_morgen))
+eq(_sc.get("ceiling"), _soll["ceiling"], "18c F2: die Grenze ist nicht die von morgen (Budget mit heute in den sechs Tagen)")
+_heute = coach.load_ceiling(_f2_state, _f2_ready.get("budget"))["ceiling"]
+check(_sc.get("ceiling") != _heute, f"18c F2 Trefferzusicherung: morgen ({_sc.get('ceiling')}) = heute ({_heute}) - die Fixture unterscheidet nicht")
+check(_sc.get("ceiling") is not None and _heute is not None and _sc["ceiling"] < _heute,
+      "18c F2 Richtung: die heutige Fahrt zaehlt fuer morgen zu den sechs Tagen - die Grenze muss sinken")
+check((_sc.get("used_today") or 0) == 0.0, "18c F2: fuer morgen ist noch nichts verbraucht")
+# GEGENPROBE: vor dem Training - heutiges Budget, bitgenau wie load_ceiling
+_g2 = build(); _g2_ready = _an.readiness(_g2, today=sorted(_g2["wellness"])[-1]) or {}
+_g2_state = coach.state(_g2).get("state", "unknown")
+_gsc = coach.session_ceiling(_g2, _g2_state, _g2_ready)
+check(_gsc.get("for_tomorrow") is False, "18c F2 Gegenprobe: ohne Training heute 'fuer morgen'")
+eq({k: v for k, v in _gsc.items() if k not in ("for_tomorrow", "day")}, coach.load_ceiling(_g2_state, _g2_ready.get("budget")),
+   "18c F2 Gegenprobe: vor dem Training weicht die Grenze von load_ceiling ab")
+# GEGENPROBE: unter 28 Tagen kein Budget, trainiert oder nicht
+_k2 = build(days=20); _k2_today = sorted(_k2["wellness"])[-1]
+_k2["activities"]["heute"] = dict(_f2["activities"]["heute"], start_date_local=_k2_today + "T17:00:00")
+_ksc = coach.session_ceiling(_k2, "ready", _an.readiness(_k2, today=_k2_today) or {})
+eq((_ksc.get("for_tomorrow"), _ksc.get("budget")), (True, None), "18c F2: unter 28 Tagen erfindet morgen ein Budget")
+# EIN ERZEUGER: die beiden Handler (Trainer-Karten, Wochenplan) lesen session_ceiling,
+# nicht load_ceiling direkt - sonst rechnet einer weiter mit heute.
+_wsrc2 = (Path(__file__).resolve().parents[1] / "custom_components" / "intervals_icu" / "websocket.py").read_text(encoding="utf-8")
+_wtree2 = _ast2.parse(_wsrc2)
+for _hn in ("websocket_workouts", "websocket_goal"):
+    _hsrc = _ast2.get_source_segment(_wsrc2, next(n for n in _ast2.walk(_wtree2) if isinstance(n, _ast2.FunctionDef) and n.name == _hn))
+    check("session_ceiling(" in _hsrc and "load_ceiling(" not in _hsrc,
+          f"18c F2: {_hn} liest nicht session_ceiling (oder noch load_ceiling direkt)")
 
 # --- 19  honest refusal where the data cannot carry it -------------------------
 thin = night_history(days=40)
