@@ -1,5 +1,6 @@
 """Checks for the training analytics, with known-answer tests where possible."""
 
+import math
 import sys
 from datetime import date, timedelta
 from pathlib import Path
@@ -140,13 +141,28 @@ check("Fixture-Beweis: die ruhige Langfahrt kommt durch",
       derive.steady_endurance_reason(acts["long"]), None)
 
 # --- HRV against the smallest worthwhile change -------------------------------------------
+# S1 (0.69.0, Entscheidung 25.09., Wahl 1): EINE HRV-Basislinie fuer Ampel, Trainer
+# und Signale - `baseline.norm_band`, 60 Naechte VOR dem beurteilten Tag, gewichtet
+# ueber die Tagesetiketten. Bis 0.68.0 rechnete hrv_status eine eigene: Mittel und
+# Streuung der letzten 60 ROLLWERTE einschliesslich heute, ungewichtet. Die alten
+# Waechter (flache Reihe "normal", SWC 0) froren diesen zweiten Rechenweg ein;
+# das eine Band verwirft eine flache Reihe (Streuung 0) wie der Trainer -
+# nachgezogen wie bei F1.6.
+import baseline  # noqa: E402
+import coach  # noqa: E402
 hrv_days = {}
 for index in range(90):
     day = (today - timedelta(days=89 - index)).isoformat()
-    hrv_days[day] = {"hrv": 50.0}
-status = analytics.hrv_status({"wellness": hrv_days, "activities": {}, "dfa": {}})
+    hrv_days[day] = {"hrv": 50.0 + ((index * 7) % 5 - 2) * 1.0}
+_hd = {"wellness": hrv_days, "activities": {}, "dfa": {}}
+status = analytics.hrv_status(_hd)
 check("stabile HRV gilt als normal", status["state"], "normal")
-check("SWC bei konstanter HRV ist null", status["swc"], 0.0)
+check("S1: das Band ist das des Trainers (Basislinie = ln des coach-Bands)",
+      abs(status["baseline"] - math.log(coach.today(_hd)["bands"]["hrv"]["baseline"])) < 0.001, True)
+check("S1: SWC = 0,5 x Streuung der Naechte davor", abs(status["swc"] - 0.5 * status["spread"]) < 1e-3, True)
+check("S1: flache Reihe -> kein Band, kein Status (wie der Trainer)",
+      analytics.hrv_status({"wellness": {(today - timedelta(days=89 - i)).isoformat(): {"hrv": 50.0} for i in range(90)},
+                            "activities": {}, "dfa": {}}), None)
 
 for index in range(80, 90):
     day = (today - timedelta(days=89 - index)).isoformat()
@@ -156,6 +172,40 @@ check("HRV-Einbruch wird erkannt", dropped["state"], "below")
 check("Hinweis zur Messmethode mitgeliefert", "overnight" in dropped["note"], True)
 check("zu wenig Daten ergibt nichts",
       analytics.hrv_status({"wellness": {"2026-01-01": {"hrv": 50}}, "activities": {}, "dfa": {}}), None)
+
+# GEWICHTET: 20 Nachtschicht-Naechte (Gewicht 0) bei 42 ms druecken die
+# ungewichtete Basislinie (~47); gewichtet liegt sie bei ~50 und die letzten sieben
+# Tage bei 46 sind ein Einbruch - ungewichtet nicht. Ampel-Komponente und Trainer muessen dasselbe sehen.
+def _ctx(labels):
+    w, ctx = {}, {}
+    for i in range(120):
+        d = (today - timedelta(days=119 - i)).isoformat()
+        wob = ((i * 7) % 5 - 2) * 1.0
+        hrv = 50.0 + wob
+        if 80 <= i <= 99:
+            hrv = 42.0 + wob
+            if labels:
+                ctx[d] = {"tag": "nachtschicht", "weight": 0.0, "note": "", "set_at": ""}
+        if i >= 113:
+            hrv = 46.0
+        w[d] = {"id": d, "hrv": hrv, "restingHR": 56.0 - wob * 0.2, "sleepSecs": 27000}
+    return {"wellness": w, "activities": {}, "dfa": {}, "day_context": ctx}
+_gw, _ug = analytics.hrv_status(_ctx(True)), analytics.hrv_status(_ctx(False))
+check("S1 Fixture: Etiketten aendern die Basislinie", _gw["baseline"] != _ug["baseline"], True)
+check("S1: gewichtet meldet sich als gewichtet", (_gw.get("weighted"), _ug.get("weighted")), (True, False))
+check("S1: gewichtet sieht den Einbruch, ungewichtet nicht", (_gw["state"], _ug["state"]), ("below", "normal"))
+_rg = {c["id"]: c for c in analytics.readiness(_ctx(True))["components"]}["hrv"]
+_ru = {c["id"]: c for c in analytics.readiness(_ctx(False))["components"]}["hrv"]
+check("S1 Ampel: gewichtet amber/rot, ungewichtet gruen", (_rg["state"] in ("amber", "red"), _ru["state"]), (True, "green"))
+check("S1 Ampel: die Komponente sagt, dass sie gewichtet rechnet", "gewichtet" in _rg["source"] and _rg.get("weighted") is True, True)
+check("S1 Ampel: die Zahlen sind die des Trainers",
+      abs(_rg["reference"] - math.log(coach.today(_ctx(True))["bands"]["hrv"]["baseline"])) < 0.001, True)
+check("S1 Ampel: die Vorbemerkung nennt die Gewichtung und die Etiketten",
+      "gewichtet" in str(analytics.readiness(_ctx(True)).get("context_note")) and "20" in str(analytics.readiness(_ctx(True)).get("context_note")), True)
+check("S1 Ampel: ohne Etiketten keine Vorbemerkung", analytics.readiness(_ctx(False)).get("context_note"), None)
+# Ebene 3 bleibt fuer die LAST: Budget und ACWR lesen keine Gewichte
+check("S1: das Lastbudget bleibt kontextfrei",
+      analytics.load_budget(_ctx(True), "green", today.isoformat()) == analytics.load_budget(_ctx(False), "green", today.isoformat()), True)
 
 # --- zone times come in two shapes ------------------------------------------------
 # Heart rate zone times are a plain list of seconds; power zone times arrive as
@@ -304,10 +354,13 @@ check("leeres Raster ohne Wochenlast", leer["max_week_load"], 0)
 # --- Ebene 3 (Paket B3): die Last kennt keine Etiketten -------------------------
 # Ein Nachtschicht-Etikett macht die GEMESSENE Trainingslast nicht kleiner.
 # Verhaltens-Wächter: identische Archive mit und ohne Etiketten müssen in
-# ACWR, Monotonie, Lastbudget, daily_load UND in analytics' eigener
-# HRV-Rechnung dasselbe ergeben — analytics bleibt komplett kontextfrei,
-# die Herkunftsnotiz dazu hängt die Websocket-Schicht an (siehe ausbau.md B3;
-# die saubere Lösung der Ampel-Divergenz heißt B4).
+# ACWR, Monotonie, Lastbudget und daily_load dasselbe ergeben.
+# S1 (0.69.0, Entscheidung 25.09.): die HRV-Rechnung von analytics (hrv_status,
+# Ampel-Komponente) liest die Gewichte jetzt - ueber baseline.py, denselben
+# Erzeuger wie der Trainer. Bis 0.68.0 stand sie hier in der Liste der
+# kontextfreien Funktionen; der Waechter zieht nach. Das Budget der Ampel
+# bleibt kontextfrei, auch wenn die Ampelfarbe sich durch die Gewichtung
+# aendert (readiness liest die Farbe, load_budget die Last).
 import json as _json
 from datetime import date as _date, timedelta as _td
 
@@ -325,16 +378,21 @@ _lvl3_ctx["day_context"] = {
                                       "note": "", "set_at": ""}
     for _o in range(1, 25)}
 
-for _name in ("daily_load", "weekly_summary", "acwr_series", "hrv_status",
-              "readiness"):
+for _name in ("daily_load", "weekly_summary", "acwr_series"):
     _fn = getattr(analytics, _name)
     check(f"Ebene 3: {_name} ignoriert Etiketten",
           _json.dumps(_fn(_lvl3), sort_keys=True, default=str)
           == _json.dumps(_fn(_lvl3_ctx), sort_keys=True, default=str), True)
-check("Ebene 3: load_budget ignoriert Etiketten",
-      analytics.load_budget(_lvl3, "green") == analytics.load_budget(_lvl3_ctx, "green"), True)
+for _state in ("green", "amber", "red"):
+    check(f"Ebene 3: load_budget ignoriert Etiketten ({_state})",
+          analytics.load_budget(_lvl3, _state) == analytics.load_budget(_lvl3_ctx, _state), True)
+# S1-Gegenprobe: die HRV-Seite liest die Etiketten (sonst waere die Gewichtung tot)
+check("S1: hrv_status liest die Etiketten",
+      analytics.hrv_status(_lvl3)["baseline"] != analytics.hrv_status(_lvl3_ctx)["baseline"]
+      or analytics.hrv_status(_lvl3)["weighted"] != analytics.hrv_status(_lvl3_ctx)["weighted"], True)
 
 # Quelltext-Wächter: die Mauer steht im Code, nicht in der Absicht.
+# analytics.py liest day_context seit S1 nur ueber baseline.py (HRV), nie direkt.
 for _mod in ("analytics.py", "plan.py", "workouts.py"):
     _src = (COMP / _mod).read_text(encoding="utf-8")
     check(f"Ebene 3: {_mod} liest day_context nicht",

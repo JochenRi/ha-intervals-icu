@@ -1202,6 +1202,24 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   contains(rechnet, "nicht defekt", "M: der rechnende Zustand sagt nicht, dass er arbeitet");
 }
 
+/* ── S1 (0.69.0): EINE Basislinie, ueberall gleich beschriftet ─────────── */
+// Drei HRV-Basislinien im Paket (Karte 4b, F4b.3) hiessen alle "±0,5 SD" und
+// rechneten verschieden. Seit S1 rechnen Trainer, Ampel und Signale dasselbe
+// Band (60 Naechte davor, gewichtet) - und die Beschriftung sagt es an allen
+// drei Stellen mit demselben Satz.
+{
+  const q = new M.Panel();
+  q._nowIso = F.TODAY;
+  q._status = { athlete: "Test" };
+  const satz = "60 Nächte davor";
+  const bel = String(q.rBelastung(F.load())).replace(/\s+/g, " ");
+  contains(bel, satz, "S1 Belastung: der HRV-Trend nennt das eine Band nicht");
+  contains(bel, "gewichtet", "S1 Belastung: die Gewichtung fehlt an der Beschriftung");
+  const sig = String(q.rSignals ? q.rSignals(F.signals ? F.signals() : null) : (q.rSignale ? q.rSignale(F.signals ? F.signals() : null) : "")).replace(/\s+/g, " ");
+  contains(sig, satz, "S1 Signale: der Reiter nennt das eine Band nicht");
+  contains(sig, "wie beim Trainer", "S1 Signale: der Gleichlauf mit dem Trainer steht nicht da");
+}
+
 /* ── L4: die Wattvorgabe kommt aus der Messung, und die Karte sagt es ───── */
 // 0.68.0: die Grundlage liest Ziel und Grenze der Umkehrung (watt_source "ga"),
 // nicht mehr die Ermuedungskurve ("curve" mit Anteil 0,90). Der Waechter zieht

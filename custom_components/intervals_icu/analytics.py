@@ -34,9 +34,10 @@ from statistics import mean, pstdev
 from typing import Any
 
 try:  # inside the package (Home Assistant)
-    from . import derive
+    from . import baseline, derive
     from .const import DECOUPLING_GOOD
 except ImportError:  # standalone (test suite loads this file directly)
+    import baseline
     import derive
     from const import DECOUPLING_GOOD
 
@@ -221,26 +222,38 @@ def acwr_series(data: dict[str, Any], acute: int = 7, chronic: int = 28) -> list
     return out
 
 
-def hrv_status(data: dict[str, Any], baseline_days: int = 60) -> dict[str, Any] | None:
+def hrv_status(data: dict[str, Any], baseline_days: int = baseline.WINDOW) -> dict[str, Any] | None:
     """Return the HRV trend against its smallest worthwhile change.
 
     Follows the HRV-guided training literature: work on the 7-day rolling mean
     of ln(rMSSD) and compare it with the baseline mean plus/minus half a
-    standard deviation.
+    standard deviation (Plews u. a. 2013: SWC = 0,5 x Streuung der Naechte
+    der Basisperiode).
+
+    S1 (0.69.0): DAS BAND IST DAS DES TRAINERS - `baseline.band_before`, die
+    `baseline_days` Naechte VOR dem juengsten Tag, gewichtet ueber die
+    Tagesetiketten. Bis 0.68.0 rechnete diese Funktion Mittel und Streuung der
+    letzten 60 ROLLWERTE einschliesslich heute, ungewichtet - die zweite von
+    drei HRV-Basislinien im Paket (Karte 4b, F4b.3). Die 7-Tage-Rollung
+    bleibt als Leseweise: verglichen wird das 7-Tage-Mittel mit dem Band.
 
     Caveat carried in the payload: the wellness HRV comes from an overnight
     wearable measurement, not the validated morning supine recording, so this
     is a trend against your own baseline - not a clinical figure.
     """
     wellness = data.get("wellness") or {}
+    values: dict[str, float] = {}
     points: list[tuple[str, float]] = []
     for day in sorted(wellness):
         value = (wellness[day] or {}).get("hrv")
         if value:
             try:
-                points.append((day, math.log(float(value))))
-            except ValueError:
+                v = float(value)
+            except (TypeError, ValueError):
                 continue
+            if v > 0:
+                values[day] = v
+                points.append((day, math.log(v)))
 
     if len(points) < 14:
         return None
@@ -250,15 +263,16 @@ def hrv_status(data: dict[str, Any], baseline_days: int = 60) -> dict[str, Any] 
         window = [value for _, value in points[index - 6 : index + 1]]
         rolling.append({"date": points[index][0], "ln_rmssd_7d": round(mean(window), 4)})
 
-    baseline_window = [item["ln_rmssd_7d"] for item in rolling[-baseline_days:]]
-    base_mean = mean(baseline_window)
-    base_sd = pstdev(baseline_window) if len(baseline_window) > 1 else 0.0
-    swc = 0.5 * base_sd
+    today = points[-1][0]
+    band = baseline.band_before(data, values, today, log=True, window=baseline_days)
+    if band is None:
+        return None
+    swc = 0.5 * band.spread
     latest = rolling[-1]["ln_rmssd_7d"]
 
-    if latest > base_mean + swc:
+    if latest > band.base + swc:
         state = "above"
-    elif latest < base_mean - swc:
+    elif latest < band.base - swc:
         state = "below"
     else:
         state = "normal"
@@ -266,10 +280,15 @@ def hrv_status(data: dict[str, Any], baseline_days: int = 60) -> dict[str, Any] 
     return {
         "series": rolling,
         "latest": latest,
-        "baseline": round(base_mean, 4),
+        "baseline": round(band.base, 4),
+        "spread": round(band.spread, 4),
         "swc": round(swc, 4),
         "state": state,
-        "baseline_days": len(baseline_window),
+        "baseline_days": min(baseline_days, len([d for d in values if d < today])),
+        "weighted": band.weighted,
+        "labeled": band.labeled,
+        "weight_sum": band.weight_sum,
+        "baseline_note": baseline.fallback_note(band),
         "note": "overnight wearable HRV, not a morning supine recording",
     }
 
@@ -552,8 +571,11 @@ def readiness(data: dict[str, Any], today: str | None = None) -> dict[str, Any]:
             "id": "hrv", "label": "Herzratenvariabilität", "state": state,
             "value": round(hrv["latest"], 3), "reference": round(hrv["baseline"], 3),
             "detail": detail,
+            "weighted": hrv.get("weighted"), "labeled": hrv.get("labeled"),
             "source": "7-Tage-Mittel von ln(rMSSD) gegen die kleinste bedeutsame Änderung "
-                      "(Mittelwert ± 0,5 SD) aus der HRV-gesteuerten Trainingssteuerung. "
+                      "(Mittelwert ± 0,5 SD) aus der HRV-gesteuerten Trainingssteuerung — "
+                      "dieselbe Basislinie wie beim Trainer: die 60 Nächte davor, gewichtet "
+                      "über deine Tagesetiketten (S1). "
                       "Dein Wert kommt aus der Nachtmessung der Uhr; in einer Gerätevergleichsstudie "
                       "wurde Garmin bei der nächtlichen Ruhepuls-Auswertung wegen methodischer "
                       "Inkonsistenzen sogar ausgeschlossen — als Trend gegen die eigene Basislinie brauchbar, "
@@ -706,10 +728,23 @@ def readiness(data: dict[str, Any], today: str | None = None) -> dict[str, Any]:
     else:
         overall = "unknown"
 
+    # S1 (0.69.0): die Vorbemerkung kommt aus dem Band selbst - gewichtet mit
+    # wie vielen Etiketten, oder auf ungewichtet zurueckgefallen und warum.
+    # Bis 0.68.0 schrieb websocket_readiness "ungewichtet gerechnet" daneben.
+    context_note = None
+    if hrv and hrv.get("labeled"):
+        if hrv.get("weighted"):
+            n = int(hrv["labeled"])
+            context_note = (f"gewichtet gerechnet — {n} etikettierte {'Tag' if n == 1 else 'Tage'} "
+                            f"im Fenster der 60 Nächte davor, dieselbe Basislinie wie beim Trainer")
+        else:
+            context_note = hrv.get("baseline_note")
+
     return {
         "overall": overall,
         "components": components,
         "budget": load_budget(data, overall, today),
+        "context_note": context_note,
         "note": "Die einzelnen Signale sind belegt, ihre Kombination ist es nicht: "
                 "keine veröffentlichte Studie verrechnet genau diese Werte, und die "
                 "Bereitschaftswerte kommerzieller Anbieter sind nicht unabhängig validiert. "

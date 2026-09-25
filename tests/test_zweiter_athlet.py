@@ -455,6 +455,14 @@ check("Z8: ... und die Karte sagt, dass kein Zustand da ist",
 check("Z8: jede Karte ueber der Grenze traegt das Gelaender mit Last und Obergrenze",
       _over8 and all((c.get("guard") or {}).get("over") and (c.get("guard") or {}).get("ceiling") == _wp8.get("budget") for c in _over8))
 eq("Z8: keine Zahl des ersten Athleten", leaks(_wp8), [])
+# S1: ohne HRV keine HRV-Komponente, keine Vorbemerkung, kein Absturz - und
+# die Ampel sagt nicht "gewichtet", wo nichts zu gewichten ist.
+_r8 = FakeConn(); ws.websocket_readiness(None, _r8, {"id": 12})
+_rp8 = (_r8.results or [{}])[0]
+eq("Z8 S1: readiness laeuft ohne Fehler", _r8.errors, [])
+check("Z8 S1: ohne HRV steht die HRV-Komponente auf unbekannt, keine Vorbemerkung",
+      {c.get("id"): c.get("state") for c in (_rp8.get("components") or [])}.get("hrv") == "unknown"
+      and _rp8.get("context_note") is None)
 # Johannes' Fall zum Vergleich, am selben Rechenweg: MIT Zustand "ready" sperrt
 # die Last nicht mehr - die Stufe bleibt gruen, das Gelaender kommt dazu.
 _st8 = W.stage("ok", False, False)

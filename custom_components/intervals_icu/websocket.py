@@ -964,18 +964,8 @@ def websocket_readiness(hass, connection, msg) -> None:
         return
     data = coordinator.archive.data
     payload = analytics.readiness(data)
-    # The lamp computes UNWEIGHTED by design (level 3: analytics is
-    # context-free). When labelled days sit in its window the number can
-    # diverge from the weighted trainer baseline - that gets SAID, not
-    # silently accepted, and properly fixed by a per-condition baseline (B4).
-    labelled = [d for d in sorted(data.get("day_context") or {})
-                if d >= (dt_util.now().date() - timedelta(days=66)).isoformat()]
-    if payload and labelled:
-        payload["context_note"] = (
-            f"ungewichtet gerechnet — {len(labelled)} etikettierte "
-            f"{'Tag' if len(labelled) == 1 else 'Tage'} im Fenster; die "
-            "gewichtete Basislinie steht beim Trainerurteil, sauber trennt "
-            "das erst eine Basislinie je Bedingung (B4)")
+    # S1 (0.69.0): die Ampel rechnet mit derselben gewichteten Basislinie wie
+    # der Trainer; die Vorbemerkung (`context_note`) kommt aus analytics.
     connection.send_result(msg["id"], payload)
 
 

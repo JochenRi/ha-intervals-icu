@@ -1011,14 +1011,22 @@ def _callers_of(name: str) -> set[str]:
     return found
 
 
+# S1 (0.69.0): das Band lebt in baseline.py (ein Erzeuger fuer Trainer, Ampel und
+# Signale); coach.py behaelt _norm_band/_z_at/_z_series als Namen, die dorthin
+# durchreichen. _band ruft in coach.py nur noch night_after.
 _band_callers = _callers_of("_band")
-eq(_band_callers, {"_norm_band", "night_after"},
-   "29 primitive: _band wird außerhalb von _norm_band/night_after gerufen — "
+eq(_band_callers, {"night_after"},
+   "29 primitive: _band wird außerhalb von night_after gerufen — "
    "eine Basislinie rechnet am Rechenweg vorbei")
+check(coach._norm_band is coach.baseline.norm_band, "29 primitive (S1): coach._norm_band ist nicht das eine Band aus baseline.py")
 _norm_callers = _callers_of("_norm_band")
-for required in ("state", "_z_series", "_night_z", "_signal_bands"):
+for required in ("state", "_night_z", "_signal_bands"):
     check(required in _norm_callers,
           f"29 primitive: {required} ruft _norm_band nicht — eigener Rechenweg")
+# _z_series reicht seit S1 an baseline.z_series durch - derselbe Rechenweg,
+# eine Datei weiter; ein eigener Rechenweg in coach.py waere ein Rueckfall.
+check("baseline.z_series(" in _COACH_SRC.split("def _z_series")[1].split("def state_series")[0],
+      "29 primitive: _z_series rechnet in coach.py statt in baseline.py")
 
 # Log-Nachweis: 55×50 ms und 5×110 ms Vorgeschichte, heute 30 ms. Roh ist das
 # -1,51 SD (kein Treffer), im Log -2,65 SD (Treffer). Ruhepuls springt am
@@ -1143,10 +1151,11 @@ check(_twa["bands"]["hrv"]["baseline"] != _twb["bands"]["hrv"]["baseline"],
       "31 beweis: Etiketten ändern die Basislinie nicht — Gewichtung tot")
 eq(_twa["bands"]["hrv"]["weighted"], True, "31 beweis: Band meldet sich nicht als gewichtet")
 eq(_twb["bands"]["hrv"]["weighted"], False, "31 beweis: unetikettiert fälschlich gewichtet")
-# unabhängige Nachrechnung des gewichteten Mittels (Log-Skala, Fenster <= heute)
+# unabhängige Nachrechnung des gewichteten Mittels (Log-Skala, Fenster VOR heute -
+# seit S1 wie im Urteil; bis 0.68.0 zaehlte die Anzeige die heutige Nacht mit)
 _w31 = ctx_build(True)["wellness"]
 _c31 = ctx_build(True)["day_context"]
-_d31 = sorted(_w31)[-60:]
+_d31 = sorted(_w31)[:-1][-60:]
 _pairs = [(_math.log(_w31[d]["hrv"]), 0.0 if d in _c31 else 1.0) for d in _d31]
 _sw = sum(w for _v, w in _pairs)
 _mu = sum(v * w for v, w in _pairs) / _sw
@@ -1352,6 +1361,23 @@ _cal = _an.calendar_days(_d2, [])
 _wk = [w for w in (_cal.get("weeks") or []) if w.get("start") and w["start"] <= _today][-1] if (_cal.get("weeks") or []) else None
 _tage = [r for r in _an.daily_load(_d2) if _wk and _wk["start"] <= r["date"] < (_dt.date.fromisoformat(_wk["start"]) + _dt.timedelta(days=7)).isoformat()]
 eq(_wk["load"] if _wk else None, float(sum(r["load"] for r in _tage)), "S2 Treffer Kalender: die Wochenlast ist die Summe der Tageslasten")
+
+# --- 32 · S1: EINE HRV-Basislinie fuer Trainer, Ampel und Signale (0.69.0) ---
+# Bis 0.68.0 rechnete signals() seine z-Reihe ungewichtet (Karte 4b, F4b.3):
+# am ctx_build-Bestand lag heute (44 ms) im Signale-Reiter unauffaellig, beim
+# Trainer im Einbruch. Jetzt liest signals() dieselben Gewichte.
+_sg = coach.signals(ctx_build(True))
+_su = coach.signals(ctx_build(False))
+_zg = (_sg["days"][-1].get("z") or {}).get("hrv")
+_zu = (_su["days"][-1].get("z") or {}).get("hrv")
+check(_zg is not None and _zu is not None, "32 S1 Fixture: Signale ohne z-Wert fuer heute")
+check(_zg is not None and _zu is not None and _zg < _zu - 0.5,
+      f"32 S1: Signale rechnen ungewichtet (z heute gewichtet {_zg}, ungewichtet {_zu})")
+check(_zg is not None and _zg <= -2.0, f"32 S1: der gewichtete Einbruch (state slump) steht nicht in den Signalen ({_zg})")
+# Gleichlauf mit dem Trainer: dieselbe Zahl wie coach.today (Band heute)
+_tz = {x["key"]: x["z"] for x in coach.today(ctx_build(True))["signals"]}.get("hrv")
+check(_tz is not None and _zg is not None and abs(_tz - _zg) < 0.02,
+      f"32 S1: Signale ({_zg}) und Heute-Reiter ({_tz}) nennen zwei z-Werte fuer dieselbe Nacht")
 
 print(f"test_coach: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:

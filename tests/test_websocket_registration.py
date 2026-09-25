@@ -219,12 +219,17 @@ for _need in ("day_context_lib.TAGS", "day_context_lib.SOURCES",
               "day_context_lib.VALID_WEIGHTS", "day_context_lib.MIN_WEIGHT_SUM"):
     check(_need in _read_src,
           f"day_context: Leseweg liefert {_need.split('.')[-1]} nicht aus dem Modul")
-# Ampel-Herkunftsnotiz: die Divergenz wird gesagt, nicht geschluckt
+# Ampel-Herkunftsnotiz: seit S1 (0.69.0) rechnet die Ampel gewichtet wie der
+# Trainer; die Notiz kommt aus analytics.readiness (context_note), der Handler
+# haengt nichts mehr an. Bis 0.68.0 schrieb er hier "ungewichtet gerechnet" -
+# der alte Waechter fror die Divergenz ein, nachgezogen.
 _ready_src = ast.get_source_segment(SRC, functions["websocket_readiness"]) or ""
-check("context_note" in _ready_src and "B4" in _ready_src,
-      "readiness: Herkunftsnotiz zur ungewichteten Ampel fehlt")
-check("ungewichtet gerechnet" in _ready_src,
-      "readiness: die Notiz benennt die ungewichtete Rechnung nicht")
+check("ungewichtet gerechnet" not in _ready_src,
+      "readiness: der Handler behauptet noch eine ungewichtete Rechnung")
+_an_src = (COMP / "analytics.py").read_text(encoding="utf-8") if "COMP" in dir() else open(
+    Path(__file__).resolve().parents[1] / "custom_components" / "intervals_icu" / "analytics.py", encoding="utf-8").read()
+check("context_note" in _an_src and "gewichtet gerechnet" in _an_src,
+      "readiness (S1): die Vorbemerkung zur gewichteten Ampel fehlt in analytics")
 
 
 # --- the goal handler: grades for the CURRENT week only (ausbau.md I3) --------

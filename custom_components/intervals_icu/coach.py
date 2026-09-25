@@ -47,7 +47,7 @@ from statistics import mean, median, pstdev
 from typing import Any, NamedTuple
 
 try:  # inside the package (Home Assistant)
-    from . import analytics, day_context, derive
+    from . import analytics, baseline, day_context, derive
     from .const import (
         DECOUPLING_GOOD,
         DURABILITY_EXCLUDED_TYPES,
@@ -76,6 +76,7 @@ try:  # inside the package (Home Assistant)
     )
 except ImportError:  # standalone (test suite loads this file directly)
     import analytics
+    import baseline
     import day_context
     import derive
     from const import (
@@ -135,92 +136,18 @@ def _series(wellness: dict[str, Any], field: str, days: list[str]) -> dict[str, 
     return out
 
 
+# S1 (0.69.0): DAS BAND LEBT IN baseline.py - ein Erzeuger fuer Trainer, Ampel
+# und Signale. Die Namen bleiben hier stehen, damit jeder Aufruf in dieser
+# Datei weiter "das eine Band" nennt (test_coach 29 prueft die Aufrufer).
+Band = baseline.Band
+_norm_band = baseline.norm_band
+_fallback_note = baseline.fallback_note
+_z_at = baseline.z_at
+
+
 def _band(values: list[float]) -> tuple[float, float]:
-    if not values:
-        return (0.0, 0.0)
-    return (mean(values), pstdev(values) if len(values) > 1 else 0.0)
-
-
-class Band(NamedTuple):
-    """A baseline with its provenance, so a fallback can say WHY."""
-
-    base: float
-    spread: float
-    weighted: bool     # the sum-of-weights rule allowed weighting
-    weight_sum: float  # effective days in the window
-    labeled: int       # usable values carrying a weight below 1
-
-
-def _norm_band(raw: list[float], *, log: bool,
-               weights: list[float] | None = None) -> Band | None:
-    """THE baseline of a wellness signal - the only place it is computed.
-
-    One primitive instead of four hand-rolled copies: `state()`,
-    `_z_series()`, `_night_z()` and `_signal_bands()` all call this, so the
-    scale (HRV on the log scale, the published ln(rMSSD) comparison), the
-    20-value floor, the flat-band rejection AND the day-context weighting
-    cannot drift apart again. A guard in test_coach.py checks the callers.
-
-    The weighting rule (docs/ausbau.md B3, level 1 - a STIPULATION):
-    weighted mean and spread when at least one day carries a weight below 1
-    and the weight sum reaches MIN_WEIGHT_SUM; otherwise the plain band over
-    the same values. The unlabelled case delegates to `_band` directly, so
-    an archive without labels is BIT-IDENTICAL to the unweighted world - the
-    frozen references in test_coach block 30 hang on that. Levels 2 and 3
-    never enter here: the judged day's own weight is irrelevant (histories
-    exclude it or triggering ignores it), and analytics never calls this.
-
-    Returns the Band on the (possibly log) scale, or None when the history
-    is too thin to mean anything.
-    """
-    if weights is None:
-        weights = [1.0] * len(raw)
-    pairs = list(zip(raw, weights))
-    if log:
-        pairs = [(math.log(v), w) for v, w in pairs if v > 0]
-    if len(pairs) < 20:
-        return None
-    values = [v for v, _w in pairs]
-    weight_sum = sum(w for _v, w in pairs)
-    labeled = sum(1 for _v, w in pairs if w < 1.0)
-    if labeled and weight_sum >= day_context.MIN_WEIGHT_SUM:
-        base = sum(v * w for v, w in pairs) / weight_sum
-        spread = math.sqrt(sum(w * (v - base) ** 2 for v, w in pairs) / weight_sum)
-        is_weighted = True
-    else:
-        base, spread = _band(values)
-        is_weighted = False
-    if spread <= 0:
-        return None
-    return Band(base, spread, is_weighted, round(weight_sum, 2), labeled)
-
-
-def _fallback_note(band: Band | None) -> str | None:
-    """Says WHAT is missing when the weighted baseline is not usable yet.
-
-    Fires only when the fallback changes anything - a window without a
-    single labelled day computes identically either way, and a hint that
-    warns about nothing teaches the reader to ignore hints.
-    """
-    if band is None or band.weighted or band.labeled == 0:
-        return None
-    have = f"{band.weight_sum:.1f}".replace(".", ",").removesuffix(",0")
-    days = "Tag ist" if band.labeled == 1 else "Tage sind"
-    return (f"Basislinie auf ungewichtet zurückgefallen — nur {have} belastbare "
-            f"Tage von {int(day_context.MIN_WEIGHT_SUM)} nötigen, "
-            f"{band.labeled} {days} etikettiert")
-
-
-def _z_at(value: float | None, band: Band | None, *,
-          log: bool, sign: int = 1) -> float | None:
-    """A value's distance from its band, on the band's own scale."""
-    if value is None or band is None:
-        return None
-    if log:
-        if value <= 0:
-            return None
-        value = math.log(value)
-    return sign * (value - band.base) / band.spread
+    """Mittel und Streuung ohne Regel - nur fuer die Nachtauswertung (night_after)."""
+    return baseline._plain(values)
 
 
 # --- state --------------------------------------------------------------------
@@ -1169,21 +1096,8 @@ LOAD_SIGNALS = {
 def _z_series(values: dict[str, float], days: list[str], window: int = 60,
               log: bool = False, sign: int = 1,
               weights: dict[str, float] | None = None) -> dict[str, float]:
-    """Distance from a trailing baseline, in standard deviations.
-
-    The baseline trails the day it judges, so today is never part of its own
-    normal - otherwise a slow drift would erase itself.
-    """
-    out: dict[str, float] = {}
-    ordered = [d for d in days if d in values]
-    for index, day in enumerate(ordered):
-        history = ordered[max(0, index - window):index]
-        band = _norm_band([values[d] for d in history], log=log,
-                          weights=[(weights or {}).get(d, 1.0) for d in history])
-        z = _z_at(values[day], band, log=log, sign=sign)
-        if z is not None:
-            out[day] = z
-    return out
+    """Distance from a trailing baseline - der eine Rechenweg (baseline.z_series)."""
+    return baseline.z_series(values, days, window, log=log, sign=sign, weights=weights)
 
 
 def state_series(data: dict[str, Any]) -> list[dict[str, str]]:
@@ -1278,8 +1192,11 @@ def signals(data: dict[str, Any], days_back: int = 180) -> dict[str, Any]:
                 continue
             values[day] = value * meta.get("scale", 1)
         raw_by_signal[key] = values
+        # S1 (0.69.0): dieselben Gewichte wie Trainer und Ampel - bis 0.68.0
+        # rechnete diese Reihe ungewichtet (Karte 4b, F4b.3).
         z_by_signal[key] = _z_series(values, all_days, log=meta.get("log", False),
-                                     sign=meta.get("sign", 1))
+                                     sign=meta.get("sign", 1),
+                                     weights=baseline.weights_for(data, all_days))
 
     states = {row["date"]: row["state"] for row in state_series(data)}
 
@@ -1707,9 +1624,15 @@ def session_context(data: dict[str, Any], activity_id: str) -> dict[str, Any]:
 # And only today. Beyond that the load outside training is unknown, so the
 # page does not pretend to reach further.
 def _signal_bands(data: dict[str, Any], day: str) -> dict[str, Any]:
-    """Baseline and the SD thresholds, converted back into real units."""
+    """Baseline and the SD thresholds, converted back into real units.
+
+    S1 (0.69.0): das Fenster liegt VOR dem beurteilten Tag - wie in state(),
+    _night_z() und der Ampel. Bis 0.68.0 zaehlte diese Anzeige die heutige
+    Nacht in ihre eigene Basislinie (d <= day); der Heute-Reiter nannte damit
+    eine andere Zahl als das Urteil daneben.
+    """
     wellness = data.get("wellness") or {}
-    days = sorted(d for d in wellness if d <= day)[-60:]
+    days = sorted(d for d in wellness if d < day)[-60:]
     out: dict[str, Any] = {}
     for key, field, use_log, direction, label, unit in NIGHT_FIELDS:
         raw = []

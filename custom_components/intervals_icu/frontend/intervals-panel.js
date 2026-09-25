@@ -3729,7 +3729,9 @@ class IntervalsIcuPanel extends HTMLElement {
         </div>
       </div>
       <p class="hint pad">Alle Signale in derselben Einheit: Abstand von <b>deiner eigenen</b>
-      Basislinie in Standardabweichungen. Die graue Zone ist ±0,5 — die kleinste bedeutsame
+      Basislinie in Standardabweichungen — gegen deine Basislinie der 60 Nächte davor,
+      gewichtet über deine Tagesetiketten, dieselbe Rechnung wie beim Trainer und in der
+      Ampel. Die graue Zone ist ±0,5 — die kleinste bedeutsame
       Änderung; was darin liegt, ist Rauschen. Der Ruhepuls ist gespiegelt, damit „oben"
       überall günstig heißt. Hintergrundfarbe = Zustand laut Trainer.</p>
       <div class="card pad0" data-grp="sig">
@@ -6315,7 +6317,7 @@ class IntervalsIcuPanel extends HTMLElement {
       + sec("heart", "HRV-Trend",
         "die Linie soll im blauen Band (Basislinie ± kleinste bedeutsame Änderung) bleiben; darunter = erhöhte Beanspruchung.",
         hrvHtml,
-        "7-Tage-Mittel von ln(rMSSD) gegen Mittelwert ± 0,5 SD der Basisperiode (HRV-gesteuerte Trainingssteuerung). Dein Wert kommt aus der Nachtmessung der Uhr, nicht aus der validierten Morgenmessung im Liegen — als Trend brauchbar, als Absolutwert nicht.")
+        "7-Tage-Mittel von ln(rMSSD) gegen Mittelwert ± 0,5 SD der Basisperiode (HRV-gesteuerte Trainingssteuerung) — gegen deine Basislinie der 60 Nächte davor, gewichtet über deine Tagesetiketten, dieselbe Rechnung wie beim Trainer und in der Ampel. Dein Wert kommt aus der Nachtmessung der Uhr, nicht aus der validierten Morgenmessung im Liegen — als Trend brauchbar, als Absolutwert nicht.")
       + sec("wave", "Entkopplung",
         "Punkte über der 5 %-Marke bei ruhigen, langen Einheiten deuten auf eine dünne aerobe Basis; Werte um oder unter null sind gut.",
         dcpHtml,
