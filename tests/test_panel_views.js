@@ -287,6 +287,37 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
      "einheiten: Empfehlung verschwunden statt verschoben");
   p._workouts = F.workouts();
 
+  // L1 (0.69.0): DAS GELAENDER. Eine gruene Karte ueber der Obergrenze bleibt
+  // die Empfehlung (die Art), traegt aber den Gelaender-Text aus der Payload -
+  // auf der Karte UND in der Leitempfehlung, damit "Menge kuerzen" nicht erst
+  // beim Aufklappen erscheint.
+  const geländer = F.workouts();
+  geländer.workouts[0] = { ...geländer.workouts[0], fits_budget: false,
+                           stage: F.stageOf("ok", false, false),
+                           guard: { over: true, load: 250, ceiling: 68, hours_fit: 1.5,
+                                    text: "Geländer: Last 250 über der Obergrenze 68 — die Art bleibt, die Menge nicht. Bis ~1,5 h passt sie unter die Obergrenze." } };
+  p._workouts = geländer;
+  const gl = p.rTrainer(F.coach("ready"), F.readiness()).replace(/\s+/g, " ");
+  ok((gl.match(/class="recflag"/g) || []).length === 1 && /recflag[\s\S]{0,1500}Geländer: Last 250/.test(gl),
+     "L1: die gruene Karte ueber der Obergrenze ist nicht mehr die Empfehlung, oder traegt das Gelaender nicht");
+  const glLead = gl.slice(gl.indexOf('class="leadrec"'), gl.indexOf('class="secname"'));
+  contains(glLead, "Bis ~1,5 h passt sie", "L1: die Leitempfehlung verschweigt das Gelaender");
+  ok(!/heute nicht/.test(glLead), "L1: die Leitempfehlung raet ab, obwohl der Zustand traegt");
+  // Gegenprobe: im Budget kein Gelaender-Text
+  p._workouts = F.workouts();
+  ok(!/Geländer:/.test(String(p.rTrainer(F.coach("ready"), F.readiness()))), "L1 Gegenprobe: Gelaender ohne Ueberschreitung");
+  // Athlet B ohne Zustand: rot am Budget, und die Karte sagt, dass die Last entscheidet
+  const ohneZustand = F.workouts();
+  ohneZustand.workouts[0] = { ...ohneZustand.workouts[0], fits_budget: false,
+                              stage: { ...F.stageOf("ok", false, false, true),
+                                       detail: "Ohne Zustand (keine HRV-Basislinie) entscheidet die Last: über der Obergrenze — heute nicht." } };
+  p._workouts = ohneZustand;
+  const oz = p.rTrainer(F.coach("unknown"), F.readiness()).replace(/\s+/g, " ");
+  const ozFirst = oz.slice(oz.indexOf('class="wocard')).split('class="wocard').slice(0, 2).join("");
+  ok(/heute nicht/.test(ozFirst) && !/recflag/.test(ozFirst), "L1 ohne Zustand: die rote Karte traegt die Empfehlung");
+  contains(oz, "entscheidet die Last", "L1 ohne Zustand: die Beschriftung aus der Payload fehlt");
+  p._workouts = F.workouts();
+
   // in a rebound the recommendation must move to a session that fits
   const rb = p.rTrainer(F.coach("rebound"), F.readiness());
   ok((rb.match(/class="recflag"/g) || []).length === 1,

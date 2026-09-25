@@ -1462,7 +1462,27 @@ def watts_text(blocks: list[tuple]) -> str | None:
     return "\n".join(f"- {block[0]}m {block[1]}w  ({block[2]})" for block in blocks)
 
 
-def stage(fit: str, fits_budget: bool | None, recovery: bool = False) -> dict[str, Any]:
+# L1 (0.69.0, Entscheidung 25.09.): DER ZUSTAND ENTSCHEIDET DIE ART, DIE LAST
+# IST EIN GELAENDER AN DER MENGE. Bis 0.68.0 sperrte ein ueberschrittenes
+# Budget die Einheit ("Das Lastbudget verbietet es heute") - am Livebestand an
+# 5 von 30 Tagen einen bereiten Tag, waehrend an 13 Tagen das Budget "hart
+# passt" sagte und der Zustand nicht. Jetzt: die Stufe kommt aus `fit`
+# (Zustand); ueber der Obergrenze traegt sie `over_ceiling`, und `guard()`
+# sagt, wie lang die Fahrt passen wuerde. Rot kommt nur noch aus dem Zustand -
+# AUSSER es gibt keinen Zustand (Athlet ohne HRV-Basislinie, state "unknown"):
+# dann entscheidet die Last, und die Karte sagt das (`by_load`).
+GUARD_WORDS = {
+    "over": "Geländer: Last {load} über der Obergrenze {ceiling} — die Art bleibt, die Menge nicht.",
+    "fit": " Bis ~{hours} h passt sie unter die Obergrenze.",
+    "fixed": " Die Einheit ist nicht kürzbar — heute als Ganzes über der Grenze.",
+    "by_load": "Ohne Zustand (keine HRV-Basislinie) entscheidet die Last: über der Obergrenze — heute nicht.",
+    "green_over": "Zustand unauffällig — die Last liegt über der Obergrenze: Art bleibt, Menge kürzen.",
+    "yellow_over": "Der Zustand trägt nur bedingt, und die Last liegt über der Obergrenze: Art bleibt, Menge kürzen.",
+}
+
+
+def stage(fit: str, fits_budget: bool | None, recovery: bool = False,
+          by_load: bool = False) -> dict[str, Any]:
     """The one rule that turns state + budget into one of four grades.
 
     Total over its inputs, and deliberately small: every caller - the session
@@ -1473,26 +1493,65 @@ def stage(fit: str, fits_budget: bool | None, recovery: bool = False) -> dict[st
     `fits_budget` may be None: below 28 days of history there is no budget at
     all. An unknown budget blocks nothing - and it cannot be exceeded either,
     so the stimulus grade needs a budget that actually exists.
+
+    L1: the grade follows `fit` (the state); an exceeded budget only marks
+    `over_ceiling`. With `by_load` (no state to speak of) the budget decides.
     """
     over_budget = fits_budget is False
     if fit == "no":
-        key, blocked = "red", "both" if over_budget else "state"
-    elif over_budget:
-        if fit == "ok" and recovery:
-            key, blocked = "stimulus", None
-        else:
-            key, blocked = "red", "budget" if fit == "ok" else "both"
+        key, blocked = "red", "state"
+    elif over_budget and by_load:
+        key, blocked = "red", "budget"
+    elif over_budget and fit == "ok" and recovery:
+        key, blocked = "stimulus", None
     elif fit == "maybe":
         key, blocked = "yellow", None
     else:
         key, blocked = "green", None
 
-    out = {"key": key, "blocked_by": blocked, **STAGES[key]}
-    if blocked:
-        subject, verb = BLOCKED_BY[blocked]
+    out = {"key": key, "blocked_by": blocked, "over_ceiling": over_budget, **STAGES[key]}
+    if blocked == "state":
+        subject, verb = BLOCKED_BY["state"]
         out["detail"] = f"{subject} {verb} es heute."
+    elif blocked == "budget":
+        out["detail"] = GUARD_WORDS["by_load"]
+    elif over_budget and key in ("green", "yellow"):
+        out["detail"] = GUARD_WORDS[f"{key}_over"]
     if key == "stimulus":
         out["evidence"] = STIMULUS_EVIDENCE
+    return out
+
+
+def guard(entry: dict[str, Any], load: float, ceiling: float | None,
+          hours: float | None = None) -> dict[str, Any] | None:
+    """Das Gelaender an der Menge (L1): Last gegen Obergrenze, und bis zu
+    welcher Dauer eine ELASTISCHE Einheit darunter passen wuerde.
+
+    Die Dauer folgt aus session_load (Last ~ Dauer bei gleicher Intensitaet):
+    hours_fit = Dauer x Obergrenze / Last, auf Viertelstunden abgerundet. Eine
+    Einheit ohne elastischen Abschnitt hat keine kuerzere Fassung - sie sagt
+    das, statt eine zu erfinden.
+    """
+    if ceiling is None:
+        return None
+    over = float(load) > float(ceiling)
+    out: dict[str, Any] = {"over": over, "load": round(load), "ceiling": round(ceiling), "hours_fit": None}
+    if not over:
+        return out
+    text = GUARD_WORDS["over"].format(load=round(load), ceiling=round(ceiling))
+    elastic = any(is_elastic(block) for block in (entry.get("blocks") or []))
+    minutes = float(entry.get("minutes") or 0)
+    planned_h = float(hours) if hours else (minutes / 60.0 if minutes else 0.0)
+    if elastic and planned_h > 0 and load > 0:
+        fit_h = int((planned_h * float(ceiling) / float(load)) * 4) / 4.0
+        if fit_h >= 0.5:
+            out["hours_fit"] = fit_h
+            text += GUARD_WORDS["fit"].format(hours=("%.1f" % fit_h).replace(".", ","))
+        else:
+            text += GUARD_WORDS["fixed"]
+    else:
+        text += GUARD_WORDS["fixed"]
+    out["text"] = text
     return out
 
 
@@ -1566,7 +1625,8 @@ def suggest(state: str, ftp: float | None = None, aerobic_hr: int | None = None,
             "fit": verdict, "fit_reason": reason,
             "fits_budget": fits_budget,
             # the grade the panel prints - decided HERE, never in the frontend
-            "stage": stage(verdict, fits_budget, recovery_offered),
+            "stage": stage(verdict, fits_budget, recovery_offered, by_load=(state == "unknown")),
+            "guard": guard(BY_KEY[key], entry["load"], budget),
             "alternatives": [{"key": k, "title": BY_KEY[k]["title"], "load": BY_KEY[k]["load"]}
                              for k in keys if k != key],
         })
@@ -1677,7 +1737,8 @@ def rate_sessions(sessions: list[dict[str, Any]], state: str,
             "fit_reason": reason,
             "fits_budget": fits_budget,
             "budget": None if budget is None else round(budget),
-            "stage": stage(verdict, fits_budget, recovery_offered),
+            "stage": stage(verdict, fits_budget, recovery_offered, by_load=(state == "unknown")),
+            "guard": guard(entry, load, budget, session.get("hours")),
             "purpose": entry.get("purpose"),
             "effect": entry.get("effect"),
         })

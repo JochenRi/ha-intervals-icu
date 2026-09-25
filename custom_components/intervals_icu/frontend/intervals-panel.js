@@ -3179,6 +3179,8 @@ class IntervalsIcuPanel extends HTMLElement {
           <div class="wometa">${esc(entry.purpose || "")} · ${dur} · ${loadTxt}${
             hrw ? ` · ${hrw[0]}–${hrw[1]} bpm` : ""}</div>
           ${entry.hr_note ? `<div class="wometa hint">${esc(entry.hr_note)}</div>` : ""}
+          ${(entry.guard || {}).over && entry.guard.text
+            ? `<div class="wometa guard">${ico("warn", C.amber, 13)} ${esc(entry.guard.text)}</div>` : ""}
         </div>
         ${st.key ? badge(tone, word) : ""}
       </div>
@@ -3202,6 +3204,9 @@ class IntervalsIcuPanel extends HTMLElement {
       }).join("")}</div>
       ${this._explain(entry)}
       ${entry.effect ? `<p class="effect"><b>Was das bringt:</b> ${esc(entry.effect)}</p>` : ""}
+      ${st.blocked_by === "budget" && st.detail
+        // L1: ohne Zustand entscheidet die Last - der Satz kommt aus dem Backend
+        ? `<p class="fitwhy">${ico("warn", C.red, 14)} ${esc(st.detail)}</p>` : ""}
       ${entry.fit_reason && !(opts.saidAbove || new Set()).has(entry.fit_reason)
         ? `<p class="fitwhy">${ico(st.key === "red" ? "warn" : "info",
             st.key === "red" ? C.red : C.amber, 14)} ${esc(entry.fit_reason)}</p>` : ""}
@@ -3259,6 +3264,9 @@ class IntervalsIcuPanel extends HTMLElement {
     // One logic, not two. The list IS the recommendation: the first card that
     // fits today carries the mark, instead of a second block above computing
     // its own answer that could quietly disagree with this one.
+    // L1 (0.69.0): "passt" heisst der ZUSTAND traegt die Art; liegt die Last
+    // ueber der Obergrenze, bleibt die Karte die Empfehlung und traegt das
+    // Gelaender (entry.guard) - die Menge kuerzen, nicht die Art wechseln.
     let pick = list.findIndex((e) => (e.stage || {}).key === "green");
     if (pick < 0) pick = list.findIndex((e) => (e.stage || {}).key === "stimulus");
 
@@ -3281,6 +3289,8 @@ class IntervalsIcuPanel extends HTMLElement {
         lead.blocks_w ? ` · ${Math.min(...lead.blocks_w.map((b) => b[1]))}–${
           Math.max(...lead.blocks_w.map((b) => b[1]))} W` : ""}</div>
       <p class="leadwhy">${esc(lead.effect)}</p>
+      ${(lead.guard || {}).over && lead.guard.text
+        ? `<p class="leadwhy guard">${ico("warn", C.amber, 14)} ${esc(lead.guard.text)}</p>` : ""}
       <div class="worow">
         <button class="planbtn${forTomorrow ? " ghost" : ""}" data-act="plan" data-id="${esc(lead.key)}" data-when="${iso(0)}">
           ${ico("cal", null, 15)} heute in den Kalender</button>

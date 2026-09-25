@@ -425,6 +425,42 @@ check("Z7b: der Hauptteil traegt die Grenze",
 eq("Z7b: keine Zahl des ersten Athleten (auch nicht 90,6 · 1,3)", leaks(_wp7b), [])
 ws.dt_util = _dt_saved
 
+print("\n=== Z8. L1 (0.69.0): ATHLET B OHNE HRV - die Last entscheidet, und die Karte sagt es ===")
+# 30 Tage Bestand mit Last, aber ohne eine einzige HRV-Zeile: kein Zustand
+# ("unknown"). Dann darf die Last sperren - aber nur BESCHRIFTET, und keine
+# Karte darf so aussehen, als haette der Zustand entschieden.
+_d8 = importer.empty_data("i6")
+_d8["settings"] = {}
+import datetime as _dt
+for i in range(35):
+    day = (_dt.date(2026, 9, 25) - _dt.timedelta(days=35 - i)).isoformat()
+    _d8["wellness"][day] = {"sleepSecs": 25000}
+    # die letzten sechs Tage schwer (120), damit die Obergrenze unter die Karten faellt
+    _d8["activities"][f"a{i}"] = {"start_date_local": day + "T07:00:00", "name": "Ride", "type": "Ride",
+                                  "icu_ftp": 180, "icu_training_load": 120 if i >= 29 else 60, "moving_time": 3600}
+_c8 = FakeCoordinator(_d8); ws._pick = lambda hass, athlete_id: _c8
+ws.dt_util = types.SimpleNamespace(now=lambda: _dt.datetime(2026, 9, 25))
+_w8 = FakeConn()
+ws.websocket_workouts(None, _w8, {"id": 11})
+_wp8 = (_w8.results or [{}])[0]
+eq("Z8: workouts laeuft ohne Fehler", _w8.errors, [])
+_cards8 = _wp8.get("picks") or _wp8.get("sessions") or _wp8.get("workouts") or []
+check("Z8 Fixture: es gibt Karten und eine Obergrenze", bool(_cards8) and _wp8.get("budget") is not None)
+_over8 = [c for c in _cards8 if c.get("fits_budget") is False and c.get("fit") != "no"]
+check("Z8 Fixture: mindestens eine Karte liegt ueber der Obergrenze", bool(_over8))
+check("Z8: ohne Zustand sperrt die Last - rot am Budget",
+      _over8 and all(c["stage"]["key"] == "red" and c["stage"]["blocked_by"] == "budget" for c in _over8))
+check("Z8: ... und die Karte sagt, dass kein Zustand da ist",
+      _over8 and all("Zustand" in c["stage"]["detail"] and "Last" in c["stage"]["detail"] for c in _over8))
+check("Z8: jede Karte ueber der Grenze traegt das Gelaender mit Last und Obergrenze",
+      _over8 and all((c.get("guard") or {}).get("over") and (c.get("guard") or {}).get("ceiling") == _wp8.get("budget") for c in _over8))
+eq("Z8: keine Zahl des ersten Athleten", leaks(_wp8), [])
+# Johannes' Fall zum Vergleich, am selben Rechenweg: MIT Zustand "ready" sperrt
+# die Last nicht mehr - die Stufe bleibt gruen, das Gelaender kommt dazu.
+_st8 = W.stage("ok", False, False)
+eq("Z8 Gegenprobe: mit Zustand bleibt die Art (gruen + Gelaender)", (_st8["key"], _st8["blocked_by"], _st8["over_ceiling"]), ("green", None, True))
+ws.dt_util = _dt_saved
+
 print(f"\ntest_zweiter_athlet: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

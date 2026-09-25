@@ -233,20 +233,27 @@ const acts = F.activities(), thr = F.thresholds();
   }
 }
 
-/* ── 12  the lead pick must fit the budget ──────────────────────────────
-   "HEUTE EMPFOHLEN" wearing its own "über dem Budget" badge is a visible
-   self-contradiction: the first ok card that fits the budget leads. */
+/* ── 12  the lead pick follows the STATE, the budget is a guard rail ──────
+   Bis 0.68.0 verlangte dieser Waechter: "die erste ok-Karte IM BUDGET fuehrt" -
+   und schob damit die Empfehlung von der Grundlage (ueber dem Budget) auf
+   SweetSpot (im Budget): die Last waehlte die ART. L1 (0.69.0, Entscheidung
+   25.09.) dreht das um: die erste gruene Karte fuehrt, ueber der Obergrenze
+   traegt sie das Gelaender aus der Payload. Nachgezogen wie F1.6. */
 {
   const w = F.workouts();
   w.workouts[0].fits_budget = false;           // z2_90 (ok) blows the budget
-  w.workouts[0].stage = F.stageOf("ok", false, false);   // ... and the grade says so
+  w.workouts[0].stage = F.stageOf("ok", false, false);   // ... gruen mit over_ceiling
+  w.workouts[0].guard = { over: true, load: 72, ceiling: 40, hours_fit: 0.75,
+                          text: "Geländer: Last 72 über der Obergrenze 40 — die Art bleibt, die Menge nicht. Bis ~0,8 h passt sie unter die Obergrenze." };
   const html = p.rWorkouts(w);
   const cards = html.split('class="wocard');
   const flagged = cards.filter((c) => c.includes("Empfehlung von oben"));
   ok(flagged.length === 1, "12 budget-pick: keine oder mehrere Leitkarten");
-  ok(flagged[0] && flagged[0].includes("SweetSpot 2×20 min"),
-     "12 budget-pick: Leitkarte sprengt das Budget");
-  contains(html, "leadtitle\">SweetSpot 2×20 min", "12 budget-pick: Leadkarte falsch betitelt");
+  ok(flagged[0] && flagged[0].includes(w.workouts[0].title),
+     "12 budget-pick (L1): die Last hat die Art gewechselt - die Grundlage fuehrt nicht");
+  ok(flagged[0] && flagged[0].includes("Geländer: Last 72"), "12 budget-pick (L1): die Leitkarte traegt das Gelaender nicht");
+  contains(html, `leadtitle">${w.workouts[0].title}`, "12 budget-pick (L1): Leadkarte falsch betitelt");
+  ok(!/leadtitle">SweetSpot/.test(html), "12 budget-pick (L1): SweetSpot fuehrt, weil es ins Budget passt");
 }
 
 /* ── 13  the two anchors must not disagree silently ─────────────────────

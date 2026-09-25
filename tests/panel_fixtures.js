@@ -1114,16 +1114,17 @@ const STAGE_WORDS = {
   stimulus: { label: "Reiz", word: "kostet Erholung, setzt aber den Reiz" },
   red:      { label: "rot",  word: "heute nicht" },
 };
-function stageOf(fit, fitsBudget, recovery) {
+function stageOf(fit, fitsBudget, recovery, byLoad) {
+  // L1 (0.69.0): die Stufe folgt dem Zustand; ueber dem Budget nur
+  // `over_ceiling`. Rot am Budget nur ohne Zustand (byLoad).
   const over = fitsBudget === false;
   let key, blocked = null;
-  if (fit === "no") { key = "red"; blocked = over ? "both" : "state"; }
-  else if (over) {
-    if (fit === "ok" && recovery) key = "stimulus";
-    else { key = "red"; blocked = fit === "ok" ? "budget" : "both"; }
-  } else if (fit === "maybe") key = "yellow";
+  if (fit === "no") { key = "red"; blocked = "state"; }
+  else if (over && byLoad) { key = "red"; blocked = "budget"; }
+  else if (over && fit === "ok" && recovery) key = "stimulus";
+  else if (fit === "maybe") key = "yellow";
   else key = "green";
-  const out = { key, blocked_by: blocked, ...STAGE_WORDS[key], detail: "Begründung aus dem Backend." };
+  const out = { key, blocked_by: blocked, over_ceiling: over, ...STAGE_WORDS[key], detail: "Begründung aus dem Backend." };
   if (key === "stimulus") out.evidence = "Funktionelles Überreichen, Meeusen 2013 — dosiert dazu.";
   return out;
 }

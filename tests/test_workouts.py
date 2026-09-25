@@ -295,40 +295,58 @@ eq(len(set(labels)), 4, "stufen: zwei Stufen teilen sich ein Wort")
 eq(len(set(words)), 4, "stufen: zwei Stufen teilen sich eine Beschriftung")
 eq(labels[2], "Reiz", "stufen: die vierte Stufe heißt nicht Reiz")
 
+# L1 (0.69.0, Entscheidung 25.09.): DER ZUSTAND ENTSCHEIDET DIE ART, die Last ist
+# nur ein beschriftetes Gelaender an der MENGE. Bis 0.68.0 machte ein
+# ueberschrittenes Budget aus "ok" ein rotes "Das Lastbudget verbietet es" und
+# aus "maybe" ein rotes "beide" - an 5 von 30 Tagen des Livebestands sperrte so
+# das Budget einen bereiten Tag. Die Wahrheitstabelle zieht nach: ueber dem
+# Budget bleibt die Stufe des Zustands, dazu `over_ceiling`; rot kommt nur noch
+# aus dem Zustand. Die Reiz-Stufe (ok, ueber Budget, Erholung im Ruecken)
+# bleibt, sie ist ein Ja mit Beleg, kein Veto.
 TRUTH = {
-    # (fit, fits_budget, recovery): (stage, blocked_by)
-    ("ok", True, True): ("green", None),
-    ("ok", True, False): ("green", None),
-    ("ok", None, True): ("green", None),
-    ("ok", None, False): ("green", None),
-    ("ok", False, True): ("stimulus", None),
-    ("ok", False, False): ("red", "budget"),
-    ("maybe", True, True): ("yellow", None),
-    ("maybe", True, False): ("yellow", None),
-    ("maybe", None, True): ("yellow", None),
-    ("maybe", None, False): ("yellow", None),
-    ("maybe", False, True): ("red", "both"),
-    ("maybe", False, False): ("red", "both"),
-    ("no", True, True): ("red", "state"),
-    ("no", True, False): ("red", "state"),
-    ("no", None, True): ("red", "state"),
-    ("no", None, False): ("red", "state"),
-    ("no", False, True): ("red", "both"),
-    ("no", False, False): ("red", "both"),
+    # (fit, fits_budget, recovery): (stage, blocked_by, over_ceiling)
+    ("ok", True, True): ("green", None, False),
+    ("ok", True, False): ("green", None, False),
+    ("ok", None, True): ("green", None, False),
+    ("ok", None, False): ("green", None, False),
+    ("ok", False, True): ("stimulus", None, True),
+    ("ok", False, False): ("green", None, True),
+    ("maybe", True, True): ("yellow", None, False),
+    ("maybe", True, False): ("yellow", None, False),
+    ("maybe", None, True): ("yellow", None, False),
+    ("maybe", None, False): ("yellow", None, False),
+    ("maybe", False, True): ("yellow", None, True),
+    ("maybe", False, False): ("yellow", None, True),
+    ("no", True, True): ("red", "state", False),
+    ("no", True, False): ("red", "state", False),
+    ("no", None, True): ("red", "state", False),
+    ("no", None, False): ("red", "state", False),
+    ("no", False, True): ("red", "state", True),
+    ("no", False, False): ("red", "state", True),
 }
-for (fit, budget, recovery), (want_key, want_blocked) in TRUTH.items():
+for (fit, budget, recovery), (want_key, want_blocked, want_over) in TRUTH.items():
     got = W.stage(fit, budget, recovery)
     eq(got["key"], want_key, f"stufe {fit}/{budget}/{recovery}")
     eq(got["blocked_by"], want_blocked, f"stufe {fit}/{budget}/{recovery}: Begründung")
+    eq(bool(got.get("over_ceiling")), want_over, f"stufe {fit}/{budget}/{recovery}: Gelaender")
 
-# red says WHICH of the two forbids it - "rot" without the reason is the half
-# answer the specification rules out
+# red says WHICH forbids it - seit L1 ist das immer der Zustand
 check("Zustand" in W.stage("no", True, False)["detail"],
       "rot aus dem Zustand: nennt den Zustand nicht")
-check("Lastbudget" in W.stage("ok", False, False)["detail"],
-      "rot aus dem Budget: nennt das Budget nicht")
-both = W.stage("maybe", False, False)["detail"]
-check("Zustand" in both and "Lastbudget" in both, "rot aus beidem: nennt nur eines")
+check("Obergrenze" in W.stage("ok", False, False)["detail"] and "Menge" in W.stage("ok", False, False)["detail"],
+      "gruen ueber der Obergrenze: das Gelaender steht nicht im Text")
+check("Lastbudget verbietet" not in W.stage("ok", False, False)["detail"]
+      and "Lastbudget verbietet" not in W.stage("maybe", False, False)["detail"],
+      "L1: das Budget verbietet noch")
+
+# ATHLET B OHNE HRV: kein Zustand -> die Last entscheidet, und die Karte sagt es.
+# `by_load` setzen die Aufrufer bei Zustand "unknown".
+_bl = W.stage("ok", False, False, by_load=True)
+eq((_bl["key"], _bl["blocked_by"]), ("red", "budget"), "ohne Zustand: die Last entscheidet (rot am Budget)")
+check("Zustand" in _bl["detail"] and "Last" in _bl["detail"], "ohne Zustand: die Beschriftung fehlt")
+eq(W.stage("ok", True, False, by_load=True)["key"], "green", "ohne Zustand, im Budget: gruen")
+eq(W.stage("maybe", False, False, by_load=True)["key"], "red", "ohne Zustand, ueber Budget, maybe: rot")
+eq(W.stage("ok", None, False, by_load=True)["key"], "green", "ohne Zustand und ohne Budget: nichts sperrt")
 
 # an unknown budget cannot be exceeded - the stimulus grade needs a real one
 eq(W.stage("ok", None, True)["key"], "green", "stufe: Reiz ohne existierendes Budget")
@@ -362,7 +380,8 @@ eq(W.session_load({}, 2.0), 0, "last: leerer Eintrag erfindet eine Zahl")
 # and the consequence at the budget: the same ride flips the verdict
 eq(W.stage("ok", W.session_load(big) <= 200, False)["key"], "green",
    "last: der Katalogwert allein ergäbe grün")
-eq(W.stage("ok", W.session_load(big, 5.0) <= 200, False)["key"], "red",
+# L1: ueber dem Budget bleibt die Art (gruen), das Gelaender kommt dazu.
+check(W.stage("ok", W.session_load(big, 5.0) <= 200, False)["over_ceiling"],
    "last: die hochgerechnete Last ändert das Urteil nicht — die Skalierung wirkt nicht")
 
 # The counter-proof with the ACTUAL numbers of the live plan, not just "something
@@ -395,9 +414,15 @@ eq(W.stage("ok", 72 <= 200, False)["key"], "green",
 eq(W.stage("ok", 175 <= 200, False)["key"], "green",
    "skalierung: schon die Kataloglast des großen Tages sprengte das Budget — Fall untauglich")
 eq(routine["stage"]["key"], "green", "skalierung: 182 gegen Budget 200 ist nicht grün")
-eq(big_rated["stage"]["key"], "red", "skalierung: 250 gegen Budget 200 ist nicht rot")
-check(big_rated["stage"]["blocked_by"] == "budget",
-      "skalierung: der große Tag fällt nicht am Budget, sondern woanders")
+# L1: 250 gegen 200 ist gruen MIT Gelaender - und das Gelaender nennt Last,
+# Obergrenze und wie lang die Fahrt passen wuerde (elastisch: 200/250 x 5 h = 4 h).
+eq(big_rated["stage"]["key"], "green", "skalierung: 250 gegen Budget 200 ist nicht gruen mit Gelaender (L1)")
+check(big_rated["stage"]["over_ceiling"], "skalierung: der große Tag traegt kein Gelaender")
+_g = big_rated.get("guard") or {}
+eq((_g.get("over"), _g.get("load"), _g.get("ceiling"), _g.get("hours_fit")), (True, 250, 200, 4.0),
+   "skalierung: das Gelaender nennt nicht Last, Obergrenze und passende Dauer")
+check("4,0 h" in str(_g.get("text")), "skalierung: die passende Dauer steht nicht im Gelaender-Text")
+check(not (routine.get("guard") or {}).get("over"), "skalierung: Gelaender an einer Einheit im Budget")
 
 # --- 14  the same session, four different grades ------------------------------
 # The trap from the specification: a fixture in which every session is green in
@@ -410,7 +435,7 @@ CASES = [
     ("ready", 200, False, "green"),      # state carries, load fits
     ("rebound", 200, False, "yellow"),   # state carries only partly
     ("ready", 50, True, "stimulus"),     # over budget, but rested
-    ("ready", 50, False, "red"),         # over budget, no recovery behind it
+    ("slump", 200, False, "red"),        # L1: rot nur noch aus dem Zustand
 ]
 for state, budget, recovery, want in CASES:
     rated = W.rate_sessions([dict(SESSION)], state, budget=budget, recovery_offered=recovery)
@@ -421,6 +446,22 @@ for state, budget, recovery, want in CASES:
 grades = {W.rate_sessions([dict(SESSION)], s, budget=b, recovery_offered=r)[0]["stage"]["key"]
           for s, b, r, _ in CASES}
 eq(len(grades), 4, "bewertung: dieselbe Einheit erreicht nicht alle vier Stufen")
+# L1: ueber dem Budget ohne Erholung bleibt sie gruen, mit Gelaender; die feste
+# Einheit (keine elastischen Abschnitte) traegt keine passende Dauer, sagt es aber.
+_ov = W.rate_sessions([dict(SESSION)], "ready", budget=50, recovery_offered=False)[0]
+eq(_ov["stage"]["key"], "green", "bewertung L1: ueber Budget ohne Erholung ist nicht gruen")
+eq(((_ov.get("guard") or {}).get("over"), (_ov.get("guard") or {}).get("hours_fit")), (True, None),
+   "bewertung L1: das Gelaender einer festen Einheit erfindet eine Dauer")
+check("nicht kürzbar" in str((_ov.get("guard") or {}).get("text")), "bewertung L1: die feste Einheit sagt nicht, dass sie nicht kuerzbar ist")
+# Athlet B ohne Zustand: unknown -> die Last entscheidet, rot am Budget, beschriftet
+_ub = W.rate_sessions([dict(SESSION)], "unknown", budget=50)[0]
+eq((_ub["stage"]["key"], _ub["stage"]["blocked_by"]), ("red", "budget"), "bewertung L1: ohne Zustand entscheidet nicht die Last")
+_us = W.suggest("unknown", ftp=215, budget=10, layoff_days=0)
+# (der Stufentest ist bei "unknown" ein "no" aus dem Zustand - rot am Zustand, nicht am Budget)
+check(_us and all(e["stage"]["key"] == "red" and e["stage"]["blocked_by"] == "budget" for e in _us if e["load"] > 10 and e["fit"] != "no"),
+      "einheitenliste L1: ohne Zustand entscheidet nicht die Last")
+check(all("Zustand" in e["stage"]["detail"] for e in _us if e["load"] > 10 and e["fit"] != "no"), "einheitenliste L1: die Beschriftung 'ohne Zustand' fehlt")
+check(any(e["fit"] == "no" and e["stage"]["blocked_by"] == "state" for e in _us), "einheitenliste L1: der Stufentest faellt bei 'unknown' nicht am Zustand")
 
 # the grade sits ON the session, and the load with it
 one = W.rate_sessions([dict(SESSION)], "ready", budget=200)[0]
@@ -464,6 +505,12 @@ check(any(entry["stage"]["key"] == "stimulus" for entry in tight),
 tired = W.suggest("ready", ftp=215, budget=10, layoff_days=0, recovery_offered=False)
 check(not any(entry["stage"]["key"] == "stimulus" for entry in tired),
       "einheitenliste: Reiz-Stufe ohne Erholung im Rücken")
+# L1: bereit und ueber Budget -> die Art bleibt (kein rot am Budget), jede Karte
+# ueber der Obergrenze traegt das Gelaender mit Last und Obergrenze.
+check(not any(e["stage"]["key"] == "red" for e in tired), "einheitenliste L1: bereit, aber rot am Budget")
+check(all((e.get("guard") or {}).get("over") and (e.get("guard") or {}).get("ceiling") == 10 for e in tired if e["load"] > 10),
+      "einheitenliste L1: Karte ueber der Obergrenze ohne Gelaender")
+check(all(not (e.get("guard") or {}).get("over") for e in tired if e["load"] <= 10), "einheitenliste L1: Gelaender im Budget")
 
 # --- 16  no verdict without its grade ------------------------------------------
 # Found while the panel tests were nachgezogen: two fixtures flipped `fit` to
@@ -827,6 +874,8 @@ _NOT_FOR_RAMP = {
     # Stufentest traegt es nicht (er liest die Umkehrung nur fuer den Start).
     "baseline", "block_source", "catalogue_load", "catalogue_minutes", "ga_blocks",
     "ga_missing", "detail", "elastic_sections", "fit_reason", "fuel", "hr_source",
+    # `guard` (L1) setzt suggest()/rate_sessions() am beurteilten Eintrag, wie `stage`.
+    "guard",
     "label", "note", "ramp_source", "stage", "stretch_note", "stretched", "tag",
     "unit", "value", "weight", "why", "z", "family", "family_label",
     # Seit 0.51.1 bewusst OHNE Pulsfenster: bei einer Rampe waere eine Spanne
