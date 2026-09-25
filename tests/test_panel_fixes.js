@@ -273,10 +273,14 @@ const acts = F.activities(), thr = F.thresholds();
 
 /* ── 14  a session already ridden today is acknowledged ─────────────────── */
 {
+  // 0.70.0 UMGESTELLT (A3): der Hinweis ist die Unterzeile "für morgen" der
+  // Empfehlung - er braucht deshalb die Einheiten-Payload.
+  const kw14 = p._workouts; p._workouts = F.workouts();
   contains(p.rTrainer(F.coach("trained"), rd), "schon eine",
            "14 heute gefahren: Karten gelten kommentarlos für heute");
   ok(!p.rTrainer(F.coach("ready"), rd).includes("schon eine"),
      "14 nichts gefahren: Hinweis trotzdem da");
+  p._workouts = kw14;
 }
 
 /* ── 15  trained today → the recommendation says FOR TOMORROW ──────────────
@@ -286,7 +290,7 @@ const acts = F.activities(), thr = F.thresholds();
 {
   const tomorrow = p.rWorkouts(F.workouts(), true);
   contains(tomorrow, "FÜR MORGEN EMPFOHLEN", "15 für morgen: Leitkarte sagt weiter heute");
-  contains(tomorrow, "Alle Einheiten für morgen", "15 für morgen: Kartenliste sagt weiter heute");
+  contains(tomorrow, "für morgen bewertet", "15 für morgen: Kartenliste sagt weiter heute");   // 0.70.0: Familien
   ok(!/HEUTE EMPFOHLEN/.test(tomorrow), "15 für morgen: HEUTE-Kopf steht noch da");
   ok(!/passt heute/.test(tomorrow), "15 für morgen: Tagesurteil behauptet heute");
   contains(tomorrow, "morgen in den Kalender", "15 für morgen: Kalenderknopf zielt nicht auf morgen");
@@ -957,8 +961,18 @@ const acts = F.activities(), thr = F.thresholds();
   // anzufordern waere der zweite Ladepfad, den dieser Waechter verhindert.
   ok(!/dfa[\s\S]{0,80}rFatigue/.test(render),
      "ladepfad: die Ermuedungskurve haengt noch am DFA-Reiter");
-  ok(/rFatigue/.test(src.slice(src.indexOf("rDurability(d) {"), src.indexOf("_fatigueHistory(f) {"))),
-     "ladepfad: die Ermuedungskurve sitzt nicht in der Durability-Kachel");
+  // 0.70.0 UMGESTELLT: die Kurve sitzt im Hintergrund des Trainers, nicht mehr
+  // in der Durability-Karte (die ist mit der Entkopplung nach Fitness gezogen).
+  // Bis hierher schnitt die Pruefung von rDurability bis _fatigueHistory - ein
+  // Bereich, der rFatigue selbst enthaelt und damit immer traf.
+  {
+    const hg = src.slice(src.indexOf("  rHintergrund(c) {"), src.indexOf("  _fold(id, summary, body, cls) {"));
+    ok(/this\.rFatigue\(this\._fatigue\)/.test(hg) && /this\.rBlocks\(this\._blocks\)/.test(hg),
+       "ladepfad: die Ermuedungskurve sitzt nicht im Hintergrund des Trainers");
+    const du = src.slice(src.indexOf("  rDurability(d) {"), src.indexOf("  _historyNote() {"));
+    ok(du.length > 100 && !/this\.rFatigue\(/.test(du) && !/this\.rBlocks\(/.test(du),
+       "ladepfad: die Durability-Karte zeichnet die Kurve noch ein zweites Mal");
+  }
 
   // 0.48.1: WO eine Kachel gerendert wird, ist eine ZUSICHERUNG, keine
   // Einzelentscheidung. In 0.46.0 wurde der Ort von Hand korrigiert und keine
@@ -966,8 +980,10 @@ const acts = F.activities(), thr = F.thresholds();
   // falschen Reiter. Eine Korrektur ohne Zusicherung ist keine.
   const HOME = {
     rTrainer: "trainer", rGoal: "trainer", rPlanWeeks: "trainer", rWorkouts: "trainer",
-    rDurability: "trainer", rFatigue: "trainer", rFatigueV2: "trainer", rBlocks: "trainer",
-    rRampTest: "trainer", rRampGap: "trainer",
+    // 0.70.0: rDurability (Entkopplung) nach Fitness; rHintergrund neu im
+    // Trainer; rRampGap gestrichen (Skizze B).
+    rDurability: "fitness", rFatigue: "trainer", rFatigueV2: "trainer", rBlocks: "trainer",
+    rRampTest: "trainer", rHintergrund: "trainer",
     rHeute: "heute", rSignale: "signale", rFitness: "fitness",
     rAkt: "akt", rDfa: "dfa", rKalender: "kalender", rBelastung: "belastung",
     rQuellen: "quellen",
@@ -1062,7 +1078,9 @@ const acts = F.activities(), thr = F.thresholds();
   q._nowIso = F.TODAY;
   const fat = F.fatigue(), blk = F.blocks();
   q._fatigue = fat; q._blocks = blk;
-  const tile = q.rDurability(F.coach("rebound").durabilityClear);
+  // 0.70.0 UMGESTELLT: Kurve und Blockkacheln stehen im Hintergrund des Trainers
+  // (rHintergrund), nicht mehr in der Durability-Karte (die ist nach Fitness gezogen).
+  const tile = q.rHintergrund(F.coach("rebound"));
 
   // --- die Gruppen, wie das Rendern sie anmeldet --------------------------
   const fams = Object.keys(blk.families);

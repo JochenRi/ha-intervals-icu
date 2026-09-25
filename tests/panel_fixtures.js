@@ -801,16 +801,16 @@ function goal(kind) {
       // only the current week carries grades (docs/ausbau.md I3)
       no_verdict_note: "Bewertet wird erst in der Woche selbst. Das Lastbudget rechnet aus den letzten sechs Tagen, der Zustand aus den Werten von heute — Budget und Zustand von übernächstem Donnerstag kennt niemand, auch dieses Panel nicht.",
       stages: {
-        green: { label: "grün", word: "passt", detail: "Zustand unauffällig, die Last passt ins Budget." },
+        green: { label: "grün", word: "passt", detail: "Der Zustand trägt diese Art. Liegt die Last über der Obergrenze, bleibt die Art und die Menge wird gekürzt." },
         yellow: { label: "gelb", word: "geht, kostet aber", detail: "Der Zustand trägt nur bedingt." },
-        stimulus: { label: "Reiz", word: "kostet Erholung, setzt aber den Reiz", detail: "Über dem Lastbudget, aber der Zustand trägt und die letzten Tage boten Erholung." },
-        red: { label: "rot", word: "heute nicht", detail: "Zustand oder Budget sprechen dagegen." },
+        stimulus: { label: "Reiz", word: "kostet Erholung, setzt aber den Reiz", detail: "Über der Obergrenze, aber der Zustand trägt und die letzten Tage boten Erholung." },
+        red: { label: "rot", word: "heute nicht", detail: "Der Zustand spricht dagegen. Nur ohne Zustand (keine HRV-Basislinie) entscheidet die Last." },
       },
       assessment: {
         state: "ready", state_label: "im Normalbereich", budget: 95, hard_days_last_7: 0,
         recovery: { offered: true, quiet_days: 2, max_hard_days_7: 0,
           recent_daily_load: 12.0, chronic_daily_load: 48.5, missing: [],
-          note: "Erholung gilt als geboten, wenn der Zustand unauffällig ist, in den letzten sieben Tagen höchstens 0 harte Tage liegen und die Last der letzten 2 Tage unter deinem chronischen Tagesschnitt bleibt. Die Bestandteile sind belegt, diese Schwellen sind gewählt — eine Setzung, keine Messung." },
+          note: "Erholung gilt als geboten, wenn der Zustand unauffällig ist, in den letzten sieben Tagen kein harter Tag liegt und die Last der letzten 2 Tage unter deinem chronischen Tagesschnitt bleibt. Die Bestandteile sind belegt, diese Schwellen sind gewählt — eine Setzung, keine Messung." },
       },
       choice: {
         rule: "Am Tag, an dem trainiert werden soll, wählst du aus den Vorschlägen — bewertet nach Zustand und Lastbudget, entschieden von dir. Das Panel fragt nicht nach kommenden Tagen, Schichten oder Terminen.",
@@ -1058,16 +1058,16 @@ function coach(kind) {
                      limit: "Düking 2021: kleiner, nicht signifikanter Effekt auf die Spitzenleistung; dafür weniger Non-Responder (Manresa-Rocamora 2021).",
                      own_data: "Schwellen aus eigenen DFA-Messungen." };
   const states = {
-    ready: { state: "ready", label: "im Normalbereich", since: null, week_z: 0.3,
+    ready: { state: "ready", label: "im Normalbereich", short: "harter Reiz möglich", since: null, week_z: 0.3,
              recent_hrv_z: 0.4, recent_rhr_z: -0.2, confidence: "mittel",
              detail: "Das 7-Tage-Mittel liegt in deinem Normalband." },
-    rebound: { state: "rebound", label: "Erholung nach Einbruch", since: "2026-09-06", week_z: -0.63,
+    rebound: { state: "rebound", label: "Erholung nach Einbruch", short: "Grundlage ja, harte Reize noch nicht", since: "2026-09-06", week_z: -0.63,
                recent_hrv_z: 1.5, recent_rhr_z: -1.8, confidence: "mittel",
                detail: "Der Einbruch war vor 5 Tagen. Das 7-Tage-Mittel hinkt noch nach." },
-    slump: { state: "slump", label: "Einbruch", since: "2026-09-11", week_z: -1.9,
+    slump: { state: "slump", label: "Einbruch", short: "heute nur Regeneration", since: "2026-09-11", week_z: -1.9,
              recent_hrv_z: -2.4, recent_rhr_z: 2.9, confidence: "hoch",
              detail: "Deine Werte sind heute deutlich außerhalb deines Normalbereichs." },
-    unknown: { state: "unknown", label: "zu wenig Historie", since: null, week_z: null,
+    unknown: { state: "unknown", label: "zu wenig Historie", short: "nach Gefühl entscheiden", since: null, week_z: null,
                recent_hrv_z: null, recent_rhr_z: null, confidence: "keine",
                detail: "unter drei Wochen Wellness-Daten" },
   };
@@ -1166,6 +1166,25 @@ function workouts(kind) {
     return { ftp: null, aerobic_hr: null, budget: null, state: "ready", workouts: [w] };
   }
   const soft = kind === "einbruch";
+  // 0.70.0: der Livefall vom 25.09. - der Stufentest bekommt sein Rampenende aus der
+  // Steuerung (watt_source "steering", KEIN steering_source), dazu die lange Fahrt.
+  if (kind === "voll") {
+    const base = workouts();
+    const ramp = mk("ramp_test", "ramp_test", "Stufentest", "Stufentest", 57, 60, 80,
+      [[10, 55, "Einrollen, ruhig"], [37, 110, "Rampe 142\u2013300 W (5 W/min)"], [10, 55, "Ausrollen, konstant"]],
+      "- 10m 142w", [120, 180], "ok");
+    ramp.blocks_w = [[10, 142, "Einrollen, ruhig"], [37, 300, "Rampe 142\u2013300 W (5 W/min)"], [10, 142, "Ausrollen, konstant"]];
+    ramp.watt_source = "steering";
+    ramp.ramp_segment = { index: 1, label: "Rampe 142\u2013300 W (5 W/min)", start_w: 142, end_w: 300, start_pct: 66, end_pct: 140 };
+    ramp.ramp_protocol = { start_w: 142, end_w: 300, minutes: 37,
+      start_source: { kind: "ga", label: "Umkehrung (Grundlage 1 h)", share: 0.9, selection: null },
+      end_source: { kind: "steering", label: "deine VO2max-Vorgabe", lead: { watts: 250, alpha: null }, reserve_min: 10, reserve_w: 50, selection: null } };
+    ramp.derivation = ["Start 142 W — Umkehrung", "Ende 300 W — deine VO2max-Vorgabe: Leitzahl 250 W", "Reserve 50 W = 10 min × 5 W/min. SETZUNG", "Dauer 32 min"];
+    const lng = mk("z2_210_late", "long", "Lange Fahrt", "Lange Fahrt 3,5 h mit Endblock", 210, 175, 66,
+      [[10, 55, "Einrollen"], [180, 68, "gleichmäßig", true], [15, 85, "Endblock"], [5, 50, "Ausrollen"]],
+      "- 10m 55%", [138, 152], "ok");
+    return { ...base, workouts: [...base.workouts.slice(0, 1), lng, ramp, ...base.workouts.slice(1)] };
+  }
   const why = "Die Erholung läuft, aber die letzten Tage tragen noch keinen harten Reiz.";
   return {
     ftp: 215, aerobic_hr: 157, budget: 95, state: soft ? "rebound" : "ready",

@@ -163,14 +163,15 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   p._goalEdit = false;
   const html = p.rGoal(p._goal);
   clean(html, "ziel gesetzt");
-  // The head is TWO tiles and nothing else - no plan, no weeks, no warning.
+  // The head is ONE line (0.70.0, A1: vorher zwei Kaesten) - no plan, no weeks, no warning.
   // The question of the day is which session to ride, not what week 7 looks like.
   contains(html, "Lange Fahrten durchstehen", "plan: Ziel nicht genannt");
   contains(html, "Durability", "plan: Zielgröße nicht genannt");
   contains(html, "4 Tage pro Woche", "plan: Zeitangabe fehlt");
   contains(html, "1 harte Einheit", "plan: Folge der Tageszahl fehlt");
-  ok((html.match(/class="gtile"/g) || []).length === 2,
-     "plan: Kopf ist nicht auf zwei Kacheln reduziert");
+  // 0.70.0 UMGESTELLT (A1): statt zweier Kaesten EINE Zeile mit zwei Knoepfen
+  ok((html.match(/class="goalline"/g) || []).length === 1 && (html.match(/class="gline"/g) || []).length === 2,
+     "plan: Kopf ist nicht EINE Zeile mit Ziel und Zeit");
   ok(!/class="pweek /.test(html), "plan: Wochenplan steht wieder oben");
   ok(!/Die nächsten Wochen/.test(html), "plan: Wochenvorschau steht wieder oben");
   ok(!/Zeitbudget trägt/.test(html), "plan: Budgetwarnung steht wieder oben");
@@ -221,8 +222,11 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   // ONE logic: the list is the recommendation. A second block above with its
   // own answer could quietly disagree with the cards below it.
   ok(!/class="card rec"/.test(html), "trainer: zweiter Empfehlungsblock wieder da");
-  contains(html, "Worauf diese Empfehlung beruht", "trainer: Herleitung fehlt");
-  contains(html, "alles außerhalb des Trainings", "trainer: Grenze der Empfehlung fehlt");
+  // 0.70.0 UMGESTELLT (B): die Herleitung ist in den Reiter Quellen umgezogen
+  const herl = p._trainerSources();
+  contains(herl, "Worauf diese Empfehlung beruht", "trainer: Herleitung fehlt (Quellen)");
+  contains(herl, "alles außerhalb des Trainings", "trainer: Grenze der Empfehlung fehlt (Quellen)");
+  ok(!/Worauf diese Empfehlung beruht/.test(html), "trainer: die Herleitung steht noch im Trainer");
 
   // the three separate bars became one axis with three dots: position on a
   // COMMON scale rather than three tracks that cannot be compared
@@ -246,23 +250,33 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   p._workouts = F.workouts();
   const html = p.rTrainer(F.coach("ready"), rdFix);
   clean(html, "einheiten");
-  contains(html, "Einheiten für heute", "einheiten");
+  contains(html, "für heute bewertet", "einheiten");   // 0.70.0: Familien statt Liste
   // ONE per kind - not three base rides. The choice must be between different
   // KINDS of training, which is what makes it a choice at all.
   const families = ["Grundlage", "SweetSpot", "Tempo", "Schwelle", "VO2max", "Regeneration"];
   for (const family of families) contains(html, family, `einheiten: ${family} fehlt`);
-  ok((html.match(/class="wofam"/g) || []).length === 6, "einheiten: nicht sechs Arten");
+  // 0.70.0 UMGESTELLT (A4): die Art steht in der Familienzeile, nicht mehr auf
+  // der Karte - sechs Karten in drei Familien
+  ok((html.match(/class="fgname"/g) || []).length === 3, "einheiten: nicht drei Familien");
   ok((html.match(/class="wocard/g) || []).length === 6, "einheiten: nicht sechs Karten");
   contains(html, "passt heute", "einheiten: kein Tagesurteil");
   // 0.69.1 (KARTE_4a W4a.1): der Listenkopf sagt, woher die Watt JE ART kommen -
   // Grundlage aus der Umkehrung, Bloecke aus dem Steuerwert, sonst FTP. "Watt aus
   // deiner FTP" pauschal war seit 0.68.0 falsch.
+  // 0.70.0 UMGESTELLT (A4): der Listenkopf ist weg ("samt Kopftext"); die
+  // Wattquelle steht jetzt JE FAMILIE in ihrer Zeile, die Pulsquelle im Hintergrund.
   {
-    const head = html.slice(html.indexOf('class="secname"'), html.indexOf('class="wogrid"'));
-    ok(!/Watt aus deiner\s+FTP/.test(head), "einheiten-kopf: sagt noch pauschal 'Watt aus deiner FTP'");
-    ok(/Umkehrung/.test(head) && /Steuer/.test(head) && /FTP/.test(head),
-       "einheiten-kopf: nennt nicht alle drei Wattquellen (Umkehrung, Steuerung, FTP)");
-    contains(head, "aeroben", "einheiten-kopf: die Pulsquelle ist weg");
+    const qw = F.workouts();
+    qw.workouts[0] = { ...qw.workouts[0], watt_source: "ga" };
+    qw.workouts[4] = { ...qw.workouts[4], watt_source: "steering" };
+    const keep = p._workouts; p._workouts = qw;
+    const hq = String(p.rTrainer(F.coach("ready"), rdFix));
+    p._workouts = keep;
+    const zeilen = (hq.match(/<summary>[\s\S]*?<\/summary>/g) || []).filter((x) => /fgname/.test(x)).join(" ");
+    ok(!/Watt aus deiner\s+FTP/.test(hq), "einheiten-kopf: sagt noch pauschal 'Watt aus deiner FTP'");
+    ok(/Umkehrung/.test(zeilen) && /deine Vorgabe/.test(zeilen) && /FTP/.test(zeilen),
+       "einheiten-kopf: die Familienzeilen nennen nicht alle drei Wattquellen (Umkehrung, Vorgabe, FTP)");
+    contains(p.rHintergrund(F.coach("ready")), "Aerobe Schwelle", "einheiten-kopf: die Pulsquelle ist weg");
   }
   // exactly one card carries the recommendation, and it is a fitting one
   ok((html.match(/class="recflag"/g) || []).length === 1,
@@ -354,8 +368,12 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
      "einheiten rebound: Empfehlung fehlt oder mehrfach");
   ok(!/class="recflag"[\s\S]{0,400}heute nicht/.test(rb),
      "einheiten rebound: abgeratene Einheit als Empfehlung markiert");
-  contains(html, "Was du machst, entscheidest du", "einheiten: Entscheidung nicht beim Athleten");
-  contains(html, "215 W", "einheiten: FTP nicht genannt");
+  // 0.70.0 UMGESTELLT: der Kopftext ist weg - wer entscheidet, steht in Quellen
+  // ("entschieden von dir"), die FTP als Herkunft in der Familienzeile.
+  { const kg = p._goal; p._goal = F.goal();
+    contains(p._trainerSources(), "entschieden von dir", "einheiten: Entscheidung nicht beim Athleten (Quellen)");
+    p._goal = kg; }
+  ok(/class="fgw tn">\d+ W · FTP/.test(html), "einheiten: FTP als Herkunft nicht genannt");
   contains(html, "237 W", "einheiten: Wattzahlen der Blöcke fehlen");   // 110 % von 215
   contains(html, "166–180 bpm", "einheiten: Pulsfenster fehlt");
   ok((html.match(/class="wob"/g) || []).length >= 20, "einheiten: Struktur nicht gezeichnet");
@@ -1998,7 +2016,8 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
 
     // Die beiden Achsen: der Unterschied wird weiter benannt - aber im
     // RECHENWEG, nicht als laengster Absatz ueber vier Strichen (0.47.0).
-    contains(tileFlat, "Zwei Achsen unter einer Überschrift, mit Absicht",
+    // 0.70.0 UMGESTELLT: die zwei Achsen stehen seit dem Umzug in zwei Reitern
+    contains(tileFlat, "Zwei Achsen, mit Absicht getrennt",
              "durability: die zwei Achsen stehen unkommentiert nebeneinander");
     const rechenweg = tileFlat.slice(tileFlat.indexOf("Der Rechenweg"));
     contains(rechenweg, "kassiert", "durability: die Achsen-Begründung steht nicht im Rechenweg");
@@ -2306,26 +2325,32 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
                                  folded.indexOf('class="pwsess"'));
   ok(!doneBlock.includes("SweetSpot"), "wochenplan: eine Fahrt wird einer Plan-Einheit zugeordnet");
 
-  // die Legende: vier Stufen, aus der Payload, plus die Setzung dahinter
-  contains(folded, "Die vier Stufen", "wochenplan: die Legende fehlt");
+  // 0.70.0 UMGESTELLT (B): Legende, Erholungsregel und "Wer hier entscheidet"
+  // stehen im Reiter Quellen (_trainerSources) - dieselbe Payload (goal.plan).
+  const qq0 = q._goal; q._goal = g;
+  const quell = q._trainerSources();
+  ok(!/Die vier Stufen/.test(folded) && !/Wer hier entscheidet/.test(folded), "wochenplan: die Legende steht noch im Wochenplan");
+  contains(quell, "Die vier Stufen", "wochenplan: die Legende fehlt (Quellen)");
   for (const key of ["green", "yellow", "stimulus", "red"]) {
-    contains(folded, plan.stages[key].detail, `wochenplan: Legende ohne Stufe ${key}`);
+    contains(quell, plan.stages[key].detail, `wochenplan: Legende ohne Stufe ${key} (Quellen)`);
   }
-  contains(folded, "Setzung", "wochenplan: die Erholungsregel wird nicht als Setzung beschriftet");
+  contains(quell, "Setzung", "wochenplan: die Erholungsregel wird nicht als Setzung beschriftet (Quellen)");
 
   // der Quellenblock: BEIDE Hälften des Javaloyes-Befunds
-  contains(folded, "1 von 7", "wochenplan: die Nicht-Responder-Zahlen fehlen");
-  contains(folded, "3 von 8", "wochenplan: die Vergleichszahl fehlt");
-  contains(folded, "klein und unsicher", "wochenplan: die Grenze des Befunds fehlt");
-  contains(folded, "fragt nicht nach kommenden Tagen",
-           "wochenplan: die Regel, dass nicht vorab gefragt wird, fehlt");
+  contains(quell, "1 von 7", "wochenplan: die Nicht-Responder-Zahlen fehlen (Quellen)");
+  contains(quell, "3 von 8", "wochenplan: die Vergleichszahl fehlt (Quellen)");
+  contains(quell, "klein und unsicher", "wochenplan: die Grenze des Befunds fehlt (Quellen)");
+  contains(quell, "fragt nicht nach kommenden Tagen",
+           "wochenplan: die Regel, dass nicht vorab gefragt wird, fehlt (Quellen)");
 
   // eine Legende ohne Stufen in der Payload erfindet keine
   const bare = F.goal();
   delete bare.plan.stages;
-  const noLegend = q.rPlanWeeks(bare);
-  ok(!/Die vier Stufen/.test(noLegend),
-     "wochenplan: die Legende wird ohne Payload erfunden");
+  q._goal = bare;
+  const noLegend = q._trainerSources();
+  q._goal = qq0;
+  ok(!/Die vier Stufen/.test(noLegend) && /Wer hier entscheidet/.test(noLegend),
+     "wochenplan: die Legende wird ohne Payload erfunden (oder der Quellenblock fehlt ganz)");
   // und eine Woche ohne Bewertung zeigt keine Stufe, auch wenn die Sitzungen
   // noch eine tragen
   const unrated = F.goal();
@@ -2529,43 +2554,26 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
      "N3: die Karte beschreibt eine Suche nach dem letzten Hochpunkt, die der Code nie gemacht hat");
   contains(voll, "Rogers 2021a/b (Laufband)", "N3 Rechenweg: Rogers ohne Arbeit und Sportart");
   // Variante B (§7 Fall 38): die Messung steht da und steuert noch nichts - das sagt die Karte.
-  contains(voll, "Diese Messung steuert noch keine Vorgabe", "N3 B: die Karte sagt nicht, dass die Messung noch nichts steuert");
+  // 0.70.0 UMGESTELLT (C3): seit 0.68.0 steuert die Messung die Grundlage - das sagt die Karte.
+  contains(voll, "Diese Messung steuert die Grundlage", "N3 B: die Karte sagt nicht, was die Messung steuert");
   contains(leer, "Stufentest", "N3 B Trefferzusicherung: die leere Karte ist nicht gerendert");
-  ok(!/steuert noch keine Vorgabe/.test(leer), "N3 B Gegenprobe: der Satz steht auch ohne Messung da");
-  contains(voll, "HRV-Schwellen allgemein",
-           "N3 Rechenweg: die Einschränkung zur Metaanalyse fehlt");
+  ok(!/steuert die Grundlage/.test(leer), "N3 B Gegenprobe: der Satz steht auch ohne Messung da");
+  // 0.70.0 UMGESTELLT (B): die Arbeiten stehen im Reiter Quellen (_rampSources)
+  contains(q._rampSources(rt), "HRV-Schwellen allgemein",
+           "N3 Rechenweg: die Einschränkung zur Metaanalyse fehlt (Quellen)");
   ok(!/r = 0,85 für DFA/.test(voll),
      "N3: die Metaanalyse wird als DFA-Beleg ausgegeben — sie gilt für alle "
      + "HRV-Verfahren zusammen");
 
-  // --- 6 Die 40-Watt-Frage -------------------------------------------------
-  const fam = F.blocks().families.sweetspot || F.blocks().families.vo2max;
-  const p1 = F.fatigue().measured.find((x) => x.hour === 1);
-  ok(Math.abs(fam.latest.first_watts - p1.watts) > 20,
-     "N3 Fixture-Beweis: die beiden Messungen liegen zu dicht beieinander — "
-     + "die offene Frage wäre nicht prüfbar");
-  const ohne = eineZeile(q.rRampGap(F.blocks(), F.fatigue(), { tests: [], latest: null }));
-  clean(ohne, "40-Watt-Frage ohne Test");
-  contains(ohne, "offene Frage", "N3 Frage: die Gegenüberstellung fehlt");
-  contains(ohne, String(Math.round(fam.latest.first_watts)),
-           "N3 Frage: die Leistung aus den Blöcken fehlt");
-  contains(ohne, String(Math.round(p1.watts)),
-           "N3 Frage: die Leistung aus der Kurve fehlt");
-  contains(ohne, "keine ist falsch",
-           "N3 Frage: eine der beiden Messungen wird für falsch erklärt");
-  contains(ohne, "Genau dafür ist der Stufentest da",
-           "N3 Frage: ohne Test fehlt der Verweis auf ihn");
-  const mit = eineZeile(q.rRampGap(F.blocks(), F.fatigue(), rt));
-  contains(mit, "Hinweis und kein Urteil",
-           "N3 Frage: mit Test wird die Frage für entschieden erklärt");
-  contains(mit, "196", "N3 Frage: die Zahl des Tests fehlt in der Gegenüberstellung");
-  ok(!/Genau dafür ist der Stufentest da/.test(mit),
-     "N3 Frage: mit Test steht weiterhin der Werbesatz da");
-
+  // --- 6 Die 40-Watt-Frage: ENTFERNT in 0.70.0 -----------------------------
+  // rRampGap ("Die offene Frage: 56 Watt") ist nach Entscheidung (Skizze 0.70.0,
+  // B) ersatzlos gestrichen - seit der Umkehrung (0.68.0) stehen die beiden
+  // Zahlen nicht mehr gegeneinander. Die 13 Pruefungen dieses Abschnitts hielten
+  // Inhalt einer Karte fest, die es nicht mehr gibt; dass sie nirgends mehr
+  // steht, prueft der Abschnitt 0.70.0 (B, "56 W").
   // --- 7 Ohne Daten keine Karte -------------------------------------------
   ok(q.rRampTest(null) === "", "N3: ohne Payload wird eine Karte gebaut");
-  ok(q.rRampGap(null, F.fatigue(), rt) === "", "N3 Frage: ohne Blöcke wird verglichen");
-  ok(q.rRampGap(F.blocks(), null, rt) === "", "N3 Frage: ohne Kurve wird verglichen");
+  // (0.70.0: die zwei rRampGap-Leerfaelle sind mit der Karte entfallen)
 }
 
 
@@ -2815,15 +2823,8 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   ok(String(q._explain({ ...xe, explain: null })) === xAlt,
      "B2c: ohne Payload steht nicht der bisherige Absatz");
 
-  // ── DIE 40-WATT-FRAGE nennt je Zahl ihre Auswahl ─────────────────────────
-  const gap = String(q.rRampGap(blk(false), F.fatigue({ selection: { label: "KURVE AUS MARKEN" } }), null));
-  const gapLeer = String(q.rRampGap({ ...blk(false), selection: null }, F.fatigue({ selection: null }), null));
-  ok(gap !== "" && /AUSWAHL NAMEN/.test(gap) && /KURVE AUS MARKEN/.test(gap),
-     "40-Watt-Frage: eine der beiden Zahlen nennt ihre Auswahl nicht");
-  ok(gap.indexOf("AUSWAHL NAMEN") < gap.indexOf("KURVE AUS MARKEN"),
-     "40-Watt-Frage: die Auswahl steht nicht an ihrer Zahl");
-  ok(gapLeer !== "" && !/AUSWAHL|KURVE AUS/.test(gapLeer),
-     "40-Watt-Frage: die Auswahl kommt aus dem Frontend statt aus der Payload");
+  // ── DIE 40-WATT-FRAGE nennt je Zahl ihre Auswahl: ENTFERNT in 0.70.0 (3
+  // Pruefungen) - die Karte ist gestrichen (Skizze B), `_auswahl` mit ihr.
 
   // DIE ZAHLEN BEIDER STELLUNGEN, nebeneinander.
   // BEIDE Reihen stehen da, und die Fixture macht sie unterscheidbar.
@@ -3097,6 +3098,215 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   const leerHtml = String(new M.Panel().rFatigueV2(F.fatigue({ v2: leer }), leer));
   ok(!/data-v2="tol"/.test(leerHtml) && /Ablesestelle/.test(leerHtml),
      "Umkehrung leer: die Kachel steht leer da, statt zu sagen, was fehlt");
+}
+
+/* ── 0.70.0 · Trainer-Reiter nach der Skizze (Fassung 2) ─────────────────
+   A: Reihenfolge der Seite · B: Umzuege · C1–C4: Fehler. Jede Pruefung ist
+   vor dem Bau rot gelaufen (Bericht 0.70.0). */
+{
+  const T = new M.Panel();
+  T._nowIso = F.TODAY;
+  const z = (h) => String(h).replace(/\s+/g, " ");
+  const vor = (h, a, b) => h.indexOf(a) >= 0 && h.indexOf(b) >= 0 && h.indexOf(a) < h.indexOf(b);
+  const faltung = (h, id) => {
+    // der Inhalt EINES Aufklappers mit data-keep="id" (verschachtelte details mitgezaehlt)
+    const at = h.indexOf(`data-keep="${id}"`);
+    if (at < 0) return null;
+    const start = h.lastIndexOf("<details", at);
+    let tiefe = 0, i = start;
+    const re = /<details\b|<\/details>/g;
+    re.lastIndex = start;
+    let m;
+    while ((m = re.exec(h))) {
+      tiefe += m[0] === "</details>" ? -1 : 1;
+      if (tiefe === 0) { i = m.index + m[0].length; break; }
+    }
+    return h.slice(start, i);
+  };
+  const zu = (h, id) => { const f = faltung(h, id); return f != null && !/^<details[^>]*\sopen[\s>]/.test(f); };
+  const rt = { tests: [{ activity_id: "1", date: "2026-09-16" }],
+    sources: ["QUELLE EINS (2021)", "QUELLE ZWEI (2024)"],
+    latest: { date: "2026-09-16", result: {
+      hrvt1: { alpha: 0.75, watts: 213, hr: 160 }, hrvt2: { alpha: 0.5, watts: 233, hr: 172 },
+      hrvt1_pers: { alpha: 0.92, watts: 183, hr: 150 }, max_alpha_start: 1.34, pers_alpha: 0.92,
+      reached_anaerobic: true, segment: { points: 900, r2: 0.97 } } } };
+  T._workouts = F.workouts("voll");
+  T._rtests = rt;
+  T._goal = F.goal();
+  T._blocks = F.blocks({ steering_on: true });
+  T._fatigue = F.fatigue();
+  T._coach = F.coach("ready");
+
+  // A1 · Kopf: EINE schmale Zeile statt zweier Kaesten
+  const kopf = z(T.rGoal(T._goal));
+  ok((kopf.match(/class="goalline"/g) || []).length === 1, "A1: der Kopf ist nicht EINE Zeile (goalline)");
+  ok(!/class="goalbar"/.test(kopf) && !/class="gtile"/.test(kopf), "A1: die zwei Kaesten stehen noch da");
+  ok(vor(kopf, "Lange Fahrten durchstehen", "4 Tage pro Woche"), "A1: Ziel · Zeit nicht in dieser Reihenfolge");
+
+  // A2 · Zustand: eine Zeile, Balken und Begruendungen zugeklappt
+  const tr = z(T.rTrainer(T._coach, F.readiness()));
+  clean(tr, "0.70.0 trainer");
+  ok(/class="card tline"/.test(tr), "A2: die Zustandszeile fehlt");
+  const zeile = tr.slice(tr.indexOf('class="card tline"'), tr.indexOf('data-keep="trainer:zustand"'));
+  ok(/im Normalbereich/.test(zeile) && /harter Reiz möglich/.test(zeile), "A2: Wort und Satz stehen nicht in der Zeile");
+  const zBody = faltung(tr, "trainer:zustand") || "";
+  ok(/class="zdot"/.test(zBody) && !/class="zdot"/.test(tr.replace(zBody, "")), "A2: die Balken stehen nicht (nur) im Aufklapper");
+  ok(zu(tr, "trainer:zustand"), "A2: der Zustands-Aufklapper ist nicht zugeklappt");
+  ok(/Javaloyes|Normalband/.test(zBody), "A2: die Begruendung steht nicht im Aufklapper");
+
+  // A3 · Empfehlung: Art + passende Dauer aus guard(), "für morgen" statt des Archivsatzes
+  const gw = F.workouts("voll");
+  gw.workouts[1] = { ...gw.workouts[1], fits_budget: false, stage: F.stageOf("ok", false, false),
+    guard: { over: true, load: 175, ceiling: 68, hours_fit: 1.5, text: "Geländer: Last 175 über der Obergrenze 68 — die Art bleibt, die Menge nicht. Bis ~1,5 h passt sie unter die Obergrenze." } };
+  gw.workouts[0] = { ...gw.workouts[0], stage: F.stageOf("maybe", true, false) };
+  T._workouts = gw;
+  const lead = z(T.rTrainer(T._coach, F.readiness()));
+  const lk = lead.slice(lead.indexOf('class="leadrec"'), lead.indexOf('data-keep="fam:'));
+  ok(/Lange Fahrt 3,5 h mit Endblock — heute ~1,5 h/.test(lk), "A3: die Empfehlung nennt nicht Art + passende Dauer");
+  const morgen = z(T.rTrainer({ ...T._coach, trained_today: true }, F.readiness()));
+  ok(!/Heute liegt schon eine\s+Einheit im Archiv/.test(morgen), "A3: der Archivsatz steht noch da");
+  const mk2 = morgen.slice(morgen.indexOf('class="leadrec"'), morgen.indexOf('data-keep="fam:'));
+  ok(/class="leadsub"[^>]*>[^<]*für morgen/.test(mk2), "A3: die Unterzeile 'für morgen' fehlt in der Empfehlung");
+  T._workouts = F.workouts("voll");
+
+  // A4 · Drei Familien, je ein Aufklapper; "Alle Einheiten für heute" ist weg
+  const fam = z(T.rTrainer(T._coach, F.readiness()));
+  ok(!/Alle Einheiten für/.test(fam), "A4: der Block 'Alle Einheiten für heute' steht noch da");
+  const ids = (fam.match(/data-keep="fam:[a-z0-9]+"/g) || []).map((x) => x.slice(15, -1));
+  ok(JSON.stringify(ids) === JSON.stringify(["grundlage", "schwelle", "vo2max"]),
+     `A4: nicht genau drei Familien in der Reihenfolge der Skizze (${ids.join(",")})`);
+  const fg = faltung(fam, "fam:grundlage") || "", fs = faltung(fam, "fam:schwelle") || "", fv = faltung(fam, "fam:vo2max") || "";
+  ok(/Grundlage 90 min/.test(fg) && /Lange Fahrt 3,5 h/.test(fg) && /Regeneration 40 min/.test(fg), "A4: Grundlage traegt nicht Grundlage · Lange · Regeneration");
+  ok(/SweetSpot 2×20/.test(fs) && /Tempo 2×20/.test(fs) && /Schwelle 4×10/.test(fs), "A4: SweetSpot & Schwelle unvollstaendig");
+  ok(/VO2max 4×4/.test(fv) && /30\/30|5×4/.test(fv), "A4: VO2max nennt die Varianten nicht");
+  ok(!/data-id="ramp_test"/.test(fg + fs + fv), "A4: der Stufentest steht in einer Familie");
+  for (const [n, f] of [["grundlage", fg], ["schwelle", fs], ["vo2max", fv]]) {
+    ok(zu(fam, "fam:" + n), `A4: ${n} ist nicht zugeklappt`);
+    const sum = f.slice(0, f.indexOf("</summary>"));
+    ok(/class="bdg"/.test(sum), `A4: ${n}: kein Etikett in der zugeklappten Zeile`);
+    ok(/\d+ W/.test(sum) && /(Umkehrung|deine Vorgabe|FTP|Blockmessung|Stufentest)/.test(sum), `A4: ${n}: Watt ohne Kurzherkunft`);
+    ok(/class="fgvar"/.test(sum) && /class="fguse"/.test(sum), `A4: ${n}: empfohlene Variante oder Nutzen fehlt`);
+    ok(!/class="wocard/.test(sum), `A4: ${n}: Karten in der zugeklappten Zeile`);
+  }
+  ok(/Kurve im Hintergrund/.test(fg) && /Kachel im Hintergrund/.test(fv), "A4: der Verweis auf Kurve/Kachel im Hintergrund fehlt");
+  // gekuerzte Karte: kein Familienname, kein "Was das bringt" offen; die Aufklapper bleiben
+  const karte = fs.slice(fs.indexOf('class="wocard'));
+  ok(!/class="wofam"/.test(karte) && !/class="effect"/.test(karte.split("Aufbau, Beleg und Rechenweg")[0]),
+     "A4: die Variantenkarte ist nicht gekuerzt");
+  ok(/Aufbau, Beleg und Rechenweg/.test(karte), "A4: der Aufklapper 'Aufbau, Beleg und Rechenweg' fehlt");
+
+  // A5 · Test, eine Zeile: Stufentest, aufklappbar mit Karte und drei Schwellen
+  const test = z(T.rRampTest(rt));
+  ok(zu(test, "trainer:test"), "A5: der Stufentest ist kein zugeklappter Aufklapper");
+  const tsum = test.slice(0, test.indexOf("</summary>"));
+  ok(/Stufentest/.test(tsum) && /alle paar Monate/.test(tsum) && /zuletzt/.test(tsum), "A5: die Zeile nennt nicht Stufentest · alle paar Monate · zuletzt");
+  ok(/data-id="ramp_test"/.test(test), "A5: die Stufentest-Karte steht nicht im Aufklapper");
+  for (const w of [213, 233, 183]) ok(test.includes(String(w)), `A5: die Schwelle ${w} W fehlt`);
+  const rw = test.slice(test.indexOf("Der Rechenweg"));
+  ok(/umstritten/.test(rw) && !/umstritten/.test(test.slice(0, test.indexOf("Der Rechenweg"))), "A5: der Text zur dritten Zahl steht nicht im Rechenweg");
+
+  // A6 · Wochen: zugeklappt nur DIESE Woche, W2–W8 im Aufklapper, Erklaertexte im Rechenweg
+  const wo = z(T.rPlanWeeks(F.goal("knapp"), (T._coach.durability || {}).progression));
+  const w2 = faltung(wo, "trainer:weeks") || "";
+  ok(/W1/.test(wo.replace(w2, "")) && !/W2/.test(wo.replace(w2, "")), "A6: ausserhalb des Aufklappers steht mehr als diese Woche");
+  ok(/W2/.test(w2) && zu(wo, "trainer:weeks"), "A6: W2 ff. stehen nicht im zugeklappten Aufklapper");
+  const wr = faltung(wo, "trainer:weeksrw") || "";
+  ok(/bewusste Ausnahme/.test(wr) && /Konvention/.test(wr), "A6: Budget-Satz und Konvention stehen nicht im Rechenweg");
+  ok(!/bewusste Ausnahme/.test(wo.replace(wr, "")), "A6: der Budget-Satz steht noch offen");
+
+  // A7 · Hintergrund ganz unten, zu: Anker, Kurve, Leistung je Block
+  const hg = z(typeof T.rHintergrund === "function" ? T.rHintergrund(T._coach) : "");
+  ok(zu(hg, "trainer:hintergrund"), "A7: der Hintergrund ist nicht zugeklappt");
+  ok(/Deine gemessenen Anker/.test(hg) && /Wie lange trägt die Grundlage/.test(hg) && /Leistung je Block/.test(hg),
+     "A7: Anker, Kurve oder Blockkachel fehlen im Hintergrund");
+  ok(!/Wie stark entkoppelt/.test(hg), "A7: die Entkopplung steht noch im Trainer");
+  // die ganze Seite in der Reihenfolge der Skizze
+  T._tab = "trainer"; T._view = { innerHTML: "" }; T._rd = F.readiness();
+  T._render();
+  const seite = z(T._view.innerHTML);
+  const folge = ['class="goalline"', 'class="card tline"', 'class="leadrec"', 'data-keep="fam:grundlage"',
+                 'data-keep="trainer:test"', "Die nächsten Wochen", 'data-keep="trainer:hintergrund"'];
+  ok(folge.every((x, i) => i === 0 || vor(seite, folge[i - 1], x)), "A7: die Seite steht nicht in der Reihenfolge A1–A7");
+
+  // B · Umzuege: nichts davon im Trainer, alles im Ziel-Reiter
+  for (const [was, re] of [["Kalendersatz", /einzige Schreibzugriff/], ["Entkopplung", /Wie stark entkoppelt/],
+                           ["Wird es besser", /Wird es besser/], ["5 Arbeiten", /Worauf das beruht/],
+                           ["56 W", /offene Frage/], ["Empfehlungsgrenze", /Worauf diese Empfehlung beruht/],
+                           ["vier Stufen", /Die vier Stufen/], ["Wer entscheidet", /Wer hier entscheidet/]]) {
+    ok(!re.test(seite.replace(/title="[^"]*"/g, "")), `B: ${was} steht noch im Trainer`);
+  }
+  ok(/title="[^"]*Intervals-Kalender[^"]*einzige[^"]*"/.test(seite), "B: der Kalendersatz ist nicht Tooltip am Kalenderknopf");
+  const knoepfe = seite.match(/<button[^>]*data-act="plan"[^>]*>/g) || [];
+  ok(knoepfe.length >= 4 && knoepfe.every((k) => /title="[^"]*einzige Schreibzugriff/.test(k)),
+     `B: nicht jeder Kalenderknopf traegt den Tooltip (${knoepfe.filter((k) => !/einzige/.test(k)).length} ohne)`);
+  ok(/class="bdg"[^>]*title="[^"]+"/.test(seite), "B: das Etikett traegt keinen Tooltip");
+  T._pmc = F.pmc(F.days()); T._tab = "fitness"; T._render();
+  const fit = z(T._view.innerHTML);
+  ok(/Wie stark entkoppelt/.test(fit) && /Wird es besser/.test(fit) && /Was das ausbaut/.test(fit), "B: die Entkopplung ist nicht im Fitness-Reiter");
+  T._smarks = { marks: [], families: ["vo2max", "sweetspot", "tempo"], stale_reason: {}, min_for_source: 3, corridor_state: {}, corridors: {} };
+  T._tab = "quellen"; T._render();
+  const qu = z(T._view.innerHTML);
+  ok(/Worauf das beruht/.test(qu) && /QUELLE EINS/.test(qu), "B: die 5 Arbeiten stehen nicht in Quellen");
+  ok(/Worauf diese Empfehlung beruht/.test(qu), "B: 'Worauf diese Empfehlung beruht' steht nicht in Quellen");
+  ok(/Die vier Stufen/.test(qu) && /Erholung gilt als geboten/.test(qu), "B: Stufen-Legende und Erholungsregel stehen nicht in Quellen");
+  ok(/Wer hier entscheidet/.test(qu), "B: 'Wer hier entscheidet' steht nicht in Quellen");
+  ok(!/offene Frage/.test(qu + fit) && typeof T.rRampGap !== "function", "B: die 56-W-Frage ist nicht ersatzlos gestrichen");
+
+  // C1 · Stufentest-Karte: eigener Text, nicht der Steuerungszweig mit Strichen
+  const rk = z(faltung(test, "trainer:test"));
+  ok(!/Startwert\s+–\s+W/.test(rk) && !/aus\s+0\s+Einheiten/.test(rk), "C1: die Stufentest-Karte traegt den leeren Steuerungstext");
+  ok(/Start 142 W/.test(rk) && /Ende 300 W/.test(rk) && /Umkehrung/.test(rk) && /VO2max-Vorgabe/.test(rk),
+     "C1: die Stufentest-Karte nennt Start und Ende mit ihrer Herkunft nicht");
+  // Gegenprobe: eine echte Steuerungskarte behaelt ihren Text
+  const echt = { ...F.workouts().workouts[4], watt_source: "steering",
+                 steering_source: { watts: 250, anchor_w: 250, anchor_date: "2026-09-17", moves: 0, n_units: 6 } };
+  ok(/Startwert 250 W/.test(z(T._sourceText(echt))), "C1 Gegenprobe: die Steuerungskarte verliert ihren Text");
+
+  // C2 · Blockkachel: die Steuerung zaehlt ab Block 2
+  // der Livefall 25.09.: Block 1 bei 0,85, gezaehlt ab Block 2 (Median 0,347)
+  const live = (an) => {
+    const b = F.blocks({ steering_on: an });
+    const l = { ...b.families.vo2max.latest, n_blocks: 4, block_alphas: [0.85, 0.63, 0.35, 0.30],
+                median_alpha: 0.49, alpha_span: 0.55 };
+    b.families.vo2max = { ...b.families.vo2max, latest: l, points: [...b.families.vo2max.points.slice(0, -1), l] };
+    const rows = b.steering.vo2max.rows.slice();
+    rows[rows.length - 1] = { ...rows[rows.length - 1], date: l.date, alpha: 0.347 };
+    b.steering = { ...b.steering, vo2max: { ...b.steering.vo2max, rows } };
+    return b;
+  };
+  const bk = z(T.rBlocks(live(true)));
+  ok(!/ruht auf <b>4 Blöcken<\/b>/.test(bk) && !/Median 0,490/.test(bk), "C2: die Kachel zaehlt Block 1 zur Steuerung");
+  ok(/markiert, nicht gezählt \(Anlauf, Rogers\)/.test(bk) && /0,85/.test(bk), "C2: Block 1 steht nicht als 'markiert, nicht gezählt' daneben");
+  ok(/ruht auf <b>3 Blöcken<\/b>/.test(bk) && /Median 0,347/.test(bk), "C2: die gezaehlten Bloecke und der Median der Steuerung fehlen");
+  // Gegenprobe: Schalter aus - die alte Kette zaehlt alle Bloecke, der Satz bleibt
+  const vo = { n_blocks: 4 };
+  const bkAus = z(T.rBlocks(live(false)));
+  ok(new RegExp(`ruht auf <b>${vo.n_blocks} Blöcken</b>`).test(bkAus), "C2 Gegenprobe: ohne Steuerung verschwindet der alte Satz");
+
+  // C3 · "steuert noch keine Vorgabe" ist seit 0.68.0 falsch
+  ok(!/steuert noch keine Vorgabe/.test(test), "C3: der Stufentest sagt noch, er steuere nichts");
+  ok(/steuert die Grundlage/.test(test) && /Umkehrung/.test(test), "C3: der Stufentest sagt nicht, dass er die Grundlage steuert");
+
+  // Aufklapper ueberleben das Neuzeichnen: toggle merkt, _fold schreibt "open"
+  const K = new M.Panel(); K._nowIso = F.TODAY; K._workouts = F.workouts("voll");
+  K._attach();   // wie in _boot: die Hoerer am Schatten-Wurzelknoten
+  const zu0 = z(K.rWorkouts(K._workouts, false));
+  ok(zu(zu0, "fam:schwelle"), "Aufklapper: ohne Klick ist die Familie offen");
+  const tog = K.shadowRoot._listeners.toggle;
+  ok(typeof tog === "function", "Aufklapper: kein toggle-Hoerer am Schatten-Wurzelknoten");
+  if (tog) tog({ target: { dataset: { keep: "fam:schwelle" }, open: true } });
+  const auf1 = z(K.rWorkouts(K._workouts, false));
+  ok(!zu(auf1, "fam:schwelle") && zu(auf1, "fam:grundlage"), "Aufklapper: die geoeffnete Familie klappt beim Neuzeichnen wieder zu (oder die falsche geht auf)");
+  if (tog) tog({ target: { dataset: { keep: "fam:schwelle" }, open: false } });
+  ok(zu(z(K.rWorkouts(K._workouts, false)), "fam:schwelle"), "Aufklapper: Zuklappen wird nicht gemerkt");
+  if (tog) tog({ target: { dataset: {}, open: true } });
+  ok(Object.keys(K._keep || {}).length === 1, "Aufklapper: ein details ohne data-keep landet im Gedaechtnis");
+
+  // C4 · die Legende in Quellen kommt aus der Payload, nicht aus dem Panel
+  const g4 = F.goal(); g4.plan.stages.green.detail = "LEGENDE GRUEN AUS DEM BACKEND";
+  T._goal = g4; T._render();
+  ok(/LEGENDE GRUEN AUS DEM BACKEND/.test(z(T._view.innerHTML)), "C4: die Legende in Quellen liest nicht die Payload");
+  T._goal = F.goal();
 }
 
 report("test_panel_views");

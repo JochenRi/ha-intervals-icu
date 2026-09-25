@@ -162,7 +162,7 @@ def state(data: dict[str, Any]) -> dict[str, Any]:
     wellness = data.get("wellness") or {}
     days = sorted(wellness)
     if len(days) < 21:
-        return {"state": "unknown", "label": "zu wenig Historie",
+        return {"state": "unknown", "label": "zu wenig Historie", "short": STATE_SHORT["unknown"],
                 "detail": "unter drei Wochen Wellness-Daten", "since": None,
                 "slump": None, "confidence": "keine", "explained": False,
                 "context": None, "baseline_note": None}
@@ -303,9 +303,23 @@ def state(data: dict[str, Any]) -> dict[str, Any]:
                week_z, now_hrv, now_rhr, "mittel")
 
 
+# 0.70.0 (A2): EIN SATZ je Zustand fuer die Zustandszeile des Trainers. Die
+# Begruendung (`detail`, Javaloyes/Plews) klappt darunter zu; der Satz sagt nur,
+# was der Zustand heute traegt - dieselbe Aussage wie FIT_BY_STATE, in Worten.
+STATE_SHORT = {
+    "ready": "harter Reiz möglich",
+    "strained": "Umfang ja, Intensität nein",
+    "elevated": "erst beobachten, keine harten Reize",
+    "slump": "heute nur Regeneration",
+    "recovering": "nur locker, keine Intensität",
+    "rebound": "Grundlage ja, harte Reize noch nicht",
+    "unknown": "nach Gefühl entscheiden",
+}
+
+
 def _st(key, label, since, detail, week_z, now_hrv, now_rhr, confidence,
         cause=None, infection=False):
-    return {"state": key, "label": label, "since": since, "detail": detail,
+    return {"state": key, "label": label, "short": STATE_SHORT.get(key), "since": since, "detail": detail,
             "week_z": round(week_z, 2) if week_z is not None else None,
             "recent_hrv_z": round(now_hrv, 2) if now_hrv is not None else None,
             "recent_rhr_z": round(now_rhr, 2) if now_rhr is not None else None,
@@ -922,12 +936,22 @@ def recovery_offered(data: dict[str, Any]) -> dict[str, Any]:
         "missing": missing,
         "note": (
             f"Erholung gilt als geboten, wenn der Zustand unauffällig ist, in den letzten "
-            f"sieben Tagen höchstens {RECOVERY_MAX_HARD_DAYS_7} harte Tage liegen und die "
+            f"sieben Tagen {_hard_days_phrase(RECOVERY_MAX_HARD_DAYS_7)} liegt und die "
             f"Last der letzten {RECOVERY_QUIET_DAYS} Tage unter deinem chronischen "
             f"Tagesschnitt bleibt. Die Bestandteile sind belegt, diese Schwellen sind "
             f"gewählt — eine Setzung, keine Messung."
         ),
     }
+
+
+def _hard_days_phrase(limit: int) -> str:
+    """Die Grenze an harten Tagen als Satzteil (0.70.0, C4): "höchstens 0 harte
+    Tage" las sich wie ein Rechenfehler - bei der Grenze 0 heisst es "kein harter Tag"."""
+    if limit <= 0:
+        return "kein harter Tag"
+    if limit == 1:
+        return "höchstens ein harter Tag"
+    return f"höchstens {limit} harte Tage"
 
 
 def _trained_today(data: dict[str, Any]) -> bool:

@@ -468,8 +468,10 @@ _z0 = W.guard(W.BY_KEY["z2_60"], 60, 0, 1.0) or {}
 check(_z0.get("over") is True and _z0.get("hours_fit") is None, "F2 guard: Grundlage gegen 0 ohne over/None")
 check("nicht kürzbar" not in str(_z0.get("text")), "F2 guard: die elastische Grundlage nennt sich 'nicht kuerzbar'")
 check("gekürzt" in str(_z0.get("text")), "F2 guard: die elastische Grundlage sagt nicht, dass auch gekuerzt nichts passt")
-_r0 = W.guard(W.BY_KEY["recovery_40"], 18, 0, None) or {}
-check("nicht kürzbar" not in str(_r0.get("text")) and "gekürzt" in str(_r0.get("text")), "F2 guard: Regeneration 40 min gegen 0 nennt sich 'nicht kuerzbar'")
+# 0.70.0 UMGESTELLT (C8): die Regeneration steht seit C8 nie im Gelaender - der
+# Fall "gleichmaessig, nicht elastisch, nicht fest" wird am Wiedereinstieg geprueft.
+_r0 = W.guard(W.BY_KEY["return_45"], 30, 0, None) or {}
+check("nicht kürzbar" not in str(_r0.get("text")) and "gekürzt" in str(_r0.get("text")), "F2 guard: Wiedereinstieg 45 min gegen 0 nennt sich 'nicht kuerzbar'")
 _v0 = W.guard(W.BY_KEY["vo2_4x4"], 80, 0, None) or {}
 check("nicht kürzbar" in str(_v0.get("text")), "F2 guard Gegenprobe: die feste Einheit sagt nicht mehr 'nicht kuerzbar'")
 _z9 = W.guard(W.BY_KEY["z2_60"], 60, 50, 1.0) or {}
@@ -479,8 +481,12 @@ _ub = W.rate_sessions([dict(SESSION)], "unknown", budget=50)[0]
 eq((_ub["stage"]["key"], _ub["stage"]["blocked_by"]), ("red", "budget"), "bewertung L1: ohne Zustand entscheidet nicht die Last")
 _us = W.suggest("unknown", ftp=215, budget=10, layoff_days=0)
 # (der Stufentest ist bei "unknown" ein "no" aus dem Zustand - rot am Zustand, nicht am Budget)
-check(_us and all(e["stage"]["key"] == "red" and e["stage"]["blocked_by"] == "budget" for e in _us if e["load"] > 10 and e["fit"] != "no"),
+# 0.70.0 UMGESTELLT (C8): die Regeneration ist ausgenommen - sie ist nie ueber der Grenze.
+check(_us and all(e["stage"]["key"] == "red" and e["stage"]["blocked_by"] == "budget" for e in _us
+                  if e["load"] > 10 and e["fit"] != "no" and not W.guard_exempt(e)),
       "einheitenliste L1: ohne Zustand entscheidet nicht die Last")
+check(all(e["stage"]["key"] == "green" for e in _us if W.guard_exempt(e)),
+      "einheitenliste L1 (C8): ohne Zustand steht die Regeneration trotzdem am Gelaender")
 check(all("Zustand" in e["stage"]["detail"] for e in _us if e["load"] > 10 and e["fit"] != "no"), "einheitenliste L1: die Beschriftung 'ohne Zustand' fehlt")
 check(any(e["fit"] == "no" and e["stage"]["blocked_by"] == "state" for e in _us), "einheitenliste L1: der Stufentest faellt bei 'unknown' nicht am Zustand")
 
@@ -529,8 +535,12 @@ check(not any(entry["stage"]["key"] == "stimulus" for entry in tired),
 # L1: bereit und ueber Budget -> die Art bleibt (kein rot am Budget), jede Karte
 # ueber der Obergrenze traegt das Gelaender mit Last und Obergrenze.
 check(not any(e["stage"]["key"] == "red" for e in tired), "einheitenliste L1: bereit, aber rot am Budget")
-check(all((e.get("guard") or {}).get("over") and (e.get("guard") or {}).get("ceiling") == 10 for e in tired if e["load"] > 10),
+# 0.70.0 UMGESTELLT (C8): ausser der Regeneration - die bleibt ohne Gelaender.
+check(all((e.get("guard") or {}).get("over") and (e.get("guard") or {}).get("ceiling") == 10
+          for e in tired if e["load"] > 10 and not W.guard_exempt(e)),
       "einheitenliste L1: Karte ueber der Obergrenze ohne Gelaender")
+check(any(W.guard_exempt(e) for e in tired) and all(not (e.get("guard") or {}).get("over") for e in tired if W.guard_exempt(e)),
+      "einheitenliste L1 (C8): die Regeneration traegt ein Gelaender (oder fehlt als Trefferfall)")
 check(all(not (e.get("guard") or {}).get("over") for e in tired if e["load"] <= 10), "einheitenliste L1: Gelaender im Budget")
 
 # --- 16  no verdict without its grade ------------------------------------------
@@ -1389,6 +1399,64 @@ _duenn3 = {**_GA, "hours": [h if h["hours"] < 3 else {**h, "n": 1} for h in _GA[
 _g3 = (_ga_card("z2_210_late", ga=_duenn3).get("ga_blocks") or [{}])[0]
 eq((_g3.get("hour"), bool(_g3.get("unverified"))), (2, True), "GA ungeprueft: Rueckfall auf Stunde 2 bei 3 h geplant")
 check("curve_share" not in _ga_card("z2_60") and all(b[1] != round(0.9 * 170) for b in _ga_card("z2_60")["blocks_w"]), "GA: die 0,90 ist weg")
+
+# --- 0.70.0 · C4 C7 C8 ----------------------------------------------------------
+# C4: die Stufen-Legende steht auf L1 - der Zustand entscheidet die Art, die Last
+# ist das Gelaender. Gruen heisst nicht mehr "passt ins Budget", rot nicht mehr "Budget".
+for _k in ("green", "stimulus", "red"):
+    check("Budget" not in W.STAGES[_k]["detail"], f"C4: die Stufe {_k} spricht noch vom Budget")
+check("Zustand" in W.STAGES["green"]["detail"] and "Obergrenze" in W.STAGES["green"]["detail"],
+      "C4: gruen sagt nicht, dass der Zustand die Art traegt und die Obergrenze die Menge")
+check("Zustand" in W.STAGES["red"]["detail"] and "Last" in W.STAGES["red"]["detail"],
+      "C4: rot nennt nicht den Zustand und den Fall ohne Zustand (dann die Last)")
+check("Obergrenze" in W.STAGES["stimulus"]["detail"], "C4: Reiz nennt die Obergrenze nicht")
+eq(W.STAGES["yellow"]["detail"], "Der Zustand trägt nur bedingt. Die Einheit ist möglich, sie kostet heute "
+   "mehr als sonst.", "C4 Gegenprobe: gelb war richtig und bleibt wortgleich")
+
+# C7 (V1): die Etikettregel endet nicht bei "4". Block 5 einer 5x4 ist Arbeit -
+# in allen drei Zweigen, die Arbeitsbloecke waehlen (Steuerung, Blockmessung, Stufentest-HRVT2).
+_st_v = {"vo2max": {"watts": 250, "anchor_w": 250, "anchor_date": "2026-09-17", "moves": 0}}
+_v5s = W.scaled(W.BY_KEY["vo2_5x4"], 200, 146, steering=_st_v)
+eq([b[1] for b in _v5s["blocks_w"] if str(b[2]) == "5"], [250], "C7 Steuerung: Block 5 der 5x4 bekommt die Vorgabe")
+check("5" not in str((_v5s.get("steering_source") or {}).get("note_blocks") or ""),
+      "C7 Steuerung: der Hinweis meldet Block 5 noch als FTP-Rueckfall")
+_blk5 = {"families": {"vo2max": {"source_ok": True, "sessions": 5, "from": "2026-08-01", "to": "2026-09-20",
+                                 "latest": {"median_watts": 245, "date": "2026-09-20", "median_alpha": 0.4,
+                                            "n_blocks": 4}}}}
+_v5b = W.scaled(W.BY_KEY["vo2_5x4"], 200, 146, blocks=_blk5)
+eq([b[1] for b in _v5b["blocks_w"] if str(b[2]) == "5"], [245], "C7 Blockmessung: Block 5 der 5x4 bekommt die Messung")
+check(W._is_work_block((4, 110, "10")) and W._is_work_block((4, 110, "Block 7")),
+      "C7: zweistellige Blockzahl oder 'Block 7' gilt nicht als Arbeit")
+# Gegenprobe je Zweig: Pausen, Ein-/Ausrollen und Saetze bekommen die Zahl NICHT
+for _b in W.BY_KEY["vo2_5x4"]["blocks"]:
+    if not str(_b[2]).isdigit():
+        check(not W._is_work_block(_b), f"C7 Gegenprobe: '{_b[2]}' gilt als Arbeitsblock")
+check(not W._is_work_block((10, 105, "Satz 1")), "C7 Gegenprobe: ein Satz gilt als Arbeitsblock")
+eq([b[1] for b in _v5s["blocks_w"] if str(b[2]) in ("Pause", "Ausrollen")], [100, 100, 100, 100, 100],
+   "C7 Gegenprobe: Pausen und Ausrollen bleiben auf der FTP")
+_v30c = W.scaled(W.BY_KEY["vo2_3030"], 200, 146, steering=_st_v)
+eq(_v30c.get("watt_source"), "ftp", "C7 Gegenprobe: 30/30 bleibt auf der FTP (Entscheidung 0.61.0)")
+_v30cx = W.explain(_v30c, 200, None, None, None) or {}
+check("1–4" not in str(_v30cx.get("origin")) and "Arbeitsblöcke" in str(_v30cx.get("origin")),
+      "C7: die Herkunft nennt noch 'Block 1–4' statt Arbeitsbloecke")
+
+# C8 (Entscheidung Johannes 25.09.): eine Erholungseinheit ist NIE ueber der Grenze.
+_rec0 = W.guard(W.BY_KEY["recovery_40"], 18, 0, None) or {}
+check(_rec0.get("over") is False and not _rec0.get("text"), "C8: Regeneration gegen Obergrenze 0 steht im Gelaender")
+_sug0 = W.suggest("ready", ftp=215, budget=0, layoff_days=0)
+_rc = next(e for e in _sug0 if e["family"] == "recovery")
+check(_rc["fits_budget"] is not False and not _rc["stage"].get("over_ceiling"),
+      "C8 suggest: Regeneration gilt als ueber der Obergrenze")
+eq(_rc["stage"]["key"], "green", "C8 suggest: Regeneration ist nicht gruen")
+check(_rc["stage"]["word"] != W.GUARD_WORDS["over_word"], "C8 suggest: Regeneration traegt 'Art bleibt, Menge kürzen'")
+_gc = next(e for e in _sug0 if e["family"] == "endurance")
+check((_gc.get("guard") or {}).get("over") is True and _gc["stage"].get("over_ceiling") is True,
+      "C8 Gegenprobe: die Grundlage gegen Obergrenze 0 ist nicht mehr ueber der Grenze")
+_rw = W.rate_sessions([{"workout": "recovery_40", "title": "Regeneration", "role": "endurance"}], "ready", budget=0)[0]
+check(not (_rw.get("guard") or {}).get("over") and _rw["stage"]["key"] == "green" and _rw["fits_budget"] is not False,
+      "C8 Woche: die Regeneration im Wochenplan steht im Gelaender")
+_rt = W.rate_sessions([{"workout": "return_45", "title": "Wiedereinstieg", "role": "endurance"}], "ready", budget=0)[0]
+check((_rt.get("guard") or {}).get("over") is True, "C8 Gegenprobe: der Wiedereinstieg ist mit ausgenommen")
 
 print(f"test_workouts: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:

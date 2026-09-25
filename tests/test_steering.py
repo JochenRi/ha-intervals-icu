@@ -248,8 +248,13 @@ ok("4x8: die Streckung wird benannt",
 ok("4x8: die Zahl bleibt die gemessene Vorgabe",
    any(b[1] == _st["vo2max"]["watts"] for b in _f8["blocks_w"]))
 _f5 = WK.scaled(WK.BY_KEY["vo2_5x4"], 194, 146, blocks=_series, steering=_st)
-ok("5x4: Block 5 wird als Rueckfall benannt",
-   "5" in str(_f5["steering_source"]["note_blocks"]))
+# 0.70.0 (C7, V1) UMGESTELLT: bis 0.69.2 hielt diese Pruefung fest, dass Block 5
+# als FTP-Rueckfall benannt wird - das war der Befund V1 selbst. Jetzt bekommt
+# Block 5 die Vorgabe, und kein Rueckfall wird benannt.
+ok("5x4 (C7): Block 5 bekommt die Vorgabe",
+   [b[1] for b in _f5["blocks_w"] if str(b[2]) == "5"] == [_st["vo2max"]["watts"]])
+ok("5x4 (C7): kein Block wird mehr als Rueckfall benannt",
+   "fällt auf die FTP" not in str(_f5["steering_source"]["note_blocks"] or ""))
 ok("5x4: und die Kachel nennt sich gemischt", _f5["steering_source"]["mixed"])
 _f30 = WK.scaled(WK.BY_KEY["vo2_3030"], 194, 146, blocks=_series, steering=_st)
 ok("3030: kein Abschnitt gemessen, und das steht da",
@@ -642,6 +647,32 @@ ok("M6: ... und dort nur in migrate_legacy_anchor (sonst nur im Import)",
 _cmp = steering.compare(MICH_SERIES, {})
 ok("M7: ohne Anker keine 'neue' Wattzahl in der Vorschau", _cmp["sweetspot"]["new_watts"] is None)
 ok("M7: ... und kein Delta", _cmp["sweetspot"]["delta"] is None)
+
+# --- 0.70.0 · C6: der Satz unter drei Einheiten ist verstaendlich --------------
+# "erst 1 von 3 Einheiten seit dem Startwert" las sich wie eine Quote. Jetzt:
+# wie viele seit dem Startwert, wie viele davon daneben, und ab wann sie sich bewegt.
+_c6a = steering.family_state(VO_REAL + [point("2026-09-20", [0.9, 0.18], [250, 248], [180, 186])],
+                             "vo2max", JO_ANCHORS.get("vo2max"))
+_c6n = _c6a["n_since"]
+ok("C6: der Satz sagt nicht mehr 'erst n von 3'", "erst" not in str(_c6a["note"]) and " von " not in str(_c6a["note"]))
+ok("C6: der Satz nennt die Zahl seit dem Startwert", str(_c6a["note"]).startswith(f"{_c6n} Einheit"))
+ok("C6: der Satz sagt, wie viele daneben liegen", "daneben" in str(_c6a["note"]))
+ok("C6: der Satz nennt, ab wann sie sich bewegt", str(STEERING_MIN_UNITS) in str(_c6a["note"]))
+_c6s = [r for r in _c6a.get("rows") or [] if r.get("usable") and str(r["date"]) > JO_DATE]
+_c6d = sum(1 for r in _c6s if r["side"] != 0)
+ok("C6: 'daneben' zaehlt die Einheiten ausserhalb des Korridors",
+   ((", keine daneben" in str(_c6a["note"])) if _c6d == 0 else (f", {_c6d} daneben" in str(_c6a["note"]) or ", eine daneben" in str(_c6a["note"]))))
+# Trefferzusicherung: die Fixture nimmt den Zweig MIT einer Einheit daneben - sonst
+# faende die Pruefung ein "keine" gar nicht (0.70.0: der erste Entwurf fand es nicht,
+# weil "keine daneben" das Teilwort "eine daneben" enthaelt).
+ok("C6 Trefferzusicherung: die Fixture hat eine Einheit ausserhalb des Korridors", _c6d == 1)
+# Gegenprobe: ab drei Einheiten kein Satz, ohne Einheit der alte Satz
+# Gegenprobe im anderen Zweig: eine Einheit IM Korridor -> "keine daneben"
+_c6b = steering.family_state(VO_REAL + [point("2026-09-20", [0.9, 0.35], [250, 248], [180, 186])],
+                             "vo2max", JO_ANCHORS.get("vo2max"))
+ok("C6 Gegenprobe: eine Einheit im Korridor heisst 'keine daneben'", ", keine daneben" in str(_c6b["note"]))
+ok("C6 Gegenprobe: ohne Einheit bleibt NO_UNITS_NOTE",
+   steering.c6([], "vo2max", {"w": 250, "date": "2026-09-17"})["note"] == steering.NO_UNITS_NOTE)
 
 print(f"\ntest_steering: {CHECKS} Prüfungen, {len(failures)} Fehler")
 print("FEHLER:", failures if failures else "keine")

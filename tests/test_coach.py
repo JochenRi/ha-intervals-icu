@@ -1226,6 +1226,12 @@ check(all("context" not in r and "explained" not in r for r in _ser30),
       "30 referenz: unetikettierte Serienzeilen tragen keine Kontextschlüssel")
 eq(_td30["bands"].get("hrv", {}).get("weighted"), False,
    "30 referenz: unetikettiert bleibt die Basislinie ungewichtet")
+# 0.70.0 UMGESTELLT: der Zustand traegt den Kurzsatz `short` (Zustandszeile A2).
+# Benannt geprueft, dann AUS der Pruefsumme genommen - so haelt die alte Summe
+# weiter fest, dass sich sonst nichts bewegt hat.
+eq(_st30.get("short"), coach.STATE_SHORT.get(_st30.get("state")), "30 referenz: der Kurzsatz kommt aus STATE_SHORT")
+check(bool(_st30.get("short")), "30 referenz: der Zustand traegt keinen Kurzsatz")
+_st30 = {k: v for k, v in _st30.items() if k != "short"}
 _trio30 = {"state": _st30, "series": _ser30,
            "today_sig": [(s["key"], s["value"], s["baseline"], s["z"])
                          for s in _td30["signals"]],
@@ -1498,6 +1504,12 @@ check(_zg is not None and _zg <= -2.0, f"32 S1: der gewichtete Einbruch (state s
 _tz = {x["key"]: x["z"] for x in coach.today(ctx_build(True))["signals"]}.get("hrv")
 check(_tz is not None and _zg is not None and abs(_tz - _zg) < 0.02,
       f"32 S1: Signale ({_zg}) und Heute-Reiter ({_tz}) nennen zwei z-Werte fuer dieselbe Nacht")
+
+# --- 0.70.0 · C4: "höchstens 0 harte Tage" ----------------------------------------
+check("höchstens 0" not in calm["note"], f"C4: der Satz sagt noch 'höchstens 0 harte Tage' ({calm['note'][:120]})")
+check("kein harter Tag" in calm["note"], "C4: der Satz sagt nicht 'kein harter Tag' bei der Grenze 0")
+check(f"{const.RECOVERY_QUIET_DAYS} Tage" in calm["note"] and "Setzung" in calm["note"],
+      "C4 Gegenprobe: der Rest des Satzes (ruhige Tage, Setzung) ist verloren")
 
 print(f"test_coach: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:

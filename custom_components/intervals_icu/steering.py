@@ -391,8 +391,15 @@ def c6(rows: list[dict[str, Any]], family: str,
     if not since:
         note = NO_UNITS_NOTE
     elif len(since) < STEERING_MIN_UNITS:
-        note = (f"erst {len(since)} von {STEERING_MIN_UNITS} Einheiten seit dem "
-                "Startwert — die Vorgabe bewegt sich noch nicht")
+        # 0.70.0 (C6): "erst 1 von 3 Einheiten seit dem Startwert" las sich wie
+        # eine Quote. Jetzt: wie viele seit dem Startwert, wie viele davon
+        # ausserhalb des Korridors ("daneben", wie TILE_INSIDE), und ab wann
+        # sich die Vorgabe ueberhaupt bewegen kann.
+        off = sum(1 for r in since if r.get("side"))
+        n = len(since)
+        note = (f"{n} {'Einheit' if n == 1 else 'Einheiten'} seit dem Startwert, "
+                f"{'keine' if off == 0 else ('eine' if off == 1 else off)} daneben — "
+                f"bewegen kann sich die Vorgabe frühestens ab {STEERING_MIN_UNITS} Einheiten")
     return {
         "watts": target, "anchor_w": anchor_w, "anchor_date": anchor_date,
         "anchor_source": anchor.get("source"),

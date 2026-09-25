@@ -814,8 +814,13 @@ def _is_work_block(block: tuple) -> bool:
     driften auseinander. Sie steht hier nur EINMAL, damit die Ehrlichkeitsregel
     darunter dieselbe Auswahl beurteilt, die auch gerechnet wird.
     """
+    # 0.70.0 (C7, V1): JEDE Blockzahl. Bis 0.69.2 endete die Regel bei "4" -
+    # Block 5 einer 5x4 fiel auf die FTP (224 statt 250 W). Ein Etikett, das mit
+    # einer Ziffer beginnt oder "Block" heisst, ist ein Arbeitsblock; Saetze,
+    # Pausen, Ein- und Ausrollen nicht.
+    label = str(block[2]).strip().lower()
     return bool(len(block) > 3 and block[3]
-                or str(block[2]).lower().startswith(("block", "1", "2", "3", "4")))
+                or label.startswith("block") or label[:1].isdigit())
 
 
 def _stage_from_measurement(entry: dict[str, Any], ftp: float | None, watts: int,
@@ -1002,7 +1007,7 @@ def scaled(entry: dict[str, Any], ftp: float | None, aerobic_hr: int | None,
         latest = measured["latest"]
         staged = []
         for block in entry["blocks"]:
-            if len(block) > 3 and block[3] or str(block[2]).lower().startswith(("block", "1", "2", "3", "4")):
+            if _is_work_block(block):   # EINE Etikettregel (0.70.0, C7)
                 staged.append((block[0], latest["median_watts"], block[2], *block[3:]))
             else:
                 staged.append((block[0], round(ftp * block[1] / 100) if ftp else None,
@@ -1082,9 +1087,7 @@ def scaled(entry: dict[str, Any], ftp: float | None, aerobic_hr: int | None,
             # Einheit je nach Quelle eine andere FORM. Bei der zweiten Schwelle
             # sind das die Arbeitsbloecke (wie bei der Blockmessung), bei der
             # ersten der gleichmaessige Hauptteil (wie bei der Kurve).
-            work = (len(block) > 3 and block[3]) or (
-                want == "ramp_hrvt2"
-                and str(block[2]).lower().startswith(("block", "1", "2", "3", "4")))
+            work = _is_work_block(block) if want == "ramp_hrvt2" else is_elastic(block)   # 0.70.0, C7
             if work:
                 staged.append((block[0], target, block[2], *block[3:]))
                 changed = True
@@ -1215,7 +1218,9 @@ STAGES: dict[str, dict[str, str]] = {
     "green": {
         "label": "grün",
         "word": "passt",
-        "detail": "Zustand unauffällig, die Last passt ins Budget.",
+        # 0.70.0 (C4): auf L1 - der Zustand traegt die Art, die Obergrenze die Menge.
+        "detail": "Der Zustand trägt diese Art. Liegt die Last über der Obergrenze, bleibt "
+                  "die Art und die Menge wird gekürzt.",
     },
     "yellow": {
         "label": "gelb",
@@ -1226,14 +1231,15 @@ STAGES: dict[str, dict[str, str]] = {
     "stimulus": {
         "label": "Reiz",
         "word": "kostet Erholung, setzt aber den Reiz",
-        "detail": "Über dem Lastbudget, aber der Zustand trägt und die letzten Tage boten "
+        "detail": "Über der Obergrenze, aber der Zustand trägt und die letzten Tage boten "
                   "Erholung. Das ist funktionelles Überreichen: ein kurzer gewollter "
                   "Einbruch, der nach Erholung in Superkompensation mündet.",
     },
     "red": {
         "label": "rot",
         "word": "heute nicht",
-        "detail": "Zustand oder Budget sprechen dagegen.",
+        "detail": "Der Zustand spricht dagegen. Nur ohne Zustand (keine HRV-Basislinie) "
+                  "entscheidet die Last.",
     },
 }
 
@@ -1532,6 +1538,19 @@ def stage(fit: str, fits_budget: bool | None, recovery: bool = False,
     return out
 
 
+# 0.70.0 (C8, Entscheidung Johannes 25.09.): eine ERHOLUNGSEINHEIT ist nie "ueber
+# der Grenze". Bis 0.69.2 stand bei Obergrenze 0 auch die Regeneration (Last 18)
+# im Gelaender - die Einheit, die gerade dann die richtige ist. Die Familie steht
+# hier, EINE Stelle; guard(), suggest() und rate_sessions() fragen sie.
+GUARD_EXEMPT_FAMILIES = ("recovery",)
+
+
+def guard_exempt(entry: dict[str, Any]) -> bool:
+    """Steht diese Einheit ausserhalb des Gelaenders (C8)?"""
+    fam = entry.get("family") or FAMILY_OF_KEY.get(str(entry.get("key") or ""))
+    return fam in GUARD_EXEMPT_FAMILIES
+
+
 def guard(entry: dict[str, Any], load: float, ceiling: float | None,
           hours: float | None = None) -> dict[str, Any] | None:
     """Das Gelaender an der Menge (L1): Last gegen Obergrenze, und bis zu
@@ -1544,8 +1563,11 @@ def guard(entry: dict[str, Any], load: float, ceiling: float | None,
     """
     if ceiling is None:
         return None
-    over = float(load) > float(ceiling)
+    exempt = guard_exempt(entry)
+    over = float(load) > float(ceiling) and not exempt
     out: dict[str, Any] = {"over": over, "load": round(load), "ceiling": round(ceiling), "hours_fit": None}
+    if exempt:
+        out["exempt"] = True
     if not over:
         return out
     text = GUARD_WORDS["over"].format(load=round(load), ceiling=round(ceiling))
@@ -1635,7 +1657,7 @@ def suggest(state: str, ftp: float | None = None, aerobic_hr: int | None = None,
             hard_days_last_7=hard_days_last_7, layoff_days=layoff_days,
             infection=infection,
         )
-        fits_budget = None if budget is None else entry["load"] <= budget
+        fits_budget = None if budget is None else (entry["load"] <= budget or guard_exempt(BY_KEY[key]))
         entry.update({
             "family": family_key, "family_label": family_label,
             "fit": verdict, "fit_reason": reason,
@@ -1720,7 +1742,7 @@ def rate_sessions(sessions: list[dict[str, Any]], state: str,
             hard_days_last_7=hard_days_last_7, layoff_days=layoff_days,
             infection=infection,
         )
-        fits_budget = None if budget is None else load <= budget
+        fits_budget = None if budget is None else (load <= budget or guard_exempt(entry))
         rated.update({
             "key": entry.get("key"),
             "family": family,
@@ -1980,12 +2002,12 @@ def explain(entry: dict[str, Any], ftp: float | None, curve: dict[str, Any] | No
         ss = entry.get("steering_source") or {}
         if ss.get("watts"):
             # 0.69.2 (F1): es GIBT eine Vorgabe - sie gilt fuer Arbeitsbloecke
-            # (Block 1-4), und diese Form (Saetze eines 30/30, 30/15) bekommt sie
+            # (jede Blockzahl, 0.70.0), und diese Form (Saetze eines 30/30, 30/15) bekommt sie
             # nicht (Entscheidung 0.61.0, "Etiketten ehrlich"). Die Karte sagt
             # das, statt "nicht gemessen" - die Kachel daneben sagt ja das
             # Gegenteil.
             origin = (f"Rückfall auf die FTP — deine Vorgabe ({ss['watts']} W aus "
-                      f"{ss.get('n_units') or 0} Einheiten) gilt für Arbeitsblöcke (Block 1–4); "
+                      f"{ss.get('n_units') or 0} Einheiten) gilt für Arbeitsblöcke (Block 1, 2, 3 …); "
                       f"diese Form bekommt sie nicht")
             units_count = 0
             units_note = str(ss.get("note_blocks") or "")
