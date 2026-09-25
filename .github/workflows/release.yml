@@ -1,0 +1,83 @@
+name: Release
+
+# Legt Tag + Release an, sobald auf main eine neue Versionsnummer ankommt.
+# Vorher läuft der ganze Prüfstand (Python 3.13 + Node); rot = kein Release.
+# Text des Releases: docs/releases/vX.Y.Z.md, sonst die Commit-Nachricht.
+# Von Hand (Actions -> Release -> Run workflow) standardmäßig als Probelauf:
+# prüft alles, zeigt was er anlegen würde, legt nichts an.
+#
+# Wichtig: ein Commit, der Dateien unter .github/workflows/ ändert, darf nicht
+# zugleich die Versionsnummer anheben - GITHUB_TOKEN darf auf so einen Commit
+# kein Release setzen (GitHub-Doku "Create a release").
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "custom_components/intervals_icu/manifest.json"
+  workflow_dispatch:
+    inputs:
+      probe:
+        description: "Probelauf: nur prüfen, nichts anlegen"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Prüfstand
+        working-directory: tests
+        run: |
+          fail=0; sum=0; files=0
+          for f in test_*.py test_*.js; do
+            case "$f" in *.py) r="python $f";; *) r="node $f";; esac
+            set +e; out=$($r 2>&1); rc=$?; set -e
+            c=$(echo "$out" | grep -oE "[0-9]+ Prüfungen" | tail -1 | grep -oE "[0-9]+" || true)
+            sum=$((sum + ${c:-0})); files=$((files + 1))
+            echo "$f rc=$rc ${c:-?}"
+            if [ "$rc" -ne 0 ]; then fail=1; echo "$out" | tail -20; fi
+          done
+          echo "Dateien=$files Summe=$sum"
+          exit $fail
+
+      - name: Version lesen und abgleichen
+        id: v
+        run: |
+          V=$(jq -r .version custom_components/intervals_icu/manifest.json)
+          P=$(grep -oE 'PANEL_VERSION = "[^"]+"' custom_components/intervals_icu/const.py | grep -oE '[0-9][^"]*')
+          echo "manifest=$V const=$P"
+          if [ "$V" != "$P" ]; then echo "manifest.json ($V) und PANEL_VERSION ($P) weichen ab"; exit 1; fi
+          echo "tag=v$V" >> "$GITHUB_OUTPUT"
+
+      - name: Release anlegen
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.v.outputs.tag }}
+          PROBE: ${{ github.event_name == 'workflow_dispatch' && inputs.probe }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "$TAG gibt es schon - nichts zu tun"; exit 0
+          fi
+          NOTES="docs/releases/$TAG.md"
+          if [ ! -f "$NOTES" ]; then git log -1 --format=%B > /tmp/notes.md; NOTES=/tmp/notes.md; fi
+          echo "würde anlegen: $TAG auf $GITHUB_SHA, Text aus $NOTES"
+          if [ "$PROBE" = "true" ]; then echo "PROBELAUF - nichts angelegt"; exit 0; fi
+          gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --notes-file "$NOTES" --latest
