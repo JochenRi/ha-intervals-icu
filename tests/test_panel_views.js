@@ -231,14 +231,21 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   // the three separate bars became one axis with three dots: position on a
   // COMMON scale rather than three tracks that cannot be compared
   ok(!/class="zbar/.test(html), "trainer: getrennte Balken wieder da");
-  ok((html.match(/class="zdot"/g) || []).length === 3, "trainer: nicht drei Punkte auf einer Achse");
+  // 0.71.0 UMGESTELLT: die drei Punkte stehen jetzt ZWEIMAL da - klein offen
+  // (Mini-Streifen) und gross im Aufklapper; gezaehlt wird je Ort.
+  const zgross = html.slice(html.indexOf('class="zplot"'));
+  const zklein = html.slice(html.indexOf('class="zmini"'), html.indexOf('data-keep="trainer:zustand"'));
+  ok((zgross.match(/class="zdot"/g) || []).length === 3 && (zklein.match(/class="zdot"/g) || []).length === 3,
+     "trainer: nicht drei Punkte auf einer Achse (gross und klein)");
   ok(/class="zband"/.test(html), "trainer: Normalband fehlt");
   ok(/class="zzero"/.test(html), "trainer: Basislinie nicht markiert");
   // labels sit ON the rows now, not in a legend below - a legend forces the
   // eye between two places and the mapping into working memory
   ok((html.match(/class="zrow"/g) || []).length === 3, "trainer: nicht drei beschriftete Zeilen");
-  ok((html.match(/class="zname"/g) || []).length === 3, "trainer: Zeilen ohne Namen");
-  ok((html.match(/class="zval/g) || []).length === 3, "trainer: Werte nicht beziffert");
+  ok((zgross.match(/class="zname"/g) || []).length === 3 && (zklein.match(/class="zname"/g) || []).length === 3,
+     "trainer: Zeilen ohne Namen");
+  ok((zgross.match(/class="zval/g) || []).length === 3 && (zklein.match(/class="zval/g) || []).length === 3,
+     "trainer: Werte nicht beziffert");
   ok(!/class="zleg"/.test(html), "trainer: getrennte Legende wieder da");
   contains(html, "±0,5 = Rauschen", "trainer: Normalband nicht erklärt");
   contains(html, "7-Tage-Mittel HRV", "trainer: Signal nicht benannt");
@@ -3150,7 +3157,9 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   const zeile = tr.slice(tr.indexOf('class="card tline"'), tr.indexOf('data-keep="trainer:zustand"'));
   ok(/im Normalbereich/.test(zeile) && /harter Reiz möglich/.test(zeile), "A2: Wort und Satz stehen nicht in der Zeile");
   const zBody = faltung(tr, "trainer:zustand") || "";
-  ok(/class="zdot"/.test(zBody) && !/class="zdot"/.test(tr.replace(zBody, "")), "A2: die Balken stehen nicht (nur) im Aufklapper");
+  // 0.71.0 UMGESTELLT: offen stehen jetzt die Mini-Streifen (Skizze 0.71.0, 1);
+  // der GROSSE zplot mit Skala bleibt nur im Aufklapper.
+  ok(/class="zplot"/.test(zBody) && !/class="zplot"/.test(tr.replace(zBody, "")), "A2: die grossen Balken stehen nicht (nur) im Aufklapper");
   ok(zu(tr, "trainer:zustand"), "A2: der Zustands-Aufklapper ist nicht zugeklappt");
   ok(/Javaloyes|Normalband/.test(zBody), "A2: die Begruendung steht nicht im Aufklapper");
 
@@ -3307,6 +3316,138 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   T._goal = g4; T._render();
   ok(/LEGENDE GRUEN AUS DEM BACKEND/.test(z(T._view.innerHTML)), "C4: die Legende in Quellen liest nicht die Payload");
   T._goal = F.goal();
+}
+
+/* ── 0.71.0 · Skizze Fassung 0.71.0, Abschnitte 1–3 ──────────────────────
+   1 Mini-Streifen immer sichtbar, EINE Funktion mit dem grossen zplot
+   2 Familienkoepfe im zugeklappten Hintergrund, aus denselben Daten wie die Kacheln
+   3 _gaText mit umschliessendem Element. Vor dem Bau rot (Bericht 0.71.0). */
+{
+  const P = new M.Panel(); P._nowIso = F.TODAY;
+  const z = (h) => String(h).replace(/\s+/g, " ");
+  const bis = (h, marke) => h.slice(0, h.indexOf(marke) < 0 ? h.length : h.indexOf(marke));
+  const ab = (h, marke) => h.slice(Math.max(0, h.indexOf(marke)));
+  const lagen = (h) => [...h.matchAll(/class="zdot" style="left:([\d.]+)%;background:([^"]+)"/g)].map((m) => [m[1], m[2]]);
+  const fall = (w, h3, r3) => {
+    const c = F.coach("ready");
+    return { ...c, state: { ...c.state, week_z: w, recent_hrv_z: h3, recent_rhr_z: r3 } };
+  };
+  const FAELLE = [["heute", -0.02, -0.07, 0.21], ["einbruch", -1.4, -2.1, 1.2], ["grenzfall", -0.5, 3.8, null]];
+  for (const [name, w, h3, r3] of FAELLE) {
+    const html = z(P.rTrainer(fall(w, h3, r3), F.readiness()));
+    const oben = bis(html, 'data-keep="trainer:zustand"');
+    const falt = ab(html, 'data-keep="trainer:zustand"');
+    // 1a · die Zeile steht offen, unter der Kopfzeile, vor dem Aufklapper
+    ok(/class="zmini"/.test(oben), `1 ${name}: die Mini-Streifen stehen nicht offen unter der Kopfzeile`);
+    const mini = oben.slice(oben.indexOf('class="zmini"'));
+    ok((mini.match(/class="zrow zs"/g) || []).length === 3, `1 ${name}: nicht drei Mini-Streifen`);
+    ok(/HRV 7 T/.test(mini) && /HRV 3 T/.test(mini) && /Ruhepuls 3 T/.test(mini), `1 ${name}: Kurznamen fehlen`);
+    // 1b · Werte mit Vorzeichen, echte Zahl auch ausserhalb ±3; fehlend = "keine Daten", kein Punkt
+    for (const v of [w, h3, r3]) {
+      if (v == null) continue;
+      ok(mini.includes(M.sign(v, 2)), `1 ${name}: der Wert ${M.sign(v, 2)} fehlt im Mini-Streifen`);
+    }
+    const nNull = [w, h3, r3].filter((v) => v == null).length;
+    ok(lagen(mini).length === 3 - nNull, `1 ${name}: ${lagen(mini).length} Punkte statt ${3 - nNull}`);
+    ok((mini.match(/keine Daten/g) || []).length === nNull, `1 ${name}: fehlender Wert nicht als 'keine Daten'`);
+    // 1c · GLEICHE Lage und Farbe wie im grossen zplot (eine Funktion, eine Positionsformel)
+    const gross = lagen(falt.slice(falt.indexOf('class="zplot"')));
+    const klein = lagen(mini);
+    ok(gross.length === klein.length && gross.every((g, i) => g[0] === klein[i][0] && g[1] === klein[i][1]),
+       `1 ${name}: Mini-Streifen und grosser zplot liegen verschieden (${JSON.stringify(klein)} / ${JSON.stringify(gross)})`);
+    // 1d · Aufklapper bleibt: grosse Streifen mit Skala
+    ok(/class="zscale"/.test(falt) && !/class="zscale"/.test(oben), `1 ${name}: die Skala steht nicht (nur) im Aufklapper`);
+  }
+  // Clipping am Rand: +3,8 steht bei 100 %, −0,5 genau am Bandrand (41,7 %)
+  {
+    const html = z(P.rTrainer(fall(-0.5, 3.8, null), F.readiness()));
+    const mini = bis(html, 'data-keep="trainer:zustand"');
+    const l = lagen(mini.slice(mini.indexOf('class="zmini"')));
+    ok(l[0] && l[0][0] === "41.7" && l[1] && l[1][0] === "100.0", `1 Grenzfall: Lage ${JSON.stringify(l)} statt 41.7 / 100.0`);
+    ok(mini.includes("+3,80"), "1 Grenzfall: die echte Zahl +3,80 steht nicht da");
+  }
+  // 1e · EINE Stelle: die Positionsformel steht einmal im Quelltext, der grosse zplot nutzt dieselbe Funktion
+  {
+    const src = H.source();
+    ok((src.match(/\+ 3\) \/ 6 \* 100/g) || []).length === 1, "1 eine Stelle: die Positionsformel steht nicht genau einmal im Quelltext");
+    ok(/_zRow\(/.test(src.slice(src.indexOf("  rTrainer(c, rd) {"), src.indexOf("  rHintergrund(c) {"))),
+       "1 eine Stelle: rTrainer baut die Streifen nicht ueber _zRow");
+  }
+  // 1f · die Doppelung im Aufklapper: der Zustandssatz steht einmal
+  {
+    const c = F.coach("ready");
+    const same = { ...c, reasons: [{ weil: "im Normalbereich", quelle: "Javaloyes", text: c.state.detail }] };
+    const html = z(P.rTrainer(same, F.readiness()));
+    ok(html.split(c.state.detail).length - 1 === 1, "1 Doppelung: der Zustandssatz steht zweimal im Aufklapper");
+    const anders = { ...c, reasons: [{ weil: "x", quelle: "y", text: "EIN ANDERER GRUND." }] };
+    const h2 = z(P.rTrainer(anders, F.readiness()));
+    ok(h2.includes(c.state.detail) && h2.includes("EIN ANDERER GRUND."), "1 Doppelung Gegenprobe: ein anderer Grund verdraengt den Zustandssatz");
+  }
+
+  // 2 · Koepfe im ZUGEKLAPPTEN Hintergrund, aus denselben Daten wie die Kacheln
+  {
+    const Q = new M.Panel(); Q._nowIso = F.TODAY;
+    Q._blocks = F.blocks({ steering_on: true });
+    const v2 = F.fatigueV2Block();
+    Q._fatigue = F.fatigue({ v2 });
+    const hg = z(Q.rHintergrund(F.coach("ready")));
+    ok(!/data-keep="trainer:hintergrund"[^>]*\sopen/.test(hg), "2: der Hintergrund ist nicht zugeklappt");
+    const sum = hg.slice(0, hg.indexOf("</summary>"));
+    ok(/class="bgheads"/.test(sum), "2: die Koepfe stehen nicht in der zugeklappten Zeile");
+    const r0 = (v2.reversal || v2).plan[0];
+    ok(new RegExp(`Grundlage <b class="tn">${M.fmt(r0.watts)} W</b> \\(${M.fmt(r0.hours)} h, ±${M.fmt(r0.band.half)} W · Umkehrung\\)`).test(sum),
+       `2: Grundlage-Kopf nicht aus der Kachel (${sum.slice(sum.indexOf("bgheads"), sum.indexOf("bgheads") + 260)})`);
+    const b = Q._blocks;
+    for (const [key, nm] of [["sweetspot", "SweetSpot"], ["vo2max", "VO2max"]]) {
+      const c = b.compare[key];
+      ok(sum.includes(`${nm} <b class="tn">${M.fmt(c.new_watts)} W</b> (${M.fmt(c.new_band.low)}–${M.fmt(c.new_band.high)} · Vorgabe)`),
+         `2: ${nm}-Kopf nicht aus der Kachel`);
+    }
+    // Gegenprobe Rechenschalter aus (alte Kurve): Kopf = erste Stunde der Kurve, ohne Spanne
+    Q._fatigue = F.fatigue();
+    const f1 = F.fatigue().plan[0];
+    ok(z(Q.rHintergrund(F.coach("ready"))).includes(`Grundlage <b class="tn">${M.fmt(f1.watts)} W</b> (${M.fmt(f1.hours)} h · Kurve)`),
+       "2: mit der alten Kurve passt der Grundlage-Kopf nicht zur Kachel");
+    Q._fatigue = F.fatigue({ v2 });
+    // reaktiv: eine andere Zahl in der Kachel schlaegt im Kopf durch
+    Q._blocks = F.blocks({ steering_on: true });
+    Q._blocks.compare = { ...Q._blocks.compare, vo2max: { ...Q._blocks.compare.vo2max, new_watts: 263 } };
+    ok(/VO2max <b class="tn">263 W<\/b>/.test(z(Q.rHintergrund(F.coach("ready")))), "2: der Kopf rechnet selbst statt die Kachel zu lesen");
+    // Schalter aus: der Kopf sagt, was die Kachel sagt (letzte Einheit, kein Band)
+    Q._blocks = F.blocks({ steering_on: false });
+    const aus = z(Q.rHintergrund(F.coach("ready")));
+    ok(aus.includes(`VO2max <b class="tn">${M.fmt(Q._blocks.compare.vo2max.old_watts)} W</b> (letzte Einheit)`), "2: Schalter aus: Kopf passt nicht zur Kachel");
+    // Gegenprobe ohne Kachel: keine Zahl, "noch keine Kachel"
+    const leer = new M.Panel(); leer._nowIso = F.TODAY;
+    const bl = F.blocks({ steering_on: true }); delete bl.families.vo2max; delete bl.compare.vo2max; delete bl.steering.vo2max;
+    leer._blocks = bl; leer._fatigue = null;
+    const lh = z(leer.rHintergrund(F.coach("ready")));
+    const ls = lh.slice(0, lh.indexOf("</summary>"));
+    ok(/Grundlage noch keine Kachel/.test(ls) && /VO2max noch keine Kachel/.test(ls) && /SweetSpot <b class="tn">190 W<\/b>/.test(ls),
+       "2 Gegenprobe: ohne Kachel steht eine Zahl oder der Hinweis fehlt");
+    // Trefferzusicherung fuer den Familien-Check allein: die Kachel fehlt (keine
+    // Familie, oder ausgeblendet), die Vergleichszahl steht aber noch in der Payload
+    const nurVgl = new M.Panel(); nurVgl._nowIso = F.TODAY;
+    const bv = F.blocks({ steering_on: true }); delete bv.families.vo2max;
+    nurVgl._blocks = bv; nurVgl._fatigue = null;
+    ok(/VO2max noch keine Kachel/.test(z(nurVgl.rHintergrund(F.coach("ready")))), "2 Gegenprobe: ohne Kachel, aber mit Vergleichszahl steht eine Zahl");
+    const bh = F.blocks({ steering_on: true }); bh.hidden_families = ["sweetspot"];
+    nurVgl._blocks = bh;
+    ok(/SweetSpot noch keine Kachel/.test(z(nurVgl.rHintergrund(F.coach("ready")))), "2 Gegenprobe: eine ausgeblendete Kachel bekommt einen Kopf");
+    // die Zeile in der aufgeklappten Familie bleibt
+    const W = new M.Panel(); W._blocks = F.blocks({ steering_on: true }); W._workouts = F.workouts("voll");
+    ok(/Kachel VO2max: <b class="tn">250 W<\/b> \(Vorgabe\)/.test(z(W.rWorkouts(W._workouts, false))), "2: die Kachelzeile in der Familie fehlt");
+  }
+
+  // 3 · _gaText: der Herkunftsabsatz der Grundlage hat EIN umschliessendes Element
+  {
+    const e = { watt_source: "ga", ga_blocks: [{ label: "gleichmäßig", watts: 142, target: 142, limit: 169, hour: 1, n: 6,
+                load_w: 139.6, alpha: 1.327, mid: 90.6 }] };
+    const g = z(P._gaText(e));
+    ok(/^<p class="fitwhy"> ?<svg[\s\S]*?<\/svg> ?<span>[\s\S]*<\/span><\/p>$/.test(g.trim()),
+       "3: _gaText steht ohne umschliessendes Element im Flex-Absatz");
+    ok(/fahr ~142 W, nicht über 169 W/.test(g), "3 Gegenprobe: der Inhalt ging verloren");
+  }
 }
 
 report("test_panel_views");

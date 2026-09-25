@@ -1263,7 +1263,7 @@ class IntervalsIcuPanel extends HTMLElement {
     // zurückgerechnet, und darunter die Belegung der ERSTEN Stunde. Zwei Zahlen,
     // ein Etikett (§7). Bei Dauer null ist nie gefahren worden; jede Zahl dort
     // wäre Studienform — dieselbe Streichung wie 0.57.0, nur als Kopfzahl.
-    const erster = plan[0] || null;
+    const erster = (this._fatHead(f) || {}).row || plan[0] || null;   // Kopf = _fatHead (0.71.0)
     const baseNote = erster
       ? `gemessen: ${fmt(erster.n)} Fahrten in Stunde ${fmt(erster.hours)}, Repräsentantenmethode `
         + `nach Andriolo, auf Intervals' eigener DFA-Fensterung`
@@ -1459,7 +1459,8 @@ class IntervalsIcuPanel extends HTMLElement {
           <p class="fcap">${esc(rw.literature || "")}</p></details>
         ${this._fatigueDropped(f)}</div>`;
     }
-    const at = (i) => plan[i == null ? 0 : i] || plan[0];
+    // Ruhezeile = Kopf (_fatHead, 0.71.0) - dieselbe Zeile wie im Hintergrund-Kopf
+    const at = (i) => (i == null ? (this._fatHead(f) || {}).row : plan[i]) || plan[0];
     const fahrten = (n) => fmt(n) + (n === 1 ? " Fahrt" : " Fahrten");
     const covered = rv.covered_until_hours;
 
@@ -1745,8 +1746,38 @@ class IntervalsIcuPanel extends HTMLElement {
   /* Die Kopfzahl einer Blockkachel - EINE Stelle (0.70.0): die Kachel selbst
      und die Familienzeile im Trainer lesen sie hier, nicht jede fuer sich. */
   _famHead(b, key) {
+    const h = this._famHeadFull(b, key);
+    return h ? h.watts : null;
+  }
+
+  /* Kopf einer Blockkachel mit Band und Herkunft (0.71.0: auch fuer die
+     zugeklappte Zeile im Hintergrund). Band nur bei eingeschalteter Vorgabe,
+     wie in der Kachel. Ohne Familie in der Payload oder ohne Zahl: keine Kachel. */
+  _famHeadFull(b, key) {
+    const fam = ((b || {}).families || {})[key];
+    if (!fam || ((b || {}).hidden_families || []).includes(key)) return null;
     const c = ((b || {}).compare || {})[key] || {};
-    return (b || {}).steering_on && c.new_watts != null ? c.new_watts : c.old_watts;
+    const an = !!(b || {}).steering_on;
+    const watts = an && c.new_watts != null ? c.new_watts : c.old_watts;
+    if (watts == null) return null;
+    return { watts, band: an ? (c.new_band || null) : null, origin: an ? "Vorgabe" : "letzte Einheit" };
+  }
+
+  /* Kopf der Ermuedungskachel (0.71.0) - die Zeile, die die Kachel im Ruhezustand
+     zeigt: bei der Umkehrung (v2 an, mit Umrechnung) Stunde 1 samt Spanne, sonst
+     die erste Stunde der Kurve. Beide Kacheln lesen ihre Ruhezeile HIER. */
+  _fatHead(f) {
+    if (!f) return null;
+    const v2 = f.v2;
+    if (v2 && v2.on) {
+      const rv = v2.reversal || {};
+      const row = (rv.plan || [])[0];
+      if (!row || (rv.bridges || {}).mid == null || row.watts == null) return null;
+      return { row, watts: row.watts, hours: row.hours, half: row.band ? row.band.half : null, origin: "Umkehrung" };
+    }
+    const row = (f.plan || [])[0];
+    if (!row || row.watts == null || !(f.measured || []).length) return null;
+    return { row, watts: row.watts, hours: row.hours, half: null, origin: "Kurve" };
   }
 
   _famValue(b, key) {
@@ -1755,7 +1786,8 @@ class IntervalsIcuPanel extends HTMLElement {
     const w = b.steering_words || {};
     const an = !!b.steering_on;
     const band = an ? c.new_band : null;
-    const watts = this._famHead(b, key);
+    const watts = this._famHead(b, key) != null ? this._famHead(b, key)
+      : (an && c.new_watts != null ? c.new_watts : c.old_watts);
     if (watts == null && !Object.keys(st).length) return "";
     const NAME = { vo2max: "VO2max", sweetspot: "SweetSpot", tempo: "Tempo" };
     const satz = (vorlage, werte) => String(vorlage || "").replace(
@@ -2179,13 +2211,15 @@ class IntervalsIcuPanel extends HTMLElement {
     const satz = hasTarget
       ? `<b>fahr ~${fmt(g.target)} W, nicht über ${fmt(g.limit)} W</b>`
       : `<b>nicht über ${fmt(g.limit)} W</b> — kein Ziel eingetragen, die Einheit trägt die Grenze`;
-    return `<p class="fitwhy">${ico("info", C.blue, 14)} ${satz}. Ziel und Grenze kommen aus
+    // 0.71.0 (Skizze 3): EIN umschliessendes Element - .fitwhy ist ein
+    // Flex-Absatz, und ohne <span> zerfiel der Text in Spalten.
+    return `<p class="fitwhy">${ico("info", C.blue, 14)} <span>${satz}. Ziel und Grenze kommen aus
         der Ermüdungskachel für diese Dauer: abgelesen in Stunde ${fmt(g.hour)}
         (${fmt(g.n)} ${g.n === 1 ? "Fahrt" : "Fahrten"}), gehaltene Last ${fmt(g.load_w)} W
         bei alpha ${fmt(g.alpha, 2)}, umgerechnet mit ${fmt(g.mid, 1)} W je alpha aus deinem
         Stufentest — eine <b>Setzung</b>, keine Messung dieser Einheit.
         ${g.unverified ? `${ico("warn", C.amber, 13)} <b>ab 3 h ungeprüft — Abnahmefahrt offen.</b>` : ""}
-        Abschnitte ohne Kennzeichnung sind Ein- und Ausrollen und bleiben Prozent der FTP.</p>`;
+        Abschnitte ohne Kennzeichnung sind Ein- und Ausrollen und bleiben Prozent der FTP.</span></p>`;
   }
 
   /* Die Herkunft der Watt als Absatz — bis B2c stand er immer offen in der Karte.
@@ -4108,40 +4142,42 @@ class IntervalsIcuPanel extends HTMLElement {
         <span class="src">${esc(x.text)}</span>
         <em class="qq">${esc(x.quelle)}</em></li>`).join("")}</ul>` : "";
 
-    // One axis, three dots - not three separate bars. Position on a COMMON
-    // scale is the most accurately read encoding there is; three bars with
-    // their own tracks force a comparison across separate scales.
+    // Die drei Signale, EINMAL aufgezaehlt: langer Name (grosser zplot im
+    // Aufklapper), Kurzname (Mini-Streifen, 0.71.0), Wert, Farbe.
+    const sig = [
+      ["7-Tage-Mittel HRV", "HRV 7 T", st.week_z, C.blue],
+      ["letzte 3 Tage HRV", "HRV 3 T", st.recent_hrv_z, ROLE.series],
+      ["letzte 3 Tage Ruhepuls", "Ruhepuls 3 T", st.recent_rhr_z, ROLE.hr],
+    ];
+    // One axis per row, three rows - position on a COMMON scale is the most
+    // accurately read encoding there is. The band and zero line run behind
+    // every row, so all three still read on one scale.
     const zplot = (() => {
-      const pts = [
-        ["7-Tage-Mittel HRV", st.week_z, C.blue],
-        ["letzte 3 Tage HRV", st.recent_hrv_z, ROLE.series],
-        ["letzte 3 Tage Ruhepuls", st.recent_rhr_z, ROLE.hr],
-      ].filter(([, v]) => v != null);
+      const pts = sig.filter(([, , v]) => v != null);
       if (!pts.length) return "";
-      const pos = (z) => ((Math.max(-3, Math.min(3, z)) + 3) / 6 * 100).toFixed(1);
-      // One row per signal, name on the LEFT, value on the RIGHT of the same
-      // row - no legend to look up. The band and zero line run behind every
-      // row, so all three still read on one scale.
       return `<div class="zplot">
-        ${pts.map(([label, z, col]) => `<div class="zrow">
-          <span class="zname">${esc(label)}</span>
-          <span class="ztrack">
-            <i class="zband"></i><i class="zzero"></i>
-            <i class="zdot" style="left:${pos(z)}%;background:${col}"></i>
-          </span>
-          <b class="zval tn" style="color:${col}">${sign(z, 2)}</b>
-        </div>`).join("")}
+        ${pts.map(([label, , z, col]) => this._zRow(label, z, col, "big")).join("")}
         <div class="zscale"><span>−3 SD</span><span>±0,5 = Rauschen</span><span>+3 SD</span></div>
       </div>`;
     })();
+    /* 0.71.0 (Skizze 1): DIE DREI WERTE IMMER SICHTBAR - Mini-Streifen unter der
+       Kopfzeile, aus DERSELBEN Funktion wie der grosse zplot (_zRow, Groessen-
+       Parameter): gleiche Achse, gleiches Band, gleiche Farben. Ein fehlender
+       Wert steht als "keine Daten" da, ohne Punkt. */
+    const zmini = `<div class="zmini">${sig.map(([, kurz, z, col]) =>
+      this._zRow(kurz, z, col, "mini")).join("")}</div>`;
 
     /* 0.70.0 (A2): ZUSTAND HEUTE, EINE ZEILE - Ampelsymbol, Wort, ein Satz.
        Die Balken und die Begruendungen (Javaloyes, Seiler, harte Tage) klappen
        darunter zu; der Satz (`short`) und die Begruendung (`detail`) kommen
        beide aus coach.state(). Warnungen bleiben offen - sie sind keine
        Begruendung, sondern eine Warnung. */
+    // 0.71.0: der Zustandssatz stand im Aufklapper zweimal - als `detail` und als
+    // erster Grund (coach.reasons traegt ihn mit Quelle). Einmal reicht: steht er
+    // schon unter den Gruenden, faellt die Zeile darueber weg.
+    const doppelt = (c.reasons || []).some((x) => x && x.text === st.detail);
     const warum = `${zplot}
-        <p class="tdetail">${esc(st.detail || "")}</p>
+        ${doppelt ? "" : `<p class="tdetail">${esc(st.detail || "")}</p>`}
         ${st.since ? `<p class="hint">Einbruch erkannt am ${dMed(st.since)} — solange er im
           7-Tage-Fenster steckt, zieht er das Mittel nach unten, auch wenn die letzten Tage
           längst wieder darüber liegen.</p>` : ""}
@@ -4154,6 +4190,7 @@ class IntervalsIcuPanel extends HTMLElement {
           <b class="tslabel" style="color:${look.c}">${esc(st.label || "–")}</b>
           ${st.short ? `<span class="tshort">— ${esc(st.short)}</span>` : ""}
         </div>
+        ${zmini}
         ${warns}
         ${this._fold("trainer:zustand",
           `Warum — HRV, Ruhepuls und die Begründung`, warum, "tfold")}
@@ -4198,8 +4235,23 @@ class IntervalsIcuPanel extends HTMLElement {
         ${this.rFatigue(this._fatigue)}
         ${this.rBlocks(this._blocks)}
       </div>`;
+    /* 0.71.0 (Skizze 2): DIE DREI KOEPFE auch zugeklappt - Kopfzahl, Band und
+       Herkunft der jeweiligen Kachel, aus denselben Helfern wie die Kacheln
+       (_fatHead, _famHeadFull). Nichts neu gerechnet; ohne Kachel ein Satz. */
+    const g = this._fatHead(this._fatigue);
+    const kopfG = g ? `Grundlage <b class="tn">${fmt(g.watts)} W</b> (${fmt(g.hours)} h${
+      g.half != null ? `, ±${fmt(g.half)} W` : ""} · ${esc(g.origin)})` : "Grundlage noch keine Kachel";
+    const kopfB = (key, nm) => {
+      const h = this._famHeadFull(this._blocks, key);
+      if (!h) return `${nm} noch keine Kachel`;
+      return `${nm} <b class="tn">${fmt(h.watts)} W</b> (${h.band
+        ? `${fmt(h.band.low)}–${fmt(h.band.high)} · ` : ""}${esc(h.origin)})`;
+    };
+    const heads = `<span class="bgheads">${[kopfG, kopfB("sweetspot", "SweetSpot"),
+      kopfB("vo2max", "VO2max")].join(" · ")}</span>`;
     return this._fold("trainer:hintergrund",
-      `<b>Hintergrund</b> <span class="hint">— gemessene Anker · wie lange die Grundlage trägt · Leistung je Block</span>`,
+      `<b>Hintergrund</b> <span class="hint">— gemessene Anker · wie lange die Grundlage trägt · Leistung je Block</span>
+      ${heads}`,
       body, "bgfold");
   }
 
@@ -4207,6 +4259,24 @@ class IntervalsIcuPanel extends HTMLElement {
      jedes <details> neu hin, und ein offener Aufklapper klappte bei jedem Klick
      auf einen Knopf darin wieder zu. Der Zustand haengt an `data-keep` und wird
      im toggle-Ereignis gemerkt (_attach). */
+  /* EIN Streifen eines Zustandssignals - fuer den grossen zplot ("big") und die
+     Mini-Streifen ("mini"), 0.71.0. Achse −3…+3 SD, Werte ausserhalb am Rand,
+     die Zahl zeigt den echten Wert. Band (±0,5 SD) und Nulllinie liegen in der
+     CSS derselben Klassen; die Groesse aendert nur Masse, nicht die Bedeutung. */
+  _zRow(label, z, col, size) {
+    const mini = size === "mini";
+    const pos = (v) => ((Math.max(-3, Math.min(3, v)) + 3) / 6 * 100).toFixed(1);
+    return `<div class="zrow${mini ? " zs" : ""}">
+          <span class="zname">${esc(label)}</span>
+          <span class="ztrack">
+            <i class="zband"></i><i class="zzero"></i>
+            ${z == null ? "" : `<i class="zdot" style="left:${pos(z)}%;background:${col}"></i>`}
+          </span>
+          ${z == null ? `<span class="zval mut">keine Daten</span>`
+            : `<b class="zval tn" style="color:${col}">${sign(z, 2)}</b>`}
+        </div>`;
+  }
+
   _fold(id, summary, body, cls) {
     const open = !!((this._keep || {})[id]);
     return `<details class="fold ${cls || ""}" data-keep="${esc(id)}"${open ? " open" : ""}>
@@ -7278,6 +7348,14 @@ ul.rides span.r{color:${C.tx3};white-space:nowrap}
 .tlrow .kicker{margin:0}
 .tlrow .tslabel{font-size:18px;font-weight:650}
 .tshort{color:${C.tx};font-size:15px}
+.zmini{display:flex;flex-wrap:wrap;gap:4px 20px;margin:8px 0 2px}
+.zrow.zs{display:inline-grid;grid-template-columns:auto 90px auto;gap:7px;padding:0}
+.zs .zname{font-size:12px}
+.zs .ztrack{height:10px;border-radius:3px}
+.zs .zdot{top:1px;width:8px;height:8px;border-radius:2px;margin-left:-4px}
+.zs .zval{font-size:12.5px;text-align:left}
+@media(max-width:600px){.zmini{flex-direction:column}.zrow.zs{grid-template-columns:92px 90px auto}}
+.bgheads{display:block;margin:2px 0 2px 16px;color:${C.tx2};font-size:13px}
 details.fold>summary{cursor:pointer;list-style:revert;color:${C.tx2};font-size:13.5px;padding:6px 2px}
 details.fold>summary:hover{color:${C.tx}}
 details.tfold>summary{margin-top:6px}
