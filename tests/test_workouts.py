@@ -335,6 +335,14 @@ check("Zustand" in W.stage("no", True, False)["detail"],
       "rot aus dem Zustand: nennt den Zustand nicht")
 check("Obergrenze" in W.stage("ok", False, False)["detail"] and "Menge" in W.stage("ok", False, False)["detail"],
       "gruen ueber der Obergrenze: das Gelaender steht nicht im Text")
+# 0.69.1: ueber der Obergrenze lautet das WORT der Stufe nicht mehr "passt" - das
+# Etikett kommt aus einer Stelle (GUARD_WORDS), gruen wie gelb; darunter unveraendert.
+eq(W.stage("ok", False, False)["word"], W.GUARD_WORDS["over_word"], "stufe gruen/über: Wort ist nicht das Geländer-Wort")
+eq(W.stage("maybe", False, False)["word"], W.GUARD_WORDS["over_word"], "stufe gelb/über: Wort ist nicht das Geländer-Wort")
+eq(W.stage("ok", True, False)["word"], W.STAGES["green"]["word"], "stufe gruen/im Budget: Wort verändert")
+eq(W.stage("maybe", True, False)["word"], W.STAGES["yellow"]["word"], "stufe gelb/im Budget: Wort verändert")
+eq(W.stage("ok", None, False)["word"], W.STAGES["green"]["word"], "stufe gruen/ohne Budget: Wort verändert")
+check("Menge" in W.GUARD_WORDS["over_word"] and "passt" not in W.GUARD_WORDS["over_word"], "Geländer-Wort sagt nicht 'Menge' oder sagt 'passt'")
 check("Lastbudget verbietet" not in W.stage("ok", False, False)["detail"]
       and "Lastbudget verbietet" not in W.stage("maybe", False, False)["detail"],
       "L1: das Budget verbietet noch")

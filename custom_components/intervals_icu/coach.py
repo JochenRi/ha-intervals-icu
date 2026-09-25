@@ -1317,11 +1317,15 @@ def _night_z(data: dict[str, Any], day: str) -> dict[str, Any]:
     return out
 
 
-# L2 (0.69.0, Entscheidung 25.09.): DIE NACHT-BEWERTUNG - NUR ANZEIGE, EINE
-# SETZUNG. Die HRV der Nacht danach gegen das eine Band (baseline.py):
-# verdaut ab -0,5 SD · gekostet darunter · zu viel unter -1,0 SD ODER wenn die
-# zweite Nacht unter -0,5 liegt. Die Schwellen sind gesetzt, nicht gemessen
-# (die Naechte nach Johannes' Einheiten trennen VO2max nicht von Grundlage -
+# L2 (0.69.0, Entscheidung 25.09.; geschaerft 0.69.1): DIE NACHT-BEWERTUNG - NUR
+# ANZEIGE, EINE SETZUNG. Die HRV der Nacht danach gegen das eine Band (baseline.py):
+#   zu viel   = erste Nacht < -1,0  ODER  (erste < -0,5 UND zweite < -0,5)
+#   gekostet  = erste < -0,5 (sonst)  ODER, verzoegert: erste im Band, zweite < -0,5
+#   verdaut   = erste >= -0,5 und zweite nicht < -0,5
+# 0.69.0 liess die zweite Nacht ALLEIN auf "zu viel" springen (Livebestand 01.09.:
+# -0,23 / -0,63 -> zu viel); das war zu hart - eine Nacht im Band und eine darunter
+# ist "gekostet, verzoegert" (Johannes, 25.09.). Die Schwellen sind gesetzt, nicht
+# gemessen (die Naechte nach Johannes' Einheiten trennen VO2max nicht von Grundlage -
 # Zeichnung 24.09., L2). Der Trainer liest diese Bewertung NICHT (test_coach 18b).
 NIGHT_DIGESTED_Z = -0.5
 NIGHT_TOO_MUCH_Z = -1.0
@@ -1329,11 +1333,13 @@ NIGHT_SECOND_Z = -0.5
 NIGHT_VERDICT_WORDS = {
     "verdaut": "verdaut — die Nacht danach lag in deinem Band",
     "gekostet": "hat gekostet — die Nacht danach lag unter deinem Band",
-    "zu_viel": "zu viel — deutlich unter dem Band, oder die zweite Nacht noch darunter",
+    "gekostet_delayed": "hat gekostet, verzögert — die Nacht danach lag im Band, die zweite darunter",
+    "zu_viel": "zu viel — deutlich unter dem Band, oder beide Nächte darunter",
     "unbekannt": "keine Bewertung — HRV der Nacht danach fehlt",
-    "rule": ("Setzung: verdaut ab −0,5 SD, gekostet darunter, zu viel unter −1,0 SD oder wenn "
-             "die zweite Nacht unter −0,5 SD liegt — gegen deine Basislinie der 60 Nächte davor, "
-             "gewichtet. Nur Anzeige: der Trainer liest diese Bewertung nicht."),
+    "rule": ("Setzung: zu viel unter −1,0 SD oder wenn beide Nächte unter −0,5 SD liegen; gekostet "
+             "unter −0,5 SD (verzögert, wenn erst die zweite Nacht darunter liegt); verdaut sonst — "
+             "gegen deine Basislinie der 60 Nächte davor, gewichtet. Nur Anzeige: der Trainer liest "
+             "diese Bewertung nicht."),
     "no_second": "zweite Nacht liegt noch nicht vor",
 }
 
@@ -1341,18 +1347,22 @@ NIGHT_VERDICT_WORDS = {
 def night_verdict(z_first: float | None, z_second: float | None) -> dict[str, Any]:
     """Die eine Regel der Nacht-Bewertung (L2) - total ueber ihre Eingaben."""
     out: dict[str, Any] = {"z_hrv": z_first, "z_hrv_next": z_second, "setting": True,
-                           "rule": NIGHT_VERDICT_WORDS["rule"],
+                           "rule": NIGHT_VERDICT_WORDS["rule"], "delayed": False,
                            "note": None if z_second is not None else NIGHT_VERDICT_WORDS["no_second"]}
+    second_low = z_second is not None and z_second < NIGHT_SECOND_Z
     if z_first is None:
         key = "unbekannt"
-    elif z_first < NIGHT_TOO_MUCH_Z or (z_second is not None and z_second < NIGHT_SECOND_Z):
+    elif z_first < NIGHT_TOO_MUCH_Z or (z_first < NIGHT_DIGESTED_Z and second_low):
         key = "zu_viel"
     elif z_first < NIGHT_DIGESTED_Z:
         key = "gekostet"
+    elif second_low:
+        key = "gekostet"
+        out["delayed"] = True
     else:
         key = "verdaut"
     out["key"] = key
-    out["label"] = NIGHT_VERDICT_WORDS[key]
+    out["label"] = NIGHT_VERDICT_WORDS["gekostet_delayed" if out["delayed"] else key]
     return out
 
 

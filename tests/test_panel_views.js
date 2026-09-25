@@ -254,6 +254,16 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   ok((html.match(/class="wofam"/g) || []).length === 6, "einheiten: nicht sechs Arten");
   ok((html.match(/class="wocard/g) || []).length === 6, "einheiten: nicht sechs Karten");
   contains(html, "passt heute", "einheiten: kein Tagesurteil");
+  // 0.69.1 (KARTE_4a W4a.1): der Listenkopf sagt, woher die Watt JE ART kommen -
+  // Grundlage aus der Umkehrung, Bloecke aus dem Steuerwert, sonst FTP. "Watt aus
+  // deiner FTP" pauschal war seit 0.68.0 falsch.
+  {
+    const head = html.slice(html.indexOf('class="secname"'), html.indexOf('class="wogrid"'));
+    ok(!/Watt aus deiner\s+FTP/.test(head), "einheiten-kopf: sagt noch pauschal 'Watt aus deiner FTP'");
+    ok(/Umkehrung/.test(head) && /Steuer/.test(head) && /FTP/.test(head),
+       "einheiten-kopf: nennt nicht alle drei Wattquellen (Umkehrung, Steuerung, FTP)");
+    contains(head, "aeroben", "einheiten-kopf: die Pulsquelle ist weg");
+  }
   // exactly one card carries the recommendation, and it is a fitting one
   ok((html.match(/class="recflag"/g) || []).length === 1,
      "einheiten: nicht genau eine Empfehlung markiert");
@@ -303,6 +313,26 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   const glLead = gl.slice(gl.indexOf('class="leadrec"'), gl.indexOf('class="secname"'));
   contains(glLead, "Bis ~1,5 h passt sie", "L1: die Leitempfehlung verschweigt das Gelaender");
   ok(!/heute nicht/.test(glLead), "L1: die Leitempfehlung raet ab, obwohl der Zustand traegt");
+  // 0.69.1: ueber der Obergrenze LUEGT "passt heute" - das Etikett der Karte sagt
+  // "Art bleibt, Menge kürzen", und die Leitempfehlung nennt die passende Dauer aus guard().
+  const glCard = gl.slice(gl.indexOf('class="wocard first"'), gl.indexOf('class="wocard', gl.indexOf('class="wocard first"') + 10));
+  ok(!/passt heute/.test(glCard), "L1 0.69.1: die Karte ueber der Obergrenze sagt noch 'passt heute'");
+  contains(glCard, "Art bleibt, Menge kürzen", "L1 0.69.1: die Karte ueber der Obergrenze traegt das Geländer-Etikett nicht");
+  contains(glLead, "heute ~1,5 h", "L1 0.69.1: die Leitempfehlung nennt die passende Dauer nicht");
+  // Gegenprobe: gelb ueber der Obergrenze ebenso, und unter der Obergrenze bleibt "passt heute"
+  const gelb = F.workouts();
+  gelb.workouts[0] = { ...gelb.workouts[0], fits_budget: false, stage: F.stageOf("maybe", false, false),
+                       guard: { over: true, load: 250, ceiling: 68, hours_fit: 1.5, text: "Geländer: Last 250 über der Obergrenze 68 — die Art bleibt, die Menge nicht. Bis ~1,5 h passt sie unter die Obergrenze." } };
+  p._workouts = gelb;
+  const gy = p.rTrainer(F.coach("ready"), F.readiness()).replace(/\s+/g, " ");
+  const gyCard = gy.slice(gy.indexOf(gelb.workouts[0].title), gy.indexOf('class="wocard', gy.indexOf(gelb.workouts[0].title)));
+  contains(gyCard, "Art bleibt, Menge kürzen", "L1 0.69.1 gelb: die Karte ueber der Obergrenze traegt das Geländer-Etikett nicht");
+  ok(!/geht, kostet aber</.test(gyCard), "L1 0.69.1 gelb: das alte Etikett steht noch ueber der Obergrenze");
+  p._workouts = F.workouts();
+  const under = p.rTrainer(F.coach("ready"), F.readiness()).replace(/\s+/g, " ");
+  const underLead = under.slice(under.indexOf('class="leadrec"'), under.indexOf('class="secname"'));
+  ok(/passt heute/.test(under.slice(0, under.indexOf("recflag") + 1800)), "L1 0.69.1 Gegenprobe: unter der Obergrenze fehlt 'passt heute'");
+  ok(!/Menge kürzen/.test(under) && !/heute ~/.test(underLead), "L1 0.69.1 Gegenprobe: Geländer-Etikett oder Dauer ohne Ueberschreitung");
   // Gegenprobe: im Budget kein Gelaender-Text
   p._workouts = F.workouts();
   ok(!/Geländer:/.test(String(p.rTrainer(F.coach("ready"), F.readiness()))), "L1 Gegenprobe: Gelaender ohne Ueberschreitung");

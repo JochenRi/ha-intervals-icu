@@ -685,7 +685,8 @@ check(flipped["night"]["rhr"]["z"] > 0,
 
 # --- 18b  L2 (0.69.0): die Nacht-Bewertung als ANZEIGE, Setzung, kein Eingang ---
 # Entscheidung 25.09.: verdaut (HRV-z der Nacht danach >= -0,5) · gekostet (< -0,5)
-# · zu viel (< -1,0 ODER zweite Nacht < -0,5). Nur Anzeige - der Trainer liest
+# · zu viel (< -1,0 ODER beide Naechte < -0,5; 0.69.1) · gekostet verzoegert (erste im
+# Band, zweite < -0,5; 0.69.1). Nur Anzeige - der Trainer liest
 # sie nicht. Die Schwellen sind benannte Konstanten.
 eq((coach.NIGHT_DIGESTED_Z, coach.NIGHT_TOO_MUCH_Z, coach.NIGHT_SECOND_Z), (-0.5, -1.0, -0.5),
    "18b L2: die Schwellen sind nicht die der Entscheidung")
@@ -705,14 +706,38 @@ _mild = coach.night_after(_second_flat(night_history(damp=1.0), hard_keys[-2]), 
 eq((_mild.get("verdict") or {}).get("key"), "verdaut", f"18b L2: leichte Nacht (z {_mild['night']['hrv']['z']}) nicht 'verdaut'")
 _cost = coach.night_after(_second_flat(night_history(damp=3.2), hard_keys[-2]), hard_keys[-2])
 eq((_cost.get("verdict") or {}).get("key"), "gekostet", f"18b L2: Nacht bei z {_cost['night']['hrv']['z']} nicht 'gekostet'")
-# zweite Nacht: erste Nacht verdaut, zweite unter -0,5 -> zu viel (die Regel sagt ODER)
+# zweite Nacht (0.69.1, Regel geschaerft): erste Nacht verdaut, zweite unter -0,5
+# -> GEKOSTET, verzoegert - nicht mehr "zu viel". Zu viel braucht die erste Nacht:
+# unter -1,0, ODER beide Naechte unter -0,5.
 _two = night_history(damp=1.0)
 _t_act = _two["activities"][hard_keys[-2]]
 _n2 = (date.fromisoformat(str(_t_act["start_date_local"])[:10]) + timedelta(days=2)).isoformat()
 _two["wellness"][_n2]["hrv"] = 35.0
 _tv = coach.night_after(_two, hard_keys[-2]).get("verdict") or {}
-eq(_tv.get("key"), "zu_viel", f"18b L2: zweite Nacht bei z {_tv.get('z_hrv_next')} nicht 'zu viel'")
+eq(_tv.get("key"), "gekostet", f"18b L2: zweite Nacht allein (z {_tv.get('z_hrv_next')}) ist nicht 'gekostet'")
+check(_tv.get("delayed") is True and "zweite" in str(_tv.get("label")), "18b L2: verzoegertes 'gekostet' nicht als solches beschriftet")
 check(_tv.get("z_hrv_next") is not None and _tv["z_hrv_next"] < -0.5, "18b L2 Fixture: zweite Nacht nicht unter -0,5")
+# die Regel total, je Zweig mit Gegenprobe direkt an der Funktion (Wahrheitstafel 0.69.1)
+_NV = coach.night_verdict
+eq(_NV(-1.01, None).get("key"), "zu_viel", "18b L2 Tafel: erste < -1,0 ist zu viel")
+eq(_NV(-1.01, 0.0).get("key"), "zu_viel", "18b L2 Tafel: erste < -1,0 bleibt zu viel, auch bei guter zweiter")
+eq(_NV(-0.6, -0.6).get("key"), "zu_viel", "18b L2 Tafel: beide < -0,5 ist zu viel")
+eq(_NV(-0.6, -0.4).get("key"), "gekostet", "18b L2 Tafel: erste < -0,5, zweite nicht -> gekostet")
+eq(_NV(-0.6, None).get("key"), "gekostet", "18b L2 Tafel: erste < -0,5 ohne zweite -> gekostet")
+check(_NV(-0.6, -0.4).get("delayed") is False, "18b L2 Tafel: sofortiges 'gekostet' traegt delayed")
+eq(_NV(-0.4, -0.6).get("key"), "gekostet", "18b L2 Tafel: erste >= -0,5, zweite < -0,5 -> gekostet (verzoegert)")
+check(_NV(-0.4, -0.6).get("delayed") is True, "18b L2 Tafel: verzoegertes 'gekostet' ohne delayed")
+eq(_NV(-0.4, -0.4).get("key"), "verdaut", "18b L2 Tafel: beide >= -0,5 ist verdaut")
+eq(_NV(-0.4, None).get("key"), "verdaut", "18b L2 Tafel: erste >= -0,5 ohne zweite ist verdaut")
+eq(_NV(-0.5, -0.5).get("key"), "verdaut", "18b L2 Tafel: genau -0,5 liegt noch im Band (>=)")
+eq(_NV(-1.0, None).get("key"), "gekostet", "18b L2 Tafel: genau -1,0 ist noch nicht zu viel (<)")
+eq(_NV(None, -2.0).get("key"), "unbekannt", "18b L2 Tafel: ohne erste Nacht keine Bewertung, egal wie die zweite liegt")
+# SOLLWERT VOM LIVEBESTAND (Johannes, 25.09.): die Nacht nach dem VO2max vom 01.09.
+# lag bei -0,23, die zweite bei -0,63. Unter 0.69.0 hiess das "zu viel"; unter der
+# geschaerften Regel ist es "gekostet" (verzoegert).
+eq(_NV(-0.23, -0.63).get("key"), "gekostet", "18b L2 Livebestand 01.09.: (-0,23 / -0,63) ist nicht 'gekostet'")
+check("verz" in str(_NV(-0.23, -0.63).get("label")) or "zweite" in str(_NV(-0.23, -0.63).get("label")),
+      "18b L2 Livebestand 01.09.: das Etikett nennt die zweite Nacht nicht")
 # letzte Einheit ohne zweite Nacht: Bewertung aus der ersten, die zweite als offen benannt
 _last = coach.night_after(base_data, hard_keys[-1]).get("verdict") or {}
 check(_last.get("key") in ("verdaut", "gekostet", "zu_viel") and _last.get("z_hrv_next") is None

@@ -1133,6 +1133,8 @@ function stageOf(fit, fitsBudget, recovery, byLoad) {
   else if (fit === "maybe") key = "yellow";
   else key = "green";
   const out = { key, blocked_by: blocked, over_ceiling: over, ...STAGE_WORDS[key], detail: "Begründung aus dem Backend." };
+  // 0.69.1 (workouts.stage): ueber der Obergrenze traegt gruen/gelb das Geländer-Wort.
+  if (over && !blocked && (key === "green" || key === "yellow")) out.word = "Art bleibt, Menge kürzen";
   if (key === "stimulus") out.evidence = "Funktionelles Überreichen, Meeusen 2013 — dosiert dazu.";
   return out;
 }

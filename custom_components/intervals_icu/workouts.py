@@ -1478,6 +1478,9 @@ GUARD_WORDS = {
     "by_load": "Ohne Zustand (keine HRV-Basislinie) entscheidet die Last: über der Obergrenze — heute nicht.",
     "green_over": "Zustand unauffällig — die Last liegt über der Obergrenze: Art bleibt, Menge kürzen.",
     "yellow_over": "Der Zustand trägt nur bedingt, und die Last liegt über der Obergrenze: Art bleibt, Menge kürzen.",
+    # 0.69.1: das ETIKETT der Karte ueber der Obergrenze. "passt heute" log dort -
+    # der Zustand traegt die Art, aber nicht diese Menge. Eine Stelle, gruen wie gelb.
+    "over_word": "Art bleibt, Menge kürzen",
 }
 
 
@@ -1517,6 +1520,7 @@ def stage(fit: str, fits_budget: bool | None, recovery: bool = False,
         out["detail"] = GUARD_WORDS["by_load"]
     elif over_budget and key in ("green", "yellow"):
         out["detail"] = GUARD_WORDS[f"{key}_over"]
+        out["word"] = GUARD_WORDS["over_word"]
     if key == "stimulus":
         out["evidence"] = STIMULUS_EVIDENCE
     return out

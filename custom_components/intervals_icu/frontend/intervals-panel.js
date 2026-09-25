@@ -3153,7 +3153,9 @@ class IntervalsIcuPanel extends HTMLElement {
     const tone = STAGE_TONE[st.key] || "unknown";
     const word = st.key === "stimulus" && opts.budget != null
       ? `${st.word} (über der Obergrenze von ${fmt(opts.budget)})`
-      : `${st.word}${st.key === "green" && opts.todayWord ? " heute" : ""}`;
+      : `${st.word}${st.key === "green" && opts.todayWord && !st.over_ceiling ? " heute" : ""}`;
+    // 0.69.1: ueber der Obergrenze kommt das Wort aus dem Backend ("Art bleibt,
+    // Menge kürzen", GUARD_WORDS.over_word) - kein "heute" dahinter.
     const hrw = entry.hr_window;
     const blocks = entry.blocks_w || entry.blocks;
     const planned = opts.plannedHours;
@@ -3284,7 +3286,10 @@ class IntervalsIcuPanel extends HTMLElement {
           ? "FÜR MORGEN EMPFOHLEN — heute ist schon trainiert; bewertet nach dem Zustand von heute"
           : "HEUTE EMPFOHLEN — aus deinem Zustand, den letzten Tagen und deinem Ziel"}</span></div>
       <div class="leadtitle">${esc(lead.title)}</div>
-      <div class="leadmeta">${esc(lead.family_label)} · ${lead.minutes} min · Last ${fmt(lead.load)}${
+      <div class="leadmeta">${esc(lead.family_label)} · ${
+        (lead.guard || {}).over && lead.guard.hours_fit
+          ? `${forTomorrow ? "morgen" : "heute"} ~${fmt(lead.guard.hours_fit, 1)} h (Vorlage ${lead.minutes} min)`
+          : `${lead.minutes} min`} · Last ${fmt(lead.load)}${
         lead.hr_window ? ` · ${lead.hr_window[0]}–${lead.hr_window[1]} bpm` : ""}${
         lead.blocks_w ? ` · ${Math.min(...lead.blocks_w.map((b) => b[1]))}–${
           Math.max(...lead.blocks_w.map((b) => b[1]))} W` : ""}</div>
@@ -3309,8 +3314,10 @@ class IntervalsIcuPanel extends HTMLElement {
 
     return `${conflict}${leadCard}<h3 class="secname">Alle Einheiten für ${forTomorrow ? "morgen" : "heute"}
       <span class="hint">— eine je Art, jede ${forTomorrow
-        ? "nach dem heutigen Zustand bewertet" : "für heute bewertet"}. Watt aus deiner
-      FTP${w.ftp ? ` (${fmt(w.ftp)} W)` : ""}, Puls aus deiner gemessenen aeroben
+        ? "nach dem heutigen Zustand bewertet" : "für heute bewertet"}. Watt je Art aus
+      ihrer Quelle — Grundlage aus der Umkehrung (Ermüdungskachel), VO2max und SweetSpot aus
+      deinem Steuerwert, sonst aus der FTP${w.ftp ? ` (${fmt(w.ftp)} W)` : ""}; jede Zahl
+      trägt ihre Quelle am Abschnitt. Puls aus deiner gemessenen aeroben
       Schwelle${w.aerobic_hr ? ` (${w.aerobic_hr} bpm)` : ""}. Was du machst, entscheidest du —
       hier steht, was es heute kostet.</span></h3>
       ${reasons}
