@@ -823,8 +823,10 @@ check(len(_panel_fields) > 20, "4: die Feldliste der Karte ist leer - der Ausdru
 # Felder, die diese EINE Einheit nicht hat, jedes mit Grund. Handgepflegt, also
 # mit Vollstaendigkeitspruefung darunter (vierte Bauregel).
 _NOT_FOR_RAMP = {
-    "baseline", "block_source", "catalogue_load", "catalogue_minutes", "curve_blocks",
-    "curve_share", "detail", "elastic_sections", "fit_reason", "fuel", "hr_source",
+    # 0.68.0: die Karte liest ga_blocks statt curve_blocks/curve_share; der
+    # Stufentest traegt es nicht (er liest die Umkehrung nur fuer den Start).
+    "baseline", "block_source", "catalogue_load", "catalogue_minutes", "ga_blocks",
+    "ga_missing", "detail", "elastic_sections", "fit_reason", "fuel", "hr_source",
     "label", "note", "ramp_source", "stage", "stretch_note", "stretched", "tag",
     "unit", "value", "weight", "why", "z", "family", "family_label",
     # Seit 0.51.1 bewusst OHNE Pulsfenster: bei einer Rampe waere eine Spanne
@@ -1298,6 +1300,20 @@ check(all(b[1] == 170 for b in _ohne_ziel["blocks_w"] if str(b[2]).startswith("g
 _kein = W.scaled(W.BY_KEY["z2_60"], 200, 140, ga={**_GA, "hours": [], "missing": "kein Stufentest"})
 eq(_kein.get("watt_source"), "ftp", "GA ohne Stufentest: Rueckfall auf die FTP")
 check(_kein.get("ga_missing") == "kein Stufentest", "GA ohne Stufentest: der Grund steht an der Karte")
+# 0.68.0 · AB 3 H UNGEPRUEFT: die Abnahmefahrt (3 h bei ~122 W) steht aus, also
+# traegt jede Einheit ab drei geplanten Stunden das Feld `unverified` - der
+# Rechner setzt es, nicht die Karte. Unter 3 h fehlt es. Die Schwelle ist eine
+# benannte Konstante.
+eq(getattr(W, "GA_UNVERIFIED_FROM_HOUR", None), 3, "GA ungeprueft: benannte Schwelle, drei Stunden")
+for key, minutes, want in (("z2_60", None, False), ("z2_150", None, False), ("z2_150", 170, False),
+                           ("z2_210_late", None, True), ("z2_150", 330, True)):
+    g = (_ga_card(key, minutes=minutes).get("ga_blocks") or [{}])[0]
+    eq(bool(g.get("unverified")), want, f"GA ungeprueft {key} {minutes or ''}: Feld")
+# Gegenprobe: eine 3-h-Einheit, die mangels Belegung auf Stunde 2 zurueckfaellt,
+# bleibt trotzdem ungeprueft - gefahren werden drei Stunden, nicht zwei.
+_duenn3 = {**_GA, "hours": [h if h["hours"] < 3 else {**h, "n": 1} for h in _GA["hours"]]}
+_g3 = (_ga_card("z2_210_late", ga=_duenn3).get("ga_blocks") or [{}])[0]
+eq((_g3.get("hour"), bool(_g3.get("unverified"))), (2, True), "GA ungeprueft: Rueckfall auf Stunde 2 bei 3 h geplant")
 check("curve_share" not in _ga_card("z2_60") and all(b[1] != round(0.9 * 170) for b in _ga_card("z2_60")["blocks_w"]), "GA: die 0,90 ist weg")
 
 print(f"test_workouts: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")

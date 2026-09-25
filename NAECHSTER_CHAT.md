@@ -19,7 +19,25 @@
 >   Form nicht. Eigene Runde, nicht als Nebensatz einer anderen.
 
 
-## Offener Widerspruch, Klasse „zwei Zahlen für dieselbe Sache" (24.09.2026, kein Bau)
+## 0.68.0 — die Grundlage liest die Umkehrung (25.09.2026)
+
+Prüfstand **24 / 7.999 / 0**. Der offene Widerspruch von unten ist entschieden (Johannes, 25.09.):
+die Grundlageneinheit beantwortet die Frage der Kachel. **Es ändert Zahlen:** die Grundlage
+trägt Ziel und Grenze der Umkehrung für die geplante Dauer — Ziel = Last + (α − Ziel-alpha) ×
+Steigung, Grenze = Last + (α − 1,0) × Steigung, Steigung nur aus dem Stufentest. Ziel-alpha ist
+eine **Integrationsoption** (Einstellungen → Intervals → Optionen → „Ziel (alpha)“); ohne Eintrag
+steht die Grenze. Die 0,90 ist aus der Grundlage weg (bleibt nur als Rückfall am Start des Stufentest-Protokolls ohne Umkehrung). **Live je Einheit, Ziel 1,3:** z2_60 133 → **143/170** ·
+z2_90 133 → **143/170** · z2_150 136 → **136/163** · z2_210_late 126 → **122/150** · 5,5 h / 6 h
+126 → **119/146** (Ziel/Grenze; ohne Ziel: 170 · 170 · 163 · 150 · 146). Die Karte sagt „fahr ~X W,
+nicht über Y W“, Stunde und Fahrten, Setzung; **ab 3 h steht „ungeprüft — Abnahmefahrt offen“**
+(3 h bei ~122 W: α in Stunde 3 soll bei ~1,3 liegen; Gegenfahrt 3 h bei 150 W → ~1,0). Ohne
+Stufentest fällt die Einheit BENANNT auf die FTP. Blockvorgaben 190/250 und Pulsfenster unbewegt.
+Zweiter Athlet je Schritt (Z7/Z7b), Verbotsliste um 90,6 · 101,2 · 160,8 · 1,3 erweitert.
+PROJEKTSTAND §7 Fall 58. **Nach dem Update:** Ziel-alpha 1,3 in den Optionen eintragen, sonst
+zeigt die Karte nur die Grenze. Offen: L1 (Zustand entscheidet die Art), S1 (HRV-Basislinie
+gewichtet), L2 (Nacht-Bewertung als Anzeige) → 0.69.0.
+
+## Widerspruch „zwei Zahlen für dieselbe Sache" (24.09.2026) — ENTSCHIEDEN in 0.68.0, siehe oben
 
 **Die Grundlagen-Vorgabe steht auf der p075-Kette, die Kachel zeigt bei Rechenschalter an die
 Umkehrung.** `curve["plan"]` (Kette A) ist die Kette der `p075`-Werte je Fahrtstunde — die

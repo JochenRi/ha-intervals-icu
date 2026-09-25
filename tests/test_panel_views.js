@@ -1172,19 +1172,26 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
 }
 
 /* ── L4: die Wattvorgabe kommt aus der Messung, und die Karte sagt es ───── */
+// 0.68.0: die Grundlage liest Ziel und Grenze der Umkehrung (watt_source "ga"),
+// nicht mehr die Ermuedungskurve ("curve" mit Anteil 0,90). Der Waechter zieht
+// nach wie bei F1.6: die alte Karte ("aus deiner eigenen Messung", "90 % der
+// gemessenen Schwelle", "Studienform" am Abschnitt) fror den Zustand VOR der
+// Umkehrung ein; die Zahlen kommen weiter aus der Payload, nie aus dem Quelltext.
 {
   const q = new M.Panel();
   q._nowIso = F.TODAY;
   const base = F.workouts().workouts[0];
-  const ausKurve = { ...base, watt_source: "curve", family: "long",
+  const ga = (extra) => ({ label: "gleichmäßig", watts: 143, target: 143, limit: 170,
+    hour: 1, n: 18, load_w: 132, alpha: 1.21, mid: 90.6, target_alpha: 1.3, limit_alpha: 1.0,
+    ...extra });
+  const ausKurve = { ...base, watt_source: "ga", family: "long",
     // blocks_w spiegelt blocks Abschnitt fuer Abschnitt (so baut scaled() es);
     // die Fixture hatte bis 0.67.1 nur zwei Eintraege gegen drei Abschnitte.
-    blocks_w: [[12, 118, "Einrollen"], [130, 142, "gleichmäßig", true], [8, 108, "Ausrollen"]],
-    curve_share: 0.9,
-    curve_blocks: [{ label: "gleichmäßig", watts: 128, threshold: 142, share: 0.9,
-                     source: "measured", n: 12, hour: 2 }] };
+    blocks_w: [[12, 118, "Einrollen"], [130, 143, "gleichmäßig", true], [8, 108, "Ausrollen"]],
+    ga_blocks: [ga({ hour: 2, n: 12 })] };
   const opts = { toggleAct: "wodetail", ftp: 215 };
   const karte = String(q._sessionCard(ausKurve, opts));
+  const flach0 = (x) => String(x).replace(/\s+/g, " ");
   // S4 (0.67.2, W4a.2 / F4a.4): der Balken liest blocks_w - dieselbe Zahl wie
   // die Schrittliste -, nicht FTP x Katalogprozent. Rot an 0.67.1.
   {
@@ -1200,26 +1207,36 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
     ok(tips2.every((t, i) => new RegExp(`\\b${w[i]} W`).test(t)) && !/% FTP/.test(ohneFtp),
        `S4 Balken ohne FTP: nicht die Watt der Schrittliste (${tips2.join(" | ")})`);
   }
-  clean(karte, "einheit aus der kurve");
-  contains(karte, "aus deiner eigenen", "L4: die Karte sagt nicht, dass die Watt aus der Messung kommen");
-  // 0.47.1: die Karte nennt den ANTEIL und die Schwelle, aus der er folgt -
-  // aus der Payload, nicht als Zahl im Quelltext (§9).
-  ok(/90 %<\/b> der gemessenen Schwelle/.test(karte),
-     "L4: der Anteil an der Schwelle fehlt in der Karte");
-  ok(/142 W/.test(karte), "L4: die gemessene Schwelle steht nicht dabei");
-  contains(karte, "unter die Schwelle, nicht auf sie",
-           "L4: es steht nicht da, warum die Vorgabe unter der Schwelle liegt");
-  ok(/class="wsrc"[^>]*>gemessen</.test(karte),
-     "L4: der gemessene Abschnitt ist nicht als solcher gekennzeichnet");
-  ok(/Stunde 2/.test(karte), "L4: die Belegung des Abschnitts fehlt");
-  // Ein Abschnitt jenseits des Gemessenen ist LITERATUR - und sagt es am
-  // Abschnitt, nicht in der Fußzeile: eine Vorgabe für die vierte Stunde ist
-  // Studienform mit dem Namen des Athleten darauf.
-  const ausLiteratur = { ...base, watt_source: "curve", family: "long",
-    blocks_w: [[150, 136, "gleichmäßig", true]],
-    curve_blocks: [{ label: "gleichmäßig", watts: 136, source: "literature", n: null, hour: null }] };
-  ok(/wsrc lit[^>]*>Studienform</.test(String(q._sessionCard(ausLiteratur, opts))),
-     "L4: der Studienform-Abschnitt ist nicht gekennzeichnet");
+  clean(karte, "einheit aus der umkehrung");
+  // 0.68.0: die Karte sagt Ziel UND Grenze in einem Satz - "fahr ~X W, nicht
+  // über Y W" - beide aus der Payload, und sie nennt die Ablesestelle.
+  ok(/fahr ~143 W, nicht über 170 W/.test(flach0(karte)),
+     "L4 (0.68.0): die Karte nennt nicht Ziel und Grenze der Umkehrung");
+  ok(/Stunde 2/.test(karte) && /12 Fahrten/.test(karte), "L4: die Ablesestelle (Stunde, Fahrten) fehlt");
+  contains(flach0(karte), "Setzung", "L4: die Umrechnung steht nicht als Setzung da");
+  ok(!/Studienform/.test(karte) && !/gemessenen Schwelle/.test(karte),
+     "L4 (0.68.0): die Karte spricht noch von der Ermüdungskurve");
+  ok(/class="wsrc"[^>]*>Umkehrung</.test(karte),
+     "L4: der Abschnitt aus der Umkehrung ist nicht als solcher gekennzeichnet");
+  ok(!/ungeprüft/.test(karte), "L4: eine Stunde unter 3 h wird als ungeprüft ausgegeben");
+  // Ab 3 h ist die Kette ungeprueft - die Abnahmefahrt (3 h bei ~122 W) steht
+  // noch aus. Die Karte sagt es, aus dem Feld der Payload, nicht aus der Stunde
+  // im Quelltext.
+  const lang = { ...base, watt_source: "ga", family: "long",
+    blocks_w: [[200, 122, "gleichmäßig", true]],
+    ga_blocks: [ga({ watts: 122, target: 122, limit: 150, hour: 3, n: 4, unverified: true })] };
+  const kl = flach0(q._sessionCard(lang, opts));
+  ok(/fahr ~122 W, nicht über 150 W/.test(kl), "L4 lang: Ziel und Grenze fehlen");
+  contains(kl, "ungeprüft — Abnahmefahrt offen", "L4 lang: ab 3 h fehlt der Hinweis auf die Abnahmefahrt");
+  // Ohne Ziel (Athlet B ohne Ziel-alpha) traegt die Karte NUR die Grenze -
+  // keine 1,3 aus dem Quelltext, kein "fahr ~".
+  const nurGrenze = { ...base, watt_source: "ga", family: "long",
+    blocks_w: [[130, 170, "gleichmäßig", true]],
+    ga_blocks: [ga({ watts: 170, target: null, target_alpha: null })] };
+  const kg = flach0(q._sessionCard(nurGrenze, opts));
+  ok(/nicht über 170 W/.test(kg) && !/fahr ~/.test(kg), "L4 ohne Ziel: die Karte erfindet ein Ziel");
+  contains(kg, "kein Ziel eingetragen", "L4 ohne Ziel: das fehlende Ziel wird nicht benannt");
+  ok(!/1,3|1\.3/.test(kg), "L4 ohne Ziel: eine 1,3 aus dem Quelltext");
   // GEGENPROBE, gezaehlt und benannt: Ein- und Ausrollen tragen KEINE Marke -
   // sonst pruefte der Test nur, dass ueberhaupt eine erscheint.
   ok(!/Einrollen[^<]*<em>[^<]*<\/em><i class="wsrc"/.test(karte),
@@ -1229,6 +1246,14 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
     blocks_w: [[12, 118, "Einrollen"]] };
   contains(String(q._sessionCard(rueckfall, opts)), "Rückfall auf die FTP",
            "L4: der Rückfall auf die FTP wird verschwiegen");
+  // 0.68.0, Athlet B: die FEHLENDE EINGABE steht an der Karte - "kein
+  // Stufentest -> Watt aus der FTP" -, der Grund kommt aus der Payload
+  // (ga_missing), nicht aus dem Quelltext.
+  const ohneTest = { ...rueckfall, ga_missing: "Kein markierter Stufentest — ohne ihn gibt es keine Umrechnung" };
+  const kt = String(q._sessionCard(ohneTest, opts)).replace(/\s+/g, " ");
+  contains(kt, "Kein markierter Stufentest", "L4 Athlet B: der Grund des Rückfalls (kein Stufentest) fehlt an der Karte");
+  ok(!/Kein markierter Stufentest/.test(String(q._sessionCard(rueckfall, opts))),
+     "L4 Athlet B Gegenprobe: der Grund erscheint auch ohne ga_missing");
   // Seit 0.49.0 ist der Rueckfall bei VO2max und SweetSpot eine echte
   // Auskunft: dort SOLL gemessen werden, und wenn es nicht reicht, gehoert es
   // gesagt. Fuer die uebrigen Familien gibt es nichts zurueckzufallen.

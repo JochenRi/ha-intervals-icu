@@ -2101,6 +2101,27 @@ class IntervalsIcuPanel extends HTMLElement {
       ${fmt(f.rides_used)}</b> — ${fmt(total)} bleiben draußen:</p>${blocks}`;
   }
 
+  /* 0.68.0 · DIE GRUNDLAGE LIEST DIE UMKEHRUNG. Ein Satz mit beiden Zahlen:
+     "fahr ~Ziel W, nicht über Grenze W" - Ziel = Last + (alpha − Ziel-alpha) × Steigung,
+     Grenze = Last + (alpha − 1,0) × Steigung, beide aus der Payload (ga_blocks).
+     Ohne Ziel-alpha (Option leer) trägt die Karte NUR die Grenze und sagt es.
+     Ab 3 h ist die Kette ungeprüft, solange die Abnahmefahrt aussteht -
+     das Feld `unverified` setzt der Rechner, nicht die Karte. */
+  _gaText(entry) {
+    const g = (entry.ga_blocks || [])[0] || {};
+    const hasTarget = g.target != null;
+    const satz = hasTarget
+      ? `<b>fahr ~${fmt(g.target)} W, nicht über ${fmt(g.limit)} W</b>`
+      : `<b>nicht über ${fmt(g.limit)} W</b> — kein Ziel eingetragen, die Einheit trägt die Grenze`;
+    return `<p class="fitwhy">${ico("info", C.blue, 14)} ${satz}. Ziel und Grenze kommen aus
+        der Ermüdungskachel für diese Dauer: abgelesen in Stunde ${fmt(g.hour)}
+        (${fmt(g.n)} ${g.n === 1 ? "Fahrt" : "Fahrten"}), gehaltene Last ${fmt(g.load_w)} W
+        bei alpha ${fmt(g.alpha, 2)}, umgerechnet mit ${fmt(g.mid, 1)} W je alpha aus deinem
+        Stufentest — eine <b>Setzung</b>, keine Messung dieser Einheit.
+        ${g.unverified ? `${ico("warn", C.amber, 13)} <b>ab 3 h ungeprüft — Abnahmefahrt offen.</b>` : ""}
+        Abschnitte ohne Kennzeichnung sind Ein- und Ausrollen und bleiben Prozent der FTP.</p>`;
+  }
+
   /* Die Herkunft der Watt als Absatz — bis B2c stand er immer offen in der Karte.
      Seitdem ist er der Rechenweg im aufgeklappten Teil; der Text ist unverändert. */
   _sourceText(entry) {
@@ -2116,15 +2137,8 @@ class IntervalsIcuPanel extends HTMLElement {
             ${ico("warn", C.amber, 13)} <b>Gilt für diese Einheit auf der Rolle</b>, nicht
             für dieselbe Familie draußen — derselbe alpha-Wert steht dort für eine andere
             Leistung. Ein- und Ausrollen bleiben Prozent der FTP.</p>`
-        : entry.watt_source === "curve"
-        ? `<p class="fitwhy">${ico("info", C.blue, 14)} <b>Die Watt kommen aus deiner eigenen
-            Messung</b>, nicht mehr aus der FTP — gestaffelt nach Fahrtdauer, deshalb trägt
-            dieselbe Einheit andere Zahlen als früher. Gefahren wird
-            <b>${fmt((entry.curve_share || 0) * 100, 0)} %</b> der gemessenen Schwelle
-            (${entry.curve_blocks && entry.curve_blocks[0]
-              ? fmt(entry.curve_blocks[0].threshold) + " W" : "–"} in diesem Abschnitt) —
-            eine Grundlageneinheit gehört unter die Schwelle, nicht auf sie. Abschnitte ohne
-            Kennzeichnung sind Ein- und Ausrollen und bleiben Prozent der FTP.</p>`
+        : entry.watt_source === "ga"
+        ? this._gaText(entry)
         : entry.watt_source === "ramp_hrvt2" || entry.watt_source === "ramp_hrvt1"
         ? `<p class="fitwhy">${ico("info", C.blue, 14)} <b>Watt und Puls kommen aus deinem
             Stufentest</b> — ${fmt((entry.ramp_source || {}).watts)} W bei alpha
@@ -2147,8 +2161,10 @@ class IntervalsIcuPanel extends HTMLElement {
             gemessen.</b> Für Tempo und Schwelle gibt es keine eigene Messung außer dem
             Stufentest; solange keiner vorliegt, bleibt die FTP die Grundlage.</p>`
         : entry.watt_source === "ftp" && (entry.family === "endurance" || entry.family === "long")
-          ? `<p class="fitwhy">${ico("warn", C.amber, 14)} <b>Rückfall auf die FTP — nicht gemessen.</b> Für diese
-              Einheit liegt keine tragfähige eigene Messung vor.</p>`
+          ? `<p class="fitwhy">${ico("warn", C.amber, 14)} <b>Rückfall auf die FTP — nicht gemessen.</b> ${
+              entry.ga_missing
+                ? `${esc(entry.ga_missing)} — die Watt kommen bis dahin aus der FTP.`
+                : `Für diese Einheit liegt keine tragfähige eigene Messung vor.`}</p>`
           : entry.watt_source === "ftp" && (entry.family === "vo2max" || entry.family === "sweetspot")
             ? `<p class="fitwhy">${ico("warn", C.amber, 14)} <b>Rückfall auf die FTP — nicht gemessen:</b> noch zu
                 wenige gemessene Einheiten dieser Familie — bis dahin bleibt die alte Vorgabe
@@ -3171,11 +3187,10 @@ class IntervalsIcuPanel extends HTMLElement {
         // Woher DIESE Zahl kommt, steht an DIESEM Abschnitt. Eine Vorgabe für
         // die vierte Stunde ist Studienform mit dem Namen des Athleten darauf -
         // das muss in der Einheit stehen, nicht nur in der Kachel.
-        const cb = (entry.curve_blocks || []).find((c) => c.label === label);
+        const cb = (entry.ga_blocks || []).find((c) => c.label === label);
         const mark = cb
-          ? (cb.source === "measured"
-              ? `<i class="wsrc" title="gemessen: ${fmt(cb.n)} ${cb.n === 1 ? "Fahrt" : "Fahrten"} in Stunde ${fmt(cb.hour)}">gemessen</i>`
-              : `<i class="wsrc lit" title="jenseits des gemessenen Bereichs - Studienform">Studienform</i>`)
+          ? `<i class="wsrc" title="Umkehrung: Stunde ${fmt(cb.hour)}, ${fmt(cb.n)} ${cb.n === 1 ? "Fahrt" : "Fahrten"}${
+              cb.unverified ? " — ungeprüft, Abnahmefahrt offen" : ""}">Umkehrung</i>`
           : "";
         // Bei der Rampe nennt die Beschriftung START UND ENDE. Ein einzelner
         // Wert waere dort ein Mittelwert, und ein Mittelwert ist keine Rampe.

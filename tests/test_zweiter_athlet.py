@@ -154,6 +154,12 @@ class SaveArchive(FakeArchive):
 # const gelesen: verschwindet die Uebernahme-Konstante eines Tages, prueft diese
 # Datei trotzdem weiter gegen die Zahlen, die einmal im Code standen.
 FIRST_ATHLETE = {"sweetspot_w": 190, "vo2max_w": 250, "date": "2026-09-17"}
+# 0.68.0, erweitert (Auftrag 25.09.): Zahlen, die nur aus dem Archiv des ersten
+# Athleten stammen koennen - seine Umrechnung (90,6 W/alpha aus dem Stufentest,
+# 101,2 die alte Mitte mit Leiter), sein Anker (160,8 W) und sein Ziel-alpha
+# (1,3, eine Option, keine Vorgabe). Keine davon darf als Zahlenwert in einer
+# Payload des zweiten Athleten stehen - an keinem Pfad.
+FIRST_ATHLETE_VALUES = (90.6, 101.2, 160.8, 1.3)
 
 # --- DER ZWEITE ATHLET: anderes Niveau, anderer Kalender --------------------
 LAPS = [{"n": i + 1, "label": l, "start_index": s, "end_index": e, "moving_time": e - s}
@@ -195,6 +201,8 @@ def leaks(payload) -> list[str]:
         elif isinstance(x, bool):
             return
         elif isinstance(x, (int, float)):
+            if any(abs(float(x) - v) < 1e-9 for v in FIRST_ATHLETE_VALUES):
+                found.append(f"{path}={x}")
             if x in (FIRST_ATHLETE["sweetspot_w"], FIRST_ATHLETE["vo2max_w"]) and any(
                     key in path for key in ("watts", "anchor", "target", "new_", "old_", "median", "first_", "suggested")):
                 found.append(f"{path}={x}")
@@ -353,6 +361,69 @@ _b5 = FakeConn()
 _c5 = FakeCoordinator(_an); ws._pick = lambda hass, athlete_id: _c5
 ws.websocket_blocks(None, _b5, {"id": 7})
 eq("Z5: ... und seine Kachel traegt danach keine Zahl des ersten Athleten", leaks((_b5.results or [{}])[0]), [])
+
+print("\n=== Z7. DIE GRUNDLAGE (0.68.0): ohne Stufentest, ohne HRV, ohne Ziel - benannt, nicht ersetzt ===")
+# Athlet B unterscheidet sich in ALLEM: kein Stufentest, keine DFA-Daten, keine
+# Tagesetiketten, keine Markierungen, kein Ziel-alpha (kein config_entry, also
+# keine Option). Pflicht: kein Absturz, keine Zahl des ersten Athleten, jede
+# fehlende Eingabe BENANNT statt still ersetzt.
+_d7 = importer.empty_data("i4")
+_d7["settings"] = {}
+_d7["activities"]["r1"] = {"start_date_local": "2026-09-22T07:00:00", "name": "Ride", "type": "Ride",
+                           "icu_ftp": 180, "icu_training_load": 40, "moving_time": 3600}
+_c7 = FakeCoordinator(_d7); ws._pick = lambda hass, athlete_id: _c7
+ws.dt_util = types.SimpleNamespace(now=lambda: __import__("datetime").datetime(2026, 9, 25))
+_w7 = FakeConn()
+ws.websocket_workouts(None, _w7, {"id": 9})
+_wp7 = (_w7.results or [{}])[0]
+eq("Z7: workouts laeuft ohne Fehler", _w7.errors, [])
+_ga7 = [s for s in (_wp7.get("picks") or _wp7.get("sessions") or _wp7.get("workouts") or []) if s.get("family") in ("endurance", "long")]
+check("Z7 Fixture: es gibt eine Grundlagen-Karte", bool(_ga7))
+eq("Z7: ohne Stufentest -> Watt aus der FTP, beschriftet", _ga7[0].get("watt_source") if _ga7 else None, "ftp")
+check("Z7: die fehlende Eingabe ist BENANNT (kein Stufentest), nicht still ersetzt",
+      bool(_ga7) and "Stufentest" in str(_ga7[0].get("ga_missing") or ""))
+_main7 = [b for b in ((_ga7[0].get("blocks_w") or []) if _ga7 else []) if str(b[2]).startswith("gleich")]
+check("Z7: der Hauptteil traegt seine FTP-Prozent (180 W), kein Ziel des ersten Athleten",
+      bool(_main7) and all(0 < b[1] <= 180 for b in _main7))
+eq("Z7: keine Zahl des ersten Athleten in der Trainer-Payload (auch nicht 90,6 · 101,2 · 160,8 · 1,3)", leaks(_wp7), [])
+_in7 = ws._session_inputs(_d7, None)
+eq("Z7: ohne Option kein Ziel-alpha - keine 1,3 aus dem Code", (_in7.get("ga") or {}).get("target_alpha"), None)
+check("Z7: die Umkehrung nennt, was fehlt", "Stufentest" in str((_in7.get("ga") or {}).get("missing") or ""))
+
+print("\n=== Z7b. ATHLET B MIT EIGENEM STUFENTEST, OHNE ZIEL: nur die Grenze, aus SEINER Steigung ===")
+# Sein Stufentest: HRVT1 140 W bei alpha 0,75, personalisiert 120 W bei 1,00 ->
+# 80 W je alpha (nicht 90,6). Vier Grundlagenfahrten mit Stunde 1: 105 W bei
+# alpha 1,15 -> Grenze 105 + 0,15 x 80 = 117 W. Kein Ziel-alpha -> kein Ziel.
+_d7b = importer.empty_data("i5")
+_d7b["settings"] = {}
+rt = ws.ramp_lib if hasattr(ws, "ramp_lib") else _load("ramp_tests")
+_d7b["activities"]["rt"] = {"start_date_local": "2026-08-01T07:00:00", "name": "Stufentest", "type": "Ride", "moving_time": 1500}
+rt.set_entry(_d7b, "rt", "2026-08-01", result={"hrvt1": {"watts": 140, "alpha": 0.75, "hr": 140},
+                                              "hrvt1_pers": {"watts": 120, "alpha": 1.0, "hr": 130}}, set_at="2026-08-01")
+for i, day in enumerate(("2026-08-10", "2026-08-17", "2026-08-24", "2026-09-07")):
+    aid = f"g{i}"
+    _d7b["activities"][aid] = {"start_date_local": day + "T07:00:00", "name": "GA", "type": "Ride",
+                               "icu_ftp": 180, "icu_training_load": 50, "moving_time": 5400,
+                               "icu_zone_times": [3000, 2400, 0, 0, 0], "icu_weighted_avg_watts": 106, "icu_average_watts": 104}
+    _d7b["dfa"][aid] = {"hours": [{"hour": 1, "load_alpha": 1.15, "load_n": 300, "load_w": 105}]}
+_in7b = ws._session_inputs(_d7b, None)
+_g7b = _in7b.get("ga") or {}
+eq("Z7b: seine Steigung, nicht die des ersten", _g7b.get("mid"), 80.0)
+eq("Z7b: Stunde 1 traegt seine Grenze 117 W und kein Ziel",
+   [(h.get("hours"), h.get("limit_w"), h.get("target_w")) for h in (_g7b.get("hours") or [])], [(1, 117.0, None)])
+_c7b = FakeCoordinator(_d7b); ws._pick = lambda hass, athlete_id: _c7b
+_w7b = FakeConn()
+ws.websocket_workouts(None, _w7b, {"id": 10})
+_wp7b = (_w7b.results or [{}])[0]
+eq("Z7b: workouts laeuft ohne Fehler", _w7b.errors, [])
+_ga7b = [s for s in (_wp7b.get("picks") or _wp7b.get("sessions") or _wp7b.get("workouts") or []) if s.get("family") in ("endurance", "long")]
+eq("Z7b: die Grundlage liest die Umkehrung", _ga7b[0].get("watt_source") if _ga7b else None, "ga")
+_gb = ((_ga7b[0].get("ga_blocks") or [{}])[0]) if _ga7b else {}
+eq("Z7b: nur die Grenze (117), kein Ziel, kein Ziel-alpha", (_gb.get("limit"), _gb.get("target"), _gb.get("target_alpha")), (117, None, None))
+check("Z7b: der Hauptteil traegt die Grenze",
+      bool(_ga7b) and all(b[1] == 117 for b in _ga7b[0]["blocks_w"] if str(b[2]).startswith("gleich")))
+eq("Z7b: keine Zahl des ersten Athleten (auch nicht 90,6 · 1,3)", leaks(_wp7b), [])
+ws.dt_util = _dt_saved
 
 print(f"\ntest_zweiter_athlet: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:

@@ -570,6 +570,13 @@ def _family_of(key: str | None) -> str | None:
 # die dritte Stunde ist bei 2,5 h nicht gefahren.
 CURVE_HOUR_MIN_RIDES = 3
 
+# AB 3 H UNGEPRUEFT (0.68.0): die Kette der Umkehrung ist bis zur Abnahmefahrt
+# (3 h bei ~Ziel der dritten Stunde) nicht gegen eine gefahrene Einheit
+# geprueft. Jede Einheit ab so vielen GEPLANTEN Stunden traegt `unverified` -
+# auch wenn sie mangels Belegung an einer frueheren Stunde abliest, denn
+# gefahren wird die geplante Dauer.
+GA_UNVERIFIED_FROM_HOUR = 3
+
 
 def planned_hour(minutes: float) -> int:
     """Die Kettenstelle einer geplanten Dauer: volle Stunden, mindestens 1."""
@@ -1018,6 +1025,7 @@ def scaled(entry: dict[str, Any], ftp: float | None, aerobic_hr: int | None,
         # gueltigen Stufentest (ga["hours"] leer) bleibt die FTP, beschriftet.
         total = sum(float(block[0]) for block in entry["blocks"]) or float(entry.get("minutes") or 0)
         at = ga_at(ga, total)
+        unverified = planned_hour(total) >= GA_UNVERIFIED_FROM_HOUR
         if at is None:
             out["ga_missing"] = ga.get("missing") or "kein gültiger Stufentest"
         else:
@@ -1034,7 +1042,8 @@ def scaled(entry: dict[str, Any], ftp: float | None, aerobic_hr: int | None,
                     {"label": block[2], "watts": value, "target": at.get("target"),
                      "limit": at["limit"], "hour": at["hour"], "n": at["n"],
                      "load_w": at["load_w"], "alpha": at["alpha"], "mid": ga.get("mid"),
-                     "target_alpha": ga.get("target_alpha"), "limit_alpha": ga.get("limit_alpha")})
+                     "target_alpha": ga.get("target_alpha"), "limit_alpha": ga.get("limit_alpha"),
+                     "unverified": unverified})
             if changed:
                 out["blocks_w"] = staged
                 out["text_w"] = watts_text(staged) or out.get("text_w")
@@ -1830,7 +1839,8 @@ def explain(entry: dict[str, Any], ftp: float | None, curve: dict[str, Any] | No
                 f"{r.get('load_w')} W bei alpha {r.get('alpha')}; Grenze {r.get('limit')} W = Last + "
                 f"(alpha − {r.get('limit_alpha')}) × {r.get('mid')} W/alpha"
                 + (f"; Ziel {r.get('target')} W = Last + (alpha − {a_t}) × {r.get('mid')} W/alpha." if a_t is not None
-                   else "; kein Ziel eingetragen — die Einheit trägt die Grenze."))
+                   else "; kein Ziel eingetragen — die Einheit trägt die Grenze.")
+                + (" Ab 3 h ungeprüft — Abnahmefahrt offen." if r.get("unverified") else ""))
     elif src == "curve":
         sel = (curve or {}).get("selection") or {}
         stage = "marks" if sel.get("from_marks") else "alpha"
