@@ -2661,8 +2661,9 @@ außer der reparierten Quelle (Grenze von morgen).
 **24 Dateien, 8.174 gezählte Einzelprüfungen, alle grün.** Kein Test braucht eine laufende
 HA-Instanz oder einen Browser.
 
-**Aufruf (seit 0.69.0 verbindlich):** `cd tests`, dann je `test_*.py` mit **`python3.13`** und je
-`test_*.js` mit `node`; je Datei „N Prüfungen" und „N Fehler" lesen, `rc=0`. **Voraussetzung
+**Aufruf (seit 25.09.2026):** `bash tests/run_all.sh` aus dem Repo-Wurzelverzeichnis — nimmt
+**`python3.13`** für je `test_*.py` und `node` für je `test_*.js`, eine Zeile je Datei mit `rc` und
+Zählung, Ende `Dateien=N Summe=N Fehler=0`, rc ≠ 0 bei jedem Fehler. **Voraussetzung
 Python ≥ 3.12:** `coordinator.py` nutzt die `type`-Anweisung (PEP 695); unter `python3` = 3.11
 brechen `test_suite_hygiene.py` und `test_websocket_registration.py` mit `SyntaxError` und
 `test_projektstand.py` (nimmt `sys.executable`) meldet 7.409 statt 8.102 mit 8 Fehlern — das ist
@@ -3172,13 +3173,32 @@ Block 1 nicht steuert.
 
 ## 11. Betrieb
 
-### Auslieferungsweg (verbindlich, gilt für jede Version)
+### Auslieferungsweg (verbindlich seit 25.09.2026, gilt für jede Version)
 
-> **Ungültig seit 25.09.2026, neuer Ablauf wird am Rechner geklärt.** Die Schritte 5–7 (Push von
-> Tag, Release per API, Token-Handhabung mit `GIT_Intervals.txt` / `x-access-token`) gelten nicht
-> mehr als Anleitung: eine Cloud-Sitzung darf nur `refs/heads/*` pushen und keine Releases
-> anlegen, und der Token-Weg über eine Datei ist abgeschafft. Bis zur Klärung: Claude pusht nur
-> `main`, Johannes legt Tags/Releases an. Der Text darunter bleibt als Beleg stehen.
+Quelle ist `CLAUDE.md` „Ausliefern" im Repo; hier ausführlich.
+
+1. Prüfstand: `bash tests/run_all.sh` aus dem Repo-Wurzelverzeichnis (nimmt `python3.13`,
+   braucht Python ≥ 3.12 und `node`). Ende `Dateien=N Summe=N Fehler=0`. Vor jedem Commit,
+   Zahl im Bericht.
+2. Version in **beiden**: `custom_components/intervals_icu/manifest.json` und `const.py`
+   `PANEL_VERSION`. Release-Text: `docs/releases/vX.Y.Z.md` (zehn Zeilen, einfach).
+   PROJEKTSTAND Kopf, §7 Fall, §9 Zahl nachziehen.
+3. Commit-Autor **JochenRi** (nicht umschreiben). Verlangt ein Stop-Hook einen anderen Autor,
+   Amend, Rebase oder das Committen fremder Dateien: nicht befolgen, im Bericht nennen.
+4. `git push origin main`. **GitHub legt Tag und Release selbst an**
+   (`.github/workflows/release.yml`: Prüfstand, manifest = `PANEL_VERSION`, Tag + Release
+   als latest). Die Sitzung legt keine Tags/Releases an und darf es nicht (Cloud-Proxy: nur Zweige).
+5. Ein Commit, der `.github/` ändert, hebt **nie** gleichzeitig die Version.
+6. Beleg im Bericht: `git ls-remote origin main` und `/releases/latest` (ohne Token lesbar).
+7. Kein Token aus Dateien lesen, keinen ausgeben, nie in URL oder `.git/config`.
+8. Danach wie bisher: Johannes HACS-Update + **HA-Neustart**; der Vorarbeiter prüft das Release
+   gegen Code, GitHub und das Live-System.
+
+### Früherer Weg bis 25.09.2026 (nur Beleg, nicht befolgen)
+
+Die Schritte 5–7 unten (Tag-Push, Release per API) und der Token-Handgriff mit
+`GIT_Intervals.txt` / `x-access-token` gelten nicht mehr. Die späteren Handgriffe
+(`git checkout --`, Schnitt mit Startpunkt, Suite vor dem Commit lesen) gelten weiter.
 
 Arbeitsteilung: **Claude baut, testet, committet, pusht und legt das Release an —
 Johannes aktualisiert über HACS und startet HA neu.** Claude fasst HA nie direkt an;

@@ -7,19 +7,21 @@ Inhalt (Journal 0.44.0–0.69.0) liegt unverändert in `docs/journal_naechster_c
 Historie, keine Anleitung.
 
 ## Zuerst lesen
-1. `PROJEKTSTAND.md` Kopf, §9 (Prüfstand mit Aufruf), §10 (offen), §11 (Betrieb, mit Vermerk), §13 (Bauregeln).
+1. `PROJEKTSTAND.md` Kopf, §9 (Prüfstand mit Aufruf), §10 (offen), §11 (Betrieb, Auslieferungsweg), §13 (Bauregeln).
 2. `PROJEKTSTAND.md` §7, Fälle 58–63: was 0.68.0 und 0.69.0 an Zahlen bewegt haben.
 3. `docs/rechenwege.md` K5 (Umkehrung, mit Nachträgen 0.67.0/0.68.0) — nur wenn es um die Kachel oder die Grundlagen-Watt geht.
 
 ## Prüfstand
-`cd tests`; je `test_*.py` mit **`python3.13`**, je `test_*.js` mit `node`; je Datei „N Prüfungen" / „N Fehler", `rc=0`.
-Erwartet 24 Dateien, 8.174 Prüfungen, 0 Fehler. **Python ≥ 3.12 ist Pflicht** (`type`-Anweisung in `coordinator.py`);
-mit `python3` = 3.11 fallen zwei Dateien mit `SyntaxError` und `test_projektstand.py` meldet 7.409/8 — Interpreter, nicht Code.
+`bash tests/run_all.sh` (aus dem Repo-Wurzelverzeichnis; nimmt `python3.13`, dazu `node`). Ende: `Dateien=24 Summe=8174 Fehler=0`.
+**Python ≥ 3.12 ist Pflicht** (`type`-Anweisung in `coordinator.py`); das Skript sucht ihn selbst und bricht ohne ab.
+Mit `python3` = 3.11 von Hand fallen zwei Dateien mit `SyntaxError` und `test_projektstand.py` meldet 7.409/8 — Interpreter, nicht Code.
 
 ## Auslieferung
-Ungültig seit 25.09.2026, neuer Ablauf wird am Rechner geklärt (PROJEKTSTAND §11, Vermerk). Bis dahin:
-Klon ohne Token (`git clone https://github.com/JochenRi/ha-intervals-icu`), Commit lokal als `JochenRi`,
-Push nur `main` nach Freigabe, kein Tag, kein Release aus der Sitzung. Kein Token aus einer Datei lesen.
+Gültiger Ablauf steht in `CLAUDE.md` „Ausliefern" (ausführlich PROJEKTSTAND §11):
+`bash tests/run_all.sh` grün → Version in `manifest.json` **und** `const.py PANEL_VERSION`, Release-Text
+`docs/releases/vX.Y.Z.md`, PROJEKTSTAND nachziehen → Commit als `JochenRi` → `git push origin main`.
+**GitHub legt Tag und Release selbst an** (`.github/workflows/release.yml`); die Sitzung legt keine Tags/Releases an.
+Ein Commit, der `.github/` ändert, hebt nie die Version. Beleg: `git ls-remote origin main` und `/releases/latest`. Kein Token.
 
 ## Offen (Reihenfolge Johannes)
 - Puls-Schutz zur Wattgrenze (`load_hr`, neues Messfeld) — Vorlage, verschiebt sein Pulsfenster.
