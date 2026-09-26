@@ -809,8 +809,14 @@ function today(kind) {
     // "today minus n". The last seven rows are the same days as `recent`,
     // with the same loads - one way to the day's load, not two.
     history_days: historyDays(),
+    // 0.74.3: die letzte GEMESSENE Nacht nach einer Einheit (coach._last_measured_night) -
+    // die Nacht nach dem 09.09.; die Einheit vom 11.09. wartet noch auf ihre Nacht.
     night: { available: true, headline: "Die Nacht sah aus wie sonst nach solchen Einheiten.",
-             detail: "Verglichen mit 13 früheren Einheiten ähnlicher Last." },
+             detail: "Verglichen mit 13 früheren Einheiten ähnlicher Last.",
+             night_date: "2026-09-10", activity_date: "2026-09-09",
+             activity_name: "Rehburg-Loccum Gehen", activity_id: "a-2026-09-09" },
+    night_pending: { date: "2026-09-11", name: "volumen", night_date: "2026-09-12", reason: "pending" },
+    night_none: false,
     anchors: { aerobic_hr: 157, aerobic_watts: 158 },
     horizon: "Nur für heute. Was morgen geht, hängt an der Belastung außerhalb des Trainings, und die steht in keinen Daten.",
     method: "Bewusst KEIN Punktwert. Von vierzehn Bereitschaftswerten aus zehn Wearable-Häusern legt kein einziger seine Formel offen.",
@@ -833,8 +839,58 @@ function today(kind) {
         sig("sleep", "Schlafdauer", "h", 7.5, 7.4, 0.1, "Verhalten", "Dauer geschätzt"),
       ] };
   }
+  // 0.74.3: ohne gemessene Nacht im Fenster, aber mit einer Einheit, deren Nacht noch fehlt
   if (kind === "ohnenacht") return { ...base, night: { available: false } };
+  if (kind === "missing") {
+    return { ...base, night: { available: false },
+      night_pending: { date: "2026-09-09", name: "Rehburg-Loccum Gehen", night_date: "2026-09-10", reason: "missing" } };
+  }
+  // 0.74.3: keine Einheit in den sieben Tagen - auch der Streifen ohne Fahrt
+  if (kind === "keineeinheit") {
+    return { ...base, night: { available: false }, night_pending: null, night_none: true,
+      recent: base.recent.map((d) => ({ date: d.date, load: 0, state: d.state })),
+      week_load: 0, rest_days: 7 };
+  }
+  // 0.74.3: Namen mit HTML-Zeichen und ein sehr langer Name (Einzelzeile, Kürzung nur per CSS)
+  if (kind === "namen") {
+    const long = "Grundlage lang über den Deich nach Steinhude und zurück mit Kaffeepause am Hafen";
+    return { ...base, night: { ...base.night, activity_name: long },
+      night_pending: { ...base.night_pending, name: '<b>Bergauf & "Zwift"</b>' } };
+  }
+  if (kind === "livefall") return liveToday(base);
   return base;
+}
+
+/* 0.74.3 · der Live-Fall vom 26.09.2026 als ganze Seite: VO2max am Fr 25. mit einer Nacht, die ein
+ * Etikett trägt (0.74.2), die Grundlage „volumen" am Sa 26. wartet noch auf ihre Nacht. Die Tage des
+ * Streifens, der Verlauf und die Woche tragen dieselben Einheiten mit denselben Namen und Lasten. */
+function liveToday(base) {
+  const shift = (iso) => new Date(Date.parse(iso + "T00:00:00Z") + 15 * 864e5).toISOString().slice(0, 10);
+  const ride = (name, minutes) => [{ name, type: "Ride", minutes }];
+  const recent = [
+    { date: "2026-09-20", load: 90, state: "ready", sessions: ride("SweetSpot 2x20 am Deich mit Gegenwind", 95) },
+    { date: "2026-09-21", load: 0, state: "ready" },
+    { date: "2026-09-22", load: 95, state: "ready", sessions: ride("Rehburg-Loccum", 110) },
+    { date: "2026-09-23", load: 0, state: "ready" },
+    { date: "2026-09-24", load: 0, state: "ready" },
+    { date: "2026-09-25", load: 75, state: "ready", sessions: ride("VO2max-Intervalle 4x4min", 62) },
+    { date: "2026-09-26", load: 38, state: "ready", sessions: ride("volumen", 60) },
+  ];
+  const hist = base.history_days.slice(0, -7).map((r) => ({ ...r, date: shift(r.date) }))
+    .concat(recent.map((d) => ({ date: d.date, load: d.load, state: d.state })));
+  const w = week("voll");
+  const sessions = w.sessions.map((x) => (x.date === "2026-09-25" ? { ...x, name: "VO2max-Intervalle 4x4min" } : x))
+    .concat([{ ...w.sessions[0], date: "2026-09-26", id: "a-2026-09-26", name: "volumen", load: 38 }]);
+  const total = sessions.reduce((a, x) => a + x.load, 0);
+  const n = night("etikett");
+  return { ...base, date: "2026-09-26", recent, history_days: hist,
+    week_load: recent.reduce((a, d) => a + d.load, 0), rest_days: recent.filter((d) => !d.load).length,
+    week: { ...w, sessions, total, budget: { ...w.budget, window_load: total },
+      groups: sessions.reduce((g, x) => { const k = x.group && x.group in g ? x.group : "none"; g[k] += x.load; return g; },
+                              { grundlage: 0, schwelle: 0, vo2max: 0, other: 0, none: 0 }) },
+    night: { ...n, activity_date: "2026-09-25", activity_name: "VO2max-Intervalle 4x4min", activity_id: "a-2026-09-25" },
+    night_pending: { date: "2026-09-26", name: "volumen", night_date: "2026-09-27", reason: "pending" },
+    night_none: false };
 }
 
 function goal(kind) {

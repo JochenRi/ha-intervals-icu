@@ -95,7 +95,9 @@ const EMPTY_LOAD = { weeks: [], weeks_by_group: [], window_history: [], window_p
      "heute: Ruhepuls als Einbruch beschriftet");
   p._sigOpen = "hrv";
   p._sigOpen = null;
-  contains(html, "Erholung, nicht Bereitschaft", "heute: Nacht nicht als Erholung eingeordnet");
+  // 0.74.3: umgestellt auf die neue Ueberschrift (SKIZZE_0.74.3 §3.2) - weiter "Erholung, nicht Bereitschaft"
+  contains(html, "DIE LETZTE GEMESSENE NACHT NACH EINER EINHEIT — Erholung, nicht Bereitschaft",
+           "heute: Nacht nicht als Erholung eingeordnet");
   // the removed things must STAY removed
   ok(!/Monotonie/.test(html), "heute: Monotonie wieder da");
   ok(!/class="ring"/.test(html), "heute: Ring wieder da");   // Icons dürfen Kreise haben, die Leitanzeige nicht
@@ -120,8 +122,12 @@ const EMPTY_LOAD = { weeks: [], weeks_by_group: [], window_history: [], window_p
   ok(!/class="tnote"/.test(html), "heute: Hinweis ohne Widerspruch gezeigt");
 
   clean(p.rHeute(F.today("ohnenacht")), "heute ohne Nacht");
+  // 0.74.3 umgestellt: ohne gemessene Nacht verschwindet der Abschnitt nicht mehr - er zeigt NUR die
+  // Zeile der wartenden Nacht, keinen leeren Kasten (keine Ueberschrift, kein Kopf, keine Karte)
   ok(!p.rHeute(F.today("ohnenacht")).includes("Erholung, nicht Bereitschaft"),
      "heute: Nachtblock ohne Daten gezeigt");
+  ok(p.rHeute(F.today("ohnenacht")).includes('class="tnight'), "heute ohne Nacht: der Abschnitt fehlt ganz");
+  ok(!/class="tnhead|class="nverdict/.test(p.rHeute(F.today("ohnenacht"))), "heute ohne Nacht: leerer Kasten gezeigt");
   clean(p.rHeute(F.today("leer")), "heute leer");
   clean(p.rHeute(null), "heute null");
 }
@@ -3611,6 +3617,95 @@ const EMPTY_LOAD = { weeks: [], weeks_by_group: [], window_history: [], window_p
   ok(z(P._nightVerdict({ key: "verdaut", label: "verdaut", z_hrv: 0.1, z_hrv_next: null, note: null, rule: "r" }))
        .includes("Nacht danach +0,1 SD · zweite Nacht –"), "0.74.2 B2 Randfall: ohne z2 und note fehlt 'zweite Nacht –'");
   P._night = {}; P._laps = {}; P._streams = {};
+}
+
+/* ── 0.74.3 · Heute zeigt die letzte GEMESSENE Nacht nach einer Einheit (SKIZZE_0.74.3 §3.2, §5, §7) ── */
+{
+  const P = new M.Panel(); P._nowIso = F.TODAY;
+  const z = (h) => String(h).replace(/\s+/g, " ");
+  const txt = (h) => z(String(h).replace(/<[^>]*>/g, "")).replace(/&amp;/g, "&").replace(/&quot;/g, '"')
+    .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#39;/g, "'");
+  const HEAD = "DIE LETZTE GEMESSENE NACHT NACH EINER EINHEIT — Erholung, nicht Bereitschaft";
+  const PEND = (tag, name) => `Die Nacht nach der Einheit vom ${tag} (${name}) liegt noch nicht vor – sie erscheint, sobald die Uhr die Nacht an intervals.icu geliefert hat.`;
+  const MISS = (tag, name) => `Für die Nacht nach der Einheit vom ${tag} (${name}) gibt es keine Nachtwerte.`;
+  const NONE = "Keine Einheit in den letzten sieben Tagen – darum keine Nacht danach.";
+  const SUB = "— die letzten sieben Tage und die letzte gemessene Nacht nach einer Einheit";
+
+  // §7 Seitenprobe · der Live-Fall vom 26.09. als ganze Seite
+  const live = F.today("livefall");
+  const lh = P.rHeute(live);
+  clean(lh, "0.74.3 Live-Fall");
+  const lt = txt(lh);
+  const at = (s) => lt.indexOf(s);
+  const order = [["Streifen", "Last in sieben Tagen"], ["pending", PEND("Sa 26.", "volumen")], ["Ueberschrift", HEAD],
+                 ["nach", "nach Fr 25. · VO2max-Intervalle 4x4min"],
+                 ["Kasten", "Nicht bewertbar: Nacht zum 26.09. mit Etikett Cannabis, Gewicht 0,5"],
+                 ["Karte", "Nacht danach -1,3 SD · zweite Nacht liegt noch nicht vor"]];
+  for (const [name, s] of order) ok(at(s) >= 0, `0.74.3 §7 Live-Fall: ${name} fehlt (${s})`);
+  ok(order.every(([, s], i) => i === 0 || at(order[i - 1][1]) < at(s)), "0.74.3 §7 Live-Fall: Reihenfolge nicht wie im Soll");
+  ok(lt.includes("Woher das kommt " + SUB), "0.74.3 §3.2: die Unterzeile 'Woher das kommt' steht nicht wörtlich");
+  ok(!lt.includes("die Nacht nach der letzten Einheit"), "0.74.3: die alte Unterzeile steht noch");
+  ok((lt.match(/Erholung, nicht Bereitschaft/g) || []).length === 1, "0.74.3: die Ueberschrift steht nicht genau einmal");
+  // dieselbe Karte wie im Aktivitaeten-Reiter (gleiche Nacht, gleiche Zahlen)
+  const A = F.activities();
+  P._laps[A[0].id] = { laps: [], source: "none" }; P._streams[A[0].id] = F.steadyStream();
+  P._night[A[0].id] = F.night("etikett");
+  const akt = z(P.rAkt(A, A[0]));
+  const card = (h) => { const s = z(h); const i = s.indexOf('class="nverdict'); return i < 0 ? "" : s.slice(i, s.indexOf("</div></div>", i)); };
+  ok(card(lh) !== "" && card(lh) === card(akt), "0.74.3 §7: die Nacht-Karte im Heute-Reiter traegt andere Zahlen als im Aktivitaeten-Reiter");
+  ok(z(lh).includes(z(P._nightVerdict(live.night.verdict))), "0.74.3 §7: die Karte ist nicht die eine _nightVerdict-Stelle");
+  P._night = {}; P._laps = {}; P._streams = {};
+  // Seitenprobe: der Streifen traegt dieselben Tage wie die Nacht-Zeilen (Fr 25. VO2max, Sa 26. volumen)
+  ok(/title="25\.09\.2026: Last 75 · VO2max-Intervalle 4x4min/.test(z(lh)) && /title="26\.09\.2026: Last 38 · volumen/.test(z(lh)),
+     "0.74.3 Seitenprobe: Streifen und Nacht-Zeilen nennen andere Tage oder Namen");
+
+  // missing · nur die Zeile, kein leerer Kasten
+  const mh = P.rHeute(F.today("missing")); clean(mh, "0.74.3 missing");
+  ok(txt(mh).includes(MISS("Mi 09.", "Rehburg-Loccum Gehen")), "0.74.3 missing: die Zeile steht nicht wörtlich");
+  ok(!txt(mh).includes(HEAD) && !/class="tnhead|class="nverdict/.test(mh), "0.74.3 missing: leerer Kasten gezeigt");
+  // pending · nur die Zeile
+  ok(txt(P.rHeute(F.today("ohnenacht"))).includes(PEND("Fr 11.", "volumen")), "0.74.3 pending: die Zeile steht nicht wörtlich");
+  // none · der Abschnitt verschwindet nicht
+  const nh = P.rHeute(F.today("keineeinheit")); clean(nh, "0.74.3 keine Einheit");
+  ok(nh.includes('class="tnight') && txt(nh).includes(NONE), "0.74.3 night_none: der Abschnitt ist leer oder fehlt");
+  ok(!txt(nh).includes(HEAD) && !txt(nh).includes("liegt noch nicht vor"), "0.74.3 night_none: Kasten oder pending-Zeile gezeigt");
+  // gemessene Nacht ohne pending: keine pending-Zeile
+  const onlyNight = P.rHeute({ ...F.today(), night_pending: null });
+  ok(!txt(onlyNight).includes("liegt noch nicht vor") && txt(onlyNight).includes("nach Mi 09. · Rehburg-Loccum Gehen"),
+     "0.74.3: ohne night_pending eine pending-Zeile oder ohne 'nach …'-Zeile");
+  // der Abschnitt verschwindet nie mehr ganz
+  for (const k of [undefined, "ohnenacht", "missing", "keineeinheit", "livefall", "namen"]) {
+    ok(P.rHeute(F.today(k)).includes('class="tnight'), `0.74.3: der Nacht-Abschnitt fehlt (${k || "voll"})`);
+  }
+
+  // Namen: HTML-Zeichen escaped, langer Name voll sichtbar in einer Zeile, Kuerzung nur per CSS, voller Name im title
+  const nm = F.today("namen");
+  const hh = P.rHeute(nm); clean(hh, "0.74.3 Namen");
+  ok(!hh.includes('<b>Bergauf') && hh.includes("&lt;b&gt;Bergauf &amp; &quot;Zwift&quot;&lt;/b&gt;"),
+     "0.74.3: Name mit HTML-Zeichen nicht escaped");
+  const LONG = nm.night.activity_name;
+  ok(txt(hh).includes("nach Mi 09. · " + LONG), "0.74.3: der lange Name ist hart gekuerzt");
+  ok(hh.includes(`title="${LONG}"`), "0.74.3: der volle Name fehlt im title");
+  ok(txt(hh).includes(PEND("Fr 11.", '<b>Bergauf & "Zwift"</b>')), "0.74.3: der Name der pending-Zeile ist gekuerzt");
+  ok(hh.includes('title="&lt;b&gt;Bergauf &amp; &quot;Zwift&quot;&lt;/b&gt;"'), "0.74.3: pending-Name fehlt im title");
+  // der lange Name laeuft nicht aus der Zeile: die Namensstelle ist einzeilig und kuerzt per CSS
+  const nameSpans = hh.match(/<span class="tnname"[^>]*>/g) || [];
+  ok(nameSpans.length === 2, `0.74.3: nicht beide Namen (nach, pending) in der Namensstelle (${nameSpans.length})`);
+  const src = H.source();
+  const rule = (sel) => { const m = src.match(new RegExp("\\n\\" + sel + "\\{(.*)\\}\\n")); return m ? m[1] : ""; };
+  const tnn = rule(".tnname");
+  for (const need of ["white-space:nowrap", "overflow:hidden", "text-overflow:ellipsis", "max-width:100%", "display:inline-block"]) {
+    ok(tnn.includes(need), `0.74.3: langer Name laeuft aus der Zeile - .tnname ohne ${need}`);
+  }
+  const tna = rule(".tnafter");
+  for (const need of ["white-space:nowrap", "overflow:hidden", "text-overflow:ellipsis"]) {
+    ok(tna.includes(need), `0.74.3: die 'nach …'-Zeile bricht um oder laeuft aus - .tnafter ohne ${need}`);
+  }
+  ok(/<p class="tnafter"/.test(hh), "0.74.3: die 'nach …'-Zeile traegt die einzeilige Klasse nicht");
+  // Kein hartes Abschneiden in der Nacht-Stelle des Panels (der Streifen behaelt seine 12 Zeichen, §6)
+  const body = src.slice(src.indexOf("const night = "), src.indexOf("return `", src.indexOf("const night = ")));
+  ok(body.length > 0 && !/\.slice\(0, *\d+\)|substring\(0|substr\(0/.test(body), "0.74.3: Name in der Nacht-Stelle hart gekuerzt");
+  ok(/names\[0\]\.slice\(0, 12\)/.test(src), "0.74.3 §6: der Streifen hat seine Kuerzung verloren");
 }
 
 /* ── 0.72.2 · Stufenwort immer, Menge als eigenes Zeichen ─────────────── */

@@ -965,6 +965,15 @@ def _hard_days_phrase(limit: int) -> str:
     return f"höchstens {limit} harte Tage"
 
 
+def _is_session(activity: dict[str, Any]) -> bool:
+    """EINE Stelle (0.74.3): was als Einheit zaehlt - mindestens 15 min Bewegungszeit.
+
+    Die Grenze ist die seit jeher bestehende aus _trained_today (Setzung, keine neue
+    Zahl). Es lesen: _trained_today (trainiert heute?) und today() (die Nacht nach
+    der letzten Einheit)."""
+    return (activity.get("moving_time") or 0) >= 900
+
+
 def _trained_today(data: dict[str, Any]) -> bool:
     """Whether a real session (>= 15 min) is already on today's date."""
     wellness = data.get("wellness") or {}
@@ -975,9 +984,54 @@ def _trained_today(data: dict[str, Any]) -> bool:
     for activity in (data.get("activities") or {}).values():
         if str(activity.get("start_date_local") or "")[:10] != today:
             continue
-        if (activity.get("moving_time") or 0) >= 900:
+        if _is_session(activity):
             return True
     return False
+
+
+# 0.74.3 (SKIZZE §4, Setzung): die Nacht nach einer Einheit wird in einem Fenster aus
+# sieben KALENDERTAGEN gesucht, [letzter Wellness-Tag - 6, letzter Wellness-Tag].
+NIGHT_WINDOW_DAYS = 7
+
+
+def _last_measured_night(data: dict[str, Any], current: str) -> dict[str, Any]:
+    """DIE LETZTE GEMESSENE NACHT NACH EINER EINHEIT - eine Stelle (0.74.3, Skizze §3.1).
+
+    Kandidaten: Einheiten (_is_session) mit Datum im Fenster, neueste nach voller
+    Uhrzeit zuerst. `night` ist night_after der neuesten Kandidatin, deren Nacht
+    vorliegt, mit Name und Kennung dazu; `night_pending` meldet eine neuere
+    Kandidatin ohne Nacht ("pending", wenn ihre Nacht nach dem letzten
+    Wellness-Tag liegt, sonst "missing"); `night_none`, wenn das Fenster leer ist.
+    night_after selbst bleibt unberuehrt (Aktivitaeten-Reiter: dieselbe Karte).
+    """
+    start = (date.fromisoformat(current) - timedelta(days=NIGHT_WINDOW_DAYS - 1)).isoformat()
+    candidates = []
+    for key, activity in (data.get("activities") or {}).items():
+        stamp = str(activity.get("start_date_local") or "")
+        if not stamp[:10] or not _is_session(activity) or not start <= stamp[:10] <= current:
+            continue
+        candidates.append((stamp, str(key), activity))
+    candidates.sort(key=lambda row: row[0], reverse=True)
+    if not candidates:
+        return {"night": {"available": False}, "night_pending": None, "night_none": True}
+
+    def _name(activity: dict[str, Any]) -> str:
+        return str(activity.get("name") or activity.get("type") or "")
+
+    night: dict[str, Any] = {"available": False}
+    for stamp, key, activity in candidates:
+        found = night_after(data, key)
+        if found.get("available"):
+            night = {**found, "activity_date": stamp[:10],
+                     "activity_name": _name(activity), "activity_id": key}
+            break
+    pending = None
+    newest_stamp, newest_key, newest = candidates[0]
+    if night.get("activity_id") != newest_key:
+        night_date = (date.fromisoformat(newest_stamp[:10]) + timedelta(days=1)).isoformat()
+        pending = {"date": newest_stamp[:10], "name": _name(newest), "night_date": night_date,
+                   "reason": "pending" if night_date > current else "missing"}
+    return {"night": night, "night_pending": pending, "night_none": False}
 
 
 def assessment(data: dict[str, Any]) -> dict[str, Any]:
@@ -1968,14 +2022,10 @@ def today(data: dict[str, Any], events: Any = None, day: str | None = None) -> d
     rest_days = sum(1 for row in recent if row["load"] == 0)
 
     # the night after the last session - recovery, explicitly labelled as such
-    last_activity = None
-    for key, activity in (data.get("activities") or {}).items():
-        day_key = str(activity.get("start_date_local") or "")[:10]
-        if not day_key:
-            continue
-        if last_activity is None or day_key > last_activity[1]:
-            last_activity = (key, day_key)
-    night = night_after(data, last_activity[0]) if last_activity else {"available": False}
+    # 0.74.3: die letzte GEMESSENE Nacht nach einer Einheit (_is_session) im Fenster
+    # aus sieben Kalendertagen, dazu die wartende Nacht einer neueren Einheit.
+    nights = _last_measured_night(data, current)
+    night = nights["night"]
 
     # EINE LASTGRENZE (0.67.3, S5): Heute-Reiter und Trainer-Karten lesen
     # dieselbe Funktion - min(Budget, Zustandsdeckel).
@@ -2076,6 +2126,8 @@ def today(data: dict[str, Any], events: Any = None, day: str | None = None) -> d
         "week_load": round(week_load),
         "rest_days": rest_days,
         "night": night,
+        "night_pending": nights["night_pending"],
+        "night_none": nights["night_none"],
         "anchors": anchors_now,
         "horizon": (
             "Nur für heute. Was morgen geht, hängt an der Belastung außerhalb des "

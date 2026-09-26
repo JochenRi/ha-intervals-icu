@@ -4684,11 +4684,23 @@ class IntervalsIcuPanel extends HTMLElement {
       </div>`;
     }).join("");
 
-    const night = t.night && t.night.available ? `<div class="tnight">
-      <div class="tlabel">DIE NACHT NACH DER LETZTEN EINHEIT — Erholung, nicht Bereitschaft</div>
+    // 0.74.3 (SKIZZE_0.74.3 §3.2): die letzte GEMESSENE Nacht nach einer Einheit (coach.today,
+    // eine Stelle). Darueber die Zeile einer neueren Einheit, deren Nacht noch fehlt; ohne Einheit im
+    // Fenster ein Satz. Der Abschnitt verschwindet nie mehr ganz. Der Name steht voll und einzeilig,
+    // gekuerzt wird nur per CSS (.tnname), der volle Name steht im title.
+    const nname = (name) => `<span class="tnname" title="${esc(name)}">${esc(name)}</span>`;
+    const np = t.night_pending;
+    const pendLine = np ? `<p class="hint tnpend">${ico("info", C.tx2, 14)}<span>${np.reason === "missing"
+      ? `Für die Nacht nach der Einheit vom ${esc(dShort(np.date))} (${nname(np.name)}) gibt es keine Nachtwerte.`
+      : `Die Nacht nach der Einheit vom ${esc(dShort(np.date))} (${nname(np.name)}) liegt noch nicht vor – sie erscheint, sobald die Uhr die Nacht an intervals.icu geliefert hat.`}</span></p>` : "";
+    const measured = t.night && t.night.available ? `
+      <div class="tlabel">DIE LETZTE GEMESSENE NACHT NACH EINER EINHEIT — Erholung, nicht Bereitschaft</div>
+      ${t.night.activity_date ? `<p class="tnafter">nach ${esc(dShort(t.night.activity_date))} · ${nname(t.night.activity_name)}</p>` : ""}
       <p class="tnhead">${esc(t.night.headline)}</p>
       <p class="hint">${esc(t.night.detail)}</p>
-      ${this._nightVerdict(t.night.verdict)}</div>` : "";
+      ${this._nightVerdict(t.night.verdict)}` : "";
+    const noneLine = t.night_none ? `<p class="hint">Keine Einheit in den letzten sieben Tagen – darum keine Nacht danach.</p>` : "";
+    const night = pendLine || measured || noneLine ? `<div class="tnight">${pendLine}${measured}${noneLine}</div>` : "";
 
     return `
       <div class="thead">${esc(dLong(t.date))}${
@@ -4703,7 +4715,7 @@ class IntervalsIcuPanel extends HTMLElement {
         <span>${esc(t.context_note)}</span></div>` : ""}
 
       <h3 class="secname">Woher das kommt
-        <span class="hint">— die letzten sieben Tage und die Nacht nach der letzten Einheit</span></h3>
+        <span class="hint">— die letzten sieben Tage und die letzte gemessene Nacht nach einer Einheit</span></h3>
       <div class="card pad">
         <div class="tweek">${bars}</div>
         <div class="tweeksum">${fmt(t.week_load)} Last in sieben Tagen · ${t.rest_days}
@@ -7594,6 +7606,9 @@ ul.rides span.r{color:${C.tx3};white-space:nowrap}
 .tweeksum{color:${C.tx2};font-size:13px;margin-top:10px;padding-top:10px;border-top:1px solid ${C.line}}
 .tnight{margin-top:12px;padding-top:12px;border-top:1px solid ${C.line}}
 .tnhead{font-size:15px;font-weight:600;margin:2px 0 2px}
+.tnafter{color:${C.tx3};font-size:12px;margin:0 0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tnname{display:inline-block;max-width:100%;vertical-align:bottom;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tnpend{display:flex;gap:6px;align-items:flex-start;margin:0 0 8px}
 @media(max-width:760px){
   .tcard{grid-template-columns:1fr}
   .tstate{border-left:none;border-top:1px solid ${C.line};padding:12px 0 0}

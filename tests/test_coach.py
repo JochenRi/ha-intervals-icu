@@ -1927,6 +1927,155 @@ if callable(_lv):
         _want = _hh["window_free"] if _hh["bound_by"] == "week" else _hh["ceiling"]
         eq((_hh["ceiling"], _want), (_sc["ceiling"], _sc["ceiling"]), f"0.74.0 §5 ({_lbl}): Ueberschrift/frei = Trainer-Obergrenze")
 
+# ── 0.74.3 · Heute zeigt die letzte GEMESSENE Nacht nach einer Einheit (SKIZZE_0.74.3 §3.1/§5) ──
+# today() nimmt Kandidaten mit _is_session (>= 900 s Bewegungszeit) im Fenster aus 7 KALENDERTAGEN
+# [letzter Wellness-Tag - 6, letzter Wellness-Tag], neueste nach voller Uhrzeit zuerst; gezeigt wird
+# die neueste mit vorliegender Nacht, darueber night_pending fuer eine neuere ohne Nacht.
+import ast as _ast743  # noqa: E402
+import copy as _cp743  # noqa: E402
+import inspect as _insp743  # noqa: E402
+
+
+def _a743(key, day_iso, clock, minutes, name="Ausfahrt", kind="Ride"):
+    act = {"id": key, "start_date_local": f"{day_iso}T{clock}:00", "type": kind,
+           "moving_time": minutes * 60, "icu_training_load": 60, "icu_intensity": 70}
+    if name is not None:
+        act["name"] = name
+    return act
+
+
+def _d743(acts, drop_last=0, blank=()):
+    d = build(days=90, activities={a["id"]: a for a in acts})
+    for _ in range(drop_last):
+        d["wellness"].pop(sorted(d["wellness"])[-1])
+    for iso in blank:
+        d["wellness"][iso] = {"id": iso}
+    return d
+
+
+def _g743(p, k):
+    return p.get(k) if isinstance(p, dict) else p
+
+
+def _t743(d):
+    t = coach.today(d)
+    return t.get("night") or {}, t.get("night_pending", "FEHLT"), t.get("night_none", "FEHLT")
+
+
+# A · Live-Fall: gestern VO2max (Nacht liegt vor), heute Grundlage (Nacht fehlt noch)
+_A = _d743([_a743("vo2", day(-1), "17:30", 60, "VO2max-Intervalle 4x4min"),
+            _a743("ga", day(0), "16:00", 75, "volumen")])
+_n, _p, _z = _t743(_A)
+eq((_n.get("available"), _n.get("activity_id"), _n.get("activity_name"), _n.get("activity_date"), _n.get("night_date")),
+   (True, "vo2", "VO2max-Intervalle 4x4min", day(-1), day(0)), "0.74.3 A: die VO2max-Nacht wird nicht gezeigt")
+eq(_p, {"date": day(0), "name": "volumen", "night_date": day(1), "reason": "pending"},
+   "0.74.3 A: die pending-Zeile fuer heute fehlt")
+eq(_z, False, "0.74.3 A: night_none gesetzt, obwohl eine Nacht da ist")
+# dieselbe Karte wie im Aktivitaeten-Reiter: ohne die drei Kopffelder bitgenau night_after
+_rest = {k: v for k, v in _n.items() if k not in ("activity_name", "activity_id")}
+eq(_rest, coach.night_after(_A, "vo2"), "0.74.3 A: die Heute-Nacht weicht von night_after (Aktivitaeten-Reiter) ab")
+
+# B · morgens vor dem Abgleich: die Wellness-Zeile von heute fehlt noch, die Nacht nach gestern fehlt
+_B = _d743([_a743("vor3", day(-3), "18:00", 90, "SweetSpot"),
+            _a743("gestern", day(-1), "18:00", 60, "Schwelle")], drop_last=1)
+_n, _p, _z = _t743(_B)
+eq((_n.get("available"), _n.get("activity_id")), (True, "vor3"), "0.74.3 B: die vorletzte Einheit mit Nacht wird nicht gezeigt")
+eq(_g743(_p, "reason"), "pending", "0.74.3 B: pending fehlt vor dem Abgleich")
+eq(_g743(_p, "night_date"), day(0), "0.74.3 B: night_date der wartenden Nacht")
+
+# C · nach der Fahrt ein 10-min-Spaziergang: zaehlt nicht als Einheit
+_C = _d743([_a743("spaziergang", day(0), "08:00", 10, "Gehen", "Walk"),
+            _a743("fahrt", day(-1), "17:00", 60, "Grundlage")])
+_n, _p, _z = _t743(_C)
+eq((_n.get("available"), _n.get("activity_id"), _p, _z), (True, "fahrt", None, False),
+   "0.74.3 C: der Spaziergang unter 15 min zaehlt als letzte Einheit")
+# Grenze genau: 899 s zaehlt nicht, 900 s zaehlt (dieselbe Grenze wie _trained_today)
+_C9 = _cp743.deepcopy(_C); _C9["activities"]["spaziergang"]["moving_time"] = 899
+eq(_t743(_C9)[1], None, "0.74.3 C: 899 s zaehlt als Einheit")
+_C9["activities"]["spaziergang"]["moving_time"] = 900
+eq(_g743(_t743(_C9)[1], "name"), "Gehen", "0.74.3 C Gegenprobe: 900 s zaehlt nicht als Einheit")
+
+# zwei Einheiten am selben Tag: die spaetere nach Uhrzeit gewinnt (Speicherreihenfolge frueh, spaet)
+_S = _d743([_a743("frueh", day(-1), "07:00", 40, "Pendeln hin"),
+            _a743("spaet", day(-1), "18:30", 60, "Abendrunde")])
+eq((_t743(_S)[0].get("activity_id"), _t743(_S)[1]), ("spaet", None), "0.74.3: bei zwei Einheiten am Tag gewinnt nicht die spaetere")
+# Gegenprobe: umgekehrte Speicherreihenfolge, gleiches Ergebnis
+_S2 = _d743([_a743("spaet", day(-1), "18:30", 60, "Abendrunde"),
+             _a743("frueh", day(-1), "07:00", 40, "Pendeln hin")])
+eq(_t743(_S2)[0].get("activity_id"), "spaet", "0.74.3 Gegenprobe: die Reihenfolge im Speicher entscheidet")
+
+# letzte Einheit 8 Tage alt (Tag - 7): ausserhalb des Fensters -> night_none
+_O = _d743([_a743("alt", day(-7), "18:00", 60, "Alt")])
+eq(_t743(_O), ({"available": False}, None, True), "0.74.3: eine 8 Tage alte Einheit wird noch gezeigt")
+# Gegenprobe Rand: Tag - 6 liegt im Fenster
+_O6 = _d743([_a743("rand", day(-6), "18:00", 60, "Rand")])
+eq((_t743(_O6)[0].get("activity_id"), _t743(_O6)[2]), ("rand", False), "0.74.3 Rand: Tag - 6 faellt aus dem Fenster")
+
+# missing: der Tag der Nacht ist da, traegt aber keine Nachtwerte
+_Mi = _d743([_a743("frueher", day(-4), "18:00", 60, "Frueher"),
+             _a743("luecke", day(-2), "18:00", 60, "Luecke")], blank=(day(-1),))
+_n, _p, _z = _t743(_Mi)
+eq((_n.get("activity_id"), _p), ("frueher", {"date": day(-2), "name": "Luecke", "night_date": day(-1), "reason": "missing"}),
+   "0.74.3 missing: Tag ohne Nachtwerte nicht als missing gemeldet")
+# Gegenprobe: nur die HRV fehlt -> night_after bewertet mit Ruhepuls/Schlaf (unveraendert), keine missing-Zeile
+_Mh = _d743([_a743("luecke", day(-2), "18:00", 60, "Luecke")])
+_Mh["wellness"][day(-1)].pop("hrv")
+eq((_t743(_Mh)[0].get("activity_id"), _t743(_Mh)[1]), ("luecke", None),
+   "0.74.3 Gegenprobe: ohne HRV, aber mit Ruhepuls entscheidet night_after nicht mehr")
+
+# Etikett-Nacht bleibt "nicht bewertbar" (0.74.2), die Einheit bleibt die gezeigte
+_E = _cp743.deepcopy(_A)
+_dc.set_entry(_E, day(0), "alkohol", None)
+_n, _p, _z = _t743(_E)
+eq((_n.get("activity_id"), (_n.get("verdict") or {}).get("key"), _n.get("state"), _g743(_p, "reason")),
+   ("vo2", "nicht_bewertbar", "unrated", "pending"), "0.74.3: die Etikett-Nacht verliert 'nicht bewertbar'")
+
+# zweiter Athlet ohne Aktivitaeten
+eq(_t743(build(days=90, activities={})), ({"available": False}, None, True), "0.74.3: zweiter Athlet ohne Aktivitaeten")
+
+# Name fehlt: die Sportart steht als Name
+_N = _d743([_a743("ohne", day(-1), "17:00", 60, None, "VirtualRide"),
+            _a743("heute", day(0), "17:00", 60, None, "Ride")])
+_n, _p, _z = _t743(_N)
+eq((_n.get("activity_name"), _g743(_p, "name")), ("VirtualRide", "Ride"), "0.74.3: ohne Namen steht nicht die Sportart")
+
+# _is_session ist EINE Stelle: _trained_today und today lesen sie; _trained_today bitgenau wie 0.74.2
+def _trained_old(data):  # eingefroren aus 0.74.2 (coach.py:968-980)
+    wellness = data.get("wellness") or {}
+    order = sorted(wellness)
+    if not order:
+        return False
+    today_ = order[-1]
+    for activity in (data.get("activities") or {}).values():
+        if str(activity.get("start_date_local") or "")[:10] != today_:
+            continue
+        if (activity.get("moving_time") or 0) >= 900:
+            return True
+    return False
+
+
+check(callable(getattr(coach, "_is_session", None)), "0.74.3: coach._is_session fehlt")
+_cases743 = [_A, _B, _C, _C9, _S, _O, _Mi, _N, build(days=90, activities={}), {"wellness": {}, "activities": {}}]
+for _mt in (None, 0, 1, 899, 900, 901, 4500):
+    _dd = _d743([_a743("m", day(0), "10:00", 1)]); _dd["activities"]["m"]["moving_time"] = _mt
+    _cases743.append(_dd)
+_dd = _d743([_a743("ohnedatum", day(0), "10:00", 60)]); _dd["activities"]["ohnedatum"]["start_date_local"] = None
+_cases743.append(_dd)
+eq([coach._trained_today(x) for x in _cases743], [_trained_old(x) for x in _cases743],
+   "0.74.3: _trained_today nicht bitgenau wie 0.74.2")
+def _calls743(fn):
+    _src = _insp743.getsource(getattr(coach, fn))
+    return _src, {n.func.id for n in _ast743.walk(_ast743.parse(_src)) if isinstance(n, _ast743.Call) and isinstance(n.func, _ast743.Name)}
+
+
+for _fn, _want in (("_trained_today", "_is_session"), ("_last_measured_night", "_is_session"), ("today", "_last_measured_night")):
+    _src, _calls = _calls743(_fn) if hasattr(coach, _fn) else ("", set())
+    check(_want in _calls, f"0.74.3: {_fn} liest {_want} nicht")
+    check(">= 900" not in _src and "> 899" not in _src and (_fn == "today" or "moving_time" not in _src),
+          f"0.74.3: {_fn} fuehrt eine eigene 900-s-Grenze")
+check(">= 900" in _insp743.getsource(coach._is_session) if hasattr(coach, "_is_session") else False,
+      "0.74.3: _is_session traegt die 900-s-Grenze nicht")
+
 print(f"test_coach: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

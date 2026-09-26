@@ -604,7 +604,10 @@ const CHART_FROZEN = {
     fatigue: T.rFatigue(F.fatigue({ v2: F.fatigueV2Block() })),
     fam: Object.keys(b.families).map((k) => T._famValue(b, k)).join(""),
   };
-  const want = { heute: "c0e0160b2f28b892", morgen: "37e1c5d4c152e165", fatigue: "47bfaad6a9fe54e0", fam: "5b827b517a726ee0" };
+  // 0.74.3 neu gesetzt (heute, morgen): gewollte Aenderung NUR im Nacht-Abschnitt und in der Unterzeile
+  // "Woher das kommt" (SKIZZE_0.74.3 §3.2) - am 26.09. belegt: die Seiten aus 0.74.2 und 0.74.3 sind ohne
+  // diese beiden Stellen bytegleich. Alt: heute c0e0160b2f28b892, morgen 37e1c5d4c152e165.
+  const want = { heute: "89402e5e426ca50b", morgen: "5a201f797dfbe231", fatigue: "47bfaad6a9fe54e0", fam: "5b827b517a726ee0" };
   for (const [k, v] of Object.entries(snap)) {
     ok(crypto.createHash("sha256").update(String(v)).digest("hex").slice(0, 16) === want[k],
        `0.73.3: ${k} rendert anders als in 0.73.2 (Momentaufnahme; bei gewollter Aenderung neu setzen)`);
