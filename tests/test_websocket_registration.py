@@ -161,8 +161,10 @@ check('"conflict"' in source,
 check("anchor_conflict" in source,
       "anker: workouts.anchor_conflict wird nicht befragt")
 state_block = source[source.index("def _state_for_plan"):source.index("@websocket_api.websocket_command(\n    {\n        vol.Required(\"type\"): \"intervals_icu/goal\"")]
-check("icu_training_load" in state_block,
-      "wochenlast: nicht aus den Aktivitäten gelesen")
+# 0.73.3 umgestellt: die Wochenlast (weekly_load) ist aus dem Plan-State entfernt;
+# geprueft bleibt, dass die Stunden aus den Aktivitaeten kommen, nicht aus wellness.
+check('activity.get("moving_time")' in state_block,
+      "plan-state: die Stunden nicht aus den Aktivitäten gelesen")
 check('row.get("load")' not in state_block,
       "wochenlast: liest wieder wellness.load (Fehlerklasse 1)")
 
@@ -230,6 +232,17 @@ _an_src = (COMP / "analytics.py").read_text(encoding="utf-8") if "COMP" in dir()
     Path(__file__).resolve().parents[1] / "custom_components" / "intervals_icu" / "analytics.py", encoding="utf-8").read()
 check("context_note" in _an_src and "gewichtet gerechnet" in _an_src,
       "readiness (S1): die Vorbemerkung zur gewichteten Ampel fehlt in analytics")
+
+
+# --- 0.73.3 · §2 weekly_load im Plan-State ohne Leser - entfernt -------------------
+_sfp = functions.get("_state_for_plan")
+check(_sfp is not None, "0.73.3: _state_for_plan fehlt")
+if _sfp is not None:
+    _sfp_src = ast.get_source_segment(MODULE.read_text(), _sfp) or ""
+    check("weekly_load" not in _sfp_src and "load_cutoff" not in _sfp_src,
+          "0.73.3 §2: weekly_load (samt Rechnung) steht noch im Plan-State")
+    check('"longest_ride_hours"' in _sfp_src and '"typical_hours"' in _sfp_src and '"progression"' in _sfp_src,
+          "0.73.3 §2 Gegenprobe: die gelesenen Felder des Plan-States fehlen")
 
 
 # --- the goal handler: grades for the CURRENT week only (ausbau.md I3) --------

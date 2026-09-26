@@ -555,7 +555,7 @@ def _recent(data: dict[str, Any], field: str, days: int) -> list[float]:
     return out
 
 
-def readiness(data: dict[str, Any], today: str | None = None) -> dict[str, Any]:
+def readiness(data: dict[str, Any]) -> dict[str, Any]:
     """Return a per-signal traffic light and its overall colour (since 0.73.1 without a load budget)."""
     components: list[dict[str, Any]] = []
 
@@ -1104,8 +1104,8 @@ def week_done(data: dict[str, Any], start: str, today: str | None = None) -> dic
         "paired": False,
         "note": (
             "Gefahren gegen vorgesehen — welche Fahrt welche geplante Einheit war, "
-            "entscheidest du. Das Archiv führt Dauer und Last, kein Etikett; eine "
-            "automatische Zuordnung wäre eine Behauptung, die hier niemand belegen kann."
+            "entscheidest du. Die Familie einer Fahrt kommt aus deinen Marken oder aus "
+            "der Paarung in intervals.icu; geraten wird nichts."
         ),
     }
 

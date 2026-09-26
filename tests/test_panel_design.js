@@ -577,4 +577,40 @@ const CHART_FROZEN = {
   }
 }
 
+/* ── 0.73.3 · toter Code entfernt, die Leser rendern gleich (Skizze 0.73.3 §2) ── */
+{
+  const src = H.source();
+  ok(!/^function bullet\(/m.test(src) && typeof M.bullet === "undefined", "0.73.3: function bullet(b) steht noch (kein Aufrufer)");
+  for (const [re, name] of [[/^\.bullet\{/m, ".bullet"], [/^\.bband\{/m, ".bband"], [/^\.bval\{/m, ".bval"],
+                            [/^\.bmark\{/m, ".bmark (ohne .bbar)"], [/^\.tstate\{display:flex/m, ".tstate{display:flex} (Trainer)"],
+                            [/^\.tcard \.tstate\{display:block\}/m, ".tcard .tstate{display:block}"]]) {
+    ok(!re.test(src), `0.73.3: CSS-Regel ${name} steht noch`);
+  }
+  ok(!/class="bval"|class="bband"|class="bullet"/.test(src), "0.73.3: ein Leser der entfernten Klassen ist aufgetaucht");
+  // die Leser bleiben: .bbar .bmark regiert jede .bmark, die Grundregel des Heute-Zustands bleibt
+  ok(/^\.bbar \.bmark\{position:absolute;top:-2px;bottom:-2px;width:3px;margin-left:-1\.5px;border-radius:2px;background:\$\{ROLE\.series\}\}$/m.test(src),
+     "0.73.3: die Regel .bbar .bmark hat sich veraendert");
+  ok(/^\.tstate\{border-left:1px solid \$\{C\.line\};padding-left:18px\}$/m.test(src), "0.73.3: die Grundregel .tstate des Heute-Kopfs fehlt");
+  ok((src.match(/class="bmark"/g) || []).length === 2 && (src.match(/<div class="bbar">\s*<i class="brange"[^>]*>\s*<\/i>\s*<i class="bmark"/g) || []).length === 2,
+     "0.73.3: eine .bmark steht nicht mehr in einer .bbar (dann gaelte keine Regel)");
+  ok((src.match(/class="tstate"/g) || []).length === 1, "0.73.3: .tstate hat einen weiteren Leser (Trainer?)");
+  // vorher/nachher gleiche HTML-Ausgabe der betroffenen Render-Funktionen (Stand 0.73.2)
+  const crypto = require("crypto");
+  const T = new M.Panel(); T._nowIso = "2026-09-26";
+  const b = F.blocks({ steering_on: true });
+  const snap = {
+    heute: T.rHeute({ ...F.today(), week: F.week("voll") }),
+    morgen: T.rHeute({ ...F.today(), week: F.week("morgen") }),
+    fatigue: T.rFatigue(F.fatigue({ v2: F.fatigueV2Block() })),
+    fam: Object.keys(b.families).map((k) => T._famValue(b, k)).join(""),
+  };
+  const want = { heute: "c0e0160b2f28b892", morgen: "37e1c5d4c152e165", fatigue: "47bfaad6a9fe54e0", fam: "5b827b517a726ee0" };
+  for (const [k, v] of Object.entries(snap)) {
+    ok(crypto.createHash("sha256").update(String(v)).digest("hex").slice(0, 16) === want[k],
+       `0.73.3: ${k} rendert anders als in 0.73.2 (Momentaufnahme; bei gewollter Aenderung neu setzen)`);
+  }
+  ok((snap.fatigue.match(/class="bmark"/g) || []).length === 1 && (snap.fam.match(/class="bmark"/g) || []).length === 2,
+     "0.73.3 Treffer: die .bmark-Leser (:1504/:1816) sind nicht in der Momentaufnahme");
+}
+
 report("test_panel_design");

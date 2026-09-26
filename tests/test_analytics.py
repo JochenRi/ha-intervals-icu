@@ -492,7 +492,7 @@ for _i in range(35):
 _fs = analytics.form_state(31.4, 24.7)
 check("F2.9 Erzeuger: die Form ist absolut +6,7 -> grey", (round(_fs["form"], 1), _fs["zone"]), (6.7, "grey"))
 check("F2.9 Erzeuger: relativ steht daneben, entscheidet aber nicht", round(_fs["percent"], 1), 21.3)
-_rd = analytics.readiness(_f29, today="2026-09-24")
+_rd = analytics.readiness(_f29)  # 0.73.3 umgestellt: readiness hat keinen Parameter today mehr
 _fc = [c for c in _rd["components"] if c["id"] == "form"][0]
 check("F2.9 Treffer Ampel: die Form-Komponente stuft absolut (grey -> green)", _fc["state"], "green")
 check("F2.9 Treffer Ampel: der Wert ist die absolute Form", _fc.get("value"), 6.7)
@@ -701,6 +701,17 @@ if callable(_ws_fn):
     _wb = _ws_fn(_b, "2026-09-26")
     check("0.73.0 3 Athlet B: alle Radfahrten ohne Zuordnung",
           sorted({x["group"] for x in _wb["sessions"] if x["sport"] == "Rad"}, key=str), [None])
+
+
+# --- 0.73.3 · §1 der Satz im Wochenplan, §2 readiness ohne today ---------------
+_wd = analytics.week_done(AMBIGUOUS, "2026-09-07", today="2026-09-11")
+check("0.73.3 §1: neuer Satz woertlich", _wd["note"],
+      "Gefahren gegen vorgesehen — welche Fahrt welche geplante Einheit war, entscheidest du. "
+      "Die Familie einer Fahrt kommt aus deinen Marken oder aus der Paarung in intervals.icu; geraten wird nichts.")
+check("0.73.3 §1: der alte Satz ist fort", "niemand belegen kann" in _wd["note"] or "kein Etikett" in _wd["note"], False)
+check("0.73.3 §1: paired bleibt False", _wd["paired"], False)
+import inspect as _insp733
+check("0.73.3 §2: readiness ohne Parameter today", list(_insp733.signature(analytics.readiness).parameters), ["data"])
 
 print(f"test_analytics: {CHECKS} Prüfungen, {len(failures)} Fehler")
 print("FEHLER:", failures if failures else "keine")

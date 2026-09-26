@@ -1661,8 +1661,9 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
 
 /* ── Bausteine an den Rändern ──────────────────────────────────────────── */
 {
-  clean(M.bullet({ chronic: 1, last_six_days: 0, target_ratio: 1, recommended: 0,
-                   steady: 5, corridor_top: 7, risk_top: 9, state: "green" }), "bullet mini");
+  // 0.73.3 umgestellt: bullet() ist entfernt (kein Aufrufer seit dem Heute-Kopf 0.73.0);
+  // geprueft wird, dass es nicht zurueckkommt.
+  ok(typeof M.bullet === "undefined", "bullet mini: bullet() ist wieder da, ohne Aufrufer");
   clean(M.spark([null, null, null]), "spark nur nullen");
   clean(M.spark([5, 5, 5, 5]), "spark konstant");
   clean(M.chart({ h: 100, n: 10, y0: 0, y1: 10,

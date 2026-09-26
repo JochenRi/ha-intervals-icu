@@ -657,29 +657,6 @@ function rollMedian(vals, win) {
   return out;
 }
 
-/* bullet graph for the load budget (Few's gauge replacement) */
-function bullet(b) {
-  const w = 880, h = 92, padL = 8, padR = 16, y = 30, bh = 18;
-  const top = Math.max(b.risk_top * 1.12, b.recommended * 1.15, 10);
-  const X = (v) => padL + (Math.min(v, top) / top) * (w - padL - padR);
-  const stc = (ST[b.state] || ST.unknown).c;
-  const zone = (a, bb, col, op) =>
-    `<rect x="${X(a)}" y="${y}" width="${Math.max(0, X(bb) - X(a))}" height="${bh}" fill="${col}" opacity="${op}"/>`;
-  const mark = (v, label, col) => `
-    <line x1="${X(v)}" x2="${X(v)}" y1="${y - 8}" y2="${y + bh + 8}" stroke="${col || C.tx2}" stroke-width="2"/>
-    <text x="${X(v)}" y="${y + bh + 24}" text-anchor="middle" class="ax" fill="${col || C.tx2}">${label} ${fmt(v)}</text>`;
-  return `<svg class="ch" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" role="img" aria-label="Belastungsbudget heute: ${fmt(b.recommended)} Punkte">
-    ${zone(0, b.corridor_top, C.tx3, 0.14)}
-    ${zone(b.corridor_top, b.risk_top, C.amber, 0.14)}
-    ${zone(b.risk_top, top, C.red, 0.14)}
-    <rect x="${X(0)}" y="${y + 3}" width="${Math.max(2, X(b.recommended) - X(0))}" height="${bh - 6}" rx="2" fill="${stc}"/>
-    <text x="${Math.min(X(b.recommended) + 8, w - 90)}" y="${y + bh - 4}" class="bval" fill="${stc}">${fmt(b.recommended)}</text>
-    ${mark(b.steady, "gleichbleibend", C.tx2)}
-    ${mark(b.corridor_top, "Korridor bis", C.amber)}
-    ${mark(b.risk_top, "Risiko ab", C.red)}
-  </svg>`;
-}
-
 /* ------------------------------------------------------------------ */
 /* the panel                                                           */
 /* ------------------------------------------------------------------ */
@@ -7111,7 +7088,6 @@ svg.evtrack{margin-top:-2px}
 .verdict{display:flex;align-items:center;gap:10px;font-size:19px;font-weight:650;margin-bottom:14px;flex-wrap:wrap}
 .budhead{font-size:14.5px;color:${C.tx2};margin-bottom:2px}
 .budhead b{font-size:19px}
-.bval{font:700 17px ui-sans-serif,system-ui,sans-serif}
 details.calc p{color:${C.tx2};font-size:13.5px;max-width:760px}
 .nextrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px;padding:10px 12px;
   background:${C.card2};border-radius:9px;font-size:14.5px}
@@ -7421,10 +7397,6 @@ ul.rides span.r{color:${C.tx3};white-space:nowrap}
 .staleflag{color:${C.amber};font-size:12.5px;margin-left:6px}
 .tsigdate{color:${C.tx3};font-size:11px;margin-bottom:6px}
 .tsigdate.stale{color:${C.amber}}
-.bullet{position:relative;height:14px;background:#0006;border-radius:3px;flex-basis:100%;margin:6px 0 2px}
-.bband{position:absolute;left:0;top:0;bottom:0;background:${C.slate};opacity:.45;border-radius:3px}
-.bval{position:absolute;left:0;top:4px;bottom:4px;background:${C.tx};border-radius:2px}
-.bmark{position:absolute;top:-2px;bottom:-2px;width:2px;background:${C.tx2}}
 .tcard{display:grid;grid-template-columns:1.4fr 1fr;gap:18px;background:${C.card};
   border:1px solid ${C.line};border-left-width:4px;border-radius:12px;padding:18px 20px;margin-bottom:12px}
 .tcard.red{border-left-color:${C.red}}
@@ -7436,11 +7408,7 @@ ul.rides span.r{color:${C.tx3};white-space:nowrap}
 .tbig{font-size:34px;font-weight:700;line-height:1.1}
 .tsay{font-size:15px;color:${C.tx2};margin:6px 0 0}
 .tstate{border-left:1px solid ${C.line};padding-left:18px}
-/* 0.73.0: Heute-Kopf Variante C - der Wochenkasten und die Fahrtenliste.
-   Die rechte Spalte ist eine Spalte (Zustand oben, Fahrten darunter): die
-   Regel ".tstate{display:flex}" weiter unten (Abschnitt Trainer) greift sonst
-   auch hier - sie traegt im Trainer keinen Leser mehr (Befund, nicht entfernt). */
-.tcard .tstate{display:block}
+/* 0.73.0: Heute-Kopf Variante C - der Wochenkasten und die Fahrtenliste. */
 .hwbox{background:${C.card2};border-radius:8px;padding:14px;display:grid;gap:12px;margin-top:14px}
 .hwverdict{font-size:17px;font-weight:700;margin-top:2px}
 .hwsub{font-size:13px;color:${C.tx2};margin:2px 0 0}
@@ -7800,7 +7768,6 @@ details.bgfold>summary b,details.testfold>summary b{color:${C.tx};font-size:15px
 .expl .readas{margin:2px 0 6px}
 
 /* Trainer */
-.tstate{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
 .tsic{flex:0 0 auto}
 .tslabel{font-size:27px;font-weight:700;line-height:1.1}
 .tsz{flex:1 1 340px;min-width:280px;display:grid;gap:5px}

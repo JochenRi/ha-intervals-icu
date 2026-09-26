@@ -1382,18 +1382,8 @@ def _state_for_plan(data: dict[str, Any]) -> dict[str, Any]:
     for activity in (data.get("activities") or {}).values():
         hours = (activity.get("moving_time") or 0) / 3600
         longest = max(longest, hours)
-    # The weekly load comes from the ACTIVITIES. wellness.load is not filled
-    # on every account - reading it there reported "weekly_load: 0" on an
-    # archive holding 239 sessions. Same error class as the FTP (0.28.1) and
-    # the seven-day load (0.29.0): right number, wrong place.
-    wellness = data.get("wellness") or {}
-    days = sorted(wellness)
-    load_cutoff = days[-28] if len(days) >= 28 else (days[0] if days else "")
-    loads = [
-        float(activity.get("icu_training_load") or 0)
-        for activity in (data.get("activities") or {}).values()
-        if str(activity.get("start_date_local") or "")[:10] >= load_cutoff
-    ]
+    # 0.73.3: das Feld der Wochenlast (4-Wochen-Summe / 4) ist entfallen - kein
+    # Leser (weder plan.py noch das Panel), ein dritter Weg zur chronischen Last.
 
     # The hours the athlete actually rides, taken from the last eight weeks -
     # so the form does not have to ask for a number the archive already holds.
@@ -1412,7 +1402,6 @@ def _state_for_plan(data: dict[str, Any]) -> dict[str, Any]:
     return {
         "progression": progression,
         "longest_ride_hours": round(longest, 1),
-        "weekly_load": round(sum(loads) / 4) if loads else None,  # 4 weeks
         "typical_hours": round(seconds / 3600 / 8, 1) if seconds else None,
         "typical_days": round(len(days_ridden) / 8, 1) if days_ridden else None,
     }

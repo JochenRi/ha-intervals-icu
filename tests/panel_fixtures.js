@@ -765,7 +765,7 @@ function goal(kind) {
     vo2max: { label: "Spitzenleistung heben", detail: "Die Pyramide oben breiter machen.", target: "VO2max", why: "Rønnestads 30/15.", key_session: "die VO2max-Einheit" },
     health: { label: "Fit bleiben", detail: "Form halten.", target: "Erhalt", why: "Gleichmäßige Grundlage.", key_session: "die Grundlageneinheit" },
   };
-  const state = { longest_ride_hours: 3.5, weekly_load: 181, typical_hours: 8.5, typical_days: 3.1 };
+  const state = { longest_ride_hours: 3.5, typical_hours: 8.5, typical_days: 3.1 };  // 0.73.3: ohne weekly_load
   if (kind === "neu") {
     return { profile: { goal: null, hard_days: [] }, state, goals, plan: { ready: false, missing: ["goal"] } };
   }
@@ -817,7 +817,7 @@ function goal(kind) {
               { date: "2026-09-08", name: "Feierabendrunde", sport: "Rad", group: "ride", hours: 1.2, load: 70, intensity: 68 },
               { date: "2026-09-10", name: "Runde zwei", sport: "Rad", group: "ride", hours: 1.2, load: 72, intensity: 69 },
             ],
-            note: "Gefahren gegen vorgesehen — welche Fahrt welche geplante Einheit war, entscheidest du. Das Archiv führt Dauer und Last, kein Etikett; eine automatische Zuordnung wäre eine Behauptung, die hier niemand belegen kann." },
+            note: "Gefahren gegen vorgesehen — welche Fahrt welche geplante Einheit war, entscheidest du. Die Familie einer Fahrt kommt aus deinen Marken oder aus der Paarung in intervals.icu; geraten wird nichts." },
     sessions: [
       { ...w.sessions[0], ...card("z2_90", "Grundlage", "Aerobe Basis", 210,
           [[10, 55, "Einrollen"], [195, 68, "gleichmäßig"], [5, 50, "Ausrollen"]], [138, 152],

@@ -1707,7 +1707,7 @@ for _hn in ("websocket_workouts", "websocket_goal", "websocket_today"):
 check("readiness(" not in _csrc and 'get("overall"' not in _csrc, "0.73.1 2.1: coach liest noch readiness()/overall")
 check(_csrc.count("analytics.load_budget(") == 1, f"0.73.1 2.1: coach ruft load_budget an {_csrc.count('analytics.load_budget(')} Stellen (soll: eine)")
 # readiness behaelt Punkte und overall, das Feld budget hat keinen Leser mehr und ist fort
-_rd31 = _an.readiness(_g31, today=_d31)
+_rd31 = _an.readiness(_g31)  # 0.73.3 umgestellt: ohne today
 check("overall" in _rd31 and _rd31.get("components"), "0.73.1 2.1: readiness verliert Punkte oder overall")
 check("budget" not in _rd31, "0.73.1 2.1: readiness traegt noch das Feld budget ohne Leser")
 
