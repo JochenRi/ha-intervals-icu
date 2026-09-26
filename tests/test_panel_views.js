@@ -3838,5 +3838,45 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   ok(wo.includes(line("morgen")) && wo.indexOf("Bewertet für") < wo.indexOf('class="wogrid"'), "0.73.2 T4: aufgeklappt fehlt die Zeile ueber den Karten");
 }
 
-report("test_panel_views");
+/* ── 0.73.4 · SEITENPROBE Trainer (CLAUDE.md „Seitenprobe“): die ganze Seite mit
+   Fixture rendern, einen WIRKLICH gerenderten Kalenderknopf mit dem echten
+   Handler klicken, dann lesen: die Kennung ist nur Rueckmeldung am Knopf, kein
+   anderer Satz der Seite behauptet etwas darueber, und der Tag im Knopftext ist
+   der Tag, den der Knopf verspricht („morgen“ = data-when). */
+const SEITE734 = (async () => {
+  const T = new M.Panel();
+  T._nowIso = F.TODAY;
+  T._workouts = F.workouts("voll"); T._goal = F.goal(); T._fatigue = F.fatigue();
+  T._blocks = F.blocks({ steering_on: true }); T._coach = F.coach("ready");
+  T._rtests = { tests: [], sources: [], latest: null };
+  T._tab = "trainer"; T._view = { innerHTML: "" }; T._rd = F.readiness();
+  T._render();
+  const seite = String(T._view.innerHTML).replace(/\s+/g, " ");
+  const text = seite.replace(/<[^>]*>/g, " ");
+  ok(!/Kennung/.test(seite), "0.73.4 Seitenprobe: die Seite sagt schon vor dem Klick etwas über eine Kennung");
+  ok(!/im Kalender:/.test(text), "0.73.4 Seitenprobe: „im Kalender:“ steht schon vor dem Klick auf der Seite");
+  const tags = seite.match(/<button[^>]*data-act="plan"[^>]*>[^<]*/g) || [];
+  ok(tags.length >= 2, `0.73.4 Seitenprobe: zu wenige Kalenderknoepfe gerendert (${tags.length})`);
+  const morgen = tags.find((t) => /morgen/.test(t)) || "";
+  const ds = {};
+  for (const m of morgen.matchAll(/data-([a-z]+)="([^"]*)"/g)) ds[m[1]] = m[2];
+  ok(ds.act === "plan" && ds.id && /^\d{4}-\d\d-\d\d$/.test(ds.when || ""),
+     `0.73.4 Seitenprobe: der Morgen-Knopf traegt act/id/when nicht (${JSON.stringify(ds)})`);
+  T._render = () => {};
+  T._attach();
+  const el = { dataset: ds, disabled: false, textContent: "x", classList: { add: () => {} } };
+  T._ws = (typ, args) => Promise.resolve({ ok: true, name: "x", date: args.date, id: 1,
+    external_id: `ha-intervals-icu:${args.workout}:${args.date}`, external_id_confirmed: true });
+  T.shadowRoot._listeners.click({ target: { closest: (s) => (s === "[data-act]" ? el : null) } });
+  await new Promise((r) => setTimeout(r, 0));
+  ok(typeof M.dShort === "function", "0.73.4 Seitenprobe: dShort nicht erreichbar");
+  const tag = typeof M.dShort === "function" ? M.dShort(ds.when) : "?";
+  ok(el.textContent === `im Kalender: ${tag} · mit Kennung`,
+     `0.73.4 Seitenprobe: der Knopf nennt einen anderen Tag als er verspricht (${el.textContent} / ${ds.when})`);
+  ok(/· mit Kennung$/.test(el.textContent), `0.73.4 Seitenprobe: Knopftext nach Klick (${el.textContent})`);
+  // der Tooltip am Knopf widerspricht der Rueckmeldung nicht (er spricht nicht von einer Kennung)
+  ok(tags.every((t) => !/title="[^"]*Kennung/.test(t)), "0.73.4 Seitenprobe: ein Tooltip spricht von einer Kennung");
+})();
+
+SEITE734.then(() => report("test_panel_views"));
 })();

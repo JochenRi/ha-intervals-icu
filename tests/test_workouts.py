@@ -1620,6 +1620,51 @@ check(len(_panel) >= 8, "0.73.0 1 Treffer: TRAINER_FAMILIES nicht gelesen")
 eq(_panel, _fg, "0.73.0 1: TRAINER_FAMILIES (Panel) und FAMILY_GROUP (Backend) weichen ab")
 
 
+# --- 0.73.4 · E4 (Skizze §3.1, §4): die feste Kennung am geschriebenen Event ----
+# Der Payload VOR 0.73.4, eingefroren als eigene Rechnung - nicht aus to_event
+# abgeleitet, sonst prueft die Probe die Funktion gegen sich selbst.
+def _alt_payload(entry, day, sport="Ride", note=W.DEFAULT_NOTE):
+    d = entry.get("text_w") or entry["text"]
+    if note:
+        d = f"{note}\n\n{d}"
+    return {"category": "WORKOUT", "start_date_local": f"{day}T00:00:00", "type": sport,
+            "name": entry["title"], "description": d, "moving_time": int(entry["minutes"] * 60),
+            "icu_training_load": int(entry["load"]), "target": "POWER", "workout_doc": {}}
+
+eq(W.EXTERNAL_ID_PREFIX, "ha-intervals-icu:", "0.73.4 §3.1: das Praefix hat sich verschoben")
+_e4 = W.scaled(W.BY_KEY["vo2_4x4"], 215.0, 157)
+eq(_e4.get("key"), "vo2_4x4", "0.73.4 §3.1: scaled() verliert den Schluessel")
+_p4 = W.to_event(_e4, "2026-09-27")
+eq(_p4.get("external_id"), "ha-intervals-icu:vo2_4x4:2026-09-27",
+   "0.73.4 §3.1: to_event setzt die Kennung nicht wie in der Skizze")
+# §4: ohne %-Zeichen ist der Payload bis auf das neue Feld unveraendert
+check("%" not in _p4["description"], "0.73.4 §4 Fixture: der Payload traegt noch Prozent")
+eq({k: v for k, v in _p4.items() if k != "external_id"}, _alt_payload(_e4, "2026-09-27"),
+   "0.73.4 §4: der Payload hat sich ausser der Kennung veraendert")
+eq(sorted(set(_p4) - set(_alt_payload(_e4, "2026-09-27"))), ["external_id"],
+   "0.73.4 §4: mehr als ein neues Feld")
+# §4: Lauf und note=None tragen die Kennung ebenso
+_run4 = W.to_event(W.BY_KEY["z2_60"], "2026-09-28", sport="Run", note=None)
+eq(_run4.get("external_id"), "ha-intervals-icu:z2_60:2026-09-28", "0.73.4 §4: der Lauf traegt keine Kennung")
+eq(_run4["type"], "Run", "0.73.4 §4: Sportart verloren")
+check(not _run4["description"].startswith(W.DEFAULT_NOTE), "0.73.4 §4: note=None schreibt doch die Hinweiszeile")
+_nn4 = W.to_event(_e4, "2026-09-27", note=None)
+eq(_nn4.get("external_id"), "ha-intervals-icu:vo2_4x4:2026-09-27", "0.73.4 §4: note=None ohne Kennung")
+# §3.1: fehlt der Schluessel, gibt es KEIN Feld (keine halbe Kennung)
+_ohne = {k: v for k, v in _e4.items() if k != "key"}
+_p_ohne = W.to_event(_ohne, "2026-09-27")
+check("external_id" not in _p_ohne, f"0.73.4 §3.1: ohne Schluessel trotzdem eine Kennung ({_p_ohne.get('external_id')!r})")
+eq(_p_ohne, _alt_payload(_ohne, "2026-09-27"), "0.73.4 §3.1: ohne Schluessel veraendert sich der Payload")
+_leer = dict(_e4, key="")
+check("external_id" not in W.to_event(_leer, "2026-09-27"), "0.73.4 §3.1: leerer Schluessel ergibt eine Kennung")
+# jeder Katalogschluessel samt Stufentest: Kennung = Praefix + Schluessel + Datum
+eq(W.RAMP_TEST["key"] in W.BY_KEY, True, "0.73.4 §4 Fixture: Stufentest nicht im Katalog")
+for _k4, _en4 in sorted(W.BY_KEY.items()):
+    for _src in (_en4, W.scaled(_en4, 215.0, 157)):
+        eq(W.to_event(_src, "2026-10-01").get("external_id"), f"ha-intervals-icu:{_k4}:2026-10-01",
+           f"0.73.4 §4: {_k4} traegt nicht die eigene Kennung")
+
+
 print(f"test_workouts: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

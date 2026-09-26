@@ -2747,5 +2747,62 @@ const acts = F.activities(), thr = F.thresholds();
      "Trefferzusicherung/aufklapp: oberhalb der Schranke steht der Ersatzsatz noch da");
 }
 
+/* ── 0.73.4 · E4 §3.3: der Knopftext nach dem Eintragen, AM ECHTEN KLICK-HANDLER ──
+   Gestellt wird nur die Antwort des websocket; Text, Klasse und Fehlerweg
+   kommen aus dem Handler selbst. "mit Kennung" nur bei external_id_confirmed
+   === true - ein Wahrheitswert, der nur so aussieht (Text, 1), bestaetigt nicht. */
+{
+  const q = new M.Panel();
+  q._render = () => {};
+  q._attach();
+  const onClick = q.shadowRoot._listeners.click;
+  ok(typeof onClick === "function", "0.73.4: kein Klick-Handler registriert");
+  const knopf = () => {
+    const cls = new Set();
+    return { dataset: { act: "plan", id: "vo2_4x4", when: "2026-09-27" }, disabled: false,
+             textContent: "morgen in den Kalender", classList: { add: (c) => cls.add(c), has: (c) => cls.has(c) } };
+  };
+  const klick = (antwort, fehler) => {
+    const el = knopf();
+    const toasts = [];
+    q._toast = (t) => toasts.push(t);
+    let gesendet = null;
+    q._ws = (typ, args) => { gesendet = { typ, args };
+      return fehler ? Promise.reject(new Error(fehler)) : Promise.resolve(antwort); };
+    onClick({ target: { closest: (sel) => (sel === "[data-act]" ? el : null) } });
+    const zwischen = el.textContent;
+    return new Promise((res) => setTimeout(() => res({ el, toasts, gesendet, zwischen }), 0));
+  };
+  const basis = { ok: true, name: "VO2max 4×4 min", date: "2026-09-27", id: 77,
+                  external_id: "ha-intervals-icu:vo2_4x4:2026-09-27" };
+  PENDING.push((async () => {
+    const a = await klick({ ...basis, external_id_confirmed: true });
+    ok(a.gesendet && a.gesendet.typ === "plan_workout" && a.gesendet.args.date === "2026-09-27",
+       "0.73.4: der Klick schickt plan_workout nicht mit dem Tag des Knopfs");
+    ok(a.zwischen === "wird eingetragen …", `0.73.4: Zwischentext geaendert (${a.zwischen})`);
+    ok(a.el.textContent === "im Kalender: So 27. · mit Kennung",
+       `0.73.4 §3.3: bestaetigt zeigt nicht „im Kalender: So 27. · mit Kennung“ (${a.el.textContent})`);
+    ok(a.el.classList.has("done") && a.el.disabled === true, "0.73.4: Erfolg setzt done/disabled nicht mehr");
+    ok(a.toasts.length === 0, "0.73.4: Erfolg meldet einen Fehler");
+    for (const [lab, extra] of [["false", { external_id_confirmed: false }],
+                                ["Feld fehlt", {}],
+                                ["Text statt Wahrheitswert", { external_id_confirmed: "true" }],
+                                ["Zahl statt Wahrheitswert", { external_id_confirmed: 1 }]]) {
+      const b = await klick({ ...basis, ...extra });
+      ok(b.el.textContent === "im Kalender: So 27. · Kennung nicht bestätigt",
+         `0.73.4 §3.3 ${lab}: nicht „Kennung nicht bestätigt“ (${b.el.textContent})`);
+      ok(!/mit Kennung/.test(b.el.textContent), `0.73.4 §3.3 ${lab}: sagt „mit Kennung“ ohne Bestätigung`);
+      ok(b.el.classList.has("done"), `0.73.4 §3.3 ${lab}: eingetragen, aber nicht als erledigt markiert`);
+    }
+    // Fehlerweg unveraendert: Text zurueck, Knopf frei, Meldung wie bisher
+    const f = await klick(null, "422 Unprocessable");
+    ok(f.el.textContent === "morgen in den Kalender" && f.el.disabled === false,
+       `0.73.4 Fehlerweg: Knopf nicht zurueckgesetzt (${f.el.textContent})`);
+    ok(f.toasts.length === 1 && f.toasts[0] === "Eintragen fehlgeschlagen: 422 Unprocessable",
+       `0.73.4 Fehlerweg: Meldung geaendert (${f.toasts})`);
+    ok(!f.el.classList.has("done"), "0.73.4 Fehlerweg: als erledigt markiert");
+  })());
+}
+
 Promise.all(PENDING).then(() => report("test_panel_fixes"));
 })();

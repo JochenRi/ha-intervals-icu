@@ -713,6 +713,34 @@ check("0.73.3 §1: paired bleibt False", _wd["paired"], False)
 import inspect as _insp733
 check("0.73.3 §2: readiness ohne Parameter today", list(_insp733.signature(analytics.readiness).parameters), ["data"])
 
+# --- 0.73.4 · E4 §3.2: was to_event schreibt, liest _planned_key zurueck --------
+# Fuer JEDEN Schluessel im Katalog samt Stufentest, roh und gerechnet. Der Name
+# wird umbenannt und die Hinweiszeile fehlt: tragen darf nur die Kennung, nicht
+# der Altbestand-Weg (sonst bestuende die Probe auch ohne Kennung).
+_rl_fail = []
+for _k, _en in sorted(_W73.BY_KEY.items()):
+    for _src in (_en, _W73.scaled(_en, 215.0, 157)):
+        _pl = _W73.to_event(_src, "2026-09-27", note=None)
+        _ev4 = dict(_pl, id=9001, name="von Johannes umbenannt")
+        if analytics._planned_key([_ev4], 9001) != _k:
+            _rl_fail.append(_k)
+check("0.73.4 §3.2: Rundlauf to_event -> _planned_key fuer jeden Katalogschluessel", _rl_fail, [])
+check("0.73.4 §3.2 Fixture: der Stufentest ist im Rundlauf dabei", _W73.RAMP_TEST["key"] in _W73.BY_KEY, True)
+# Gegenprobe: dasselbe Event OHNE Kennung faellt bei umbenanntem Titel heraus -
+# die Zuordnung oben kommt also wirklich aus dem neuen Feld.
+_ohne4 = {k: v for k, v in _W73.to_event(_W73.BY_KEY["vo2_4x4"], "2026-09-27").items() if k != "external_id"}
+check("0.73.4 §3.2 Gegenprobe: ohne Kennung und umbenannt -> keine Zuordnung",
+      analytics._planned_key([dict(_ohne4, id=1, name="umbenannt")], 1), None)
+check("0.73.4 §3.2 Gegenprobe: ohne Kennung, Altbestand (Hinweiszeile + Titel) -> vo2_4x4",
+      analytics._planned_key([dict(_ohne4, id=1)], 1), "vo2_4x4")
+# durch activity_family: eine umbenannte, gepaarte Fahrt landet in ihrer Familie
+_af4 = {"activities": {"e4": _act("2026-09-27", "Morgenrunde", 80, paired_event_id=9001)},
+        "section_marks": {}, "events": [dict(_W73.to_event(_W73.BY_KEY["vo2_4x4"], "2026-09-27"),
+                                               id=9001, name="umbenannt")]}
+if callable(_fam):
+    _r4 = _fam(_af4, "e4") or {}
+    check("0.73.4 §3.2: umbenanntes eigenes Workout -> vo2max/plan", (_r4.get("group"), _r4.get("source")), ("vo2max", "plan"))
+
 print(f"test_analytics: {CHECKS} Prüfungen, {len(failures)} Fehler")
 print("FEHLER:", failures if failures else "keine")
 sys.exit(1 if failures else 0)

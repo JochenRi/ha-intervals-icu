@@ -1937,8 +1937,9 @@ def rate_sessions(sessions: list[dict[str, Any]], state: str,
 
 DEFAULT_NOTE = "Vorgeschlagen von Home Assistant"
 # 0.73.0: das Praefix der external_id, an dem analytics.activity_family ein
-# eigenes Event erkennt ("ha-intervals-icu:{key}:{date}"). GELESEN, noch nicht
-# geschrieben - to_event setzt es erst mit E4 (eigener Release, Freigabe).
+# eigenes Event erkennt ("ha-intervals-icu:{key}:{date}"). Seit 0.73.4 (E4)
+# setzt to_event die Kennung auch; _planned_key liest den Schluessel bis zum
+# ersten Doppelpunkt, das Datum stoert dort nicht.
 EXTERNAL_ID_PREFIX = "ha-intervals-icu:"
 
 
@@ -1962,7 +1963,7 @@ def to_event(entry: dict[str, Any], day: str, sport: str = "Ride",
     description = entry.get("text_w") or entry["text"]
     if note:
         description = f"{note}\n\n{description}"
-    return {
+    payload = {
         "category": "WORKOUT",
         "start_date_local": f"{day}T00:00:00",
         "type": sport,
@@ -1973,6 +1974,13 @@ def to_event(entry: dict[str, Any], day: str, sport: str = "Ride",
         "target": "POWER",
         "workout_doc": {},
     }
+    # E4 (0.73.4): eine feste Kennung, damit die gefahrene Einheit ihrer
+    # Familie zugeordnet bleibt, auch wenn der Titel umbenannt wird. Ohne
+    # Schluessel keine halbe Kennung. Kein upsert: gleiche Kennung ergibt in
+    # intervals.icu ein zweites Event, geschrieben wird nur auf Klick.
+    if entry.get("key"):
+        payload["external_id"] = f"{EXTERNAL_ID_PREFIX}{entry['key']}:{day}"
+    return payload
 
 
 # --- do the two anchors agree? -------------------------------------------------

@@ -596,6 +596,64 @@ eq("F3.11 Gegenprobe: ohne FTP-Feld faellt die Aktivitaet durch", _real_latest({
     "x": {"start_date_local": "2026-09-21T06:00:00"}, **_d11["activities"]}}), 210.0)
 eq("F3.11 Randfall: leeres Archiv", _real_latest({}), None)
 
+# --- 0.73.4 · E4 §3.3 und §4: die Rueckmeldung des Schreibwegs ------------------
+# Die Antwort von intervals.icu wird hier gestellt: mit der Kennung zurueck,
+# ohne, mit anderem Wert, kein dict. Der Handler darf in keinem Fall abstuerzen,
+# und "bestaetigt" nur bei Gleichheit.
+class _EchoClient:
+    def __init__(self, answer):
+        self.answer, self.events = answer, []
+
+    async def async_create_event(self, payload):
+        self.events.append(payload)
+        return self.answer(payload) if callable(self.answer) else self.answer
+
+
+def _plan_e4(answer, key="vo2_4x4", day="2026-09-27"):
+    coordinator = FakeCoordinator(importer.empty_data("i1"))
+    coordinator.client = _EchoClient(answer)
+    conn = FakeConn()
+    ws._pick = lambda hass, athlete_id: coordinator
+    asyncio.run(ws.websocket_plan_workout(None, conn, {"id": 1, "workout": key, "date": day}))
+    return coordinator, conn
+
+
+set_inputs(200.0, CURVE, BLOCKS)
+_SOLL4 = "ha-intervals-icu:vo2_4x4:2026-09-27"
+_c4, _k4 = _plan_e4(lambda p: {"id": 77, **p})
+eq("0.73.4 §3.3: genau ein Event geschrieben", len(_c4.client.events), 1)
+eq("0.73.4 §3.1: der Schreibweg sendet die Kennung", (_c4.client.events or [{}])[0].get("external_id"), _SOLL4)
+_r4 = (_k4.results or [{}])[0]
+eq("0.73.4 §3.3: kein Fehler", _k4.errors, [])
+eq("0.73.4 §3.3: die Antwort nennt die gesendete Kennung", _r4.get("external_id"), _SOLL4)
+eq("0.73.4 §3.3: Echo gleich -> bestaetigt", _r4.get("external_id_confirmed"), True)
+eq("0.73.4 §3.3: der Rest der Antwort bleibt (ok/name/date/id)",
+   {k: _r4.get(k) for k in ("ok", "name", "date", "id")},
+   {"ok": True, "name": W.BY_KEY["vo2_4x4"]["title"], "date": "2026-09-27", "id": 77})
+for _lab, _ans in (("Antwort ohne external_id", {"id": 4711}),
+                   ("Antwort mit anderem Wert", {"id": 4711, "external_id": "ha-intervals-icu:vo2_4x4:2026-09-28"}),
+                   ("Antwort kein dict (Liste)", [{"external_id": _SOLL4}]),
+                   ("Antwort kein dict (Text)", "ok"),
+                   ("Antwort None", None)):
+    _c, _k = _plan_e4(_ans)
+    eq(f"0.73.4 §4 {_lab}: kein Absturz, kein Fehler", _k.errors, [])
+    _rr = (_k.results or [{}])[0]
+    eq(f"0.73.4 §4 {_lab}: nicht bestaetigt", _rr.get("external_id_confirmed"), False)
+    eq(f"0.73.4 §4 {_lab}: die gesendete Kennung steht trotzdem da", _rr.get("external_id"), _SOLL4)
+    eq(f"0.73.4 §4 {_lab}: genau ein Schreibversuch, keine Wiederholung", len(_c.client.events), 1)
+# Fehlerweg bleibt: eine Ausnahme wird gemeldet, nicht wiederholt
+_cb = FakeCoordinator(importer.empty_data("i1"))
+_calls = []
+async def _boom_counted(payload):
+    _calls.append(payload)
+    raise RuntimeError("422 Unprocessable")
+_cb.client.async_create_event = _boom_counted
+_kb = FakeConn()
+ws._pick = lambda hass, athlete_id: _cb
+asyncio.run(ws.websocket_plan_workout(None, _kb, {"id": 1, "workout": "vo2_4x4", "date": "2026-09-27"}))
+eq("0.73.4 §2 Rueckfall: 4xx geht als write_failed an das Panel", [c for c, _ in _kb.errors], ["write_failed"])
+eq("0.73.4 §2 Rueckfall: genau ein Versuch", len(_calls), 1)
+
 print(f"test_handlers: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

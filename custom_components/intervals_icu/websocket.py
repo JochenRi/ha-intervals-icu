@@ -1234,11 +1234,18 @@ async def websocket_plan_workout(hass, connection, msg) -> None:
     except Exception as err:  # noqa: BLE001 - surfaced to the panel as a message
         connection.send_error(msg["id"], "write_failed", str(err))
         return
+    # E4 (0.73.4): ob intervals.icu die Kennung gespeichert hat, ist nicht
+    # dokumentiert - darum die Antwort zeigen statt es zu behaupten.
+    # Bestaetigt nur bei gleicher Kennung in der Antwort; kein dict = nein.
+    sent_id = payload.get("external_id")
+    echoed = created.get("external_id") if isinstance(created, dict) else None
     connection.send_result(msg["id"], {
         "ok": True,
         "name": entry["title"],
         "date": str(msg["date"]),
         "id": (created or {}).get("id") if isinstance(created, dict) else None,
+        "external_id": sent_id,
+        "external_id_confirmed": sent_id is not None and echoed == sent_id,
     })
 
 

@@ -2813,7 +2813,14 @@ class IntervalsIcuPanel extends HTMLElement {
         const before = el.textContent;
         el.textContent = "wird eingetragen …";
         this._ws("plan_workout", { workout: id, date: when, sport: "Ride" })
-          .then((r) => { el.textContent = `im Kalender: ${dShort(r.date)}`; el.classList.add("done"); })
+          .then((r) => {
+            // E4 (0.73.4): sagen, ob intervals.icu die Kennung bestaetigt hat.
+            // Nur ein echtes true bestaetigt; fehlt das Feld: nicht bestaetigt.
+            const kennung = r && r.external_id_confirmed === true
+              ? "mit Kennung" : "Kennung nicht bestätigt";
+            el.textContent = `im Kalender: ${dShort(r.date)} · ${kennung}`;
+            el.classList.add("done");
+          })
           .catch((e) => {
             el.disabled = false;
             el.textContent = before;
