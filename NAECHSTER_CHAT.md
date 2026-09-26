@@ -1,6 +1,6 @@
 # ha-intervals-icu — Übergabe an den nächsten Chat
 
-**Stand:** 25.09.2026 · **Version:** 0.72.0 · Prüfstand **24 / 8.577 / 0** (python3.13 + node)
+**Stand:** 25.09.2026 · **Version:** 0.72.1 · Prüfstand **24 / 8.606 / 0** (python3.13 + node)
 
 **Der Stand steht in `PROJEKTSTAND.md` — diese Datei ist nur der Einstieg.** Der frühere
 Inhalt (Journal 0.44.0–0.69.0) liegt unverändert in `docs/journal_naechster_chat.md`; er ist
@@ -8,11 +8,11 @@ Historie, keine Anleitung.
 
 ## Zuerst lesen
 1. `PROJEKTSTAND.md` Kopf, §9 (Prüfstand mit Aufruf), §10 (offen), §11 (Betrieb, Auslieferungsweg), §13 (Bauregeln).
-2. `PROJEKTSTAND.md` §7, Fälle 58–66: was 0.68.0–0.72.0 geändert hat.
+2. `PROJEKTSTAND.md` §7, Fälle 58–67: was 0.68.0–0.72.1 geändert hat.
 3. `docs/rechenwege.md` K5 (Umkehrung, mit Nachträgen 0.67.0/0.68.0) — nur wenn es um die Kachel oder die Grundlagen-Watt geht.
 
 ## Prüfstand
-`bash tests/run_all.sh` (aus dem Repo-Wurzelverzeichnis; nimmt `python3.13`, dazu `node`). Ende: `Dateien=24 Summe=8577 Fehler=0`.
+`bash tests/run_all.sh` (aus dem Repo-Wurzelverzeichnis; nimmt `python3.13`, dazu `node`). Ende: `Dateien=24 Summe=8606 Fehler=0`.
 **Python ≥ 3.12 ist Pflicht** (`type`-Anweisung in `coordinator.py`); das Skript sucht ihn selbst und bricht ohne ab.
 Mit `python3` = 3.11 von Hand fallen zwei Dateien mit `SyntaxError` und `test_projektstand.py` meldet 7.409/8 — Interpreter, nicht Code.
 

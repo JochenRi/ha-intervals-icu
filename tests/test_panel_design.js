@@ -224,7 +224,14 @@ const acts = F.activities();
   // gemeint ist. Die zwei Register mischen sich nie.
   const judgment = [M.C.green, M.C.amber, M.C.red];
   const cats = Object.entries(M.CTX_COLOR);
-  ok(cats.length === 7, `register: ${cats.length} statt 7 Etikettenfarben`);
+  // 0.72.1 UMGESTELLT: statt einer festen 7 gegen die Etiketten des Moduls
+  // (day_context.TAGS) - jedes Etikett genau eine Farbe, keine uebrig.
+  const dcSrc = require("fs").readFileSync(require("path").join(__dirname, "..", "custom_components",
+    "intervals_icu", "day_context.py"), "utf8");
+  const slugs = [...dcSrc.slice(dcSrc.indexOf("TAGS: dict"), dcSrc.indexOf("VALID_WEIGHTS"))
+    .matchAll(/^    "(\w+)": \{"label"/gm)].map((m) => m[1]).sort();
+  ok(slugs.length >= 8 && JSON.stringify(cats.map(([k]) => k).sort()) === JSON.stringify(slugs),
+     `register: Etikettenfarben ${cats.map(([k]) => k).sort()} passen nicht zu den Etiketten ${slugs}`);
   for (const [slug, col] of cats) {
     ok(!judgment.includes(col), `register: Etikett ${slug} trägt eine Urteilsfarbe`);
   }

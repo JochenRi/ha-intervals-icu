@@ -40,6 +40,9 @@ const C = {
   // data register
   blue: "#60a5fa", violet: "#a78bfa", cyan: "#22d3ee",
   magenta: "#e879f9", slate: "#94a3b8", deep: "#64748b",
+  // 0.72.1: achter Kategorienton fuer das Etikett Cannabis - die sieben
+  // anderen tragen schon je ein Etikett. Gedeckt, fern von Amber/Grün/Rot.
+  sand: "#c9b48f",
 };
 
 /* Role assignments. Each maps to a data-register tone above — never to a
@@ -733,6 +736,7 @@ const FIELD_LABEL = {
 const CTX_COLOR = {
   normal: C.slate, nachtschicht: C.violet, spaetschicht: C.blue,
   reise: C.cyan, alkohol: C.magenta, krank: C.deep, uhr_nicht_getragen: C.grey,
+  cannabis: C.sand,
 };
 
 /* Die sechs Familien mit Abschnitts-Haken (docs/ausbau.md P2).
@@ -6410,12 +6414,17 @@ class IntervalsIcuPanel extends HTMLElement {
      (coach.night_verdict). Ohne Bewertung kein Kasten. */
   _nightVerdict(v) {
     if (!v || !v.key) return "";
-    const TONE = { verdaut: "held", gekostet: "worse", zu_viel: "worse", unbekannt: "held" };
+    // 0.72.1: "nicht bewertbar" (Etikett auf der Nacht) ist KEIN Urteil - eigener,
+    // neutraler Ton, Info-Zeichen statt Haekchen.
+    const TONE = { verdaut: "held", gekostet: "worse", zu_viel: "worse", unbekannt: "held",
+                   nicht_bewertbar: "unrated" };
     const tone = TONE[v.key] || "held";
+    const mark = tone === "unrated" ? ico("info", C.tx2, 18)
+      : ico(tone === "worse" ? "warn" : "ok", tone === "worse" ? C.amber : C.green, 18);
     const z1 = v.z_hrv != null ? `${sign(v.z_hrv, 1)} SD` : "–";
     const z2 = v.z_hrv_next != null ? `${sign(v.z_hrv_next, 1)} SD` : (v.note ? esc(v.note) : "–");
     return `<div class="nverdict ${tone}">
-      ${ico(tone === "worse" ? "warn" : "ok", tone === "worse" ? C.amber : C.green, 18)}
+      ${mark}
       <div><b>${esc(v.label || "")}</b>
         <span>Nacht danach ${z1} · zweite Nacht ${z2}</span>
         <span class="mut">${esc(v.rule || "")}</span></div></div>`;
@@ -6430,7 +6439,8 @@ class IntervalsIcuPanel extends HTMLElement {
         : "Die Nacht danach lässt sich für diese Einheit nicht auswerten.";
       return `<h3 class="secname">Die Nacht danach</h3><p class="hint pad">${esc(why)}</p>`;
     }
-    const TONE = { hard: "worse", costly: "worse", usual: "held", easy: "held", unknown: "held" };
+    const TONE = { hard: "worse", costly: "worse", usual: "held", easy: "held", unknown: "held",
+                   unrated: "unrated" };   // 0.72.1: Etikett auf der Nacht - kein Urteil
     const tone = TONE[n.state] || "held";
     const rows = Object.entries(n.night || {}).map(([key, entry]) => {
       const ref = (n.reference || {})[key];
@@ -6452,7 +6462,8 @@ class IntervalsIcuPanel extends HTMLElement {
     return `<h3 class="secname">Die Nacht danach
       <span class="hint">— ${esc(n.night_date || "")}, gegen deine eigene übliche Antwort auf Einheiten dieser Größe</span></h3>
       <div class="cmpverdict ${tone}">
-        ${ico(tone === "worse" ? "warn" : "ok", tone === "worse" ? C.amber : C.green, 18)}
+        ${tone === "unrated" ? ico("info", C.tx2, 18)
+          : ico(tone === "worse" ? "warn" : "ok", tone === "worse" ? C.amber : C.green, 18)}
         <div><b>${esc(n.headline || "")}</b><span>${esc(n.detail || "")}</span></div></div>
       ${this._nightVerdict(n.verdict)}
       <div class="nightbox">${rows}
@@ -7556,6 +7567,7 @@ details.bgfold>summary b,details.testfold>summary b{color:${C.tx};font-size:15px
 .nverdict.worse{background:${C.amber}12;border:1px solid ${C.amber}44}
 .nverdict.held{background:${C.green}12;border:1px solid ${C.green}44}
 .nverdict b{display:block;margin-bottom:2px}
+.nverdict.unrated,.cmpverdict.unrated{background:${C.card2};border:1px solid ${C.line}}
 .nverdict span{display:block;color:${C.tx2};font-size:13.5px}
 .cmpgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:12px}
 .cmppanel{background:${C.card2};border-radius:10px;padding:8px 6px 4px}

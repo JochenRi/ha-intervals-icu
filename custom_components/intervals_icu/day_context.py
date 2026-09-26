@@ -41,6 +41,15 @@ TAGS: dict[str, dict[str, Any]] = {
                      "read": "verschobener, aber nächtlicher Schlaf"},
     "alkohol": {"label": "Alkohol", "weight": 0.5,
                 "read": "belegter akuter Stressor, der Wert bleibt echt"},
+    # 0.72.1 (Skizze 3): Cannabis wie Alkohol - ein akuter Stressor, der Wert
+    # bleibt echt. Das Gewicht 0,5 ist eine SETZUNG (wie bei Alkohol), der Beleg
+    # steht am Etikett.
+    "cannabis": {"label": "Cannabis", "weight": 0.5,
+                 "read": "akuter Stressor, senkt die nächtliche HRV — der Wert bleibt echt",
+                 "source": ("Gonzalez et al. 2026, J Sleep Res, doi 10.1111/jsr.70298, "
+                            "PMID 41692699 — Pilotstudie, 18 Erwachsene: 10 mg THC oral vor dem "
+                            "Schlaf senkte die nächtliche HRV deutlich (Zeit- und Frequenzbereich). "
+                            "Gewicht 0,5 = Setzung, wie bei Alkohol.")},
     "reise": {"label": "Reise", "weight": 0.5,
               "read": "akuter Stressor, klingt meist nach einem Tag ab"},
     "krank": {"label": "Krank", "weight": 0.0,
@@ -99,6 +108,9 @@ SOURCES: dict[str, Any] = {
                  "Tagschlaf signifikant erhöht",
          "source": "Boudreau/Boivin, PLOS ONE 2013; gestützt von "
                     "van Amelsvoort 2001"},
+        {"text": "THC vor dem Schlaf senkt die nächtliche HRV (Etikett Cannabis; "
+                 "Pilotstudie, 18 Erwachsene, 10 mg oral)",
+         "source": "Gonzalez et al. 2026, J Sleep Res, PMID 41692699"},
     ],
     "setzung": [
         "Die Gewichtszahlen je Etikett (0 / 0,5 / 1) sind eine Setzung, "

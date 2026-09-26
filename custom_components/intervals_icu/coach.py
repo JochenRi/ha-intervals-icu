@@ -1368,6 +1368,20 @@ NIGHT_VERDICT_WORDS = {
 }
 
 
+def _night_label(data: dict[str, Any], day: str) -> str | None:
+    """Der Grund-Satz, wenn die Nacht zum Morgen `day` ein Etikett mit Gewicht < 1
+    traegt (0.72.1) - sonst None. Das Gewicht kommt aus day_context.weight_for,
+    dem einen Erzeuger; Tag D steht fuer die Nacht, die am Morgen D endet."""
+    weight = day_context.weight_for(data, day)
+    if weight >= 1.0:
+        return None
+    entry = day_context.entry_for(data, day) or {}
+    label = day_context.TAGS.get(str(entry.get("tag") or ""), {}).get("label") or "ohne Namen"
+    w = f"{weight:g}".replace(".", ",")
+    return (f"Nacht zum {day[8:10]}.{day[5:7]}. mit Etikett {label}, Gewicht {w} — "
+            "sie misst nicht nur die Einheit")
+
+
 def night_verdict(z_first: float | None, z_second: float | None) -> dict[str, Any]:
     """Die eine Regel der Nacht-Bewertung (L2) - total ueber ihre Eingaben."""
     out: dict[str, Any] = {"z_hrv": z_first, "z_hrv_next": z_second, "setting": True,
@@ -1425,9 +1439,13 @@ def night_after(data: dict[str, Any], activity_id: str) -> dict[str, Any]:
             continue
         if abs(other_int - intensity) > 12:
             continue
-        peer_night = _night_z(
-            data, (date.fromisoformat(other_day) + timedelta(days=1)).isoformat()
-        )
+        peer_day = (date.fromisoformat(other_day) + timedelta(days=1)).isoformat()
+        # 0.72.1 (Skizze 2): DIE REFERENZ SAUBER - eine Folgenacht mit Etikett
+        # (Gewicht < 1, day_context.weight_for) misst nicht nur die Einheit und
+        # zaehlt nicht in die Vergleichsgruppe.
+        if day_context.weight_for(data, peer_day) < 1.0:
+            continue
+        peer_night = _night_z(data, peer_day)
         if peer_night:
             peers.append(peer_night)
 
@@ -1470,8 +1488,22 @@ def night_after(data: dict[str, Any], activity_id: str) -> dict[str, Any]:
 
     # L2: die Bewertung der Nacht (nur Anzeige) - HRV-z der Nacht danach und
     # der zweiten Nacht gegen das eine Band.
-    second = _night_z(data, (date.fromisoformat(night_day) + timedelta(days=1)).isoformat())
+    second_day = (date.fromisoformat(night_day) + timedelta(days=1)).isoformat()
+    second = _night_z(data, second_day)
     verdict = night_verdict((night.get("hrv") or {}).get("z"), (second.get("hrv") or {}).get("z"))
+
+    # 0.72.1 (Skizze 1, Vorlage L2 vom 24.09.): TRAEGT DIE BEWERTETE NACHT EIN
+    # ETIKETT (Gewicht < 1 - erste ODER zweite Nacht), misst sie nicht nur die
+    # Einheit: kein Urteil, weder L2 noch der Vergleich mit frueheren Einheiten.
+    # Die Rohwerte (z der Naechte, Referenz) bleiben stehen. Das Etikett am Tag
+    # der Einheit selbst (die Nacht DAVOR) spielt hier keine Rolle.
+    why = _night_label(data, night_day) or _night_label(data, second_day)
+    if why:
+        verdict = {**verdict, "key": "nicht_bewertbar", "delayed": False, "reason": why,
+                   "label": f"nicht bewertbar — {why}"}
+        state, headline = "unrated", f"Nicht bewertbar: {why}."
+        detail = ("Die Werte der Nacht stehen darunter, ein Urteil über die Einheit fällt weg — "
+                  "das Etikett sagt, dass noch etwas anderes auf die Nacht gewirkt hat.")
 
     return {
         "available": True,

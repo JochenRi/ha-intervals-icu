@@ -3518,5 +3518,31 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   ok(!/Progression aus deiner längsten Fahrt/.test(falte(z(P.rPlanWeeks(g)), "trainer:weeksrw")), "4 Gegenprobe: ohne Deckel steht ein Deckelsatz");
 }
 
+/* ── 0.72.1 · die Nachtbewertung liest das Tagesetikett ───────────────── */
+{
+  const P = new M.Panel(); P._nowIso = F.TODAY;
+  const z = (h) => String(h).replace(/\s+/g, " ");
+  const GRUND = "Nacht zum 04.09. mit Etikett Alkohol, Gewicht 0,5 — sie misst nicht nur die Einheit";
+  const n = { available: true, night_date: "2026-09-04", state: "unrated",
+    headline: `Nicht bewertbar: ${GRUND}.`, detail: "Die Werte der Nacht stehen darunter.",
+    night: { hrv: { label: "Herzratenvariabilität", unit: "ms", value: 40.4, baseline: 47.6, z: -1.59 } },
+    reference: { hrv: { mean: -1.47, sd: 1.24, n: 24 } }, caveat: "x",
+    verdict: { key: "nicht_bewertbar", label: `nicht bewertbar — ${GRUND}`, reason: GRUND,
+               z_hrv: -1.59, z_hrv_next: -0.34, rule: "Setzung: …", note: null } };
+  P._night = { a1: n };
+  const h = z(P._nightBlock({ id: "a1" }));
+  ok(h.includes(GRUND), "0.72.1: der Grund steht nicht an der Nacht");
+  ok(/-1,6 SD|−1,6 SD|-1,59/.test(h) && /40/.test(h), "0.72.1: die Rohwerte der Nacht sind nicht sichtbar");
+  ok(!h.includes(`stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="color:${M.C.green}"`),
+     "0.72.1: 'nicht bewertbar' traegt das gruene Haekchen (ein Urteil)");
+  ok(/class="(cmpverdict|nverdict) unrated"/.test(h), "0.72.1: 'nicht bewertbar' hat keinen eigenen, neutralen Ton");
+  // Gegenprobe: ein bewertetes 'verdaut' behaelt sein Haekchen
+  const g = z(P._nightVerdict({ key: "verdaut", label: "verdaut", z_hrv: 0.1, z_hrv_next: 0.2, rule: "r" }));
+  ok(g.includes(`style="color:${M.C.green}"`), "0.72.1 Gegenprobe: 'verdaut' verliert sein Haekchen");
+  // 3 · Cannabis hat eine eigene Etikettenfarbe aus dem Kategorienregister
+  ok(M.CTX_COLOR.cannabis && M.CTX_COLOR.cannabis !== M.CTX_COLOR.alkohol && M.CTX_COLOR.cannabis !== M.CTX_COLOR.normal,
+     "0.72.1 3: Cannabis hat keine eigene Etikettenfarbe");
+}
+
 report("test_panel_views");
 })();

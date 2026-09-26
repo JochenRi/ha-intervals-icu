@@ -1511,6 +1511,77 @@ check("kein harter Tag" in calm["note"], "C4: der Satz sagt nicht 'kein harter T
 check(f"{const.RECOVERY_QUIET_DAYS} Tage" in calm["note"] and "Setzung" in calm["note"],
       "C4 Gegenprobe: der Rest des Satzes (ruhige Tage, Setzung) ist verloren")
 
+# --- 0.72.1 · die Nachtbewertung liest das Tagesetikett (Skizze 0.72.1) ---------
+# EIN Erzeuger: day_context.weight_for. Nur Anzeige - keine Vorgabe liest das.
+import copy as _cp
+import day_context as _dc
+_K = hard_keys[-2]
+_base = coach.night_after(base_data, _K)
+_ref_sha = hashlib.sha256(json.dumps(_base, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+eq(_ref_sha, "c9bb94f983b78a6dfa6bee69e32144c90444429c89d144c420d1f2e47681d305",
+   "0.72.1 Gegenprobe: Nacht ohne Etikett nicht bitgenau wie 0.72.0")
+_act_day = str(base_data["activities"][_K]["start_date_local"])[:10]
+_n1 = (date.fromisoformat(_act_day) + timedelta(days=1)).isoformat()
+_n2 = (date.fromisoformat(_act_day) + timedelta(days=2)).isoformat()
+def _tagged(day_iso, tag, weight=None):
+    d = _cp.deepcopy(base_data)
+    _dc.set_entry(d, day_iso, tag, weight)
+    return coach.night_after(d, _K)
+# 1 · erste Nacht mit Etikett (Gewicht < 1): kein Urteil, Grund in einem Satz, Rohwerte bleiben
+_a = _tagged(_n1, "alkohol")
+_satz = f"Nacht zum {_n1[8:10]}.{_n1[5:7]}. mit Etikett Alkohol, Gewicht 0,5 — sie misst nicht nur die Einheit"
+eq((_a.get("verdict") or {}).get("key"), "nicht_bewertbar", "0.72.1 1: erste Nacht mit Alkohol wird bewertet")
+check(_satz in str((_a.get("verdict") or {}).get("label")), f"0.72.1 1: der Grund-Satz fehlt am L2-Urteil ({(_a.get('verdict') or {}).get('label')})")
+eq(_a.get("state"), "unrated", "0.72.1 1: der Vergleich mit frueheren Einheiten urteilt trotz Etikett")
+check(_satz in str(_a.get("headline")), "0.72.1 1: der Grund-Satz fehlt am Vergleich")
+# (die zweite Nacht darf sich bewegen: das Etikett der ersten geht - wie seit S1 - gewichtet in
+# IHRE Basislinie der 60 Naechte davor ein; geprueft wird, dass der Rohwert dasteht)
+eq((_a["night"], (_a["verdict"] or {}).get("z_hrv")), (_base["night"], _base["verdict"]["z_hrv"]),
+   "0.72.1 1: die Rohwerte der Nacht sind weg oder veraendert")
+check((_a["verdict"] or {}).get("z_hrv_next") is not None, "0.72.1 1: der Rohwert der zweiten Nacht ist weg")
+# 1 · nur die zweite Nacht mit Etikett -> ebenfalls nicht bewertbar
+_b = _tagged(_n2, "krank")
+eq(((_b.get("verdict") or {}).get("key"), _b.get("state")), ("nicht_bewertbar", "unrated"), "0.72.1 1: zweite Nacht mit Etikett wird bewertet")
+check("Etikett Krank, Gewicht 0" in str((_b.get("verdict") or {}).get("label")) and f"Nacht zum {_n2[8:10]}.{_n2[5:7]}." in str((_b.get("verdict") or {}).get("label")),
+      "0.72.1 1: der Satz nennt die zweite Nacht nicht")
+# Gegenproben: Normal (1,0) unveraendert; Alkohol mit Gewicht 1,0 zaehlt als Gewicht 1 -> unveraendert;
+# Gewicht 0,75 -> nicht bewertbar; Etikett am Tag der Einheit (Nacht davor) -> Urteil unveraendert
+_c = _tagged(_n1, "normal")
+eq(hashlib.sha256(json.dumps(_c, sort_keys=True, ensure_ascii=False).encode()).hexdigest(), _ref_sha,
+   "0.72.1 Gegenprobe: Etikett Normal veraendert die Nachtbewertung")
+eq((_tagged(_n1, "alkohol", 1.0).get("verdict") or {}).get("key"), _base["verdict"]["key"], "0.72.1 Gegenprobe: Gewicht 1,0 macht die Nacht unbewertbar")
+eq((_tagged(_n1, "reise", 0.75).get("verdict") or {}).get("key"), "nicht_bewertbar", "0.72.1: Gewicht 0,75 wird bewertet")
+_d = _tagged(_act_day, "nachtschicht")
+eq(((_d.get("verdict") or {}).get("key"), _d.get("state")), (_base["verdict"]["key"], _base["state"]),
+   "0.72.1 Gegenprobe: ein Etikett am Tag der Einheit (Nacht davor) veraendert das Urteil")
+# 2 · Referenz sauber: eine Folgenacht eines frueheren Peers mit Etikett zaehlt nicht
+_peer_nights = sorted({(date.fromisoformat(str(base_data["activities"][k]["start_date_local"])[:10]) + timedelta(days=1)).isoformat()
+                       for k in hard_keys if str(base_data["activities"][k]["start_date_local"])[:10] < _act_day})
+_e = _tagged(_peer_nights[-1], "alkohol")
+eq(_e["reference"]["hrv"]["n"], _base["reference"]["hrv"]["n"] - 1, "0.72.1 2: ein Peer mit Etikett zaehlt in die Vergleichsgruppe")
+_f = _cp.deepcopy(base_data)
+for _pn in _peer_nights[:-4]:
+    _dc.set_entry(_f, _pn, "reise")
+_fr = coach.night_after(_f, _K)
+eq((_fr.get("reference") or {}).get("hrv"), None, "0.72.1 2: mit vier sauberen Peers entsteht trotzdem eine Referenz")
+eq(_fr.get("state"), "unknown", "0.72.1 2 Gegenprobe: unter fuenf Peers nicht 'kein Vergleich möglich'")
+check(_fr["verdict"]["key"] == _base["verdict"]["key"], "0.72.1 2: die Peers veraendern das L2-Urteil (das liest keine Peers)")
+# 3 · das Etikett Cannabis
+_cb = _dc.TAGS.get("cannabis") or {}
+eq((_cb.get("label"), _cb.get("weight"), _cb.get("read")),
+   ("Cannabis", 0.5, "akuter Stressor, senkt die nächtliche HRV — der Wert bleibt echt"), "0.72.1 3: Etikett Cannabis fehlt oder falsch")
+check(all(t in str(_cb.get("source")) for t in ("Gonzalez et al. 2026", "J Sleep Res", "10.1111/jsr.70298", "PMID 41692699", "Setzung")),
+      "0.72.1 3: der Beleg am Etikett Cannabis fehlt oder nennt die Setzung nicht")
+_alte = {k: v for k, v in _dc.TAGS.items() if k != "cannabis"}
+eq(hashlib.sha256(json.dumps(_alte, sort_keys=True, ensure_ascii=False).encode()).hexdigest(),
+   "ee6d9bc3847b5217b51d79defc275d9cdf94034cc3261a0a28bc74fec45628de", "0.72.1 3: ein vorhandenes Etikett wurde veraendert")
+_g = _tagged(_n1, "cannabis") if "cannabis" in _dc.TAGS else {}
+check("Etikett Cannabis, Gewicht 0,5" in str((_g.get("verdict") or {}).get("label")), "0.72.1 3: eine Cannabis-Nacht wird bewertet")
+# Nur Anzeige: der Trainer (coach(), state) liest weight_for nicht zusaetzlich - kein neuer Eingang
+_src_all = (Path(__file__).resolve().parents[1] / "custom_components" / "intervals_icu" / "coach.py").read_text(encoding="utf-8")
+_fn_na = _src_all[_src_all.index("def night_after"):_src_all.index("def night_after") + 6000]
+check("day_context.weight_for(" in _fn_na, "0.72.1: night_after fragt nicht day_context.weight_for (ein Erzeuger)")
+
 print(f"test_coach: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)
