@@ -1139,6 +1139,7 @@ function stageOf(fit, fitsBudget, recovery, byLoad) {
   return out;
 }
 
+const F_stage = (...a) => stageOf(...a);
 function workouts(kind) {
   const mk = (key, family, familyLabel, title, minutes, load, intensity, blocks, text, hr, fit, reason) => ({
     key, family, family_label: familyLabel, title, purpose: familyLabel,
@@ -1183,6 +1184,21 @@ function workouts(kind) {
     const lng = mk("z2_210_late", "long", "Lange Fahrt", "Lange Fahrt 3,5 h mit Endblock", 210, 175, 66,
       [[10, 55, "Einrollen"], [180, 68, "gleichmäßig", true], [15, 85, "Endblock"], [5, 50, "Ausrollen"]],
       "- 10m 55%", [138, 152], "ok");
+    // 0.72.0: die Varianten jeder Familie, je fuer heute bewertet (wie suggest() sie liefert)
+    const vo = base.workouts.find((e) => e.family === "vo2max");
+    const v54 = mk("vo2_5x4", "vo2max", "VO2max", "VO2max 5×4 min", 66, 92, 91, vo2,
+      "- 15m 55%", [166, 180], "ok");
+    v54.fits_budget = true; v54.stage = { ...F_stage("ok", false, false), detail: "VARIANTE UEBER DER GRENZE." };
+    v54.guard = { over: true, load: 92, ceiling: 80, hours_fit: null, text: "Geländer: Last 92 über der Obergrenze 80 — VARIANTE." };
+    const v30 = mk("vo2_3030", "vo2max", "VO2max", "30/30 nach Billat", 56, 78, 87,
+      [[15, 55, "Einrollen"], [10, 105, "Satz 1"], [4, 45, "Satzpause"], [10, 105, "Satz 2"], [3, 50, "Ausrollen"]],
+      "- 15m 55%", [160, 175], "ok");
+    vo.variants = [v54, v30];
+    const ss = base.workouts.find((e) => e.family === "sweetspot");
+    ss.variants = [mk("threshold_4x16", "sweetspot", "SweetSpot", "Schwellennah 4×16 min", 93, 90, 83,
+      [[15, 55, "Einrollen"], [16, 90, "1"], [2, 55, "Pause"], [16, 90, "2"], [8, 50, "Ausrollen"]],
+      "- 15m 55%", [160, 170], "ok")];
+    base.workouts.forEach((e) => { if (!e.variants) e.variants = []; });
     return { ...base, workouts: [...base.workouts.slice(0, 1), lng, ramp, ...base.workouts.slice(1)] };
   }
   const why = "Die Erholung läuft, aber die letzten Tage tragen noch keinen harten Reiz.";

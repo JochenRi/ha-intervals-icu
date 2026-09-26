@@ -66,6 +66,9 @@ except ImportError:  # standalone (test suite loads this file directly)
         STEERING_STEP_W,
     )
 
+# 0.72.0 (Skizze 2): der ehrliche Zusatz fuer die Schwellen-Formen, EIN Satz.
+NEAL_NOTE = ("Ehrlich dazu: in Vergleichsstudien schnitten Schwellengruppen schlechter ab als polarisiertes Training (Neal et al. 2013, J Appl Physiol, PMID 23264537, 12 Radfahrer; Stöggl & Sperlich 2014).")
+
 # Each entry: what it is, how it is built, what it should feel like in the
 # data afterwards, and where it comes from.
 LIBRARY: list[dict[str, Any]] = [
@@ -202,7 +205,7 @@ LIBRARY: list[dict[str, Any]] = [
         "effect": "Arbeitet an der zweiten Schwelle selbst: Laktattoleranz und die "
                   "Leistung, die du eine Stunde halten kannst.",
         "evidence": "Klassische Schwellenarbeit; DFA alpha-1 0,5 markiert nach "
-                    "Rogers/Gronwald 2021b (Laufband) die anaerobe Schwelle.",
+                    "Rogers/Gronwald 2021b (Laufband) die anaerobe Schwelle. " + NEAL_NOTE,
         "limit": "Hohe Last bei mäßigem VO2max-Reiz — als einzige harte Einheit der "
                  "Woche verschenkt sie Potenzial.",
         "states": ["ready"],
@@ -326,8 +329,81 @@ LIBRARY: list[dict[str, Any]] = [
         "effect": "Dieselbe Zeit an der Schwelle wie 2×20, aber in kürzeren Stücken — "
                   "leichter sauber zu fahren.",
         "evidence": "Die empfohlene Progression lautet: erst Häufigkeit, dann Dauer "
-                    "(4×10 → 3×15 → 2×20), erst zuletzt Intensität.",
+                    "(4×10 → 3×15 → 2×20), erst zuletzt Intensität. " + NEAL_NOTE,
         "limit": "Wer im zweiten Block schon 15 Watt verliert, ist noch nicht bei 2×20.",
+        "states": ["ready"],
+    },
+    # 0.72.0 (Skizze 2, Entscheidung Johannes 26.09.): drei belegte Formen dazu -
+    # je Familie mindestens fuenf verschieden belastende Einheiten. Die FAMILIE
+    # bestimmt die Wattquelle (SOURCE_CHAIN unveraendert). Intensitaet und Hoehe
+    # der Bloecke wie die Geschwister der Familie; die LAST ist aus den Bloecken
+    # gerechnet (Dauer x IF^2 x 100, gerundet) - eine Setzung wie die Lasten der
+    # anderen Eintraege. Wo die Studie ueber Herzfrequenz oder Laktat steuert,
+    # ist die Uebertragung auf Watt als Setzung beschriftet.
+    {
+        "key": "threshold_4x16",
+        "title": "Schwellennah 4×16 min",
+        "purpose": "Schwellenleistung, lange Blöcke",
+        "minutes": 93,
+        "intensity": 83,
+        "load": 90,
+        "blocks": [(15, 55, "Einrollen"), (16, 90, "1"), (2, 55, "Pause"), (16, 90, "2"),
+                   (2, 55, "Pause"), (16, 90, "3"), (2, 55, "Pause"), (16, 90, "4"), (8, 50, "Ausrollen")],
+        "text": "- 15m 55% 85rpm\n\n4x\n- 16m 88-93% 88rpm\n- 2m 55%\n\n- 8m 50%",
+        "hr_hint": (1.02, 1.08),
+        "dfa": "0,5–0,75 in den Blöcken, gegen Ende des vierten Blocks eher darunter",
+        "effect": "64 Minuten Arbeit knapp unter der Schwelle in vier langen Stücken — viel "
+                  "Zeit im Bereich, mit kurzen Pausen, die den Puls kaum fallen lassen.",
+        "evidence": "Seiler et al. 2013, Scand J Med Sci Sports 23:74–83, PMID 21812820 "
+                    "(35 Radfahrer, gefahren bei 88 % der maximalen HF); Sylta et al. 2016, "
+                    "Med Sci Sports Exerc, PMID 27300278 (63 Radfahrer). Die Studien steuern "
+                    "über die HF — die Übertragung auf Watt (88–93 % FTP bzw. deine "
+                    "SweetSpot-Vorgabe) ist eine Setzung. " + NEAL_NOTE,
+        "limit": "Bei Seiler lag 4×16 hinter 4×8 — der Reiz ist die Dauer, nicht die Spitze. "
+                 "Wer im vierten Block deutlich Leistung verliert, ist zu hoch gestartet.",
+        "states": ["ready"],
+    },
+    {
+        "key": "threshold_5x6",
+        "title": "Schwelle 5×6 min",
+        "purpose": "FTP, kurze Blöcke",
+        "minutes": 61,
+        "intensity": 85,
+        "load": 61,
+        "blocks": [(15, 55, "Einrollen"), (6, 97, "1"), (2, 50, "Pause"), (6, 97, "2"),
+                   (2, 50, "Pause"), (6, 97, "3"), (2, 50, "Pause"), (6, 97, "4"),
+                   (2, 50, "Pause"), (6, 97, "5"), (8, 50, "Ausrollen")],
+        "text": "- 15m 55% 85rpm\n\n5x\n- 6m 95-100% 90rpm\n- 2m 50%\n\n- 8m 50%",
+        "hr_hint": (1.04, 1.11),
+        "dfa": "um 0,5 in den Blöcken",
+        "effect": "Schwellenarbeit in kurzen Stücken — 30 Minuten an der Schwelle, sauber "
+                  "zu halten, auch wenn die Form noch nicht für 10-Minuten-Blöcke reicht.",
+        "evidence": "Stöggl & Sperlich 2014, Front Physiol, PMID 24550842, Schwellengruppe "
+                    "(gemischte Ausdauersportler). Die Studie steuert über Laktat/HF an der "
+                    "Schwelle — die Übertragung auf Watt (95–100 % FTP) ist eine Setzung. " + NEAL_NOTE,
+        "limit": "Kurze Pausen, kurze Blöcke: die Einheit wirkt über die Summe. Als "
+                 "einzige harte Einheit der Woche liegt sie hinter VO2max-Formen.",
+        "states": ["ready"],
+    },
+    {
+        "key": "threshold_3x15",
+        "title": "Schwelle 3×15 min",
+        "purpose": "FTP, Progression",
+        "minutes": 74,
+        "intensity": 87,
+        "load": 84,
+        "blocks": [(15, 55, "Einrollen"), (15, 97, "1"), (3, 55, "Pause, aktiv"), (15, 97, "2"),
+                   (3, 55, "Pause, aktiv"), (15, 97, "3"), (8, 50, "Ausrollen")],
+        "text": "- 15m 55% 85rpm\n\n3x\n- 15m 95-100% 90rpm\n- 3m 55%\n\n- 8m 50%",
+        "hr_hint": (1.05, 1.12),
+        "dfa": "um 0,5 in den Blöcken, im dritten eher darunter",
+        "effect": "Die mittlere Stufe der Schwellen-Progression: 45 Minuten an der Schwelle in "
+                  "drei Stücken — der Schritt von 4×10 in Richtung 3×20.",
+        "evidence": "Stöggl & Sperlich 2014, Front Physiol, PMID 24550842, dieselbe "
+                    "Schwellengruppe. Die Studie steuert über Laktat/HF — die Übertragung auf "
+                    "Watt (95–100 % FTP) ist eine Setzung. " + NEAL_NOTE,
+        "limit": "Progression: sitzen drei Blöcke sauber, folgt 3×20 min mit derselben "
+                 "Leistung — erst die Dauer, dann die Intensität.",
         "states": ["ready"],
     },
     {
@@ -368,6 +444,38 @@ LIBRARY: list[dict[str, Any]] = [
         "states": ["rebound", "recovering", "strained", "ready"],
     },
 ]
+
+# 0.72.0 (Skizze 3): JEDE KARTE TRAEGT IHRE KENNUNG - Studie oder Konvention,
+# mit Quelle. Geprueft vom Vorarbeiter am 26.09. (PubMed/Volltexte). Nichts wird
+# wegen "Konvention" entfernt; der alte Belegtext bleibt und steht dahinter.
+# Die drei neuen Eintraege tragen ihre Quelle schon im Text.
+EVIDENCE_KIND: dict[str, tuple[str, str]] = {
+    "vo2_4x4": ("Studie", "Helgerud et al. 2007, Med Sci Sports Exerc, PMID 17414804 (Läufer); "
+                          "Rad: Seiler et al. 2013"),
+    "vo2_5x4": ("Konvention", "keine eigene Studie gefunden; Progression von 4×4"),
+    "vo2_4x8": ("Studie", "Seiler et al. 2013, Scand J Med Sci Sports, PMID 21812820 (Radfahrer): "
+                          "+11,4 % VO2peak gegen 4,2–5,6 %"),
+    "vo2_3015": ("Studie", "Rønnestad et al. 2015, doi 10.1111/sms.12165 (Radfahrer); "
+                           "Rønnestad et al. 2020, PMID 31977120"),
+    "vo2_3030": ("Studie (Akutversuch, Läufer)", "Billat et al. 2000, Eur J Appl Physiol, PMID 10638376"),
+    "sweetspot_2x20": ("Konvention", "Praxis (Allen & Coggan zugeschrieben, nicht belegt); keine Studie"),
+    "tempo_2x20": ("Konvention", "keine Studie"),
+    "threshold_4x10": ("Konvention", "keine Studie zu genau dieser Form"),
+    "threshold_3x12": ("Konvention", "keine Studie zu genau dieser Form"),
+    "z2_60": ("Studie (Beobachtung)", "Seiler & Kjerland 2006, PMID 16430681; Stöggl & Sperlich 2014"),
+    "z2_90": ("Studie (Beobachtung)", "Seiler & Kjerland 2006, PMID 16430681; Stöggl & Sperlich 2014"),
+    "recovery_40": ("Studie (Beobachtung)", "Seiler & Kjerland 2006, PMID 16430681; Stöggl & Sperlich 2014"),
+    "z2_150": ("Konzept", "Maunder et al. 2021, Sports Med, PMID 33886100 (Übersicht)"),
+    "z2_210_late": ("Konvention", "keine Quelle im Code"),
+    "threshold_4x16": ("Studie", ""), "threshold_5x6": ("Studie", ""), "threshold_3x15": ("Studie", ""),
+    # NICHT in der Tabelle der Skizze (Vorarbeiter) - aus dem eigenen Belegtext
+    # der Einheit gelesen, im Bericht 0.72.0 zur Pruefung vorgelegt:
+    "return_45": ("Konvention", "Return-to-Sport-Praxis (Stufenleiter nach Pause oder Infekt)"),
+}
+for _entry in LIBRARY:
+    _kind, _src = EVIDENCE_KIND[_entry["key"]]
+    _entry["evidence_kind"] = _kind
+    _entry["evidence"] = f"{_kind} — {_src + '. ' if _src else ''}{_entry['evidence']}"
 
 BY_KEY = {entry["key"]: entry for entry in LIBRARY}
 
@@ -421,7 +529,10 @@ RAMP_TEST = {
     "effect": ("Misst nichts am Körper und trainiert auch nichts — er liest deine "
                "beiden Schwellen ab, in EINER Fahrt unter gleichen Bedingungen. "
                "Alle paar Monate."),
-    "evidence": ("Rogers u. a. (2021a/b): DFA a1 erreicht 0,75 an der ersten und 0,5 an "
+    # 0.72.0 (Skizze 3): Kennung wie jede Karte - der Stufentest steht NICHT in der
+    # Tabelle der Skizze; "Studie" aus dem eigenen Belegtext, im Bericht vorgelegt.
+    "evidence_kind": "Studie",
+    "evidence": ("Studie — Rogers u. a. (2021a/b): DFA a1 erreicht 0,75 an der ersten und 0,5 an "
                  "der zweiten Schwelle. Beide kommen vom LAUFBAND; für das Rad "
                  "gibt es eigene Belege (Elite-Triathleten 247,0 gegen 252,3 W; "
                  "Herzpatienten 67,8 gegen 73,2 W bei r = 0,87)."),
@@ -1157,8 +1268,8 @@ FAMILIES: list[tuple[str, str, list[str]]] = [
     ("endurance", "Grundlage", ["z2_90", "z2_60"]),
     ("long", "Lange Fahrt", ["z2_210_late", "z2_150"]),
     ("tempo", "Tempo", ["tempo_2x20"]),
-    ("sweetspot", "SweetSpot", ["sweetspot_2x20"]),
-    ("threshold", "Schwelle", ["threshold_4x10", "threshold_3x12"]),
+    ("sweetspot", "SweetSpot", ["sweetspot_2x20", "threshold_4x16"]),
+    ("threshold", "Schwelle", ["threshold_4x10", "threshold_3x12", "threshold_5x6", "threshold_3x15"]),
     ("vo2max", "VO2max", ["vo2_4x4", "vo2_5x4", "vo2_3030", "vo2_3015", "vo2_4x8"]),
     ("return", "Wiedereinstieg", ["return_45"]),
     # Eigene Familie, keine Spielart der langen Fahrt (K1): eine MESSUNG ist
@@ -1650,24 +1761,33 @@ def suggest(state: str, ftp: float | None = None, aerobic_hr: int | None = None,
             continue
 
         key = _variant(keys, state, ftp, budget, hard_days_last_7)
-        entry = dict(scaled(BY_KEY[key], ftp, aerobic_hr, max_hr, curve, blocks, ramp,
-                            steering, ga))
-        verdict, reason = fit_for(
-            family_key, state, entry["intensity"],
-            hard_days_last_7=hard_days_last_7, layoff_days=layoff_days,
-            infection=infection,
-        )
-        fits_budget = None if budget is None else (entry["load"] <= budget or guard_exempt(BY_KEY[key]))
-        entry.update({
-            "family": family_key, "family_label": family_label,
-            "fit": verdict, "fit_reason": reason,
-            "fits_budget": fits_budget,
-            # the grade the panel prints - decided HERE, never in the frontend
-            "stage": stage(verdict, fits_budget, recovery_offered, by_load=(state == "unknown")),
-            "guard": guard(BY_KEY[key], entry["load"], budget),
-            "alternatives": [{"key": k, "title": BY_KEY[k]["title"], "load": BY_KEY[k]["load"]}
-                             for k in keys if k != key],
-        })
+
+        # EINE Stelle, die eine Einheit fuer heute bewertet - fuer die gewaehlte
+        # Variante UND (0.72.0, Skizze 1) fuer jede weitere der Familie. Das Panel
+        # zeigt sie alle als Karten; es rechnet kein Urteil selbst.
+        def judge(k: str) -> dict[str, Any]:
+            one = dict(scaled(BY_KEY[k], ftp, aerobic_hr, max_hr, curve, blocks, ramp,
+                              steering, ga))
+            verdict, reason = fit_for(
+                family_key, state, one["intensity"],
+                hard_days_last_7=hard_days_last_7, layoff_days=layoff_days,
+                infection=infection,
+            )
+            fits_budget = None if budget is None else (one["load"] <= budget or guard_exempt(BY_KEY[k]))
+            one.update({
+                "family": family_key, "family_label": family_label,
+                "fit": verdict, "fit_reason": reason,
+                "fits_budget": fits_budget,
+                # the grade the panel prints - decided HERE, never in the frontend
+                "stage": stage(verdict, fits_budget, recovery_offered, by_load=(state == "unknown")),
+                "guard": guard(BY_KEY[k], one["load"], budget),
+            })
+            return one
+
+        entry = judge(key)
+        entry["alternatives"] = [{"key": k, "title": BY_KEY[k]["title"], "load": BY_KEY[k]["load"]}
+                                 for k in keys if k != key]
+        entry["variants"] = [judge(k) for k in keys if k != key]
         out.append(entry)
         if len(out) >= limit:
             break

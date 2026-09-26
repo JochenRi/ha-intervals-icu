@@ -379,6 +379,45 @@ eq(len(drift), 2, "10 Gegenprobe: Altprofil wandert nicht mehr - der Test ist st
 eq(P.plan(fixed, STATE, weeks=8, today=NEXT).get("weeks_since_start"), 2,
    "10 Wochen seit Planstart falsch gezählt")
 
+# --- 0.72.0 · 4 der grosse Tag wird von der Progression gedeckelt (C5, Wahl 1) ---
+# EIN Erzeuger fuer "wie lang darf die lange Fahrt sein": coach._progression. Der
+# Plan bekommt die Zahl im Zustand (`progression`) und rechnet nicht selbst.
+_pg = {"next_minutes": 230, "recent": {"minutes": 210, "date": "2026-09-10"}, "factor": 1.1}
+_ohne = P.plan(full, {"longest_ride_hours": 3.5}, weeks=12, today=TODAY)
+_mit = P.plan(full, {"longest_ride_hours": 3.5, "progression": _pg}, weeks=12, today=TODAY)
+_b0 = [w["long_day_hours"] for w in _ohne["weeks"] if w["big_day"]]
+_b1 = [w["long_day_hours"] for w in _mit["weeks"] if w["big_day"]]
+check(bool(_b1) and all(b <= round(230 / 60, 1) + 1e-9 for b in _b1), f"4: der grosse Tag uebersteigt die Progressionsgrenze ({_b1})")
+check(any(b > round(230 / 60, 1) for b in _b0), f"4 Trefferzusicherung: ohne Grenze laege er darueber ({_b0})")
+_w0 = {w["index"]: w["hours"] for w in _ohne["weeks"] if w["big_day"]}
+_w1 = {w["index"]: w["hours"] for w in _mit["weeks"] if w["big_day"]}
+check(all(_w1[i] < _w0[i] for i in _w1 if _b0[list(_w0).index(i)] > 3.8), "4: die Wochenstunden folgen dem gedeckelten Tag nicht")
+_cap = _mit.get("big_day_cap") or {}
+eq((_cap.get("hours"), _cap.get("from_minutes"), _cap.get("applied")), (round(230 / 60, 1), 210, True),
+   "4: der Rechenweg nennt Grenze und Bezug nicht")
+# Gegenprobe: Grenze UEBER dem grossen Tag - er bleibt unveraendert
+_hoch = P.plan(full, {"longest_ride_hours": 3.5, "progression": {**_pg, "next_minutes": 600}}, weeks=12, today=TODAY)
+eq([w["long_day_hours"] for w in _hoch["weeks"]], [w["long_day_hours"] for w in _ohne["weeks"]],
+   "4 Gegenprobe: eine Grenze ueber dem grossen Tag veraendert ihn")
+eq((_hoch.get("big_day_cap") or {}).get("applied"), False, "4 Gegenprobe: die Grenze meldet sich als angewandt")
+eq(_ohne.get("big_day_cap"), None, "4 Gegenprobe: ohne Progression erfindet der Plan eine Grenze")
+# Routine-Tag unberuehrt - auch wenn die Grenze UNTER dem Routinetag liegt (3,0 h gegen 3,5 h):
+# gedeckelt wird nur der grosse Tag
+_tief = P.plan(full, {"longest_ride_hours": 3.5, "progression": {**_pg, "next_minutes": 180}}, weeks=12, today=TODAY)
+eq([w["long_day_hours"] for w in _tief["weeks"] if not w["big_day"]],
+   [w["long_day_hours"] for w in _ohne["weeks"] if not w["big_day"]], "4: eine tiefe Grenze greift in gewoehnliche Wochen")
+check(all(w["long_day_hours"] <= 3.0 for w in _tief["weeks"] if w["big_day"]), "4: die tiefe Grenze deckelt den grossen Tag nicht")
+# Routine-Tag unberuehrt
+eq([w["long_day_hours"] for w in _mit["weeks"] if not w["big_day"]],
+   [w["long_day_hours"] for w in _ohne["weeks"] if not w["big_day"]], "4: die Grenze greift auch in gewoehnliche Wochen")
+# EIN Erzeuger: plan.py kennt den Faktor nicht und rechnet die Grenze nicht selbst
+_src = (Path(__file__).resolve().parents[1] / "custom_components" / "intervals_icu" / "plan.py").read_text(encoding="utf-8")
+check("PROGRESSION_FACTOR" not in _src and "1.10" not in _src and "1.1 " not in _src,
+      "4: plan.py rechnet die Progressionsgrenze selbst")
+_ws = (Path(__file__).resolve().parents[1] / "custom_components" / "intervals_icu" / "websocket.py").read_text(encoding="utf-8")
+_st = _ws[_ws.index("def _state_for_plan"):_ws.index("def _state_for_plan") + 3000]
+check("coach_module.durability(" in _st and '"progression"' in _st, "4: _state_for_plan fragt coach nicht nach der Progression")
+
 print(f"test_plan: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

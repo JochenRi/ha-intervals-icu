@@ -364,7 +364,10 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
                                        detail: "Ohne Zustand (keine HRV-Basislinie) entscheidet die Last: über der Obergrenze — heute nicht." } };
   p._workouts = ohneZustand;
   const oz = p.rTrainer(F.coach("unknown"), F.readiness()).replace(/\s+/g, " ");
-  const ozFirst = oz.slice(oz.indexOf('class="wocard')).split('class="wocard').slice(0, 2).join("");
+  // 0.72.0 UMGESTELLT: die empfohlene Karte einer Familie steht jetzt OBEN (Skizze
+  // 0.72.0, 1) - die rote Karte ist nicht mehr die erste der Seite; gesucht wird sie
+  // an ihrem Schluessel.
+  const ozFirst = oz.split('class="wocard').find((k) => k.includes(`data-id="${ohneZustand.workouts[0].key}"`)) || "";
   ok(/heute nicht/.test(ozFirst) && !/recflag/.test(ozFirst), "L1 ohne Zustand: die rote Karte traegt die Empfehlung");
   contains(oz, "entscheidet die Last", "L1 ohne Zustand: die Beschriftung aus der Payload fehlt");
   p._workouts = F.workouts();
@@ -3448,6 +3451,71 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
        "3: _gaText steht ohne umschliessendes Element im Flex-Absatz");
     ok(/fahr ~142 W, nicht über 169 W/.test(g), "3 Gegenprobe: der Inhalt ging verloren");
   }
+}
+
+/* ── 0.72.0 · 1 jede Variante als Karte · 4 der Deckel im Rechenweg ───── */
+{
+  const P = new M.Panel(); P._nowIso = F.TODAY;
+  const z = (h) => String(h).replace(/\s+/g, " ");
+  const falte = (h, id) => {
+    const at = h.indexOf(`data-keep="${id}"`); if (at < 0) return "";
+    const start = h.lastIndexOf("<details", at); let t = 0; const re = /<details\b|<\/details>/g; re.lastIndex = start; let m;
+    while ((m = re.exec(h))) { t += m[0] === "</details>" ? -1 : 1; if (t === 0) return h.slice(start, m.index + 10); }
+    return h.slice(start);
+  };
+  const karten = (f) => f.split('class="wocard').slice(1);
+  const w = F.workouts("voll");
+  P._workouts = w;
+  const html = z(P.rWorkouts(w, false));
+  const fv = falte(html, "fam:vo2max");
+  const vo = w.workouts.find((e) => e.family === "vo2max");
+  // 1a · jede Variante eine eigene Karte, mit Kalenderknopf
+  for (const e of [vo, ...vo.variants]) {
+    ok(new RegExp(`data-act="plan" data-id="${e.key}"`).test(fv), `1: ${e.key} steht nicht als Karte in der Familie`);
+  }
+  ok(karten(fv).length === 1 + vo.variants.length, `1: VO2max hat ${karten(fv).length} Karten statt ${1 + vo.variants.length}`);
+  ok(!/Weitere Varianten/.test(html), "1: die Zeile 'Weitere Varianten' steht noch da");
+  // 1b · die empfohlene steht oben und ist markiert
+  const erste = karten(fv)[0];
+  ok(erste.includes(`data-id="${vo.key}"`) && /class="(famflag|recflag)"/.test(erste), "1: die empfohlene Variante steht nicht oben oder ist nicht markiert");
+  ok(karten(fv).slice(1).every((k) => !/class="(famflag|recflag)"/.test(k)), "1: eine weitere Variante traegt die Marke");
+  // 1c · jede Variante mit IHREM Urteil aus der Payload (kein zweiter Rechenweg)
+  const k54 = karten(fv).find((k) => k.includes('data-id="vo2_5x4"')) || "";
+  ok(/Art bleibt, Menge kürzen/.test(k54) && /title="VARIANTE UEBER DER GRENZE\."/.test(k54) && /Geländer: Last 92 über der Obergrenze 80 — VARIANTE/.test(k54),
+     "1: die Variante traegt nicht ihr eigenes Etikett/Gelaender aus der Payload");
+  const k30 = karten(fv).find((k) => k.includes('data-id="vo2_3030"')) || "";
+  ok(/passt heute/.test(k30) && !/Geländer/.test(k30), "1 Gegenprobe: die Variante im Budget traegt ein Gelaender");
+  // reaktiv: ein anderes Wort in der Payload schlaegt auf der Karte durch
+  const w2 = F.workouts("voll"); const vo2b = w2.workouts.find((e) => e.family === "vo2max");
+  vo2b.variants[1] = { ...vo2b.variants[1], stage: { ...vo2b.variants[1].stage, key: "red", word: "WORT AUS DER PAYLOAD" } };
+  ok(/WORT AUS DER PAYLOAD/.test(falte(z(P.rWorkouts(w2, false)), "fam:vo2max")), "1: das Urteil der Variante kommt nicht aus der Payload");
+  // 1d · die zugeklappte Zeile bleibt unveraendert (gewaehlte Variante der Familie)
+  const sum = fv.slice(0, fv.indexOf("</summary>"));
+  ok(sum.includes(vo.title) && !sum.includes("5×4") && !/class="wocard/.test(sum), "1: die zugeklappte Familienzeile hat sich veraendert");
+  // Trefferzusicherung fuer die Reihenfolge: die empfohlene ist NICHT die erste der
+  // Payload (Grundlage 90 gelb, Lange Fahrt gruen) - sie muss trotzdem oben stehen.
+  const wr = F.workouts("voll");
+  wr.workouts[0] = { ...wr.workouts[0], stage: F.stageOf("maybe", true, false) };
+  const fgr = falte(z(P.rWorkouts(wr, false)), "fam:grundlage");
+  ok(karten(fgr)[0].includes('data-id="z2_210_late"') && /class="(famflag|recflag)"/.test(karten(fgr)[0]),
+     "1: die empfohlene Variante steht nicht oben, wenn sie nicht die erste der Payload ist");
+  // 1e · Gegenprobe: Familie mit einer Variante - genau eine Karte je Familie
+  const fg = falte(html, "fam:grundlage");
+  ok((fg.match(/data-act="plan" data-id="recovery_40"/g) || []).length === 2, "1 Gegenprobe: die Regeneration erscheint nicht genau einmal (zwei Knoepfe)");
+  const fs = falte(html, "fam:schwelle");
+  ok(/data-id="threshold_4x16"/.test(fs), "1: die SweetSpot-Variante 4x16 fehlt in ihrer Familie");
+
+  // 4 · der Deckel im Rechenweg des Wochenplans - beide Zahlen
+  const g = F.goal();
+  g.plan.big_day_cap = { hours: 3.8, from_minutes: 210, from_date: "2026-09-10", factor: 1.1, applied: true };
+  const wp = z(P.rPlanWeeks(g, (F.coach("ready").durability || {}).progression));
+  const rw = falte(wp, "trainer:weeksrw");
+  ok(/gedeckelt durch die Progression/.test(rw) && /3,8 h/.test(rw) && /3 h 30/.test(rw), "4: der Rechenweg nennt den Deckel mit beiden Zahlen nicht");
+  g.plan.big_day_cap = { ...g.plan.big_day_cap, hours: 10, applied: false };
+  const wp2 = falte(z(P.rPlanWeeks(g)), "trainer:weeksrw");
+  ok(!/gedeckelt durch/.test(wp2) && /über dem großen Tag/.test(wp2), "4 Gegenprobe: die Grenze ueber dem grossen Tag wird als Deckel gemeldet");
+  delete g.plan.big_day_cap;
+  ok(!/Progression aus deiner längsten Fahrt/.test(falte(z(P.rPlanWeeks(g)), "trainer:weeksrw")), "4 Gegenprobe: ohne Deckel steht ein Deckelsatz");
 }
 
 report("test_panel_views");

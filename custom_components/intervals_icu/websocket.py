@@ -1152,6 +1152,9 @@ def websocket_workouts(hass, connection, msg) -> None:
     for pick in picks:
         if isinstance(pick, dict):
             pick["explain"] = workout_lib.explain(pick, ftp, inputs["curve"], inputs["blocks"], inputs["ramp"])
+            # 0.72.0: jede weitere Variante der Familie traegt ihren Nachweis wie die gewaehlte
+            for variant in pick.get("variants") or []:
+                variant["explain"] = workout_lib.explain(variant, ftp, inputs["curve"], inputs["blocks"], inputs["ramp"])
     connection.send_result(msg["id"], {
         "ftp": ftp,
         "aerobic_hr": anchors.get("aerobic_hr"),
@@ -1397,7 +1400,12 @@ def _state_for_plan(data: dict[str, Any]) -> dict[str, Any]:
         if day >= cutoff:
             seconds += activity.get("moving_time") or 0
             days_ridden.add(day)
+    # 0.72.0 (C5): wie lang die lange Fahrt sein darf, sagt EINE Stelle -
+    # coach._progression, dieselbe Zeile wie im Wochenplan-Rechenweg. Der Plan
+    # deckelt den grossen Tag damit, er rechnet die Grenze nicht selbst.
+    progression = (coach_module.durability(data) or {}).get("progression")
     return {
+        "progression": progression,
         "longest_ride_hours": round(longest, 1),
         "weekly_load": round(sum(loads) / 4) if loads else None,  # 4 weeks
         "typical_hours": round(seconds / 3600 / 8, 1) if seconds else None,

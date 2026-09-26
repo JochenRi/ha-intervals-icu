@@ -300,6 +300,16 @@ def plan(profile: dict[str, Any], state: dict[str, Any] | None = None,
     routine_long = round(routine_long, 1)
     big_level = round(max(longest_now, routine_long) or max(2.0, hours * 0.45), 1)
 
+    # 0.72.0 (C5, Entscheidung Johannes 26.09., Wahl 1): DER GROSSE TAG IST
+    # GEDECKELT durch die Progressionsgrenze - EIN Erzeuger fuer "wie lang darf
+    # die lange Fahrt sein": coach._progression (laengste gleichmaessige Fahrt der
+    # letzten Tage x Faktor). Der Plan bekommt die Zahl im Zustand und rechnet
+    # sie nicht selbst. Liegt die Grenze ueber dem grossen Tag, aendert sich nichts.
+    prog = (state or {}).get("progression") or {}
+    cap_hours = (round(float(prog["next_minutes"]) / 60.0, 1)
+                 if goal_key == "long_ride" and prog.get("next_minutes") else None)
+    cap_applied = False
+
     out_weeks: list[dict[str, Any]] = []
     for index in range(weeks):
         abs_index = weeks_since + index
@@ -313,6 +323,9 @@ def plan(profile: dict[str, Any], state: dict[str, Any] | None = None,
         if big_week:
             big_level = round(min(target_hours or big_level * BIG_DAY_STEP,
                                   big_level * BIG_DAY_STEP), 1)
+            if cap_hours is not None and big_level > cap_hours:
+                big_level = cap_hours
+                cap_applied = True
 
         week_hours = hours * (0.65 if kind == "recovery" else 1.0)
         if phase_key == "taper":
@@ -413,6 +426,16 @@ def plan(profile: dict[str, Any], state: dict[str, Any] | None = None,
         "weeks_since_start": weeks_since,
         "weeks": out_weeks,
         "budget_note": budget_note,
+        # 0.72.0 (C5): der Deckel des grossen Tages, fuer den Rechenweg - die Grenze,
+        # ihr Bezug (laengste gleichmaessige Fahrt, aus coach._progression) und ob
+        # er in diesem Plan gegriffen hat. Ohne Progression: kein Deckel, kein Feld.
+        "big_day_cap": None if cap_hours is None else {
+            "hours": cap_hours,
+            "from_minutes": (prog.get("recent") or {}).get("minutes"),
+            "from_date": (prog.get("recent") or {}).get("date"),
+            "factor": prog.get("factor"),
+            "applied": cap_applied,
+        },
         "caveat": (
             "Der große Tag alle paar Wochen mit rund 12 % Zuwachs je Schritt ist eine "
             "verbreitete Konvention aus der Langstreckenpraxis, kein Studienergebnis. "

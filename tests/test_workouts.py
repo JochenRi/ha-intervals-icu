@@ -1458,6 +1458,94 @@ check(not (_rw.get("guard") or {}).get("over") and _rw["stage"]["key"] == "green
 _rt = W.rate_sessions([{"workout": "return_45", "title": "Wiedereinstieg", "role": "endurance"}], "ready", budget=0)[0]
 check((_rt.get("guard") or {}).get("over") is True, "C8 Gegenprobe: der Wiedereinstieg ist mit ausgenommen")
 
+# --- 0.72.0 · 1 jede Variante bewertet, 2 drei neue Einheiten, 3 Belege -------------
+# 1 · suggest() liefert je Familie JEDE Variante mit Urteil - aus derselben Stelle
+#     wie die gewaehlte (scaled + fit_for + stage + guard), kein zweiter Rechenweg.
+_sv = W.suggest("ready", ftp=215, budget=80, layoff_days=0)
+_vo = next(e for e in _sv if e["family"] == "vo2max")
+_vk = [v.get("key") for v in (_vo.get("variants") or [])]
+eq(sorted(_vk + [_vo["key"]]), sorted(next(k for f, _l, k in W.FAMILIES if f == "vo2max")),
+   "1: die VO2max-Familie liefert nicht jede Variante")
+for _v in _vo.get("variants") or []:
+    _ref = W.scaled(W.BY_KEY[_v["key"]], 215, None)
+    _fit, _why = W.fit_for("vo2max", "ready", _ref["intensity"], hard_days_last_7=0, layoff_days=0)
+    eq((_v["fit"], _v["stage"], _v["guard"], _v["blocks_w"], _v["fits_budget"]),
+       (_fit, W.stage(_fit, _ref["load"] <= 80, False), W.guard(W.BY_KEY[_v["key"]], _ref["load"], 80),
+        _ref["blocks_w"], _ref["load"] <= 80),
+       f"1: Variante {_v['key']} urteilt nicht wie die gewaehlte Einheit")
+    check(_v["family"] == "vo2max" and _v.get("family_label") == "VO2max", f"1: Variante {_v['key']} ohne Familie")
+# Trefferzusicherung: bei Obergrenze 80 liegt die gewaehlte (30/30, Last 78) darunter,
+# jede weitere VO2max-Form darueber - die Varianten werden wirklich gegen die Grenze geurteilt.
+check(not (_vo["guard"] or {}).get("over") and len(_vo.get("variants") or []) == 4
+      and all((_v["guard"] or {}).get("over") and _v["stage"].get("over_ceiling") for _v in _vo["variants"]),
+      "1 Trefferzusicherung: Varianten werden nicht gegen die Obergrenze geurteilt")
+_rc1 = next(e for e in _sv if e["family"] == "recovery")
+eq(_rc1.get("variants"), [], "1 Gegenprobe: eine Familie mit einer Einheit hat keine Varianten")
+check("variants" not in str([v.get("variants") for v in _vo.get("variants") or []]).replace("None", ""),
+      "1: Varianten tragen selbst Varianten (Rekursion)")
+
+# 2 · drei neue Einheiten, Familie bestimmt die Wattquelle (SOURCE_CHAIN unveraendert)
+for _k, _fam in (("threshold_4x16", "sweetspot"), ("threshold_5x6", "threshold"), ("threshold_3x15", "threshold")):
+    check(_k in W.BY_KEY, f"2: {_k} fehlt im Katalog")
+    eq(W._family_of(_k), _fam, f"2: {_k} in der falschen Familie")
+eq(W.SOURCE_CHAIN["sweetspot"], ("blocks", "ftp"), "2: SOURCE_CHAIN sweetspot veraendert")
+eq(W.SOURCE_CHAIN["threshold"], ("ftp",), "2: SOURCE_CHAIN threshold veraendert")
+_grp = [k for f, _l, ks in W.FAMILIES if f in ("sweetspot", "tempo", "threshold") for k in ks]
+eq(len(_grp), 7, "2: SweetSpot & Schwelle hat nicht 7 Einheiten")
+if "threshold_4x16" in W.BY_KEY:
+    _e = W.BY_KEY["threshold_4x16"]
+    eq([b[0] for b in _e["blocks"] if W._is_work_block(b)], [16, 16, 16, 16], "2: 4x16 hat nicht vier 16-min-Bloecke")
+    eq([b[0] for b in _e["blocks"] if str(b[2]) == "Pause"], [2, 2, 2], "2: 4x16 ohne 2-min-Pausen")
+    _s416 = W.scaled(_e, 200, 146, steering={"sweetspot": {"watts": 190, "anchor_w": 190, "anchor_date": "2026-09-17", "moves": 0}})
+    eq((_s416["watt_source"], [b[1] for b in _s416["blocks_w"] if W._is_work_block(b)]), ("steering", [190] * 4),
+       "2: 4x16 nimmt nicht die SweetSpot-Vorgabe")
+    eq(W.scaled(_e, 200, 146)["watt_source"], "ftp", "2 Gegenprobe: 4x16 ohne Vorgabe auf der FTP")
+    check("Setzung" in _e["evidence"] and "HF" in _e["evidence"], "2: 4x16 beschriftet die Uebertragung HF → Watt nicht als Setzung")
+if "threshold_5x6" in W.BY_KEY:
+    _e = W.BY_KEY["threshold_5x6"]
+    eq([b[0] for b in _e["blocks"] if W._is_work_block(b)], [6] * 5, "2: 5x6 hat nicht fuenf 6-min-Bloecke")
+    eq([b[0] for b in _e["blocks"] if str(b[2]) == "Pause"], [2] * 4, "2: 5x6 ohne 2-min-Pausen")
+    eq(W.scaled(_e, 200, 146, steering={"sweetspot": {"watts": 190}})["watt_source"], "ftp", "2: 5x6 nicht auf der FTP")
+    check("Setzung" in _e["evidence"] and "Laktat" in _e["evidence"], "2: 5x6 beschriftet die Uebertragung nicht als Setzung")
+if "threshold_3x15" in W.BY_KEY:
+    _e = W.BY_KEY["threshold_3x15"]
+    eq([b[0] for b in _e["blocks"] if W._is_work_block(b)], [15] * 3, "2: 3x15 hat nicht drei 15-min-Bloecke")
+    eq([b[0] for b in _e["blocks"] if "Pause" in str(b[2])], [3, 3], "2: 3x15 ohne 3-min-Pausen")
+    check("3×20" in _e["limit"] or "3×20" in _e["effect"], "2: 3x15 nennt die Progression 3×20 nicht")
+for _k in ("threshold_4x10", "threshold_3x12", "threshold_5x6", "threshold_3x15", "threshold_4x16"):
+    if _k in W.BY_KEY:
+        check("Neal" in W.BY_KEY[_k]["evidence"] + W.BY_KEY[_k]["limit"], f"2: {_k} ohne den ehrlichen Zusatz (Neal 2013)")
+# Gegenprobe Regel 10: keine Zahl aus Johannes' Bestand in den neuen Eintraegen
+for _k in ("threshold_4x16", "threshold_5x6", "threshold_3x15"):
+    if _k in W.BY_KEY:
+        check(not any(x in str(W.BY_KEY[_k]) for x in ("190 W", "250 W", "215")), f"2: {_k} traegt eine Bestandszahl")
+
+# 3 · jede Karte traegt ihre Kennung - genau nach der Tabelle der Skizze
+_TAB = {
+    "vo2_4x4": ("Studie", "PMID 17414804"), "vo2_5x4": ("Konvention", "Progression von 4×4"),
+    "vo2_4x8": ("Studie", "+11,4 %"), "vo2_3015": ("Studie", "10.1111/sms.12165"),
+    "vo2_3030": ("Studie (Akutversuch, Läufer)", "PMID 10638376"),
+    "sweetspot_2x20": ("Konvention", "Allen & Coggan"), "tempo_2x20": ("Konvention", "keine Studie"),
+    "threshold_4x10": ("Konvention", "keine Studie zu genau dieser Form"),
+    "threshold_3x12": ("Konvention", "keine Studie zu genau dieser Form"),
+    "z2_60": ("Studie (Beobachtung)", "PMID 16430681"), "z2_90": ("Studie (Beobachtung)", "PMID 16430681"),
+    "recovery_40": ("Studie (Beobachtung)", "PMID 16430681"),
+    "z2_150": ("Konzept", "PMID 33886100"), "z2_210_late": ("Konvention", "keine Quelle"),
+    "threshold_4x16": ("Studie", "PMID 21812820"), "threshold_5x6": ("Studie", "PMID 24550842"),
+    "threshold_3x15": ("Studie", "PMID 24550842"),
+}
+for _k, (_kind, _src) in _TAB.items():
+    _ev = (W.BY_KEY.get(_k) or {}).get("evidence") or ""
+    check(_ev.startswith(_kind + " — "), f"3: {_k} beginnt nicht mit der Kennung '{_kind}' ({_ev[:40]})")
+    check(_src in _ev, f"3: {_k} nennt die Quelle '{_src}' nicht")
+check(all(str(e.get("evidence") or "").split(" — ")[0] in
+          ("Studie", "Studie (Beobachtung)", "Studie (Akutversuch, Läufer)", "Konzept", "Konvention") for e in W.LIBRARY),
+      "3: nicht jede Karte traegt eine Kennung")
+# nichts entfernt: die alten Belegtexte stehen weiter darin
+for _k, _alt in (("vo2_3015", "3 Sätze à 13×30 s"), ("z2_60", "Dreizonenmodell (Seiler)"),
+                 ("sweetspot_2x20", "weit verbreitete Praxis"), ("threshold_4x10", "4×10 → 3×15 → 2×20")):
+    check(_alt in W.BY_KEY[_k]["evidence"], f"3: der alte Belegtext von {_k} ist verloren")
+
 print(f"test_workouts: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

@@ -3325,6 +3325,8 @@ class IntervalsIcuPanel extends HTMLElement {
     return `<div class="wocard ${opts.recommended ? "first" : ""}">
       ${opts.recommended ? `<div class="recflag">${ico("ok", C.green, 14)}
         das ist die Empfehlung von oben</div>` : ""}
+      ${opts.famBest ? `<div class="famflag">${ico("ok", C.green, 14)}
+        empfohlen in dieser Familie</div>` : ""}
       <div class="wohead">
         <div>
           ${compact ? "" : `<div class="wofam">${esc(entry.family_label || "")}</div>`}
@@ -3426,9 +3428,10 @@ class IntervalsIcuPanel extends HTMLElement {
 
     const shared = this._sharedReasons(list);
     const lead = pick >= 0 ? list[pick] : null;
-    const card = (entry) => this._sessionCard(entry, {
+    const card = (entry, famBest) => this._sessionCard(entry, {
       open: this._woOpen === entry.key, budget: w.budget, ftp: w.ftp,
-      recommended: entry === lead, todayWord: !forTomorrow, saidAbove: shared,
+      recommended: entry === lead, famBest: !!famBest && entry !== lead,
+      todayWord: !forTomorrow, saidAbove: shared,
       planDates: [iso(0), iso(1)], toggleAct: "wodetail", compact: true,
     });
 
@@ -3484,11 +3487,15 @@ class IntervalsIcuPanel extends HTMLElement {
         ${watts != null ? `<span class="fgw tn">${fmt(watts)} W · ${esc(origin)}</span>` : ""}
         <span class="fgvar">${esc(best.title)}</span>
         <span class="fguse">${esc(best.purpose || "")}</span>`;
-      const alt = (best.alternatives || []).length
-        ? `<p class="hint">Weitere Varianten dieser Familie: ${best.alternatives.map((x) =>
-            `${esc(x.title)} (Last ${fmt(x.load)})`).join(" · ")} — gewählt wird die, die heute passt.</p>` : "";
+      /* 0.72.0 (Skizze 1): JEDE Variante als Karte, jede mit ihrem Urteil fuer
+         heute aus der Payload (suggest() bewertet sie an derselben Stelle wie die
+         gewaehlte - `variants`). Die empfohlene steht oben und ist markiert; die
+         Zeile "Weitere Varianten" ist damit ersetzt. */
+      const ordered = [best, ...entries.filter((e) => e !== best)];
+      const cards = ordered.map((e) => [card(e, e === best),
+        ...(e.variants || []).map((v) => card(v, false))].join("")).join("");
       const body = `${this._familyHint(id, entries)}
-        <div class="wogrid">${entries.map(card).join("")}</div>${alt}`;
+        <div class="wogrid">${cards}</div>`;
       return this._fold(`fam:${id}`, sum, body, "famgrp");
     }).join("");
 
@@ -3665,7 +3672,17 @@ class IntervalsIcuPanel extends HTMLElement {
     const laterHtml = weeks.filter((_, i) => !isNow(plan.weeks[i], i)).join("");
     const span = later.length
       ? `W${later[0].index}–W${later[later.length - 1].index}` : "";
-    const rechenweg = `${progLine}
+    // 0.72.0 (C5, Wahl 1): der Deckel des grossen Tages - beide Zahlen aus der
+    // Payload (plan.big_day_cap, Grenze aus coach._progression).
+    const cap = plan.big_day_cap;
+    const bigMax = Math.max(0, ...plan.weeks.filter((x) => x.big_day).map((x) => x.long_day_hours || 0));
+    const capLine = !cap ? "" : `<p class="hint">${ico("clock", C.tx2, 13)} ${cap.applied
+      ? `<b>Großer Tag ${fmt(bigMax, 1)} h — gedeckelt durch die Progression aus deiner längsten
+          Fahrt ${hmn(cap.from_minutes)}</b> (× ${fmt(cap.factor, 2)} = ${fmt(cap.hours, 1)} h). Er wächst
+          mit, wenn deine lange Fahrt wächst.`
+      : `Die Progressionsgrenze (${fmt(cap.hours, 1)} h aus deiner längsten Fahrt ${hmn(cap.from_minutes)})
+          liegt über dem großen Tag (${fmt(bigMax, 1)} h) — er bleibt, wie er ist.`}</p>`;
+    const rechenweg = `${capLine}${progLine}
       ${note ? `<div class="warnrow">${ico("info", C.amber, 16)} <span>${esc(note.text)}</span></div>` : ""}
       <p class="src">${esc(plan.caveat || "")}</p>`;
     return `<h3 class="secname">Die nächsten Wochen
@@ -7371,6 +7388,7 @@ details.famgrp[open]{padding-bottom:12px}
 .fgvar{color:${C.tx}}
 .fguse{color:${C.tx3};font-size:12.5px}
 .fghint{margin:6px 0 10px}
+.famflag{display:flex;align-items:center;gap:6px;color:${C.green};font-size:12px;margin-bottom:4px}
 .leadsub{color:${C.amber};font-size:13px;font-weight:600;margin:2px 0 2px}
 details.testfold,details.bgfold{background:${C.card};border:1px solid ${C.line};border-radius:11px;padding:4px 14px;margin-top:14px}
 details.testfold[open],details.bgfold[open]{padding-bottom:12px}
