@@ -26,6 +26,13 @@ Wird von Claude Code bei jedem Start gelesen. Kurz halten; der Stand steht in `P
 - Muss für einen zweiten Athleten mit eigenen Daten gehen (Regel 10): keine Zahlen aus
   Johannes' Bestand im Code; Setzungen als Setzung beschriften.
 - Nur tun, was der Auftrag sagt. Befunde nebenbei melden, nicht mitreparieren.
+- Leserliste: Für jede Größe und jeden Text, den du änderst oder entfernst, zuerst per grep alle Leser sammeln
+  (Backend, Panel, Tests, Fixtures). Die Liste steht im Bericht.
+- Seitenprobe: Nach dem Bau jede betroffene Seite als Ganzes rendern (Panel-Test mit Fixture) und lesen.
+  Keine Zahl und kein Satz darf einer anderen Stelle derselben Seite widersprechen. Dieselbe Größe zeigt überall dieselbe
+  Zahl, und zwei Fenster tragen nie dieselbe Beschriftung.
+- Widerspruch in der Skizze: nicht drumherum bauen. Stoppen und im Bericht nennen.
+- Schreibwege nach intervals.icu: nur mit ausdrücklicher Freigabe im Auftrag, nie automatisch wiederholen.
 
 ## Ausliefern
 - Version in **beiden**: `custom_components/intervals_icu/manifest.json` und `const.py`
@@ -46,3 +53,5 @@ Wird von Claude Code bei jedem Start gelesen. Kurz halten; der Stand steht in `P
 ## Bericht
 Zehn Zeilen einfache Sprache für Johannes zuerst, dann Details (Datei:Zeile, rot→grün,
 Mutation), dann Beleg. Token-sparend: keine ganzen Dateien ausgeben.
+- Live-Erwartung: was Johannes nach dem Update konkret sieht (Zahl oder Wortlaut, welcher Reiter). Damit lässt sich die
+  Abnahme prüfen.
