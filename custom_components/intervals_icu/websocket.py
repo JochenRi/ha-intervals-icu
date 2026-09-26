@@ -1540,7 +1540,9 @@ def websocket_today(hass, connection, msg) -> None:
         return
     data = coordinator.archive.data
     ready = analytics.readiness(data) or {}
-    connection.send_result(msg["id"], coach_module.today(data, ready.get("budget")))
+    # 0.73.0: die Events des Koordinators - analytics.activity_family liest daran die Paarung
+    connection.send_result(msg["id"], coach_module.today(
+        data, ready.get("budget"), (coordinator.data or {}).get("events")))
 
 
 @websocket_api.websocket_command(

@@ -1278,6 +1278,28 @@ FAMILIES: list[tuple[str, str, list[str]]] = [
     ("ramp_test", "Stufentest", ["ramp_test"]),
 ]
 
+# 0.73.0 (Skizze §4): DIE GRUPPE EINER EINHEIT - eine Tabelle, neben FAMILIES.
+# Drei Gruppen, dieselben wie die drei Familien im Trainer-Reiter
+# (TRAINER_FAMILIES im Panel; test_workouts haelt beide gleich). Der Stufentest
+# ist eine Messung und gehoert zu keiner Gruppe. Gelesen von
+# analytics.activity_family - fuer Marken (Familie) wie fuer den Plan (Schluessel).
+FAMILY_GROUP: dict[str, str] = {
+    "endurance": "grundlage", "long": "grundlage", "recovery": "grundlage", "return": "grundlage",
+    "sweetspot": "schwelle", "tempo": "schwelle", "threshold": "schwelle",
+    "vo2max": "vo2max",
+}
+KEY_GROUP: dict[str, str] = {
+    key: FAMILY_GROUP[family]
+    for family, _label, keys in FAMILIES if family in FAMILY_GROUP
+    for key in keys
+}
+GROUP_LABEL: dict[str, str] = {
+    "grundlage": "Grundlage", "schwelle": "SweetSpot & Schwelle", "vo2max": "VO2max",
+}
+# Traegt eine Fahrt mehrere Gruppen, gibt die haerteste die Farbe - SETZUNG E3
+# (Vorarbeiter 26.09.), kein Befund.
+GROUP_ORDER: tuple[str, ...] = ("vo2max", "schwelle", "grundlage")
+
 # What each state can carry. Not a filter - a verdict per family, so every kind
 # of session stays visible and says what it would cost today.
 FIT_BY_STATE: dict[str, dict[str, str]] = {
@@ -1912,6 +1934,10 @@ def rate_sessions(sessions: list[dict[str, Any]], state: str,
 
 
 DEFAULT_NOTE = "Vorgeschlagen von Home Assistant"
+# 0.73.0: das Praefix der external_id, an dem analytics.activity_family ein
+# eigenes Event erkennt ("ha-intervals-icu:{key}:{date}"). GELESEN, noch nicht
+# geschrieben - to_event setzt es erst mit E4 (eigener Release, Freigabe).
+EXTERNAL_ID_PREFIX = "ha-intervals-icu:"
 
 
 def to_event(entry: dict[str, Any], day: str, sport: str = "Ride",

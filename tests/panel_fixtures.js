@@ -618,6 +618,66 @@ function steadyStream(kind) {
 /* the night after a session, as intervals_icu/night returns it */
 /* how this session sits among comparable ones, as intervals_icu/context returns it */
 /* goal profile and the plan it produces, as intervals_icu/goal returns it */
+/* 0.73.0: die Woche im Heute-Payload (coach.today -> "week"), wie das Backend sie
+ * liefert: Budget mit Fensterfeldern (analytics.load_budget), bound_by
+ * (coach.load_ceiling), die Fahrten (analytics.window_sessions). Die Zahlen sind
+ * ausgedachte Beispielwerte, rechnerisch stimmig (chronisch 28,1: Ziel 256). */
+function week(kind) {
+  const bands = { low: 157, steady: 197, top: 256, risk: 295 };
+  const budget = (o) => ({ chronic: 28.1, last_six_days: 260, target_ratio: 1.3, recommended: 0,
+    used_today: 0, steady: 0, corridor_top: 0, risk_top: 35, state: "green",
+    window_start: "2026-09-20", window_end: "2026-09-26", window_load: 260, window_allowed: 256,
+    window_free: 0, window_bands: bands, drops_next: { date: "2026-09-20", load: 90 }, ...o });
+  const row = (date, name, load, group, source, o) => ({ date, id: name && `a-${date}`, name, sport: "Rad", load,
+    group, source, families: [], commute: false, rest: false, ...o });
+  const voll = [
+    row("2026-09-20", "SweetSpot 2x20 am Deich mit Gegenwind", 90, null, null),
+    row("2026-09-22", "Rehburg-Loccum", 95, null, null, { commute: true }),
+    row("2026-09-25", "VO2max-Intervalle", 75, "vo2max", "marks", { families: ["vo2max"] }),
+  ];
+  const groups = (list) => {
+    const g = { grundlage: 0, schwelle: 0, vo2max: 0, other: 0, none: 0 };
+    list.forEach((x) => { g[x.group && x.group in g ? x.group : "none"] += x.load; });
+    return g;
+  };
+  const make = (sessions, b, o) => ({ mode: "today", budget: b, bound_by: "week", ceiling: b ? b.recommended : null,
+    cap_load: null, start: "2026-09-20", end: "2026-09-26", sessions, groups: groups(sessions),
+    total: sessions.reduce((a, x) => a + x.load, 0), mismatch: [], ...o });
+  if (kind === "voll") return make(voll, budget({}));
+  if (kind === "leer0") {       // Woche voll, aber der aelteste Tag hatte 0 Last
+    return make(voll, budget({ drops_next: { date: "2026-09-20", load: 0 } }));
+  }
+  if (kind === "frei") {
+    const s = [row("2026-09-21", "Grundlage lang", 60, "grundlage", "plan", { families: ["endurance"] }),
+               row("2026-09-23", "SweetSpot", 50, "schwelle", "marks", { families: ["sweetspot"] }),
+               row("2026-09-24", "Lauf", 20, null, "sport", { group: "other", sport: "Lauf" }),
+               row("2026-09-24", null, 10, null, "rest", { rest: true, sport: null, id: null })];
+    return make(s, budget({ window_load: 140, window_free: 116, recommended: 116, last_six_days: 140, drops_next: { date: "2026-09-20", load: 0 } }));
+  }
+  if (kind === "zustand") {
+    const s = [row("2026-09-22", "Rehburg-Loccum", 95, null, null), row("2026-09-25", "VO2max-Intervalle", 75, "vo2max", "marks")];
+    return make(s, budget({ window_load: 170, window_free: 86, recommended: 86, last_six_days: 170 }),
+      { bound_by: "state", ceiling: 75, cap_load: 75 });
+  }
+  if (kind === "morgen") return make(voll.slice(1), budget({ window_load: 170, window_free: 86, recommended: 86,
+    window_start: "2026-09-21", window_end: "2026-09-27", drops_next: { date: "2026-09-21", load: 0 } }), { mode: "tomorrow" });
+  if (kind === "ueber") {       // ueber der Risikogrenze
+    const s = [...voll, row("2026-09-26", "Lange Runde", 120, "grundlage", "marks", { families: ["endurance"] })];
+    return make(s, budget({ window_load: 380, used_today: 120 }));
+  }
+  if (kind === "gelb") return make(voll, budget({ target_ratio: 1.0, window_allowed: 197, state: "amber" }));
+  if (kind === "rot") return make(voll, budget({ target_ratio: 0.8, window_allowed: 157, state: "red" }));
+  if (kind === "ohnebudget") return make(voll, null, { bound_by: null });
+  if (kind === "leer") return make([], budget({ window_load: 0, window_free: 256, recommended: 256, last_six_days: 0,
+    drops_next: { date: "2026-09-20", load: 0 } }));
+  // Standard: passend zu `recent` unten (09.09. Gehen 9, 11.09. Fahrt 38)
+  return make([row("2026-09-09", "Rehburg-Loccum Gehen", 9, "other", "sport", { sport: "Gehen" }),
+               row("2026-09-11", "volumen", 38, "grundlage", "marks", { families: ["endurance"] })],
+    budget({ window_start: "2026-09-05", window_end: "2026-09-11", window_load: 47, window_free: 209, recommended: 247,
+      used_today: 38, last_six_days: 9, drops_next: { date: "2026-09-05", load: 0 } }),
+    { start: "2026-09-05", end: "2026-09-11" });
+}
+
 /* everything the Heute page needs, as intervals_icu/today returns it */
 function today(kind) {
   if (kind === "leer") return { available: false };
@@ -651,6 +711,7 @@ function today(kind) {
         sessions: [{ name: "volumen", type: "Ride", minutes: 60 }] },
     ],
     week_load: 47, rest_days: 5,
+    week: week(),
     bands: {
       hrv: { baseline: 48.2, noise: [44.6, 52.1], usual: [41.3, 56.3], slump: 34.8, unit: "ms" },
       rhr: { baseline: 56.4, noise: [55.1, 57.7], usual: [53.8, 59.0], slump: 61.6, unit: "bpm" },
@@ -684,7 +745,7 @@ function today(kind) {
   }
   if (kind === "spannung") {
     return { ...base,
-      tension: "Herzratenvariabilität liegt heute unter deiner Basislinie — aber weder weit genug noch lange genug für einen Einbruch. Die Regel entscheidet über das Mittel der letzten drei Tage.",
+      tension: "Herzratenvariabilität weicht heute ungünstig von deiner Basislinie ab — aber weder weit genug noch lange genug für einen Einbruch. Die Regel entscheidet über das Mittel der letzten drei Tage.",
       signals: [
         sig("hrv", "Herzratenvariabilität", "ms", 42, 49.2, -1.4, "Autonomes Nervensystem", "Nachtmessung der Uhr"),
         sig("rhr", "Ruhepuls", "bpm", 56, 56.4, 0.1, "Autonomes Nervensystem", "reagiert träger"),
@@ -1362,4 +1423,4 @@ function dayContext(extra) {
   };
 }
 
-module.exports = { STAGE_WORDS, stageOf, TODAY, days, load, readiness, activities, streams, thresholds, fatigue, fatigueV2Block, blocks, calendar, pmc, laps, lapsWithBounds, steadyStream, night, context, goal, today, coach, signals, workouts, dayContext };
+module.exports = { STAGE_WORDS, stageOf, TODAY, days, load, readiness, activities, streams, thresholds, fatigue, fatigueV2Block, blocks, calendar, pmc, laps, lapsWithBounds, steadyStream, night, context, goal, today, week, coach, signals, workouts, dayContext };

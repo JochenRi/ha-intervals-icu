@@ -496,6 +496,187 @@ check("F2.9 Belastung: dieselbe Zone", _su.get("form_zone"), "grey")
 # Gegenprobe: eine Form, die absolut UND relativ in derselben Zone liegt, aendert nichts
 check("F2.9 Gegenprobe: -40 absolut ist high_risk wie zuvor", analytics.form_state(30.0, 70.0)["zone"], "high_risk")
 
+
+# --- 0.73.0 · die Familie einer Fahrt (Skizze §4) und das Fenster (§5) ------------
+import workouts as _W73  # noqa: E402
+_NOTE = _W73.DEFAULT_NOTE
+def _act(day, name, load, typ="Ride", **kw):
+    a = {"start_date_local": f"{day}T08:00:00", "name": name, "type": typ,
+         "icu_training_load": load, "moving_time": 3600}
+    a.update(kw)
+    return a
+_ev = [
+    {"id": 501, "name": "Grundlage 90 min", "description": _NOTE + "\n\n- 90m 65%"},             # Altbestand
+    {"id": 502, "name": "Tempo 2×20 min", "description": "x", "external_id": "ha-intervals-icu:tempo_2x20:2026-09-26"},
+    {"id": 503, "name": "VO2max 4×4 min", "description": "x", "external_id": "garmin:123"},       # fremd
+    {"id": 504, "name": "SweetSpot 2x20", "description": _NOTE + "\n\n..."},                       # umbenannt
+    {"id": 505, "name": "Grundlage 90 min", "description": "von Hand angelegt"},                  # ohne Hinweiszeile
+    {"id": 506, "name": "x", "description": "x", "external_id": "ha-intervals-icu:gibtsnicht:2026-09-26"},
+]
+_af = {"activities": {
+    "m1": _act("2026-09-20", "SweetSpot 2x...", 90, paired_event_id="501"),
+    "m2": _act("2026-09-25", "VO2max-Inter...", 75),
+    "p1": _act("2026-09-24", "Runde", 50, paired_event_id="501"),
+    "p2": _act("2026-09-24", "Runde", 50, paired_event_id=502),
+    "p3": _act("2026-09-24", "Runde", 50, paired_event_id="503"),
+    "p4": _act("2026-09-24", "Runde", 50, paired_event_id="504"),
+    "p5": _act("2026-09-24", "Runde", 50, paired_event_id="505"),
+    "p6": _act("2026-09-24", "Runde", 50, paired_event_id="599"),
+    "p7": _act("2026-09-24", "Runde", 50, paired_event_id="506"),
+    "c1": _act("2026-09-22", "Rehburg-Loccum", 95, paired_event_id="501", commute=True),
+    "r1": _act("2026-09-23", "Lauf", 20, typ="Run"),
+    "n1": _act("2026-09-23", "Grundlage 90 min", 30),        # Name = Katalogtitel, aber NICHT gepaart
+}, "section_marks": {
+    "m1": {"marks": {"sweetspot": [2, 4]}},
+    "m2": {"marks": {"vo2max": [3, 5, 7, 9], "sweetspot": [1], "endurance": [11]}},
+    "p1": {"marks": {"vo2max": []}},                          # leere Marke = keine Marke
+}, "events": _ev}
+_fam = getattr(analytics, "activity_family", None)
+check("0.73.0 2: analytics.activity_family existiert", callable(_fam), True)
+if callable(_fam):
+    def _g(aid, **kw): r = _fam(_af, aid, **kw) or {}; return (r.get("group"), r.get("source"))
+    check("0.73.0 2 Marken: SweetSpot -> schwelle", _g("m1"), ("schwelle", "marks"))
+    check("0.73.0 2 Marken mehrerer Familien: die haerteste gibt die Gruppe", _g("m2"), ("vo2max", "marks"))
+    check("0.73.0 2 Marken mehrerer Familien: families nennt alle",
+          sorted((_fam(_af, "m2") or {}).get("families") or []), ["endurance", "sweetspot", "vo2max"])
+    check("0.73.0 2 Plan Altbestand: Hinweiszeile + Katalogtitel -> grundlage", _g("p1"), ("grundlage", "plan"))
+    check("0.73.0 2 Plan external_id -> schwelle (int-ID gegen int-Event)", _g("p2"), ("schwelle", "plan"))
+    check("0.73.0 2 fremde external_id -> ohne Zuordnung", _g("p3"), (None, None))
+    check("0.73.0 2 Altbestand mit umbenanntem Titel -> ohne Zuordnung", _g("p4"), (None, None))
+    check("0.73.0 2 Katalogtitel ohne Hinweiszeile -> ohne Zuordnung", _g("p5"), (None, None))
+    check("0.73.0 2 paired_event_id ins Leere -> ohne Zuordnung", _g("p6"), (None, None))
+    check("0.73.0 2 eigene external_id mit unbekanntem Schluessel -> ohne Zuordnung", _g("p7"), (None, None))
+    check("0.73.0 2 gepaarte Pendelfahrt -> nie ueber den Plan", _g("c1"), (None, None))
+    check("0.73.0 2 Pendelfahrt: commute steht im Ergebnis", (_fam(_af, "c1") or {}).get("commute"), True)
+    _r1 = _fam(_af, "r1") or {}
+    check("0.73.0 2 andere Sportart -> other mit Sportwort", (_r1.get("group"), _r1.get("source"), _r1.get("sport")), ("other", "sport", "Lauf"))
+    check("0.73.0 2 kein Namensvergleich: Katalogtitel als Aktivitaetsname ungepaart -> ohne Zuordnung", _g("n1"), (None, None))
+    check("0.73.0 2 unbekannte Aktivitaet -> None", _fam(_af, "gibtsnicht"), None)
+    # Marken + Paarung widersprechen: die Marken gewinnen
+    _mp = {**_af, "activities": {**_af["activities"], "mp": _act("2026-09-24", "x", 50, paired_event_id="502")},
+           "section_marks": {**_af["section_marks"], "mp": {"marks": {"endurance": [1]}}}}
+    check("0.73.0 2 Marken vor Plan", (_fam(_mp, "mp") or {}).get("group"), "grundlage")
+    # Pendelfahrt MIT Marken: die Marken gelten (nur der Plan ist gesperrt)
+    _cm = {**_af, "section_marks": {**_af["section_marks"], "c1": {"marks": {"vo2max": [1]}}}}
+    check("0.73.0 2 Pendelfahrt mit Marken: Marken gelten", (_fam(_cm, "c1") or {}).get("group"), "vo2max")
+    # Events als eigener Parameter (Koordinator-Daten, nicht Archiv)
+    _noev = {k: v for k, v in _af.items() if k != "events"}
+    check("0.73.0 2 ohne Events im Archiv: kein Plan", (_fam(_noev, "p2") or {}).get("group"), None)
+    check("0.73.0 2 Events als Parameter", (_fam(_noev, "p2", events=_ev) or {}).get("group"), "schwelle")
+    # Leseweg: activity_family schreibt nichts
+    import copy as _copy73
+    _before = _copy73.deepcopy(_af)
+    for _aid in list(_af["activities"]):
+        _fam(_af, _aid)
+    check("0.73.0 2 activity_family schreibt nichts", _af == _before, True)
+    # blocks.family_of und Zonen werden NICHT gelesen (Quelltext)
+    import inspect as _insp73
+    _src = _insp73.getsource(_fam).split('"""')[2]  # ohne Docstring: der Code
+    check("0.73.0 2 kein Namens-Rateweg (family_of)", "family_of" in _src, False)
+    check("0.73.0 2 keine Zonen / kein WORK-Etikett", any(x in _src for x in ("icu_zone_times", "icu_intervals", "WORK")), False)
+
+# Fenster: 35 Tage, ganzzahlige Lasten, heute 26.09.
+def _fenster(heute_last=40.0, luecke=False):
+    d = {"wellness": {}, "activities": {}, "section_marks": {}, "events": list(_ev)}
+    t0 = _date(2026, 9, 26)
+    for i in range(35):
+        day = (t0 - _td(days=34 - i)).isoformat()
+        d["wellness"][day] = {"ctlLoad": 30.0}
+    for day, v in {"2026-09-19": 50.0, "2026-09-20": 90.0, "2026-09-21": 0.0, "2026-09-22": 95.0,
+                   "2026-09-23": 60.0, "2026-09-24": 0.0, "2026-09-25": 75.0, "2026-09-26": heute_last}.items():
+        d["wellness"][day] = {"ctlLoad": v}
+    d["activities"] = {
+        "a19": _act("2026-09-19", "vor dem Fenster", 50),
+        "a20": _act("2026-09-20", "SweetSpot 2x...", 90),
+        "a22": _act("2026-09-22", "Rehburg-Loccum", 95, paired_event_id="501", commute=True),
+        "a23b": {**_act("2026-09-23", "Lauf", 20, typ="Run"), "start_date_local": "2026-09-23T18:00:00"},
+        "a23a": _act("2026-09-23", "Grundlage", 30),
+        "a25": _act("2026-09-25", "VO2max-Inter...", 75),
+    }
+    if heute_last:
+        d["activities"]["a26"] = _act("2026-09-26", None, heute_last, paired_event_id="502")
+    d["section_marks"] = {"a20": {"marks": {"sweetspot": [1]}}, "a23a": {"marks": {"endurance": [1]}},
+                          "a25": {"marks": {"vo2max": [1, 2]}}}
+    if luecke:
+        del d["wellness"]["2026-09-21"]
+    return d
+_fb = analytics.load_budget(_fenster(), "green", today="2026-09-26")
+check("0.73.0 3 Fenster: Start/Ende", (_fb.get("window_start"), _fb.get("window_end")), ("2026-09-20", "2026-09-26"))
+check("0.73.0 3 Fenster: Last = sechs Tage davor + heute", _fb.get("window_load"), 320.0 + 40.0)
+check("0.73.0 3 Fenster: erlaubt = 7 x chronisch x Ziel", _fb.get("window_allowed"), round(7 * _fb["chronic"] * 1.3))
+check("0.73.0 3 Fenster: erlaubt - sechs Tage = recommended (gleiche Rechnung)",
+      _fb.get("window_allowed", 0) - _fb["last_six_days"], _fb["recommended"])
+check("0.73.0 3 Fenster: frei = erlaubt - Fensterlast (= recommended - heute)",
+      _fb.get("window_free"), max(0, _fb.get("window_allowed", 0) - _fb.get("window_load", 0)))
+check("0.73.0 3 Fenster: frei = recommended - used_today", _fb.get("window_free"), max(0, _fb["recommended"] - 40))
+_c = _fb["chronic"]
+check("0.73.0 3 Baender x0,8/1,0/1,3/1,5", _fb.get("window_bands"),
+      {"low": round(7 * _c * 0.8), "steady": round(7 * _c * 1.0), "top": round(7 * _c * 1.3), "risk": round(7 * _c * 1.5)})
+check("0.73.0 3 der aelteste Fenstertag faellt morgen raus", _fb.get("drops_next"), {"date": "2026-09-20", "load": 90.0})
+_fa = analytics.load_budget(_fenster(), "amber", today="2026-09-26")
+_fr = analytics.load_budget(_fenster(), "red", today="2026-09-26")
+check("0.73.0 3 Ampel gelb: Zielstrich x1,0", _fa.get("window_allowed"), _fa.get("window_bands", {}).get("steady"))
+check("0.73.0 3 Ampel rot: Zielstrich x0,8", _fr.get("window_allowed"), _fr.get("window_bands", {}).get("low"))
+check("0.73.0 3 Ampel rot: frei nie negativ", _fr.get("window_free"), 0)
+check("0.73.0 3 Rechnung unveraendert: recommended wie ohne Fensterfelder",
+      {k: _fb[k] for k in ("chronic", "last_six_days", "target_ratio", "recommended", "used_today", "steady", "corridor_top", "risk_top", "state")},
+      {"chronic": round(_c, 1), "last_six_days": 320.0, "target_ratio": 1.3,
+       "recommended": max(0, round(7 * _c * 1.3 - 320)), "used_today": 40.0,
+       "steady": max(0, round(7 * _c - 320)), "corridor_top": max(0, round(7 * _c * 1.3 - 320)),
+       "risk_top": max(0, round(7 * _c * 1.5 - 320)), "state": "green"})
+_ws_fn = getattr(analytics, "window_sessions", None)
+check("0.73.0 3: analytics.window_sessions existiert", callable(_ws_fn), True)
+if callable(_ws_fn):
+    _ws = _ws_fn(_fenster(), "2026-09-26")
+    _ss = _ws.get("sessions") or []
+    check("0.73.0 3 Summe = window_load", round(sum(x["load"] for x in _ss), 1), _fb["window_load"])
+    check("0.73.0 3 total = window_load", _ws.get("total"), _fb["window_load"])
+    check("0.73.0 3 Reihenfolge: Tag, dann Startzeit; vor dem Fenster fehlt",
+          [(x["date"], x.get("name"), x.get("rest", False)) for x in _ss],
+          [("2026-09-20", "SweetSpot 2x...", False), ("2026-09-22", "Rehburg-Loccum", False),
+           ("2026-09-23", "Grundlage", False), ("2026-09-23", "Lauf", False), ("2026-09-23", None, True),
+           ("2026-09-25", "VO2max-Inter...", False), ("2026-09-26", None, False)])
+    _rest = [x for x in _ss if x.get("rest")]
+    check("0.73.0 3 Rest: ctlLoad 60 > 30 + 20 -> 10 ohne Einheit", [(x["date"], x["load"], x["group"]) for x in _rest], [("2026-09-23", 10.0, None)])
+    check("0.73.0 3 Gruppen je Fahrt", [x["group"] for x in _ss], ["schwelle", None, "grundlage", "other", None, "vo2max", "schwelle"])
+    check("0.73.0 3 Quelle je Fahrt", [x["source"] for x in _ss], ["marks", None, "marks", "sport", "rest", "marks", "plan"])
+    check("0.73.0 3 Pendelfahrt markiert", [x["commute"] for x in _ss], [False, True, False, False, False, False, False])
+    check("0.73.0 3 Sportwort", [x["sport"] for x in _ss][:4], ["Rad", "Rad", "Rad", "Lauf"])
+    check("0.73.0 3 Summen je Gruppe", _ws.get("groups"),
+          {"grundlage": 30.0, "schwelle": 130.0, "vo2max": 75.0, "other": 20.0, "none": 105.0})
+    check("0.73.0 3 Summen je Gruppe ergeben total", round(sum((_ws.get("groups") or {}).values()), 1), _ws.get("total"))
+    check("0.73.0 3 kein Widerspruch Tageslast/Aktivitaeten", _ws.get("mismatch"), [])
+    # zwei Fahrten an einem Tag, heute importiert: beide stehen da (23.) und heute zaehlt
+    check("0.73.0 3 heutige Fahrt im Fenster", any(x["date"] == "2026-09-26" and not x.get("rest") for x in _ss), True)
+    # Fenster leer
+    _leer = _fenster(heute_last=0.0)
+    for _day in ("2026-09-20", "2026-09-22", "2026-09-23", "2026-09-25"):
+        _leer["wellness"][_day] = {"ctlLoad": 0.0}
+    _leer["activities"] = {"a19": _act("2026-09-19", "vor dem Fenster", 50)}
+    _wl = _ws_fn(_leer, "2026-09-26")
+    check("0.73.0 3 Fenster leer: keine Fahrt, total 0", (_wl.get("sessions"), _wl.get("total")), ([], 0.0))
+    # Tageslast kleiner als Aktivitaeten: benannt, nicht versteckt
+    _mm = _fenster(); _mm["wellness"]["2026-09-25"] = {"ctlLoad": 60.0}
+    _wm = _ws_fn(_mm, "2026-09-26")
+    check("0.73.0 3 Randfall ctlLoad < Aktivitaeten: Tag benannt", _wm.get("mismatch"), ["2026-09-25"])
+    # Wellness-Luecke: dieselben Tage wie das Budget (Reihe lueckenlos), 21. hat Last 0
+    _gap = _fenster(luecke=True)
+    _gb = analytics.load_budget(_gap, "green", today="2026-09-26")
+    _gw = _ws_fn(_gap, "2026-09-26")
+    check("0.73.0 3 Luecke: Summe = window_load", round(sum(x["load"] for x in _gw["sessions"]), 1), _gb["window_load"])
+    # weniger als 28 Tage: kein Budget, aber das Fenster (Regel 10: Liste bleibt)
+    _kurz = _fenster()
+    for _day in sorted(_kurz["wellness"])[:20]:
+        del _kurz["wellness"][_day]
+    check("0.73.0 3 unter 28 Tagen: kein Budget", analytics.load_budget(_kurz, "green", today="2026-09-26"), None)
+    _wk = _ws_fn(_kurz, "2026-09-26")
+    check("0.73.0 3 unter 28 Tagen: die Fahrten stehen trotzdem", len(_wk.get("sessions") or []), 7)
+    # zweiter Athlet ohne Marken und ohne Events: alles ohne Zuordnung, Rad
+    _b = _fenster(); _b["section_marks"] = {}; _b["events"] = []
+    _wb = _ws_fn(_b, "2026-09-26")
+    check("0.73.0 3 Athlet B: alle Radfahrten ohne Zuordnung",
+          sorted({x["group"] for x in _wb["sessions"] if x["sport"] == "Rad"}, key=str), [None])
+
 print(f"test_analytics: {CHECKS} Prüfungen, {len(failures)} Fehler")
 print("FEHLER:", failures if failures else "keine")
 sys.exit(1 if failures else 0)

@@ -34,11 +34,13 @@ from statistics import mean, pstdev
 from typing import Any
 
 try:  # inside the package (Home Assistant)
-    from . import baseline, derive
+    from . import baseline, derive, section_marks, workouts
     from .const import DECOUPLING_GOOD
 except ImportError:  # standalone (test suite loads this file directly)
     import baseline
     import derive
+    import section_marks
+    import workouts
     from const import DECOUPLING_GOOD
 
 _LOGGER = logging.getLogger(__name__)
@@ -771,8 +773,7 @@ def load_budget(data: dict[str, Any], state: str = "green", today: str | None = 
     # schrumpfte im Lauf des Tages um die Fahrt, die es erlauben sollte. Jetzt
     # zaehlen die sechs Tage VOR heute; die heutige Last reist als Verbrauch mit.
     day_today = str(today or date.today().isoformat())[:10]
-    before = [point for point in series if point["date"] < day_today]
-    today_row = [point for point in series if point["date"] == day_today]
+    before, today_row = _window_rows(series, day_today)
     loads = [point["load"] for point in before]
     used_today = float(today_row[0]["load"]) if today_row else 0.0
     if not loads:
@@ -788,6 +789,17 @@ def load_budget(data: dict[str, Any], state: str = "green", today: str | None = 
     def allowed(factor: float) -> int:
         return max(0, round(7 * chronic * factor - last_six))
 
+    # 0.73.0 (Skizze §5.1): DAS FENSTER, aus derselben Rechnung - die sechs
+    # Tage vor heute und heute. Keine neue Formel: `window_allowed` ist der
+    # Zielwert 7 x chronisch x Ziel VOR dem Abzug der sechs Tage, `window_free`
+    # das, was nach allen sieben Tagen (heute eingeschlossen) noch frei ist.
+    # Die Baender sind die Faktoren, die hier schon stehen (0,8/1,0/1,3/1,5).
+    six = before[-6:]
+    window_load = last_six + used_today
+
+    def zone(factor: float) -> int:
+        return round(7 * chronic * factor)
+
     return {
         "chronic": round(chronic, 1),
         "last_six_days": round(last_six, 1),
@@ -798,6 +810,151 @@ def load_budget(data: dict[str, Any], state: str = "green", today: str | None = 
         "corridor_top": allowed(ACWR_HIGH),
         "risk_top": allowed(ACWR_RISK),
         "state": state,
+        "window_start": six[0]["date"] if six else day_today,
+        "window_end": day_today,
+        "window_load": round(window_load, 1),
+        "window_allowed": zone(target),
+        "window_free": max(0, round(7 * chronic * target - window_load)),
+        "window_bands": {"low": zone(ACWR_LOW), "steady": zone(1.0),
+                         "top": zone(ACWR_HIGH), "risk": zone(ACWR_RISK)},
+        "drops_next": {"date": six[0]["date"], "load": six[0]["load"]} if six else None,
+    }
+
+
+def _window_rows(series: list[dict[str, Any]], day_today: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Die Tage VOR heute und die Zeile von heute - EINE Stelle fuer Budget und Fenster.
+
+    `load_budget` nimmt davon die letzten sechs (und 28 fuer den Schnitt),
+    `window_sessions` dieselben sechs plus heute. Die Reihe ist lueckenlos
+    (`daily_load`), eine fehlende Wellness-Zeile ist ein Tag mit Last 0.
+    """
+    before = [point for point in series if point["date"] < day_today]
+    today_row = [point for point in series if point["date"] == day_today]
+    return before, today_row
+
+
+def _planned_key(events: Any, paired_event_id: Any) -> str | None:
+    """Der Katalogschluessel des gepaarten Events - oder None.
+
+    a) `external_id` mit unserem Praefix -> Schluessel aus der ID;
+       eine fremde external_id ist nicht unser Event.
+    b) Altbestand ohne external_id: die Beschreibung beginnt mit der
+       Hinweiszeile aus `workouts.to_event` UND der Name ist ein Katalogtitel.
+    Kein Vergleich mit dem Namen der AKTIVITAET - der traegt nicht (Skizze §2).
+    """
+    wanted = str(paired_event_id)
+    event = next((ev for ev in events or [] if isinstance(ev, dict) and str(ev.get("id")) == wanted), None)
+    if event is None:
+        return None
+    external = event.get("external_id")
+    if external:
+        text = str(external)
+        if not text.startswith(workouts.EXTERNAL_ID_PREFIX):
+            return None
+        key = text[len(workouts.EXTERNAL_ID_PREFIX):].split(":", 1)[0]
+        return key if key in workouts.BY_KEY else None
+    if not str(event.get("description") or "").startswith(workouts.DEFAULT_NOTE):
+        return None
+    name = event.get("name")
+    return next((key for key, entry in workouts.BY_KEY.items() if entry.get("title") == name), None)
+
+
+def activity_family(data: dict[str, Any], activity_id: Any, events: Any = None) -> dict[str, Any] | None:
+    """Die Familie einer gefahrenen Einheit - EINE Stelle (0.73.0, Skizze §4).
+
+    Gepaart wird nicht von uns. Gelesen wird, was schon feststeht:
+    1. die MARKEN des Athleten (section_marks) - die Familien der markierten
+       Abschnitte; mehrere Gruppen: die haerteste gibt die Gruppe
+       (workouts.GROUP_ORDER, Setzung E3), `families` nennt alle;
+    2. der PLAN - die Paarung von intervals.icu (`paired_event_id`) auf ein
+       Event dieser App (`_planned_key`); nie bei einer Pendelfahrt, die
+       intervals.icu faelschlich mitpaart;
+    3. eine andere Sportart -> "other" mit dem Sportwort;
+    4. sonst keine Gruppe ("ohne Zuordnung").
+    Kein Namensvergleich mit der Aktivitaet, keine Zonen, kein WORK-Etikett,
+    nicht der Namens-Rateweg aus blocks. Liest nur, schreibt nichts.
+    `events` sind die Kalender-Events des Koordinators (nicht im Archiv);
+    ohne Parameter wird `data["events"]` gelesen.
+    """
+    activity = (data.get("activities") or {}).get(str(activity_id))
+    if not isinstance(activity, dict):
+        return None
+    kind, sport = sport_group(activity.get("type"))
+    commute = bool(activity.get("commute"))
+    out = {"group": None, "source": None, "families": [], "sport": sport, "commute": commute}
+
+    entry = section_marks.entry_for(data, activity_id)
+    names = [name for name in sorted(((entry or {}).get("marks") or {}))
+             if name in workouts.FAMILY_GROUP and section_marks.marked(entry, name)]
+    if names:
+        groups = {workouts.FAMILY_GROUP[name] for name in names}
+        out.update(group=next(g for g in workouts.GROUP_ORDER if g in groups),
+                   source="marks", families=names)
+        return out
+
+    paired = activity.get("paired_event_id")
+    if not commute and paired not in (None, ""):
+        key = _planned_key(data.get("events") if events is None else events, paired)
+        if key in workouts.KEY_GROUP:
+            family = next(f for f, _l, keys in workouts.FAMILIES if key in keys)
+            out.update(group=workouts.KEY_GROUP[key], source="plan", families=[family], key=key)
+            return out
+
+    if kind != "ride":
+        out.update(group="other", source="sport")
+    return out
+
+
+def window_sessions(data: dict[str, Any], today: str | None = None, events: Any = None) -> dict[str, Any]:
+    """Die Fahrten im Fenster der Wochenlast - dieselben Tage wie `load_budget`.
+
+    Je Aktivitaet {date, name, sport, load, group, source, families, commute},
+    aelteste zuerst, am Tag nach Startzeit. Ist die Tageslast (ctlLoad) groesser
+    als die Summe der Aktivitaeten, steht der Rest als Stueck "ohne Einheit"
+    (rest=True) daneben; dann ist die Summe = `window_load`. Ist sie KLEINER,
+    wird nichts versteckt: der Tag steht in `mismatch`.
+    Gilt auch unter 28 Tagen Verlauf (kein Budget, aber die Liste).
+    """
+    series = daily_load(data)
+    day_today = str(today or date.today().isoformat())[:10]
+    before, today_row = _window_rows(series, day_today)
+    days = before[-6:] + today_row
+    by_day: dict[str, list[tuple[str, dict[str, Any]]]] = {}
+    for key, activity in (data.get("activities") or {}).items():
+        day = str(activity.get("start_date_local") or "")[:10]
+        by_day.setdefault(day, []).append((str(key), activity))
+
+    sessions: list[dict[str, Any]] = []
+    mismatch: list[str] = []
+    for point in days:
+        day = point["date"]
+        ridden = 0.0
+        for key, activity in sorted(by_day.get(day, []), key=lambda kv: (str(kv[1].get("start_date_local") or ""), kv[0])):
+            load = float(activity.get("icu_training_load") or 0)
+            ridden += load
+            fam = activity_family(data, key, events) or {}
+            sessions.append({"date": day, "id": key, "name": activity.get("name"), "sport": fam.get("sport"),
+                             "load": round(load, 1), "group": fam.get("group"), "source": fam.get("source"),
+                             "families": fam.get("families") or [], "commute": bool(fam.get("commute")),
+                             "rest": False})
+        rest = point["load"] - ridden
+        if rest > 0.05:
+            sessions.append({"date": day, "id": None, "name": None, "sport": None, "load": round(rest, 1),
+                             "group": None, "source": "rest", "families": [], "commute": False, "rest": True})
+        elif rest < -0.05:
+            mismatch.append(day)
+
+    groups = {"grundlage": 0.0, "schwelle": 0.0, "vo2max": 0.0, "other": 0.0, "none": 0.0}
+    for row in sessions:
+        slot = row["group"] if row["group"] in groups else "none"
+        groups[slot] += row["load"]
+    return {
+        "start": days[0]["date"] if days else day_today,
+        "end": day_today,
+        "sessions": sessions,
+        "groups": {k: round(v, 1) for k, v in groups.items()},
+        "total": round(sum(point["load"] for point in days), 1),
+        "mismatch": mismatch,
     }
 
 
@@ -896,12 +1053,15 @@ def week_done(data: dict[str, Any], start: str, today: str | None = None) -> dic
     shows this morning's state after the afternoon ride. And not from the
     planned events either - those never touch the archive.
 
-    NOTHING IS PAIRED. The plan says "SweetSpot 2x20"; the archive holds rides
-    with a duration and a load and no label saying which planned session they
-    were meant to be. Any automatic pairing would be a claim the system cannot
-    back up - the same class as "it would take some 128 sessions" in H, a
-    number that sounds more precise than it is. So: ridden against planned,
-    and the pairing stays the athlete's job.
+    WE DO NOT PAIR (0.73.0, Skizze §4). Pairing a ride with a planned session
+    is done by intervals.icu (`paired_event_id`, by load or moving time) or by
+    the athlete (manually there, or by marking sections here). This app only
+    READS both - in ONE place, `activity_family` - and never guesses from the
+    ride's name, its zones or a WORK label: the archive names ("SweetSpot
+    2x...") are not the catalogue titles, and a guessed pairing would be a
+    claim the system cannot back up. This week view stays "ridden against
+    planned" (`paired: False`); the Heute header shows the family where one
+    is read.
     """
     first = date.fromisoformat(start)
     last = first + timedelta(days=6)

@@ -698,6 +698,10 @@ const TRAINER_FAMILIES = [
   ["schwelle", "SweetSpot & Schwelle", ["sweetspot", "tempo", "threshold"]],
   ["vo2max", "VO2max", ["vo2max"]],
 ];
+// 0.73.0 (Skizze §6): die Farbe einer GRUPPE im Heute-Kopf - aus FAM, keine
+// neue Farbe, keine Zustandsfarbe. Welche Fahrt zu welcher Gruppe gehoert,
+// sagt das Backend (analytics.activity_family); hier steht nur die Farbe.
+const GROUP_TONE = { grundlage: "endurance", schwelle: "sweetspot", vo2max: "vo2max" };
 // Woher die Watt einer Einheit kommen, in einem Wort (Familienzeile A4). Die
 // ausfuehrliche Herkunft bleibt an der Karte ("Wie diese Zahl entsteht").
 const WATT_ORIGIN_SHORT = {
@@ -4430,6 +4434,92 @@ class IntervalsIcuPanel extends HTMLElement {
      and labelled by the system they report on - and where the signals and the
      verdict disagree, the page says why instead of hiding it. Nothing reaches
      past today, because the load outside training is in no data. */
+  /* 0.73.0 (Skizze §6, Variante C): WIE VIEL DIE WOCHE NOCH TRAEGT.
+     Alles aus dem Payload (coach.today -> week): das Urteil, die Summen je
+     Gruppe, die Baender, der Zielstrich. Gerechnet werden hier nur
+     Pixelbreiten. Der Bullet "Obergrenze ... davon gefahren" und der Satz
+     "... den du heute nicht verdaust" sind entfallen - der Satz gehoerte zu
+     einer Zustandsgrenze, die Zahl kam aus der Wochenlast (Skizze §1). */
+  _weekBox(w) {
+    if (!w) return "";
+    const head = `<div class="tlabel">Wie viel die Woche noch trägt · letzte 7 Tage</div>`;
+    const b = w.budget;
+    if (!b) return `<div class="hwbox">${head}<p class="hwsub">Die Wochenlast braucht 28 Tage Verlauf.</p></div>`;
+    const tomorrow = w.mode === "tomorrow";
+    const Day = tomorrow ? "Morgen" : "Heute";
+    let verdict, sub;
+    if (w.bound_by === "state") {
+      verdict = `${Day} höchstens ${fmt(w.ceiling)} Last`;
+      sub = `Die Woche hätte noch ${fmt(b.window_free)} frei, aber dein Zustand bremst.`;
+    } else if (!b.window_free) {
+      const drop = b.drops_next;
+      verdict = "Woche voll";
+      sub = `${Day} ist keine Last mehr frei.${!tomorrow && drop && drop.load > 0
+        ? ` Morgen wird Platz: der ${WDL[(new Date(drop.date + "T00:00:00").getDay() + 6) % 7]} (${fmt(drop.load)}) fällt raus.` : ""}`;
+    } else {
+      verdict = `Noch ${fmt(b.window_free)} Last frei`;
+      sub = `So viel verträgt die Woche ${tomorrow ? "morgen" : "heute"} noch.`;
+    }
+    const g = w.groups || {};
+    const total = w.total || 0;
+    const scale = Math.max(b.window_allowed || 0, total) || 1;
+    const pc = (v, m) => `${((v || 0) / m * 100).toFixed(1)}%`;
+    const row = (name, val, col) => `<div class="hwrow${col ? "" : " none"}">
+        <span class="hwname">${esc(name)}</span>
+        <div class="hwtrack"><span class="hwfill${col ? "" : " hatch"}" style="width:${pc(val, scale)}${col ? `;background:${col}` : ""}"></span></div>
+        <span class="hwn tn">${fmt(val || 0)}</span></div>`;
+    const rows = TRAINER_FAMILIES.map(([id, name]) => row(name, g[id], FAM[GROUP_TONE[id]].c)).join("")
+      + (g.other > 0 ? row("andere Sportarten", g.other, C.cyan) : "")
+      + row("nicht zugeordnet", g.none, null);
+    const bd = b.window_bands || {};
+    const max = Math.max(bd.risk || 0, total) * 1.05 || 1;
+    const bands = [[0, bd.low, C.slate], [bd.low, bd.top, C.green], [bd.top, bd.risk, C.amber], [bd.risk, max, C.red]];
+    const words = ["wenig", "passt", "viel", "zu viel"];
+    return `<div class="hwbox">
+      <div class="hwhead">${head}
+        <div class="hwverdict">${esc(verdict)}</div>
+        <p class="hwsub">${esc(sub)}</p></div>
+      <div class="hwrows">${rows}</div>
+      <div class="hwsum">
+        <div class="hwgoallab"><span style="left:${pc(b.window_allowed, max)}">Ziel ${fmt(b.window_allowed)}</span></div>
+        <div class="hwsumwrap"><div class="hwsumbar">${bands.map(([a, e, c]) =>
+          `<i class="hwband" style="left:${pc(a, max)};width:${pc(e - a, max)};background:${c}33"></i>`).join("")}
+          <span class="hwsumfill" style="width:${pc(total, max)}"></span></div>
+          <span class="hwgoal" style="left:${pc(b.window_allowed, max)}"></span></div>
+        <div class="hwzones">${bands.map(([a, e], i) =>
+          `<span style="left:${pc((a + e) / 2, max)}">${words[i]}</span>`).join("")}</div>
+        <p class="hwfoot tn">Zusammen ${fmt(total)} Last. Das Ziel ist das ${fmt(b.target_ratio, 1)}-Fache deines Durchschnitts der letzten 4 Wochen – eine Festlegung, keine Messung.</p>
+      </div>
+    </div>`;
+  }
+
+  /* 0.73.0 (Skizze §6): DEINE FAHRTEN, LETZTE 7 TAGE - die Legende zum Kasten.
+     Chip in der Farbe der Gruppe (oder schraffiert), Tag, Name, Last; darunter
+     nur das Gruppenwort. Woher die Zuordnung kommt, steht als title am Chip,
+     nicht in der Anzeige. */
+  _weekList(w) {
+    if (!w) return "";
+    const list = w.sessions || [];
+    const SRC = { marks: "aus deinen Marken", plan: "aus deinem Plan — von intervals.icu mit einem Workout dieser App gepaart",
+                  sport: "andere Sportart", rest: "Tageslast ohne einzelne Einheit" };
+    const names = Object.fromEntries(TRAINER_FAMILIES.map(([id, name]) => [id, name]));
+    const rows = list.map((x) => {
+      const col = x.group === "other" ? C.cyan : GROUP_TONE[x.group] ? FAM[GROUP_TONE[x.group]].c : null;
+      const word = x.group === "other" ? (x.sport || "andere Sportart") : names[x.group] || "nicht zugeordnet";
+      const src = SRC[x.source] || (x.commute ? "Pendelfahrt — nie über den Plan zugeordnet"
+        : "keine Marke, kein gepaartes Workout dieser App");
+      const nm = x.rest ? "ohne Einheit" : (x.name || x.sport || "ohne Namen");
+      return `<div class="hwli">
+        <span class="hwchip${col ? "" : " hatch"}" style="${col ? `background:${col}` : ""}" title="${esc(src)}"></span>
+        <span class="d">${esc(dShort(x.date))}</span>
+        <span class="nm" title="${esc(nm)}">${esc(nm)}</span>
+        <span class="ld tn">${fmt(x.load)}</span>
+        <span class="fam">${esc(word)}</span></div>`;
+    }).join("");
+    return `<div class="tlabel hwlabel">Deine Fahrten, letzte 7 Tage</div>
+      ${rows ? `<div class="hwlist">${rows}</div>` : `<p class="hint">Keine Fahrt in den letzten 7 Tagen.</p>`}`;
+  }
+
   rHeute(t) {
     if (!t) return this._dataGap("today", "Der Tag");
     const stale = !!(t.available && t.date && t.date !== new Date().toISOString().slice(0, 10));
@@ -4445,32 +4535,16 @@ class IntervalsIcuPanel extends HTMLElement {
     const WORD = { red: "rot", amber: "gelb", blue: "blau", green: "grün", grey: "keine Daten" };
     const head = `<div class="tcard ${tone}">
       <div class="tmain">
-        <div class="tlabel">HEUTE MÖGLICH ${badge(tone, WORD[tone])}</div>
+        <div class="tlabel">Was dein Körper ${(t.week || {}).mode === "tomorrow" ? "morgen" : "heute"} kann ${badge(tone, WORD[tone])}</div>
         <div class="tbig" style="color:${col}">${esc(t.capacity)}</div>
         <p class="tsay">${esc(t.capacity_text)}</p>
-        ${t.ceiling != null ? (() => {
-          // Bullet graph, not a gauge: actual against a target range is what it
-          // was designed for, and it reads on position rather than on an angle.
-          // GRENZE UND VERBRAUCH GETRENNT (0.67.3, F2.10): die Obergrenze ist
-          // die Gesamtlast des Tages, die heutige Fahrt zaehlt nicht dagegen -
-          // sie steht daneben als "davon gefahren".
-          const done = t.budget_used != null ? t.budget_used
-            : (((t.recent || []).slice(-1)[0] || {}).load || 0);
-          const scale = Math.max(t.ceiling * 1.4, done * 1.1, 10);
-          return `<div class="tceil">
-            <span>Obergrenze</span><b class="tn">${fmt(t.ceiling)} Last</b>
-            <span class="mut"> · davon ${fmt(done)} gefahren</span>
-            <div class="bullet"><i class="bband" style="width:${(t.ceiling / scale * 100).toFixed(1)}%"></i>
-              <i class="bval" style="width:${(done / scale * 100).toFixed(1)}%"></i>
-              <i class="bmark" style="left:${(t.ceiling / scale * 100).toFixed(1)}%"></i></div>
-            <em>heute gefahren: ${fmt(done)} · darüber wird es ein Reiz, den du heute nicht
-            verdaust. Die Zielwahl je Ampelfarbe ist eine Setzung, kein Befund.</em></div>`;
-        })() : ""}
+        ${this._weekBox(t.week)}
       </div>
       <div class="tstate">
-        <div class="tlabel">ZUSTAND</div>
+        <div class="tlabel">Zustand</div>
         <div class="tstateword" style="color:${col}">${esc(t.state_label || STATE_WORD[t.state] || t.state)}</div>
         <p class="hint">${esc(t.state_text || "")}</p>
+        ${this._weekList(t.week)}
       </div>
     </div>`;
 
@@ -7332,12 +7406,40 @@ ul.rides span.r{color:${C.tx3};white-space:nowrap}
 .tlabel{color:${C.tx3};font-size:11px;text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px}
 .tbig{font-size:34px;font-weight:700;line-height:1.1}
 .tsay{font-size:15px;color:${C.tx2};margin:6px 0 0}
-.tceil{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;margin-top:12px;
-  background:${C.card2};border-radius:9px;padding:8px 12px}
-.tceil span{color:${C.tx3};font-size:12px}
-.tceil b{font-size:19px}
-.tceil em{font-style:normal;color:${C.tx3};font-size:11.5px;flex-basis:100%}
 .tstate{border-left:1px solid ${C.line};padding-left:18px}
+/* 0.73.0: Heute-Kopf Variante C - der Wochenkasten und die Fahrtenliste.
+   Die rechte Spalte ist eine Spalte (Zustand oben, Fahrten darunter): die
+   Regel ".tstate{display:flex}" weiter unten (Abschnitt Trainer) greift sonst
+   auch hier - sie traegt im Trainer keinen Leser mehr (Befund, nicht entfernt). */
+.tcard .tstate{display:block}
+.hwbox{background:${C.card2};border-radius:8px;padding:14px;display:grid;gap:12px;margin-top:14px}
+.hwverdict{font-size:17px;font-weight:700;margin-top:2px}
+.hwsub{font-size:13px;color:${C.tx2};margin:2px 0 0}
+.hwrows{display:grid;gap:6px}
+.hwrow{display:grid;grid-template-columns:160px minmax(0,1fr) 40px;gap:10px;align-items:center;font-size:13px}
+.hwn{text-align:right}
+.hwtrack{position:relative;height:12px;border-radius:3px;background:${C.bg};overflow:hidden}
+.hwfill{position:absolute;top:0;bottom:0;left:0;border-radius:3px}
+.hatch{background:repeating-linear-gradient(135deg,${C.tx3} 0 4px,${C.line} 4px 8px)}
+.hwsum{display:grid;gap:4px}
+.hwgoallab,.hwzones{position:relative;height:16px;font-size:12px}
+.hwgoallab span,.hwzones span{position:absolute;transform:translateX(-50%);white-space:nowrap}
+.hwzones{font-size:11px;color:${C.tx3}}
+.hwsumwrap{position:relative}
+.hwsumbar{position:relative;height:16px;border-radius:3px;overflow:hidden}
+.hwband{position:absolute;top:0;bottom:0}
+.hwsumfill{position:absolute;top:4px;height:8px;left:0;background:${C.tx};border-radius:2px}
+.hwgoal{position:absolute;top:-3px;bottom:-3px;width:2px;background:${C.tx}}
+.hwfoot{font-size:12px;color:${C.tx3};margin:4px 0 0}
+.hwlabel{margin-top:14px}
+.hwlist{display:grid;gap:10px}
+.hwli{display:grid;grid-template-columns:12px 44px minmax(0,1fr) 30px;gap:4px 8px;align-items:center;font-size:13px}
+.hwchip{width:12px;height:12px;border-radius:3px}
+.hwli .d{color:${C.tx3}}
+.hwli .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hwli .ld{text-align:right}
+.hwli .fam{grid-column:3 / 5;font-size:12px;color:${C.tx3};margin-top:-3px}
+@media(max-width:760px){.hwrow{grid-template-columns:120px minmax(0,1fr) 36px}}
 .tstateword{font-size:19px;font-weight:650;margin-bottom:4px}
 .tnote{display:flex;gap:9px;align-items:flex-start;background:${C.card2};border-radius:10px;
   padding:11px 14px;font-size:13.5px;color:${C.tx2};margin-bottom:4px;line-height:1.5}
@@ -7379,7 +7481,7 @@ ul.rides span.r{color:${C.tx3};white-space:nowrap}
 .tweeksum{color:${C.tx2};font-size:13px;margin-top:10px;padding-top:10px;border-top:1px solid ${C.line}}
 .tnight{margin-top:12px;padding-top:12px;border-top:1px solid ${C.line}}
 .tnhead{font-size:15px;font-weight:600;margin:2px 0 2px}
-@media(max-width:820px){
+@media(max-width:760px){
   .tcard{grid-template-columns:1fr}
   .tstate{border-left:none;border-top:1px solid ${C.line};padding:12px 0 0}
 }

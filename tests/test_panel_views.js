@@ -28,10 +28,12 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   const html = p.rHeute(F.today());
   clean(html, "heute");
   // 1 - the answer first: what is possible, and a ceiling
-  contains(html, "HEUTE MÖGLICH", "heute: keine Leitaussage");
+  // 0.73.0 umgestellt: "HEUTE MÖGLICH" -> "Was dein Körper heute kann"; die Zeile
+  // "Obergrenze 95" ist dem Wochenkasten gewichen (Skizze 0.73.0 §6).
+  contains(html, "Was dein Körper heute kann", "heute: keine Leitaussage");
   contains(html, "Alles möglich", "heute: Kapazität fehlt");
-  contains(html, "Obergrenze", "heute: keine Obergrenze");
-  contains(html, "95", "heute: Lastdecke fehlt");
+  contains(html, "Wie viel die Woche noch trägt", "heute: keine Wochenlast");
+  contains(html, "Noch 209 Last frei", "heute: das Wochenurteil fehlt");
   // 2 - the signals, each with the SYSTEM it reports on - never averaged
   ok((html.match(/class="tsig /g) || []).length === 3, "heute: nicht jedes Signal einzeln");
   contains(html, "Autonomes Nervensystem", "heute: System nicht benannt");
@@ -3623,6 +3625,121 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   ok(/WORT-heute/.test(z(P._trainerSources())), "0.72.2 3: die Legende liest nicht die Payload");
   // Tooltip = Stufen-Satz, nicht der Mengen-Satz
   ok(/class="bdg" title="Begründung aus dem Backend\."/.test(g), "0.72.2: der Tooltip ist nicht der Stufen-Satz");
+}
+
+/* ── 0.73.0 · Heute-Kopf Variante C (Skizze §6) ─────────────────────── */
+{
+  const P = new M.Panel(); P._nowIso = F.TODAY;
+  const z = (h) => String(h).replace(/\s+/g, " ");
+  const vis = (h) => z(h).replace(/title="[^"]*"/g, "").replace(/aria-label="[^"]*"/g, "");
+  const H = (k, o) => z(P.rHeute({ ...F.today(), week: F.week(k), ...(o || {}) }));
+  const box = (h) => h.slice(h.indexOf('class="hwbox"'), h.indexOf('class="tstate"'));
+  const side = (h) => h.slice(h.indexOf('class="tstate"'), h.indexOf('class="tsig'));
+  const pct = (v, m) => (v / m * 100).toFixed(1) + "%";
+  const { C, FAM } = M;
+
+  // Kopf: Koerper oben
+  const v = H("voll");
+  clean(v, "0.73.0 heute voll");
+  contains(v, "Was dein Körper heute kann", "0.73.0 §6: Augenbraue des Koerpers fehlt");
+  contains(v, "Alles möglich", "0.73.0 §6: Wort aus CAPACITY fehlt");
+  ok(/class="tbig"[^>]*>Alles möglich</.test(v), "0.73.0 §6: das Koerperwort ist nicht die Leitanzeige");
+  // der Kasten
+  const b = box(v);
+  contains(b, "Wie viel die Woche noch trägt · letzte 7 Tage", "0.73.0 §6: Augenbraue der Woche fehlt");
+  contains(b, ">Woche voll<", "0.73.0 §6 Fall Rest 0: 'Woche voll' fehlt");
+  contains(b, "Heute ist keine Last mehr frei. Morgen wird Platz: der Sonntag (90) fällt raus.", "0.73.0 §6: Satz 'Morgen wird Platz' falsch");
+  const l0 = box(H("leer0"));
+  ok(/Heute ist keine Last mehr frei\.</.test(l0) && !/Morgen wird Platz/.test(l0), "0.73.0 §6: 'Morgen wird Platz' bei Last 0 des aeltesten Tags");
+  const fr = box(H("frei"));
+  ok(/>Noch 116 Last frei</.test(fr) && fr.includes("So viel verträgt die Woche heute noch."), "0.73.0 §6 Fall Rest > 0 falsch");
+  const zu = box(H("zustand"));
+  ok(/>Heute höchstens 75 Last</.test(zu) && zu.includes("Die Woche hätte noch 86 frei, aber dein Zustand bremst."), "0.73.0 §6 Fall bound_by state falsch");
+  ok(!/Noch 86 Last frei/.test(zu), "0.73.0 §6: bound_by state zeigt das Wochenurteil");
+  // Morgen-Modus
+  const mo = H("morgen");
+  contains(mo, "Was dein Körper morgen kann", "0.73.0 §6: Morgen-Augenbraue fehlt");
+  ok(/>Noch 86 Last frei</.test(box(mo)) && box(mo).includes("So viel verträgt die Woche morgen noch."), "0.73.0 §6: Morgen-Satz falsch");
+  const mv = z(P.rHeute({ ...F.today(), week: { ...F.week("voll"), mode: "tomorrow" } }));
+  ok(box(mv).includes("Morgen ist keine Last mehr frei.") && !/Morgen wird Platz/.test(mv), "0.73.0 §6: Morgen-Modus nennt 'Morgen wird Platz'");
+  ok(/>Morgen höchstens 75 Last</.test(z(P.rHeute({ ...F.today(), week: { ...F.week("zustand"), mode: "tomorrow" } }))), "0.73.0 §6: Morgen-Modus bound_by state");
+
+  // vier Zeilen je Gruppe, Reihenfolge, Breite auf gemeinsamer Skala max(Ziel, Summe)
+  const rows = (h) => [...box(h).matchAll(/class="hwrow( [a-z]+)?"[^>]*>\s*<span class="hwname">([^<]+)<\/span>\s*<div class="hwtrack"><span class="hwfill( hatch)?"[^>]*style="width:([\d.]+)%[^"]*"><\/span><\/div>\s*<span class="hwn tn">([^<]+)<\/span>/g)]
+    .map((m) => ({ name: m[2], hatch: !!m[3], w: m[4] + "%", n: m[5] }));
+  const rv = rows(v);
+  ok(JSON.stringify(rv.map((r) => r.name)) === JSON.stringify(["Grundlage", "SweetSpot &amp; Schwelle", "VO2max", "nicht zugeordnet"]),
+     `0.73.0 §6: Zeilen/Reihenfolge ${JSON.stringify(rv.map((r) => r.name))}`);
+  ok(rv.length === 4 && rv[0].n === "0" && rv[0].w === "0.0%", "0.73.0 §6: Gruppe mit 0 bleibt nicht als leerer Balken stehen");
+  ok(rv.length === 4 && rv[2].w === pct(75, 260) && rv[3].w === pct(185, 260) && rv[3].n === "185", "0.73.0 §6: Breite nicht Last/max(Ziel, Summe)");
+  ok(rv.length === 4 && rv[3].hatch && !rv[2].hatch, "0.73.0 §6: 'nicht zugeordnet' nicht schraffiert");
+  const rf = rows(H("frei"));
+  ok(rf.length === 5 && rf[3].name === "andere Sportarten" && rf[3].n === "20" && rf[4].name === "nicht zugeordnet" && rf[0].w === pct(60, 256),
+     "0.73.0: andere Sportart als eigene Zeile (nur wenn > 0), Skala = Ziel bei Summe < Ziel");
+  ok(rows(v).every((r) => r.name !== "andere Sportarten"), "0.73.0: Zeile andere Sportarten ohne Last");
+  // Farben: nur aus FAM/C, keine Zustandsfarben fuer Familien
+  const fills = [...box(v).matchAll(/class="hwfill"[^>]*style="width:[\d.]+%;background:([^"]+)"/g)].map((m) => m[1]);
+  ok(JSON.stringify(fills) === JSON.stringify([FAM.endurance.c, FAM.sweetspot.c, FAM.vo2max.c]), `0.73.0 §6: Gruppenfarben ${JSON.stringify(fills)}`);
+  ok(![C.green, C.amber, C.red, C.orange].some((c) => fills.includes(c)), "0.73.0 §6: Zustandsfarbe an einer Familie");
+  // Summenbalken: vier Baender, Fuellung = Summe, Zielstrich + "Ziel 256", Worte ohne Zahlen
+  const mx = Math.max(295, 260) * 1.05;
+  ok((box(v).match(/class="hwband"/g) || []).length === 4, "0.73.0 §6: nicht vier Baender");
+  ok(box(v).includes(`class="hwsumfill" style="width:${pct(260, mx)}"`), "0.73.0 §6: Fuellung nicht = Summe");
+  ok(box(v).includes(`class="hwgoal" style="left:${pct(256, mx)}"`) && />Ziel 256</.test(box(v)), "0.73.0 §6: Zielstrich/Ziel-Beschriftung");
+  const zones = (box(v).match(/class="hwzones">(.*?)<\/div>/) || ["", ""])[1];
+  ok(["wenig", "passt", "viel", "zu viel"].every((w) => zones.includes(`>${w}<`)) && !/\d/.test(zones.replace(/style="[^"]*"/g, "")),
+     "0.73.0 §6: Bandworte fehlen oder Zahlen an den Grenzen");
+  // Zielstrich je Ampel (x1,0 / x0,8) aus dem Payload
+  ok(box(H("gelb")).includes(`class="hwgoal" style="left:${pct(197, mx)}"`) && />Ziel 197</.test(box(H("gelb"))), "0.73.0: Zielstrich gelb nicht x1,0");
+  ok(box(H("rot")).includes(`class="hwgoal" style="left:${pct(157, mx)}"`), "0.73.0: Zielstrich rot nicht x0,8");
+  contains(box(H("gelb")), "Das Ziel ist das 1,0-Fache", "0.73.0: Faktor gelb in der Fusszeile");
+  // Ueberlauf ueber die Risikogrenze
+  const ue = box(H("ueber")); const mx2 = 380 * 1.05;
+  ok(ue.includes(`class="hwsumfill" style="width:${pct(380, mx2)}"`) && ue.includes(`class="hwgoal" style="left:${pct(256, mx2)}"`), "0.73.0: Ueberlauf skaliert nicht mit");
+  // Fusszeile woertlich
+  contains(b, "Zusammen 260 Last. Das Ziel ist das 1,3-Fache deines Durchschnitts der letzten 4 Wochen – eine Festlegung, keine Messung.",
+           "0.73.0 §6: Fusszeile nicht woertlich");
+  // entfallen: "nicht verdaust", "Obergrenze ... davon ... gefahren"
+  ok(!/nicht verdaust/.test(v) && !/davon [\d]+ gefahren/.test(v) && !/class="tceil"/.test(v), "0.73.0 §6: alter Bullet/Satz steht noch");
+  // Budget None
+  const nb = H("ohnebudget");
+  ok(box(nb).includes("Die Wochenlast braucht 28 Tage Verlauf.") && !/hwrow|hwband|Ziel \d/.test(box(nb)), "0.73.0 §6: Budget None zeigt mehr als den Satz");
+  ok((side(nb).match(/class="hwli"/g) || []).length === 3, "0.73.0 §7 Regel 10: ohne Budget fehlt die Liste");
+
+  // rechte Spalte: Zustand, dann die Fahrten = Legende
+  const sd = side(v);
+  ok(/class="tlabel">Zustand</.test(sd) && /class="tlabel[^"]*">Deine Fahrten, letzte 7 Tage</.test(sd), "0.73.0 §6: Augenbrauen rechts");
+  ok(sd.indexOf("Zustand<") < sd.indexOf("Deine Fahrten"), "0.73.0 §6: Zustand steht nicht ueber den Fahrten");
+  const li = [...sd.matchAll(/class="hwli">\s*<span class="hwchip( hatch)?" style="([^"]*)" title="([^"]*)"><\/span>\s*<span class="d">([^<]+)<\/span>\s*<span class="nm" title="([^"]*)">([^<]+)<\/span>\s*<span class="ld tn">([^<]+)<\/span>\s*<span class="fam">([^<]+)<\/span>/g)]
+    .map((m) => ({ hatch: !!m[1], style: m[2], src: m[3], d: m[4], full: m[5], nm: m[6], ld: m[7], fam: m[8] }));
+  ok(li.length === F.week("voll").sessions.length, `0.73.0 §6: Liste = Legende (${li.length} Zeilen)`);
+  ok(li.length === 3 && li[0].d === "So 20." && li[0].ld === "90" && li[0].fam === "nicht zugeordnet" && li[0].hatch, "0.73.0 §6: Zeile So 20.");
+  ok(li.length === 3 && li[0].full === "SweetSpot 2x20 am Deich mit Gegenwind", "0.73.0 §6: voller Name nicht als title");
+  ok(li.length === 3 && li[2].fam === "VO2max" && li[2].style.includes(FAM.vo2max.c) && !li[2].hatch, "0.73.0 §6: VO2max-Zeile ohne Familienfarbe");
+  ok(li.length === 3 && /Pendelfahrt/.test(li[1].src) && !/Pendelfahrt/.test(vis(sd)), "0.73.0 §6: Pendelfahrt nur als title am Chip");
+  ok(!/Marken|gepaart|Plan\b/.test(vis(sd).replace(/Deine Fahrten/, "")), "0.73.0 §6: Quellenworte in der Anzeige");
+  const lf = [...side(H("frei")).matchAll(/class="hwli">\s*<span class="hwchip( hatch)?" style="([^"]*)"[\s\S]*?<span class="nm" title="[^"]*">([^<]+)<\/span>[\s\S]*?<span class="fam">([^<]+)<\/span>/g)]
+    .map((m) => ({ hatch: !!m[1], style: m[2], nm: m[3], fam: m[4] }));
+  ok(lf.length === 4 && lf[0].fam === "Grundlage" && lf[0].style.includes(FAM.endurance.c) && lf[1].style.includes(FAM.sweetspot.c),
+     "0.73.0 §6: Grundlage/Schwelle-Chips ohne FAM-Farbe");
+  ok(lf.length === 4 && lf[2].fam === "Lauf" && lf[2].style.includes(C.cyan), "0.73.0 §6: andere Sportart nicht cyan mit Sportwort");
+  ok(lf.length === 4 && lf[3].nm === "ohne Einheit" && lf[3].hatch && lf[3].fam === "nicht zugeordnet", "0.73.0 §5.2: Rest 'ohne Einheit' nicht als Zeile");
+  ok([C.green, C.amber, C.red].every((c) => lf.every((x) => !x.style.includes(c))), "0.73.0 §6: Zustandsfarbe an einem Chip");
+  // Name fehlt -> Sportwort
+  const nn = { ...F.week("frei") }; nn.sessions = nn.sessions.map((x, i) => (i === 0 ? { ...x, name: null } : x));
+  ok(/<span class="nm" title="Rad">Rad</.test(side(z(P.rHeute({ ...F.today(), week: nn })))), "0.73.0 §8: Name fehlt -> Sportwort");
+  // leeres Fenster
+  ok(side(H("leer")).includes("Keine Fahrt in den letzten 7 Tagen.") && !/class="hwli"/.test(side(H("leer"))), "0.73.0 §6: leeres Fenster");
+  // Schraffur: eigene Regel im Stil, Farbe nie allein (Wort daneben)
+  ok(/\.hatch\{[^}]*repeating-linear-gradient/.test(String(P._css())), "0.73.0 §6: Schraffur fehlt im Stil");
+  // unter 760 px rutscht die rechte Spalte unter den Kasten
+  ok(/@media\(max-width:760px\)\{\s*\.tcard\{grid-template-columns:1fr\}/.test(String(P._css())), "0.73.0 §6: Umbruch unter 760 px");
+  // kein Rechnen im Panel ausser Pixelbreiten: frei/Summe/Gruppen kommen aus dem Payload
+  const wx = F.week("frei"); wx.budget = { ...wx.budget, window_free: 777 }; wx.groups = { ...wx.groups, grundlage: 555 }; wx.total = 999;
+  const hx = box(z(P.rHeute({ ...F.today(), week: wx })));
+  ok(/>Noch 777 Last frei</.test(hx) && />555</.test(hx) && /Zusammen 999 Last/.test(hx), "0.73.0: das Panel rechnet frei/Gruppen/Summe selbst");
+  // stale-Tag: der Kasten steht trotzdem
+  ok(/class="hwbox"/.test(z(P.rHeute({ ...F.today(), date: "2026-09-09", week: F.week("voll") }))), "0.73.0 §8: stale-Tag ohne Wochenkasten");
 }
 
 report("test_panel_views");

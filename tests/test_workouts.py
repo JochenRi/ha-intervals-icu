@@ -1581,6 +1581,44 @@ eq((_gz["stage"]["key"], _gz["stage"]["over_ceiling"], (_gz["guard"] or {}).get(
 # 4 · das Ersetzungswort ist weg
 check("over_word" not in W.GUARD_WORDS, "0.72.2 4: GUARD_WORDS['over_word'] steht noch")
 
+# --- 0.73.0 (Skizze §4): EINE Tabelle Katalogschluessel -> Gruppe ---------------
+# Neben FAMILIES; das Panel ordnet seine drei Familien (TRAINER_FAMILIES) nach
+# DENSELBEN Gruppen - gleichgehalten durch diese Pruefung am Quelltext.
+import re as _re73
+from pathlib import Path as _P73
+_kg = getattr(W, "KEY_GROUP", None)
+check(isinstance(_kg, dict), "0.73.0 1: workouts.KEY_GROUP fehlt")
+_kg = _kg or {}
+_fg = getattr(W, "FAMILY_GROUP", None) or {}
+eq({k: _kg.get(k) for k in ("z2_90", "z2_210_late", "recovery_40", "return_45", "tempo_2x20",
+                            "sweetspot_2x20", "threshold_4x16", "threshold_4x10", "vo2_4x4", "vo2_3030")},
+   {"z2_90": "grundlage", "z2_210_late": "grundlage", "recovery_40": "grundlage", "return_45": "grundlage",
+    "tempo_2x20": "schwelle", "sweetspot_2x20": "schwelle", "threshold_4x16": "schwelle",
+    "threshold_4x10": "schwelle", "vo2_4x4": "vo2max", "vo2_3030": "vo2max"},
+   "0.73.0 1: Katalogschluessel -> Gruppe")
+check("ramp_test" not in _kg, "0.73.0 1: der Stufentest gehoert zu keiner Gruppe (keine Familie im Panel)")
+# jede Einheit einer Familie mit Gruppe steht in der Tabelle, keine erfundene
+for _fam, _lbl, _keys in W.FAMILIES:
+    for _k in _keys:
+        eq(_kg.get(_k), _fg.get(_fam), f"0.73.0 1: {_k} folgt nicht der Gruppe seiner Familie {_fam}")
+check(set(_kg) <= set(W.BY_KEY), "0.73.0 1: KEY_GROUP nennt Schluessel ausserhalb des Katalogs")
+eq(list(getattr(W, "GROUP_ORDER", ())), ["vo2max", "schwelle", "grundlage"],
+   "0.73.0 1: Haerte-Reihenfolge (Setzung E3) vo2max > schwelle > grundlage")
+eq(dict(getattr(W, "GROUP_LABEL", {})), {"grundlage": "Grundlage", "schwelle": "SweetSpot & Schwelle", "vo2max": "VO2max"},
+   "0.73.0 1: Gruppenworte")
+# Gleichhalten mit dem Panel: TRAINER_FAMILIES = dieselben Gruppen, dieselben Familien
+_pj = (_P73(__file__).resolve().parents[1] / "custom_components" / "intervals_icu" / "frontend" / "intervals-panel.js").read_text(encoding="utf-8")
+_tf = _re73.search(r"const TRAINER_FAMILIES = \[(.*?)\n\];", _pj, _re73.S)
+check(_tf is not None, "0.73.0 1: TRAINER_FAMILIES im Panel nicht gefunden")
+_panel = {}
+for _m in _re73.finditer(r'\["(\w+)", "([^"]+)", \[([^\]]*)\]\]', _tf.group(1) if _tf else ""):
+    for _f in _re73.findall(r'"(\w+)"', _m.group(3)):
+        _panel[_f] = _m.group(1)
+    eq(_m.group(2), dict(getattr(W, "GROUP_LABEL", {})).get(_m.group(1)), f"0.73.0 1: Panel-Wort der Gruppe {_m.group(1)}")
+check(len(_panel) >= 8, "0.73.0 1 Treffer: TRAINER_FAMILIES nicht gelesen")
+eq(_panel, _fg, "0.73.0 1: TRAINER_FAMILIES (Panel) und FAMILY_GROUP (Backend) weichen ab")
+
+
 print(f"test_workouts: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

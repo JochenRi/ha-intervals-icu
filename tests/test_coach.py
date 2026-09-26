@@ -1582,6 +1582,81 @@ _src_all = (Path(__file__).resolve().parents[1] / "custom_components" / "interva
 _fn_na = _src_all[_src_all.index("def night_after"):_src_all.index("def night_after") + 6000]
 check("day_context.weight_for(" in _fn_na, "0.72.1: night_after fragt nicht day_context.weight_for (ein Erzeuger)")
 
+
+# --- 0.73.0 · Heute-Kopf: bound_by, das Fenster im Heute-Payload, der Satz -------
+import analytics as _an73  # noqa: E402
+import copy as _cp73  # noqa: E402
+_b140 = {"recommended": 140, "used_today": 0.0}
+eq(coach.load_ceiling("ready", _b140).get("bound_by"), "week", "0.73.0 4: ready ohne Deckel -> die Woche begrenzt")
+eq(coach.load_ceiling("strained", _b140).get("bound_by"), "state", "0.73.0 4: strained 75 < 140 -> der Zustand begrenzt")
+eq(coach.load_ceiling("strained", {"recommended": 40}).get("bound_by"), "week", "0.73.0 4: strained 75 > 40 -> die Woche begrenzt")
+eq(coach.load_ceiling("strained", {"recommended": 75}).get("bound_by"), "week", "0.73.0 4 Rand: Gleichstand -> die Woche (Zustand bremst nicht staerker)")
+eq(coach.load_ceiling("slump", {"recommended": 0}).get("bound_by"), "week", "0.73.0 4 Rand: beide 0 -> die Woche")
+eq(coach.load_ceiling("slump", {"recommended": 10}).get("bound_by"), "state", "0.73.0 4: slump 0 < 10 -> Zustand")
+eq(coach.load_ceiling("strained", None).get("bound_by"), "state", "0.73.0 4: ohne Budget, mit Deckel -> Zustand")
+eq(coach.load_ceiling("ready", None).get("bound_by"), None, "0.73.0 4: ohne Budget, ohne Deckel -> keine Grenze")
+eq(coach.load_ceiling("unknown", None).get("bound_by"), None, "0.73.0 4: unbekannt ohne Budget -> keine Grenze")
+eq({k: v for k, v in coach.load_ceiling("strained", _b140).items() if k != "bound_by"},
+   {"ceiling": 75, "capacity": "Grundlage", "capacity_text": "Beansprucht — Umfang ja, Intensität nein.",
+    "cap_load": 75, "budget": 140, "used_today": 0.0}, "0.73.0 4: die Rechnung der Obergrenze ist unveraendert")
+# das Fenster im Heute-Payload: dieselben Tage wie das Budget
+_h73 = night_history()
+_days73 = sorted(_h73["wellness"])
+_last73 = _days73[-1]
+for _a in _h73["activities"].values():   # heute nicht trainiert -> Modus heute
+    if str(_a.get("start_date_local") or "")[:10] == _last73:
+        _a["start_date_local"] = _days73[-2] + "T08:00:00"
+_bud73 = _an73.load_budget(_h73, "green", today=_last73)
+check(_bud73 is not None, "0.73.0 Fixture: night_history traegt ein Budget")
+_t73 = coach.today(_h73, _bud73)
+_wk73 = _t73.get("week") or {}
+eq(_wk73.get("mode"), "today", "0.73.0 5.4: ohne Fahrt heute gilt der Modus heute")
+eq(_t73["week_load"], round((_bud73 or {}).get("window_load", -1)), "0.73.0 5.4: week_load == window_load bei lueckenlosen Tagen")
+eq(round(sum(x["load"] for x in _wk73.get("sessions") or []), 1), (_bud73 or {}).get("window_load"),
+   "0.73.0 5.2: die Fahrten im Heute-Payload ergeben die Fensterlast")
+eq((_wk73.get("budget") or {}).get("window_allowed"), (_bud73 or {}).get("window_allowed"), "0.73.0: das Budget im Heute-Payload ist das uebergebene")
+eq(_wk73.get("bound_by"), coach.load_ceiling(_t73["state"], _bud73).get("bound_by", "fehlt"), "0.73.0 4: bound_by im Heute-Payload aus load_ceiling")
+eq(_t73.get("ceiling"), coach.load_ceiling(_t73["state"], _bud73)["ceiling"], "0.73.0: die Obergrenze des Heute-Reiters unveraendert")
+# Morgen-Modus: heute schon trainiert -> das Fenster von morgen (dieselbe Stelle wie session_ceiling)
+_m73 = _cp73.deepcopy(_h73)
+_m73["activities"]["heute73"] = {"start_date_local": _last73 + "T07:00:00", "type": "Ride", "name": "heute",
+                                 "moving_time": 3600, "icu_training_load": 50}
+_bm73 = _an73.load_budget(_m73, "green", today=_last73)
+_tm73 = coach.today(_m73, _bm73)
+_wm73 = _tm73.get("week") or {}
+_sc73 = coach.session_ceiling(_m73, _tm73["state"], {"budget": _bm73, "overall": "green"})
+eq(_wm73.get("mode"), "tomorrow", "0.73.0: heute trainiert -> Modus morgen")
+eq((_wm73.get("budget") or {}).get("window_end"), _sc73.get("day"), "0.73.0: Morgen-Fenster endet am Tag von session_ceiling")
+eq(_wm73.get("ceiling"), _sc73.get("ceiling"), "0.73.0: Morgen-Grenze = die der Trainer-Karten")
+check(any(x.get("name") == "heute" for x in _wm73.get("sessions") or []), "0.73.0: im Morgen-Fenster steht die heutige Fahrt")
+# ohne Budget (unter 28 Tagen): Liste trotzdem, Budget None
+_tn73 = coach.today(_h73, None)
+eq((_tn73.get("week") or {}).get("budget"), None, "0.73.0 Budget None: kein Budget im Heute-Payload")
+check(isinstance((_tn73.get("week") or {}).get("sessions"), list), "0.73.0 Budget None: die Fahrtenliste steht trotzdem")
+# Events aus dem Koordinator werden durchgereicht
+check("events" in __import__("inspect").signature(coach.today).parameters, "0.73.0: coach.today nimmt die Events des Koordinators")
+
+# 6 · der Satz: "weicht/weichen ungünstig ab", nicht "liegt unter" (Ruhepuls 59 > Basis 56)
+_state_saved73, _nz_saved73 = coach.state, coach._night_z
+def _nz(labels):
+    return lambda data, day: {k: {"label": l, "unit": u, "value": 1, "baseline": 1, "z": -1.0}
+                              for k, l, u in labels}
+try:
+    coach.state = lambda data, **kw: {"state": "ready", "label": "", "text": ""}
+    coach._night_z = _nz([("hrv", "HRV", "ms"), ("rhr", "Ruhepuls", "bpm")])
+    _two = coach.today(_h73, _bud73).get("tension") or ""
+    coach._night_z = _nz([("rhr", "Ruhepuls", "bpm")])
+    _one = coach.today(_h73, _bud73).get("tension") or ""
+finally:
+    coach.state, coach._night_z = _state_saved73, _nz_saved73
+check(_two.startswith("HRV und Ruhepuls weichen heute ungünstig von deiner Basislinie ab — aber weder weit genug noch "),
+      f"0.73.0 6: zwei Signale -> Plural 'weichen ... ab': {_two[:90]!r}")
+check(_one.startswith("Ruhepuls weicht heute ungünstig von deiner Basislinie ab — aber weder weit genug noch "),
+      f"0.73.0 6: ein Signal -> 'weicht ... ab': {_one[:90]!r}")
+check("liegt heute unter" not in _two + _one, "0.73.0 6: 'liegt heute unter' steht noch")
+check(_one.endswith("Wenn es morgen wieder so aussieht, ist es keins mehr."), "0.73.0 6: der Rest des Satzes ist unveraendert")
+check("Die Regel entscheidet über das Mittel der letzten drei Tage" in _one, "0.73.0 6: der Rest des Satzes (Mitte) ist unveraendert")
+
 print(f"test_coach: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

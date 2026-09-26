@@ -1802,9 +1802,19 @@ def load_ceiling(state_key: str, budget: dict[str, Any] | None) -> dict[str, Any
     capacity, capacity_text, cap_load = CAPACITY.get(state_key, CAPACITY["unknown"])
     if cap_load is not None:
         ceiling = cap_load if ceiling is None else min(ceiling, cap_load)
+    # 0.73.0 (Skizze §5.3): WER begrenzt - die Woche oder der Zustand. Nur
+    # benannt, nicht gerechnet: "state", wenn der Zustandsdeckel strenger ist
+    # als das Budget (oder es kein Budget gibt); bei Gleichstand die Woche.
+    week = budget.get("recommended") if budget else None
+    if ceiling is None:
+        bound_by = None
+    elif cap_load is not None and (week is None or cap_load < round(week)):
+        bound_by = "state"
+    else:
+        bound_by = "week"
     return {"ceiling": ceiling, "capacity": capacity, "capacity_text": capacity_text,
             "cap_load": cap_load, "budget": (budget or {}).get("recommended"),
-            "used_today": (budget or {}).get("used_today")}
+            "used_today": (budget or {}).get("used_today"), "bound_by": bound_by}
 
 
 def session_ceiling(data: dict[str, Any], state_key: str,
@@ -1819,6 +1829,19 @@ def session_ceiling(data: dict[str, Any], state_key: str,
     Vor dem Training: das heutige Budget aus der Bereitschaft, bitgenau wie
     zuvor. Der Zustand bleibt der von heute - fuer morgen gibt es keinen.
     """
+    budget, trained, day = _ceiling_budget(data, ready)
+    out = load_ceiling(state_key, budget)
+    out["for_tomorrow"] = trained
+    out["day"] = day
+    return out
+
+
+def _ceiling_budget(data: dict[str, Any], ready: dict[str, Any] | None) -> tuple[Any, bool, Any]:
+    """Welches Budget gilt: heute, oder - ist heute schon trainiert - morgen.
+
+    EINE Stelle fuer den Modus (0.73.0): session_ceiling (Trainer-Karten,
+    Wochenplan) und der Heute-Kopf lesen hier. Bitgenau der Weg aus 0.69.2.
+    """
     ready = ready or {}
     budget = ready.get("budget")
     trained = _trained_today(data)
@@ -1827,13 +1850,11 @@ def session_ceiling(data: dict[str, Any], state_key: str,
     if trained and day:
         day = (date.fromisoformat(day) + timedelta(days=1)).isoformat()
         budget = analytics.load_budget(data, ready.get("overall", "unknown"), today=day)
-    out = load_ceiling(state_key, budget)
-    out["for_tomorrow"] = trained
-    out["day"] = day
-    return out
+    return budget, trained, day
 
 
-def today(data: dict[str, Any], budget: dict[str, Any] | None = None) -> dict[str, Any]:
+def today(data: dict[str, Any], budget: dict[str, Any] | None = None,
+          events: Any = None) -> dict[str, Any]:
     wellness = data.get("wellness") or {}
     if not wellness:
         return {"available": False}
@@ -1912,13 +1933,34 @@ def today(data: dict[str, Any], budget: dict[str, Any] | None = None) -> dict[st
     ceiling = grenze["ceiling"]
     capacity, capacity_text, cap_load = grenze["capacity"], grenze["capacity_text"], grenze["cap_load"]
 
+    # 0.73.0 (Skizze §5/§6): DIE WOCHE IM HEUTE-KOPF - das Fenster des Budgets
+    # und die Fahrten darin. Der Modus (heute/morgen) kommt aus derselben Stelle
+    # wie die Obergrenze der Trainer-Karten (_ceiling_budget); `ceiling` oben
+    # bleibt der Wert des Heute-Reiters wie bisher.
+    wbudget, trained, wday = _ceiling_budget(
+        data, {"budget": budget, "overall": (budget or {}).get("state", "unknown")})
+    wgrenze = load_ceiling(condition["state"], wbudget)
+    wend = (wbudget or {}).get("window_end") or (wday if trained else current)
+    wsessions = analytics.window_sessions(data, wend, events)
+    week = {
+        "mode": "tomorrow" if trained else "today",
+        "budget": wbudget if (wbudget or {}).get("window_end") else None,
+        "bound_by": wgrenze["bound_by"],
+        "ceiling": wgrenze["ceiling"],
+        "cap_load": wgrenze["cap_load"],
+        **wsessions,
+    }
+
     tension = None
     unfavourable = [s for s in signals if s["direction"] == "ungünstig"]
     favourable = [s for s in signals if s["direction"] == "günstig"]
     if unfavourable and condition["state"] in ("ready", "elevated"):
+        # 0.73.0 (E6): "weicht/weichen ungünstig ab" statt "liegt unter" - ein
+        # ungünstiger Ruhepuls liegt ÜBER der Basislinie (59 gegen 56).
         names = " und ".join(s["label"] for s in unfavourable)
+        verb = "weichen" if len(unfavourable) > 1 else "weicht"
         tension = (
-            f"{names} liegt heute unter deiner Basislinie — aber weder weit genug noch "
+            f"{names} {verb} heute ungünstig von deiner Basislinie ab — aber weder weit genug noch "
             f"lange genug für einen Einbruch. Die Regel entscheidet über das Mittel der "
             f"letzten drei Tage und ab {HRV_DROP_SD:.0f} Standardabweichungen; ein "
             "einzelner Tag darunter ist Rauschen. Wenn es morgen wieder so aussieht, "
@@ -1941,6 +1983,7 @@ def today(data: dict[str, Any], budget: dict[str, Any] | None = None) -> dict[st
         # Grenze und Verbrauch getrennt (F2.10): das Budget ist die Gesamtlast
         # des Tages, die heutige Fahrt zaehlt nicht dagegen.
         "budget_used": (budget or {}).get("used_today"),
+        "week": week,
         "state": condition["state"],
         "state_label": condition.get("label"),
         "state_text": condition.get("text"),

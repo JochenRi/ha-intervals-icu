@@ -133,6 +133,9 @@ class FakeCoordinator:
     def __init__(self, data):
         self.archive = FakeArchive(data)
         self.client = FakeClient()
+        # wie der echte Koordinator: die letzte Abfrage (0.73.0: der Heute-Handler
+        # liest daraus die Kalender-Events fuer die Familie einer Fahrt)
+        self.data = {"events": []}
 
 sm = ws.marks_lib
 blocks = ws.blocks_lib
@@ -336,6 +339,14 @@ ws.analytics.readiness = lambda data, today=None: {"overall": "green", "componen
     "budget": {"recommended": 140, "used_today": 0.0, "chronic": 40.0, "last_six_days": 240.0, "target_ratio": 1.3, "steady": 100, "corridor_top": 140, "risk_top": 160, "state": "green"}}
 _t6 = FakeConn(); ws.websocket_today(None, _t6, {"id": 9})
 _heute = (_t6.results or [{}])[0]
+# 0.73.0 (Regel 10): die Familie kommt aus B's EIGENEN Marken; ohne eigene Events
+# gibt es keinen Plan-Weg, und was nicht markiert ist, bleibt ohne Zuordnung.
+_w73 = _heute.get("week") or {}
+_s73 = _w73.get("sessions") or []
+check("Z6 0.73.0: der Heute-Kopf traegt B's Woche aus B's Marken, ohne Plan-Weg",
+      any(x.get("source") == "marks" for x in _s73)
+      and all(x.get("source") in ("marks", "rest", "sport", None) for x in _s73)
+      and all((x.get("group") is None) == (x.get("source") in ("rest", None)) for x in _s73))
 _w6 = FakeConn(); ws.websocket_workouts(None, _w6, {"id": 10})
 _wp6 = (_w6.results or [{}])[0]
 eq("Z6 Fixture: der Heute-Reiter deckelt das Budget mit dem Zustand", _heute.get("ceiling"), 75)

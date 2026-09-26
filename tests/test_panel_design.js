@@ -105,7 +105,10 @@ const acts = F.activities();
   ok(!/<path[^>]*A\s*[\d.]+\s+[\d.]+[^>]*Z/.test(all.replace(/class="ring"[\s\S]*?<\/svg>/g, "")),
      "gestaltung: Kreissegment außerhalb des Bereitschaftsrings");
   ok(!all.includes("Tacho") && !all.includes("gauge-needle"), "gestaltung: Tachoanzeige");
-  contains(p.rHeute(F.today()), "bval", "gestaltung: Bullet-Graph fehlt");
+  // 0.73.0 umgestellt: der Bullet "Obergrenze" (bval) ist dem Summenbalken des
+  // Wochenkastens gewichen - weiter Laenge auf gemeinsamer Grundlinie, Ist gegen Zielstrich.
+  contains(p.rHeute(F.today()), "hwsumfill", "gestaltung: Bullet-Graph fehlt");
+  contains(p.rHeute(F.today()), "hwgoal", "gestaltung: Bullet-Graph ohne Zielstrich");
 }
 
 /* ── fold-outs are independent ─────────────────────────────────────────── */
@@ -141,14 +144,18 @@ const acts = F.activities();
   const bel = p.rBelastung(load);
   for (const src of ["Foster", "Gabbett", "Seiler", "Friel", "ln(rMSSD)"]) contains(bel, src, "belege");
   const heute = p.rHeute(F.today());
-  contains(heute, "Zielwahl je Ampelfarbe ist eine Setzung", "belege: Budget ohne Einschränkung");
-  // F2.10 (0.67.3): Grenze und Verbrauch getrennt - "davon N gefahren" aus budget_used.
+  // 0.73.0 umgestellt: die Einschraenkung steht jetzt in der Fusszeile des Wochenkastens.
+  contains(heute, "eine Festlegung, keine Messung", "belege: Budget ohne Einschränkung");
+  // F2.10 (0.67.3) -> 0.73.0 umgestellt: Grenze und Verbrauch getrennt. Der Verbrauch
+  // steckt in "Zusammen N Last" (Fensterlast mit heute), die Grenze im Urteil;
+  // deckelt der Zustand, stehen beide Zahlen da.
   {
     const tq = new M.Panel(); tq._nowIso = F.TODAY;
-    const tt = F.today(); tt.ceiling = 75; tt.budget_used = 60;
-    const h2 = String(tq.rHeute(tt));
-    contains(h2, "davon 60 gefahren", "heute: der Verbrauch steht nicht neben der Obergrenze");
-    contains(h2, "75", "heute: die Obergrenze fehlt");
+    const tt = F.today(); tt.week = F.week("zustand");
+    const h2 = String(tq.rHeute(tt)).replace(/\s+/g, " ");
+    contains(h2, "Die Woche hätte noch 86 frei", "heute: der Wochenrest steht nicht neben der Zustandsgrenze");
+    contains(h2, "Heute höchstens 75 Last", "heute: die Obergrenze fehlt");
+    contains(h2, "Zusammen 170 Last", "heute: der Verbrauch der Woche fehlt");
   }
   contains(p.rDfa(thr, "all"), "Rogers", "belege: DFA ohne Quelle");
   ok(!/Rogers und Gronwald(?! 2021a\/b)/.test(p.rDfa(thr, "all")), "belege: DFA-Quelle ohne Arbeit und Sportart");
