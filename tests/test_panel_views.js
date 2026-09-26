@@ -334,11 +334,13 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   const glLead = gl.slice(gl.indexOf('class="leadrec"'), gl.indexOf('class="secname"'));
   contains(glLead, "Bis ~1,5 h passt sie", "L1: die Leitempfehlung verschweigt das Gelaender");
   ok(!/heute nicht/.test(glLead), "L1: die Leitempfehlung raet ab, obwohl der Zustand traegt");
-  // 0.69.1: ueber der Obergrenze LUEGT "passt heute" - das Etikett der Karte sagt
-  // "Art bleibt, Menge kürzen", und die Leitempfehlung nennt die passende Dauer aus guard().
+  // 0.69.1 -> 0.72.2 umgestellt (Entscheidung Johannes 26.09.): das Etikett traegt
+  // IMMER das Stufenwort ("passt heute"), die Menge steht als eigenes Zeichen
+  // "Menge über Wochenlast" daneben; die Leitempfehlung nennt die passende Dauer aus guard().
   const glCard = gl.slice(gl.indexOf('class="wocard first"'), gl.indexOf('class="wocard', gl.indexOf('class="wocard first"') + 10));
-  ok(!/passt heute/.test(glCard), "L1 0.69.1: die Karte ueber der Obergrenze sagt noch 'passt heute'");
-  contains(glCard, "Art bleibt, Menge kürzen", "L1 0.69.1: die Karte ueber der Obergrenze traegt das Geländer-Etikett nicht");
+  ok(/passt heute/.test(glCard), "L1 0.72.2: die Karte ueber der Obergrenze verliert das Stufenwort");
+  contains(glCard, "Menge über Wochenlast", "L1 0.72.2: die Karte ueber der Obergrenze traegt das Mengen-Zeichen nicht");
+  ok(!/Art bleibt, Menge kürzen</.test(glCard), "L1 0.72.2: das alte Ersatz-Etikett steht noch");
   contains(glLead, "heute ~1,5 h", "L1 0.69.1: die Leitempfehlung nennt die passende Dauer nicht");
   // Gegenprobe: gelb ueber der Obergrenze ebenso, und unter der Obergrenze bleibt "passt heute"
   const gelb = F.workouts();
@@ -347,13 +349,13 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   p._workouts = gelb;
   const gy = p.rTrainer(F.coach("ready"), F.readiness()).replace(/\s+/g, " ");
   const gyCard = gy.slice(gy.indexOf(gelb.workouts[0].title), gy.indexOf('class="wocard', gy.indexOf(gelb.workouts[0].title)));
-  contains(gyCard, "Art bleibt, Menge kürzen", "L1 0.69.1 gelb: die Karte ueber der Obergrenze traegt das Geländer-Etikett nicht");
-  ok(!/geht, kostet aber</.test(gyCard), "L1 0.69.1 gelb: das alte Etikett steht noch ueber der Obergrenze");
+  contains(gyCard, "Menge über Wochenlast", "L1 0.72.2 gelb: die Karte ueber der Obergrenze traegt das Mengen-Zeichen nicht");
+  ok(/geht, kostet mehr</.test(gyCard), "L1 0.72.2 gelb: das Stufenwort fehlt ueber der Obergrenze");
   p._workouts = F.workouts();
   const under = p.rTrainer(F.coach("ready"), F.readiness()).replace(/\s+/g, " ");
   const underLead = under.slice(under.indexOf('class="leadrec"'), under.indexOf('class="secname"'));
   ok(/passt heute/.test(under.slice(0, under.indexOf("recflag") + 1800)), "L1 0.69.1 Gegenprobe: unter der Obergrenze fehlt 'passt heute'");
-  ok(!/Menge kürzen/.test(under) && !/heute ~/.test(underLead), "L1 0.69.1 Gegenprobe: Geländer-Etikett oder Dauer ohne Ueberschreitung");
+  ok(!/Menge über Wochenlast/.test(under) && !/heute ~/.test(underLead), "L1 0.72.2 Gegenprobe: Mengen-Zeichen oder Dauer ohne Ueberschreitung");
   // Gegenprobe: im Budget kein Gelaender-Text
   p._workouts = F.workouts();
   ok(!/Geländer:/.test(String(p.rTrainer(F.coach("ready"), F.readiness()))), "L1 Gegenprobe: Gelaender ohne Ueberschreitung");
@@ -2250,7 +2252,8 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
 
   // alle drei Stufen der laufenden Woche erscheinen, jede mit Wort UND Form
   for (const key of ["stimulus", "yellow", "green"]) {
-    contains(weekBlocks[0], plan.stages[key].label,
+    // 0.72.2: die Chips tragen das Stufenwort aus STAGES (vorher das Register-Wort)
+    contains(weekBlocks[0], plan.stages[key].word.replace("{tag}", "heute"),
              `wochenplan: Stufe ${key} fehlt an den Chips`);
   }
 
@@ -3481,7 +3484,8 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   ok(karten(fv).slice(1).every((k) => !/class="(famflag|recflag)"/.test(k)), "1: eine weitere Variante traegt die Marke");
   // 1c · jede Variante mit IHREM Urteil aus der Payload (kein zweiter Rechenweg)
   const k54 = karten(fv).find((k) => k.includes('data-id="vo2_5x4"')) || "";
-  ok(/Art bleibt, Menge kürzen/.test(k54) && /title="VARIANTE UEBER DER GRENZE\."/.test(k54) && /Geländer: Last 92 über der Obergrenze 80 — VARIANTE/.test(k54),
+  // 0.72.2 umgestellt: Stufenwort + Mengen-Zeichen statt des Ersatz-Etiketts
+  ok(/passt heute</.test(k54) && k54.includes("Menge über Wochenlast") && /title="VARIANTE UEBER DER GRENZE\."/.test(k54) && /Geländer: Last 92 über der Obergrenze 80 — VARIANTE/.test(k54),
      "1: die Variante traegt nicht ihr eigenes Etikett/Gelaender aus der Payload");
   const k30 = karten(fv).find((k) => k.includes('data-id="vo2_3030"')) || "";
   ok(/passt heute/.test(k30) && !/Geländer/.test(k30), "1 Gegenprobe: die Variante im Budget traegt ein Gelaender");
@@ -3542,6 +3546,69 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   // 3 · Cannabis hat eine eigene Etikettenfarbe aus dem Kategorienregister
   ok(M.CTX_COLOR.cannabis && M.CTX_COLOR.cannabis !== M.CTX_COLOR.alkohol && M.CTX_COLOR.cannabis !== M.CTX_COLOR.normal,
      "0.72.1 3: Cannabis hat keine eigene Etikettenfarbe");
+}
+
+/* ── 0.72.2 · Stufenwort immer, Menge als eigenes Zeichen ─────────────── */
+{
+  const P = new M.Panel(); P._nowIso = F.TODAY;
+  const z = (h) => String(h).replace(/\s+/g, " ");
+  const karte = (h, key) => h.split('class="wocard').find((k) => k.includes(`data-id="${key}"`)) || "";
+  const MENGE = "Menge über Wochenlast";
+  const w = F.workouts("voll");
+  // Grundlage 90 green UEBER der Grenze (Obergrenze 0), SweetSpot stimulus ueber der Grenze,
+  // Schwelle rot, Regeneration green (ausgenommen -> fits_budget true)
+  w.workouts[0] = { ...w.workouts[0], fits_budget: false, stage: F.stageOf("ok", false, false),
+    guard: { over: true, load: 72, ceiling: 0, hours_fit: null, text: "Geländer: Last 72 über der Obergrenze 0." } };
+  const iSS = w.workouts.findIndex((e) => e.family === "sweetspot");
+  w.workouts[iSS] = { ...w.workouts[iSS], fits_budget: false, stage: F.stageOf("ok", false, true) };
+  const iTh = w.workouts.findIndex((e) => e.family === "threshold");
+  w.workouts[iTh] = { ...w.workouts[iTh], stage: F.stageOf("no", true, false) };
+  const iRc = w.workouts.findIndex((e) => e.family === "recovery");
+  w.workouts[iRc] = { ...w.workouts[iRc], fits_budget: true, stage: F.stageOf("ok", true, false) };
+  const h = z(P.rWorkouts(w, false));
+  const g = karte(h, "z2_90");
+  ok(/passt heute/.test(g) && g.includes(MENGE), "0.72.2: green ueber der Grenze zeigt nicht 'passt heute' + Mengen-Zeichen");
+  ok(!/Art bleibt, Menge kürzen</.test(h), "0.72.2: das Stufenwort wird noch ersetzt");
+  const u = karte(h, "tempo_2x20");
+  ok(/passt heute/.test(u) && !u.includes(MENGE), "0.72.2 Gegenprobe: unter der Grenze nicht nur 'passt heute'");
+  const st = karte(h, "sweetspot_2x20");
+  ok(/gewollter Überreiz/.test(st) && !st.includes(MENGE) && !/über der Obergrenze von/.test(st), "0.72.2 Gegenprobe: stimulus mit Mengen-Zeichen oder altem Zusatz");
+  const r = karte(h, "threshold_4x10");
+  ok(/heute nicht/.test(r) && !r.includes(MENGE), "0.72.2 Gegenprobe: rot mit Mengen-Zeichen");
+  const rc = karte(h, "recovery_40");
+  ok(/passt heute/.test(rc) && !rc.includes(MENGE), "0.72.2 Gegenprobe: Regeneration bei Obergrenze 0 mit Zeichen");
+  ok(!/heute heute|morgen morgen|\{tag\}/.test(h), "0.72.2: doppelte Anhaengung oder Platzhalter sichtbar");
+  // Morgen-Modus
+  const m = z(P.rWorkouts(w, true));
+  ok(/passt morgen/.test(karte(m, "tempo_2x20")) && /morgen nicht/.test(karte(m, "threshold_4x10")) && !/passt heute|heute nicht/.test(m.replace(/title="[^"]*"/g, "")),
+     "0.72.2: Morgen-Modus sagt nicht 'passt morgen'/'morgen nicht'");
+  // 3 · alle fuenf Leser: Karte (oben), Familienzeile, Empfehlung, Wochenplan-Chips, Legende Quellen
+  const fam = h.slice(h.indexOf('data-keep="fam:grundlage"'));
+  const famSum = fam.slice(0, fam.indexOf("</summary>"));
+  ok(/passt heute/.test(famSum), "0.72.2 3: die Familienzeile liest das Stufenwort nicht");
+  const lw = F.workouts(); lw.workouts[0] = { ...lw.workouts[0], fits_budget: false, stage: F.stageOf("ok", false, false),
+    guard: { over: true, load: 72, ceiling: 40, hours_fit: 1.0, text: "Geländer." } };
+  const lead = z(P.rWorkouts(lw, false));
+  const leadBox = lead.slice(lead.indexOf('class="leadrec"'), lead.indexOf("Die Familien"));
+  ok(/passt heute/.test(leadBox) && leadBox.includes(MENGE), "0.72.2 3: die Empfehlung oben zeigt Stufenwort + Mengen-Zeichen nicht");
+  // Woche: z2_90 stimulus, SweetSpot gelb, z2_60 gruen - dazu z2_60 gruen UEBER der Grenze
+  const gw = F.goal(); const wk = gw.plan.weeks.find((x) => x.rated === true);
+  wk.sessions[2] = { ...wk.sessions[2], fits_budget: false, stage: F.stageOf("ok", false, false) };
+  const wp = z(P.rPlanWeeks(gw));
+  const chips = wp.slice(wp.indexOf('class="pwsess"'));
+  ok(/passt heute/.test(chips) && chips.includes(MENGE) && /geht, kostet mehr/.test(chips), "0.72.2 3: die Wochenplan-Chips lesen die Stufenworte nicht");
+  ok(!/über der Obergrenze von/.test(wp), "0.72.2 3: '(über der Obergrenze von X)' steht noch im Wochenplan");
+  ok(!z(P.rPlanWeeks(F.goal())).includes(MENGE), "0.72.2 3 Gegenprobe: Wochenplan unter der Grenze / stimulus mit Mengen-Zeichen");
+  P._goal = F.goal();
+  const leg = z(P._trainerSources());
+  ok(/passt heute/.test(leg) && /geht, kostet mehr/.test(leg) && /gewollter Überreiz/.test(leg) && /heute nicht/.test(leg),
+     "0.72.2 3: die Legende im Reiter Quellen zeigt die Stufenworte nicht");
+  // reaktiv: ein anderes Wort in der Payload schlaegt in allen Lesern durch
+  const g2 = F.goal(); g2.plan.stages.green.word = "WORT-{tag}";
+  P._goal = g2;
+  ok(/WORT-heute/.test(z(P._trainerSources())), "0.72.2 3: die Legende liest nicht die Payload");
+  // Tooltip = Stufen-Satz, nicht der Mengen-Satz
+  ok(/class="bdg" title="Begründung aus dem Backend\."/.test(g), "0.72.2: der Tooltip ist nicht der Stufen-Satz");
 }
 
 report("test_panel_views");

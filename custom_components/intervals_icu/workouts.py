@@ -1326,29 +1326,32 @@ FIT_REASON = {
 # The grades are a JUDGEMENT register, four words, four shapes, four tones.
 # They never mix with the category register (sport, purpose, label).
 STAGES: dict[str, dict[str, str]] = {
+    # 0.72.2 (Entscheidung Johannes 26.09.): das Wort traegt NUR den Zustand und
+    # wird nie ersetzt; "{tag}" setzt das Panel an EINER Stelle ein (heute/morgen).
+    # Die Menge ueber der Obergrenze ist ein eigenes Zeichen (`quantity`).
     "green": {
         "label": "grün",
-        "word": "passt",
+        "word": "passt {tag}",
         # 0.70.0 (C4): auf L1 - der Zustand traegt die Art, die Obergrenze die Menge.
         "detail": "Der Zustand trägt diese Art. Liegt die Last über der Obergrenze, bleibt "
                   "die Art und die Menge wird gekürzt.",
     },
     "yellow": {
         "label": "gelb",
-        "word": "geht, kostet aber",
+        "word": "geht, kostet mehr",
         "detail": "Der Zustand trägt nur bedingt. Die Einheit ist möglich, sie kostet heute "
                   "mehr als sonst.",
     },
     "stimulus": {
         "label": "Reiz",
-        "word": "kostet Erholung, setzt aber den Reiz",
+        "word": "gewollter Überreiz",
         "detail": "Über der Obergrenze, aber der Zustand trägt und die letzten Tage boten "
                   "Erholung. Das ist funktionelles Überreichen: ein kurzer gewollter "
                   "Einbruch, der nach Erholung in Superkompensation mündet.",
     },
     "red": {
         "label": "rot",
-        "word": "heute nicht",
+        "word": "{tag} nicht",
         "detail": "Der Zustand spricht dagegen. Nur ohne Zustand (keine HRV-Basislinie) "
                   "entscheidet die Last.",
     },
@@ -1601,9 +1604,10 @@ GUARD_WORDS = {
     "by_load": "Ohne Zustand (keine HRV-Basislinie) entscheidet die Last: über der Obergrenze — heute nicht.",
     "green_over": "Zustand unauffällig — die Last liegt über der Obergrenze: Art bleibt, Menge kürzen.",
     "yellow_over": "Der Zustand trägt nur bedingt, und die Last liegt über der Obergrenze: Art bleibt, Menge kürzen.",
-    # 0.69.1: das ETIKETT der Karte ueber der Obergrenze. "passt heute" log dort -
-    # der Zustand traegt die Art, aber nicht diese Menge. Eine Stelle, gruen wie gelb.
-    "over_word": "Art bleibt, Menge kürzen",
+    # 0.72.2: "over_word" (0.69.1) ist entfallen - es ERSETZTE das Stufenwort und
+    # machte aus zwei Aussagen ein Etikett. green_over/yellow_over sind nur noch der
+    # Satz am Mengen-Zeichen.
+    "quantity": "Menge über Wochenlast",
 }
 
 
@@ -1642,8 +1646,11 @@ def stage(fit: str, fits_budget: bool | None, recovery: bool = False,
     elif blocked == "budget":
         out["detail"] = GUARD_WORDS["by_load"]
     elif over_budget and key in ("green", "yellow"):
-        out["detail"] = GUARD_WORDS[f"{key}_over"]
-        out["word"] = GUARD_WORDS["over_word"]
+        # 0.72.2: das Wort und der Satz bleiben die der Stufe; die Menge steht
+        # daneben als eigenes Zeichen. Nicht bei stimulus (die Stufe IST der
+        # gewollte Ueberreiz), rot, ohne Budget, und nicht bei der Regeneration
+        # (guard_exempt -> fits_budget ist dort nie False).
+        out["quantity"] = {"label": GUARD_WORDS["quantity"], "text": GUARD_WORDS[f"{key}_over"]}
     if key == "stimulus":
         out["evidence"] = STIMULUS_EVIDENCE
     return out

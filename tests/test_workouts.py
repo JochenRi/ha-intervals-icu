@@ -335,14 +335,15 @@ check("Zustand" in W.stage("no", True, False)["detail"],
       "rot aus dem Zustand: nennt den Zustand nicht")
 check("Obergrenze" in W.stage("ok", False, False)["detail"] and "Menge" in W.stage("ok", False, False)["detail"],
       "gruen ueber der Obergrenze: das Gelaender steht nicht im Text")
-# 0.69.1: ueber der Obergrenze lautet das WORT der Stufe nicht mehr "passt" - das
-# Etikett kommt aus einer Stelle (GUARD_WORDS), gruen wie gelb; darunter unveraendert.
-eq(W.stage("ok", False, False)["word"], W.GUARD_WORDS["over_word"], "stufe gruen/über: Wort ist nicht das Geländer-Wort")
-eq(W.stage("maybe", False, False)["word"], W.GUARD_WORDS["over_word"], "stufe gelb/über: Wort ist nicht das Geländer-Wort")
+# 0.72.2 UMGESTELLT (Entscheidung 26.09.): ueber der Obergrenze bleibt das WORT der
+# Stufe (0.69.1 ersetzte es durch "Art bleibt, Menge kürzen"); die Menge ist ein
+# eigenes Zeichen (`quantity`) aus einer Stelle (GUARD_WORDS), gruen wie gelb.
+eq(W.stage("ok", False, False)["word"], W.STAGES["green"]["word"], "stufe gruen/über: Wort ist nicht das Stufenwort")
+eq(W.stage("maybe", False, False)["word"], W.STAGES["yellow"]["word"], "stufe gelb/über: Wort ist nicht das Stufenwort")
 eq(W.stage("ok", True, False)["word"], W.STAGES["green"]["word"], "stufe gruen/im Budget: Wort verändert")
 eq(W.stage("maybe", True, False)["word"], W.STAGES["yellow"]["word"], "stufe gelb/im Budget: Wort verändert")
 eq(W.stage("ok", None, False)["word"], W.STAGES["green"]["word"], "stufe gruen/ohne Budget: Wort verändert")
-check("Menge" in W.GUARD_WORDS["over_word"] and "passt" not in W.GUARD_WORDS["over_word"], "Geländer-Wort sagt nicht 'Menge' oder sagt 'passt'")
+check("Menge" in W.GUARD_WORDS["quantity"] and "passt" not in W.GUARD_WORDS["quantity"], "Mengen-Zeichen sagt nicht 'Menge' oder sagt 'passt'")
 check("Lastbudget verbietet" not in W.stage("ok", False, False)["detail"]
       and "Lastbudget verbietet" not in W.stage("maybe", False, False)["detail"],
       "L1: das Budget verbietet noch")
@@ -1448,7 +1449,7 @@ _rc = next(e for e in _sug0 if e["family"] == "recovery")
 check(_rc["fits_budget"] is not False and not _rc["stage"].get("over_ceiling"),
       "C8 suggest: Regeneration gilt als ueber der Obergrenze")
 eq(_rc["stage"]["key"], "green", "C8 suggest: Regeneration ist nicht gruen")
-check(_rc["stage"]["word"] != W.GUARD_WORDS["over_word"], "C8 suggest: Regeneration traegt 'Art bleibt, Menge kürzen'")
+check(_rc["stage"].get("quantity") is None, "C8 suggest: Regeneration traegt das Mengen-Zeichen (0.72.2 umgestellt: vorher 'Art bleibt, Menge kürzen')")
 _gc = next(e for e in _sug0 if e["family"] == "endurance")
 check((_gc.get("guard") or {}).get("over") is True and _gc["stage"].get("over_ceiling") is True,
       "C8 Gegenprobe: die Grundlage gegen Obergrenze 0 ist nicht mehr ueber der Grenze")
@@ -1545,6 +1546,40 @@ check(all(str(e.get("evidence") or "").split(" — ")[0] in
 for _k, _alt in (("vo2_3015", "3 Sätze à 13×30 s"), ("z2_60", "Dreizonenmodell (Seiler)"),
                  ("sweetspot_2x20", "weit verbreitete Praxis"), ("threshold_4x10", "4×10 → 3×15 → 2×20")):
     check(_alt in W.BY_KEY[_k]["evidence"], f"3: der alte Belegtext von {_k} ist verloren")
+
+# --- 0.72.2 · Stufenwort immer, Menge als eigenes Zeichen (Skizze 0.72.2) --------
+# 1 · die Worte aus EINER Quelle (STAGES); der Tag steht als Platzhalter, das Panel setzt ihn ein
+eq({k: W.STAGES[k]["word"] for k in W.STAGES},
+   {"green": "passt {tag}", "yellow": "geht, kostet mehr", "stimulus": "gewollter Überreiz", "red": "{tag} nicht"},
+   "0.72.2 1: die Stufenworte sind nicht die der Entscheidung")
+# stage() ersetzt das Wort NIE - auch nicht ueber der Obergrenze; detail bleibt der Stufen-Satz
+for _fit, _key in (("ok", "green"), ("maybe", "yellow")):
+    _o = W.stage(_fit, False, False)
+    eq((_o["key"], _o["word"], _o["detail"]), (_key, W.STAGES[_key]["word"], W.STAGES[_key]["detail"]),
+       f"0.72.2 1: {_key} ueber der Obergrenze ersetzt Wort oder Satz")
+# 2 · die Menge als eigenes Zeichen - nur green/yellow UND ueber der Obergrenze
+for _fit, _key in (("ok", "green"), ("maybe", "yellow")):
+    _q = W.stage(_fit, False, False).get("quantity") or {}
+    eq(_q.get("label"), "Menge über Wochenlast", f"0.72.2 2: {_key} ueber der Grenze ohne Mengen-Zeichen")
+    check("Menge" in str(_q.get("text")), f"0.72.2 2: {_key}: der Satz am Mengen-Zeichen fehlt")
+    check(W.stage(_fit, True, False).get("quantity") is None, f"0.72.2 2 Gegenprobe: {_key} unter der Grenze traegt das Zeichen")
+    check(W.stage(_fit, None, False).get("quantity") is None, f"0.72.2 2 Gegenprobe: {_key} ohne Budget traegt das Zeichen")
+check(W.stage("ok", False, True)["key"] == "stimulus" and W.stage("ok", False, True).get("quantity") is None,
+      "0.72.2 2 Gegenprobe: der gewollte Ueberreiz traegt das Mengen-Zeichen")
+check(W.stage("no", False, False).get("quantity") is None, "0.72.2 2 Gegenprobe: rot traegt das Mengen-Zeichen")
+_bl = W.stage("ok", False, False, by_load=True)
+check(_bl["key"] == "red" and _bl.get("quantity") is None and _bl["detail"] == W.GUARD_WORDS["by_load"],
+      "0.72.2 2 Gegenprobe: by_load nicht rot mit seinem Satz, oder doppeltes Zeichen")
+_rg = next(e for e in W.suggest("ready", ftp=215, budget=0, layoff_days=0) if e["family"] == "recovery")
+check(_rg["stage"].get("quantity") is None and _rg["stage"]["key"] == "green", "0.72.2 2 Gegenprobe: Regeneration bei Obergrenze 0 mit Zeichen")
+_gz = next(e for e in W.suggest("ready", ftp=215, budget=0, layoff_days=0) if e["family"] == "endurance")
+check(_gz["stage"]["word"] == "passt {tag}" and (_gz["stage"].get("quantity") or {}).get("label") == "Menge über Wochenlast",
+      "0.72.2: Grundlage bei Obergrenze 0 zeigt nicht Stufenwort + Mengen-Zeichen")
+# die Rechnung bleibt: Stufe, Budget, guard unveraendert
+eq((_gz["stage"]["key"], _gz["stage"]["over_ceiling"], (_gz["guard"] or {}).get("over")), ("green", True, True),
+   "0.72.2: Stufe/Budget/guard haben sich bewegt")
+# 4 · das Ersetzungswort ist weg
+check("over_word" not in W.GUARD_WORDS, "0.72.2 4: GUARD_WORDS['over_word'] steht noch")
 
 print(f"test_workouts: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:

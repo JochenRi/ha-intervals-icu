@@ -801,10 +801,10 @@ function goal(kind) {
       // only the current week carries grades (docs/ausbau.md I3)
       no_verdict_note: "Bewertet wird erst in der Woche selbst. Das Lastbudget rechnet aus den letzten sechs Tagen, der Zustand aus den Werten von heute — Budget und Zustand von übernächstem Donnerstag kennt niemand, auch dieses Panel nicht.",
       stages: {
-        green: { label: "grün", word: "passt", detail: "Der Zustand trägt diese Art. Liegt die Last über der Obergrenze, bleibt die Art und die Menge wird gekürzt." },
-        yellow: { label: "gelb", word: "geht, kostet aber", detail: "Der Zustand trägt nur bedingt." },
-        stimulus: { label: "Reiz", word: "kostet Erholung, setzt aber den Reiz", detail: "Über der Obergrenze, aber der Zustand trägt und die letzten Tage boten Erholung." },
-        red: { label: "rot", word: "heute nicht", detail: "Der Zustand spricht dagegen. Nur ohne Zustand (keine HRV-Basislinie) entscheidet die Last." },
+        green: { label: "grün", word: "passt {tag}", detail: "Der Zustand trägt diese Art. Liegt die Last über der Obergrenze, bleibt die Art und die Menge wird gekürzt." },
+        yellow: { label: "gelb", word: "geht, kostet mehr", detail: "Der Zustand trägt nur bedingt." },
+        stimulus: { label: "Reiz", word: "gewollter Überreiz", detail: "Über der Obergrenze, aber der Zustand trägt und die letzten Tage boten Erholung." },
+        red: { label: "rot", word: "{tag} nicht", detail: "Der Zustand spricht dagegen. Nur ohne Zustand (keine HRV-Basislinie) entscheidet die Last." },
       },
       assessment: {
         state: "ready", state_label: "im Normalbereich", budget: 95, hard_days_last_7: 0,
@@ -1117,10 +1117,11 @@ function coach(kind) {
  * test_panel_fixes guards that the four words here still match the four words
  * in workouts.py - a fixture that drifts from the backend tests nothing. */
 const STAGE_WORDS = {
-  green:    { label: "grün", word: "passt" },
-  yellow:   { label: "gelb", word: "geht, kostet aber" },
-  stimulus: { label: "Reiz", word: "kostet Erholung, setzt aber den Reiz" },
-  red:      { label: "rot",  word: "heute nicht" },
+  // 0.72.2: die Worte wie workouts.STAGES - der Tag als Platzhalter, das Panel setzt ihn ein
+  green:    { label: "grün", word: "passt {tag}" },
+  yellow:   { label: "gelb", word: "geht, kostet mehr" },
+  stimulus: { label: "Reiz", word: "gewollter Überreiz" },
+  red:      { label: "rot",  word: "{tag} nicht" },
 };
 function stageOf(fit, fitsBudget, recovery, byLoad) {
   // L1 (0.69.0): die Stufe folgt dem Zustand; ueber dem Budget nur
@@ -1134,7 +1135,11 @@ function stageOf(fit, fitsBudget, recovery, byLoad) {
   else key = "green";
   const out = { key, blocked_by: blocked, over_ceiling: over, ...STAGE_WORDS[key], detail: "Begründung aus dem Backend." };
   // 0.69.1 (workouts.stage): ueber der Obergrenze traegt gruen/gelb das Geländer-Wort.
-  if (over && !blocked && (key === "green" || key === "yellow")) out.word = "Art bleibt, Menge kürzen";
+  // 0.72.2 (workouts.stage): das Wort bleibt; ueber der Obergrenze kommt das Mengen-Zeichen dazu
+  if (over && !blocked && (key === "green" || key === "yellow")) {
+    out.quantity = { label: "Menge über Wochenlast",
+                     text: "Zustand unauffällig — die Last liegt über der Obergrenze: Art bleibt, Menge kürzen." };
+  }
   if (key === "stimulus") out.evidence = "Funktionelles Überreichen, Meeusen 2013 — dosiert dazu.";
   return out;
 }

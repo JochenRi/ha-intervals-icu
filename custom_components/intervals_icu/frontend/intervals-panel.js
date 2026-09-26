@@ -3302,11 +3302,10 @@ class IntervalsIcuPanel extends HTMLElement {
     const opts = o || {};
     const st = entry.stage || {};
     const tone = STAGE_TONE[st.key] || "unknown";
-    const word = st.key === "stimulus" && opts.budget != null
-      ? `${st.word} (über der Obergrenze von ${fmt(opts.budget)})`
-      : `${st.word}${st.key === "green" && opts.todayWord && !st.over_ceiling ? " heute" : ""}`;
-    // 0.69.1: ueber der Obergrenze kommt das Wort aus dem Backend ("Art bleibt,
-    // Menge kürzen", GUARD_WORDS.over_word) - kein "heute" dahinter.
+    // 0.72.2: das Etikett traegt IMMER das Stufenwort aus STAGES (Zustand); der
+    // Tag kommt aus EINER Stelle (_stageWord). Die Menge ist ein eigenes Zeichen.
+    const word = this._stageWord(st, opts.tomorrow);
+    const qty = this._qtyMark(st);
     const hrw = entry.hr_window;
     const blocks = entry.blocks_w || entry.blocks;
     const planned = opts.plannedHours;
@@ -3338,8 +3337,9 @@ class IntervalsIcuPanel extends HTMLElement {
           <div class="wometa">${compact ? "" : `${esc(entry.purpose || "")} · `}${dur} · ${loadTxt}${
             hrw ? ` · ${hrw[0]}–${hrw[1]} bpm` : ""}</div>
           ${entry.hr_note ? `<div class="wometa hint">${esc(entry.hr_note)}</div>` : ""}
-          ${(entry.guard || {}).over && entry.guard.text
-            ? `<div class="wometa guard">${ico("warn", C.amber, 13)} ${esc(entry.guard.text)}</div>` : ""}
+          ${qty || ((entry.guard || {}).over && entry.guard.text)
+            ? `<div class="wometa guard">${qty || ico("warn", C.amber, 13)}${
+                (entry.guard || {}).over && entry.guard.text ? ` ${esc(entry.guard.text)}` : ""}</div>` : ""}
         </div>
         ${st.key ? badge(tone, word, st.detail) : ""}
       </div>
@@ -3435,7 +3435,7 @@ class IntervalsIcuPanel extends HTMLElement {
     const card = (entry, famBest) => this._sessionCard(entry, {
       open: this._woOpen === entry.key, budget: w.budget, ftp: w.ftp,
       recommended: entry === lead, famBest: !!famBest && entry !== lead,
-      todayWord: !forTomorrow, saidAbove: shared,
+      tomorrow: forTomorrow, saidAbove: shared,
       planDates: [iso(0), iso(1)], toggleAct: "wodetail", compact: true,
     });
 
@@ -3457,6 +3457,9 @@ class IntervalsIcuPanel extends HTMLElement {
         lead.hr_window ? ` · ${lead.hr_window[0]}–${lead.hr_window[1]} bpm` : ""}${
         lead.blocks_w ? ` · ${Math.min(...lead.blocks_w.map((b) => b[1]))}–${
           Math.max(...lead.blocks_w.map((b) => b[1]))} W` : ""}</div>
+      <div class="leadstage">${(lead.stage || {}).key
+        ? badge(STAGE_TONE[lead.stage.key] || "unknown", this._stageWord(lead.stage, forTomorrow), lead.stage.detail) : ""}
+        ${this._qtyMark(lead.stage)}</div>
       <p class="leadwhy">${esc(lead.effect)}</p>
       ${(lead.guard || {}).over && lead.guard.text
         ? `<p class="leadwhy guard">${ico("warn", C.amber, 14)} ${esc(lead.guard.text)}</p>` : ""}
@@ -3487,7 +3490,8 @@ class IntervalsIcuPanel extends HTMLElement {
       const watts = this._headWatts(best);
       const origin = WATT_ORIGIN_SHORT[best.watt_source] || "FTP";
       const sum = `<span class="fgname">${esc(name)}</span>
-        ${st.key ? badge(STAGE_TONE[st.key] || "unknown", st.word, st.detail) : ""}
+        ${st.key ? badge(STAGE_TONE[st.key] || "unknown", this._stageWord(st, forTomorrow), st.detail) : ""}
+        ${this._qtyMark(st)}
         ${watts != null ? `<span class="fgw tn">${fmt(watts)} W · ${esc(origin)}</span>` : ""}
         <span class="fgvar">${esc(best.title)}</span>
         <span class="fguse">${esc(best.purpose || "")}</span>`;
@@ -3705,10 +3709,24 @@ class IntervalsIcuPanel extends HTMLElement {
   _stageBadge(s) {
     const st = s.stage || {};
     if (!st.key) return "";
-    const word = st.key === "stimulus" && s.budget != null
-      ? `${st.word} (über der Obergrenze von ${fmt(s.budget)})`
-      : st.word;
-    return badge(STAGE_TONE[st.key] || "unknown", word);
+    return `${badge(STAGE_TONE[st.key] || "unknown", this._stageWord(st), st.detail)}${this._qtyMark(st)}`;
+  }
+
+  /* 0.72.2: EINE Stelle fuer das Stufenwort. Das Wort steht in STAGES (Backend,
+     mit Platzhalter {tag}); hier wird nur der Tag eingesetzt - "morgen", wenn
+     heute schon trainiert ist (Modus), sonst "heute". Kein Leser haengt selbst
+     etwas an oder ersetzt das Wort. */
+  _stageWord(st, tomorrow) {
+    const t = tomorrow == null ? !!((this._coach || {}).trained_today) : !!tomorrow;
+    return esc(String((st || {}).word || "").split("{tag}").join(t ? "morgen" : "heute"));
+  }
+
+  /* 0.72.2: die Menge als zweites, kleines Zeichen - nur wenn das Backend es
+     setzt (stage.quantity: ueber der Obergrenze UND gruen/gelb). Der Satz dazu
+     ist der Tooltip. */
+  _qtyMark(st) {
+    const q = (st || {}).quantity;
+    return q && q.label ? `<span class="qmark" title="${esc(q.text || "")}">${ico("warn", C.amber, 12)} ${esc(q.label)}</span>` : "";
   }
 
   /* The state warnings of a week, said ONCE above its sessions.
@@ -3726,7 +3744,8 @@ class IntervalsIcuPanel extends HTMLElement {
 
   _stageDot(st) {
     const m = ST[STAGE_TONE[st.key] || "unknown"];
-    return `<span class="pstage" style="color:${m.c}">${ico(m.ic, m.c, 12)}${esc(m.word)}</span>`;
+    return `<span class="pstage" style="color:${m.c}" title="${esc(st.detail || "")}">${ico(m.ic, m.c, 12)}${
+      this._stageWord(st) || esc(m.word)}</span>${this._qtyMark(st)}`;
   }
 
   /* Four grades, four words, four shapes, four tones - stated once, from the
@@ -3738,7 +3757,7 @@ class IntervalsIcuPanel extends HTMLElement {
       const m = ST[STAGE_TONE[k]];
       return `<div class="stagerow">${ico(m.ic, m.c, 15)}
         <b style="color:${m.c}">${esc(stages[k].label)}</b>
-        <span>${esc(stages[k].detail)}</span></div>`;
+        <span>„${this._stageWord(stages[k], false)}“ — ${esc(stages[k].detail)}</span></div>`;
     }).join("");
     if (!rows) return "";
     const rec = ((plan.assessment || {}).recovery) || {};
@@ -4083,7 +4102,7 @@ class IntervalsIcuPanel extends HTMLElement {
     const iso = (d) => new Date(now.getTime() + d * 86400000).toISOString().slice(0, 10);
     const karte = e ? `<div class="wogrid">${this._sessionCard(e, {
       open: this._woOpen === e.key, budget: w.budget, ftp: w.ftp, compact: true,
-      todayWord: !((this._coach || {}).trained_today), planDates: [iso(0), iso(1)], toggleAct: "wodetail",
+      tomorrow: !!((this._coach || {}).trained_today), planDates: [iso(0), iso(1)], toggleAct: "wodetail",
     })}</div>` : "";
 
     const body = `${karte}${r ? `<div class="card pad">
@@ -7455,6 +7474,8 @@ details.bgfold>summary b,details.testfold>summary b{color:${C.tx};font-size:15px
 .pshead{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap}
 .psload{color:${C.tx2};font-size:12.5px;margin:2px 0}
 .pstage{display:inline-flex;gap:3px;align-items:center;font-size:11px;margin-left:4px}
+.qmark{display:inline-flex;gap:3px;align-items:center;font-size:11px;color:${C.amber};margin-left:4px;white-space:nowrap}
+.leadstage{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:4px 0}
 .noverdict{display:flex;gap:6px;align-items:flex-start}
 .stagelegend{margin:10px 0;padding:10px 12px;background:${C.card};border:1px solid ${C.line};border-radius:10px}
 .stagelegend small{color:${C.tx3};text-transform:uppercase;letter-spacing:.04em;font-size:11.5px}
