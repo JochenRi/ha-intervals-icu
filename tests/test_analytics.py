@@ -926,8 +926,13 @@ if callable(_wh):
     _H = _wh(_BD, _LBD, 60)
     check("0.74.0 d: 60 Tage bis heute", (len(_H), _H[0]["date"], _H[-1]["date"]), (60, "2026-07-29", "2026-09-26"))
     _diff = [h["date"] for h in _H
-             if (lambda b: (h["window_load"], h["window_allowed"]) != (b["window_load"], b["window_allowed"]))(
+             if (lambda b: (h["window_load"], h["window_allowed"]) != (b["window_load"], b["window_allowed"])
+                 if b else h["window_allowed"] is not None)(
                  analytics.load_budget(_BD, _LBD.get(h["date"], "unknown"), h["date"]))]
+    # 0.74.2 B3: der Bestand beginnt am 19.07. - die ersten 18 Tage des Verlaufs haben
+    # weniger als 28 Tage davor und damit kein Ziel (vorher: ein Ziel aus zu kurzem Schnitt)
+    check("0.74.2 B3: im 70-Tage-Bestand die ersten 18 Verlaufstage ohne Ziel",
+          [h["date"] for h in _H if h["window_allowed"] is None], [h["date"] for h in _H[:18]])
     check("0.74.0 d: je Tag window_load/allowed aus load_budget(Licht des Tages)", _diff, [])
     _hd = {h["date"]: h for h in _H}
     _c20 = analytics.load_budget(_BD, "green", "2026-09-20")["chronic"]
@@ -938,7 +943,7 @@ if callable(_wh):
     check("0.74.0 d: heute = Last bis heute Abend (7 Tage bis Ende heute)",
           _hd["2026-09-26"]["window_load"], _sum("2026-09-20", "2026-09-26"))
     check("0.74.0 d: over = Last ueber dem Ziel", [h["over"] for h in _H],
-          [h["window_load"] > h["window_allowed"] for h in _H])
+          [h["window_allowed"] is not None and h["window_load"] > h["window_allowed"] for h in _H])
     check("0.74.0 d: Fixture hat Tage ueber und unter dem Ziel", ({h["over"] for h in _H}), {True, False})
     _Hk = _wh(_bl(n=20), {}, 60)
     check("0.74.0 §4 unter 28 Tagen: kein Ziel, nur die Last-Linie",
@@ -1037,6 +1042,63 @@ check("0.74.0 i: der Rest der Payload bleibt",
 check("0.74.1 B4: acwr_series ist entfernt", hasattr(analytics, "acwr_series"), False)
 check("0.74.1 B4: acwr_series kommt im Paket nicht mehr vor",
       sorted(f.name for f in COMP.rglob("*.py") if "acwr_series" in f.read_text(encoding="utf-8")), [])
+
+
+# --- 0.74.2 B3 · die 28-Tage-Regel gilt fuer den TAG, nicht fuer die Reihe -------------
+# Bis 0.74.1 pruefte load_budget nur len(series) < 28. Ein Tag mit weniger als 28
+# Tagen davor rechnete mit einem kuerzeren Schnitt. Soll: None, wenn vor dem Tag
+# weniger als 28 Tage liegen (die Definition 7:28, keine neue Setzung).
+def _b3(n=40, start="2026-08-01"):
+    t0 = _date.fromisoformat(start)
+    return {"wellness": {(t0 + _td(days=i)).isoformat(): {"ctlLoad": 40.0 + (i % 5)} for i in range(n)},
+            "activities": {}}
+_B3 = _b3()
+_B3_t = lambda k: (_date(2026, 8, 1) + _td(days=k)).isoformat()   # noqa: E731
+check("0.74.2 B3 Treffer: Tag 27 nach Bestandsbeginn (27 Tage davor) -> None",
+      analytics.load_budget(_B3, "green", today=_B3_t(27)), None)
+check("0.74.2 B3 Gegenprobe: Tag 28 (28 Tage davor) -> Wert",
+      (analytics.load_budget(_B3, "green", today=_B3_t(28)) or {}).get("chronic") is not None, True)
+check("0.74.2 B3 Tag 28: Schnitt ueber genau die 28 Tage davor",
+      (analytics.load_budget(_B3, "green", today=_B3_t(28)) or {}).get("chronic"),
+      round(sum(40.0 + (i % 5) for i in range(28)) / 28, 1))
+check("0.74.2 B3 Tag 1 (ein Tag davor) -> None", analytics.load_budget(_B3, "green", today=_B3_t(1)), None)
+# Leser: window_ratio, Verlauf, Vorschau lesen das None als "kein Wert"
+check("0.74.2 B3 window_ratio am Tag 27 -> None", analytics.window_ratio(_B3, _B3_t(27)), None)
+check("0.74.2 B3 window_ratio am Tag 28 -> Wert", analytics.window_ratio(_B3, _B3_t(28)) is not None, True)
+_B3h = analytics.window_history(_B3, {}, 60, _B3_t(39))
+check("0.74.2 B3 Verlauf: die ersten 28 Tage ohne Ziel, ab Tag 28 mit",
+      [x["window_allowed"] is None for x in _B3h], [True] * 28 + [False] * 12)
+check("0.74.2 B3 Verlauf: die Last steht auch ohne Ziel", all(x["window_load"] is not None for x in _B3h), True)
+check("0.74.2 B3 Vorschau hinter 40 echten Tagen: jeder Tag mit Ziel",
+      all(x["window_allowed"] is not None for x in analytics.window_projection(_B3, "green", {}, 14, _B3_t(39))), True)
+# Die alte Regel bleibt zusaetzlich: planned verlaengert die Reihe, zaehlt aber nicht als Verlauf
+check("0.74.2 B3 unter 28 echten Tagen hilft die Vorschau nicht",
+      analytics.load_budget(_b3(20), "green", today=_B3_t(40), planned={_B3_t(25): 50.0}), None)
+
+# Johannes-aehnlicher Bestand (12.05.2025 bis 26.09.2026): dieselben Zahlen wie 0.74.1
+# (Sollwerte festgehalten am 26.09. mit dem Stand 059011e). Nur der linke Rand bewegt sich.
+def _jl():
+    d = {"wellness": {}, "activities": {}}
+    pat = [0, 55, 40, 0, 85, 130, 30]
+    cur, i = _date(2025, 5, 12), 0
+    while cur <= _date(2026, 9, 26):
+        load = float(pat[i % 7] + (i * 7) % 11) if pat[i % 7] else 0.0
+        d["wellness"][cur.isoformat()] = {"ctlLoad": load}
+        cur, i = cur + _td(days=1), i + 1
+    return d
+_JL = _jl()
+_jb = analytics.load_budget(_JL, "green", today="2026-09-26")
+check("0.74.2 B3 Johannes-aehnlich: Budget wie 0.74.1",
+      (_jb["recommended"], _jb["window_allowed"], _jb["chronic"], _jb["window_load"]), (232, 474, 52.1, 377.0))
+check("0.74.2 B3 Johannes-aehnlich: window_ratio wie 0.74.1", analytics.window_ratio(_JL, "2026-09-26"), 1.03)
+_jh = analytics.window_history(_JL, {}, 60, "2026-09-26")
+check("0.74.2 B3 Johannes-aehnlich: 60-Tage-Verlauf wie 0.74.1",
+      (sum(x["window_allowed"] is None for x in _jh), sum(x["window_allowed"] for x in _jh)), (0, 21914))
+check("0.74.2 B3 Johannes-aehnlich: Vorschau wie 0.74.1",
+      sum(x["window_allowed"] for x in analytics.window_projection(_JL, "green", {}, 14, "2026-09-26")), 5381)
+_jf = analytics.window_history(_JL, {}, 600, "2026-09-26")
+check("0.74.2 B3 Johannes-aehnlich: linker Rand - erstes Ziel am 28. Tag nach Beginn",
+      next(x["date"] for x in _jf if x["window_allowed"] is not None), "2025-06-09")
 
 print(f"test_analytics: {CHECKS} Prüfungen, {len(failures)} Fehler")
 print("FEHLER:", failures if failures else "keine")

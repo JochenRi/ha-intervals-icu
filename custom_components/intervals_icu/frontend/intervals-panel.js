@@ -6530,11 +6530,16 @@ class IntervalsIcuPanel extends HTMLElement {
     const mark = tone === "unrated" ? ico("info", C.tx2, 18)
       : ico(tone === "worse" ? "warn" : "ok", tone === "worse" ? C.amber : C.green, 18);
     const z1 = v.z_hrv != null ? `${sign(v.z_hrv, 1)} SD` : "–";
-    const z2 = v.z_hrv_next != null ? `${sign(v.z_hrv_next, 1)} SD` : (v.note ? esc(v.note) : "–");
+    // 0.74.2 (B2): `note` beginnt selbst mit "zweite Nacht" - dann steht sie allein.
+    const second = v.z_hrv_next != null ? `zweite Nacht ${sign(v.z_hrv_next, 1)} SD`
+      : (v.note ? esc(v.note) : "zweite Nacht –");
+    // 0.74.2 (B1): bei "nicht bewertbar" sagt der Kopf darueber es schon - die
+    // Karte traegt dann kein eigenes Label, nur die Zeile und die Regel.
+    const head = v.key === "nicht_bewertbar" ? "" : `<b>${esc(v.label || "")}</b>`;
     return `<div class="nverdict ${tone}">
       ${mark}
-      <div><b>${esc(v.label || "")}</b>
-        <span>Nacht danach ${z1} · zweite Nacht ${z2}</span>
+      <div>${head}
+        <span>Nacht danach ${z1} · ${second}</span>
         <span class="mut">${esc(v.rule || "")}</span></div></div>`;
   }
 

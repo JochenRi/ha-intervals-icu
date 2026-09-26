@@ -3568,6 +3568,51 @@ const EMPTY_LOAD = { weeks: [], weeks_by_group: [], window_history: [], window_p
      "0.72.1 3: Cannabis hat keine eigene Etikettenfarbe");
 }
 
+/* ── 0.74.2 · Nacht danach ohne Doppelung (B1, B2) ───────────────────── */
+{
+  const P = new M.Panel(); P._nowIso = F.TODAY;
+  const z = (h) => String(h).replace(/\s+/g, " ");
+  const A = F.activities();
+  const nightPart = (page) => page.slice(page.indexOf("Die Nacht danach"));
+  const seite = (kind) => {
+    P._laps[A[0].id] = { laps: [], source: "none" };
+    P._streams[A[0].id] = F.steadyStream();
+    P._night[A[0].id] = F.night(kind);
+    return z(P.rAkt(A, A[0]));
+  };
+  // B1 · mit Etikett: "bewertbar" genau einmal im Abschnitt - der Kopf traegt es, die Karte nicht
+  const et = seite("etikett");
+  const eN = nightPart(et);
+  ok((eN.match(/bewertbar/g) || []).length === 1, "0.74.2 B1: 'bewertbar' steht mehr als einmal in 'Die Nacht danach'");
+  ok(eN.includes("Nicht bewertbar: Nacht zum 26.09. mit Etikett Cannabis, Gewicht 0,5"), "0.74.2 B1: der Kopf (a) fehlt");
+  const karte = (eN.split('class="nverdict')[1] || "");
+  ok(karte !== "" && !/<b>/.test(karte.split("</div></div>")[0]), "0.74.2 B1: die Karte traegt bei nicht_bewertbar ein eigenes fettes Label");
+  ok(karte.includes("Setzung:"), "0.74.2 B1: die Regel fehlt in der Karte");
+  // B2 · note-Zweig: "Nacht danach {z1} · {note}", nie "zweite Nacht zweite Nacht"
+  ok(eN.includes("Nacht danach -1,3 SD · zweite Nacht liegt noch nicht vor"), "0.74.2 B2: die Zeile mit note steht nicht wie im Soll");
+  // B1 Gegenprobe · ohne Etikett: die Karte mit Label wie bisher
+  const vd = nightPart(seite("verdaut"));
+  ok(vd.includes("<b>verdaut — die Nacht danach lag in deinem Band</b>"), "0.74.2 B1 Gegenprobe: ohne Etikett fehlt das Label der Karte");
+  const zv = nightPart(seite(undefined));
+  ok(zv.includes("<b>zu viel — deutlich unter dem Band"), "0.74.2 B1 Gegenprobe: 'zu viel' verliert sein Label");
+  // B2 · z2-Zweig: "Nacht danach {z1} · zweite Nacht {z2}" wie bisher
+  ok(zv.includes("Nacht danach -1,5 SD · zweite Nacht -0,2 SD"), "0.74.2 B2: der z2-Zweig steht nicht wie bisher");
+  // B2 · kein Zweig und keine Seite traegt die Doppelung (Aktivitaet und Heute)
+  for (const [name, html] of [["etikett", et], ["verdaut", vd], ["zu viel", zv],
+                              ["heute", z(P.rHeute({ ...F.today(), night: F.night("etikett") }))],
+                              ["heute verdaut", z(P.rHeute({ ...F.today(), night: F.night("verdaut") }))]]) {
+    ok(!html.includes("zweite Nacht zweite Nacht"), `0.74.2 B2: 'zweite Nacht zweite Nacht' auf ${name}`);
+  }
+  // B1 auch im Heute-Reiter (dieselbe Karte): "bewertbar" einmal im Nachtkasten
+  const hN = z(P.rHeute({ ...F.today(), night: F.night("etikett") }));
+  const tn = hN.slice(hN.indexOf('class="tnight'));
+  ok((tn.match(/bewertbar/g) || []).length === 1, "0.74.2 B1: 'bewertbar' steht im Heute-Nachtkasten mehr als einmal");
+  // Randfall: weder z2 noch note -> "zweite Nacht –"
+  ok(z(P._nightVerdict({ key: "verdaut", label: "verdaut", z_hrv: 0.1, z_hrv_next: null, note: null, rule: "r" }))
+       .includes("Nacht danach +0,1 SD · zweite Nacht –"), "0.74.2 B2 Randfall: ohne z2 und note fehlt 'zweite Nacht –'");
+  P._night = {}; P._laps = {}; P._streams = {};
+}
+
 /* ── 0.72.2 · Stufenwort immer, Menge als eigenes Zeichen ─────────────── */
 {
   const P = new M.Panel(); P._nowIso = F.TODAY;

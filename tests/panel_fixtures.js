@@ -1046,6 +1046,18 @@ function night(kind) {
     return { ...base, verdict: { ...base.verdict, key: "verdaut", label: "verdaut — die Nacht danach lag in deinem Band",
                                  z_hrv: -0.3, z_hrv_next: null, note: "zweite Nacht liegt noch nicht vor" } };
   }
+  if (kind === "etikett") {
+    // 0.74.2: wie coach.night_after sie schreibt, wenn die Nacht ein Etikett
+    // (Gewicht < 1) traegt und die zweite Nacht noch fehlt (Live 25.09.)
+    const why = "Nacht zum 26.09. mit Etikett Cannabis, Gewicht 0,5 — sie misst nicht nur die Einheit";
+    return { ...base, night_date: "2026-09-26", state: "unrated",
+      headline: `Nicht bewertbar: ${why}.`,
+      detail: "Die Werte der Nacht stehen darunter, ein Urteil über die Einheit fällt weg — das Etikett sagt, dass noch etwas anderes auf die Nacht gewirkt hat.",
+      night: { ...base.night, hrv: { ...base.night.hrv, value: 41.0, z: -1.3 } },
+      verdict: { ...base.verdict, key: "nicht_bewertbar", label: `nicht bewertbar — ${why}`, reason: why,
+                 delayed: false, z_hrv: -1.3, z_hrv_next: null, note: "zweite Nacht liegt noch nicht vor",
+                 rule: "Setzung: zu viel unter −1,0 SD oder wenn beide Nächte unter −0,5 SD liegen; gekostet unter −0,5 SD (verzögert, wenn erst die zweite Nacht darunter liegt); verdaut sonst — gegen deine Basislinie der 60 Nächte davor, gewichtet. Nur Anzeige: der Trainer liest diese Bewertung nicht." } };
+  }
   if (kind === "ohnereferenz") {
     return { ...base, reference: {}, state: "unknown", headline: "Kein Vergleich möglich.",
       detail: "Es liegen noch zu wenige frühere Einheiten ähnlicher Last vor." };

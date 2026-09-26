@@ -755,10 +755,15 @@ def load_budget(data: dict[str, Any], state: str = "green", today: str | None = 
     # zaehlen die sechs Tage VOR heute; die heutige Last reist als Verbrauch mit.
     day_today = str(today or date.today().isoformat())[:10]
     before, today_row = _window_rows(series, day_today)
+    # 0.74.2 (B3): DIE 28 TAGE GELTEN FUER DEN TAG. Bis 0.74.1 pruefte nur die
+    # Laenge der ganzen Reihe (oben); ein Tag mit weniger als 28 Tagen davor
+    # rechnete mit einem kuerzeren Schnitt. Die Definition 7:28 braucht 28 Tage
+    # VOR dem Tag - keine neue Setzung. Die Pruefung oben bleibt: geplante Tage
+    # zaehlen nicht als Verlauf.
+    if len(before) < 28:
+        return None
     loads = [point["load"] for point in before]
     used_today = float(today_row[0]["load"]) if today_row else 0.0
-    if not loads:
-        return None
     chronic = mean(loads[-28:])
     last_six = sum(loads[-6:])
     if chronic <= 0:
@@ -823,7 +828,7 @@ def window_ratio(data: dict[str, Any], day: str) -> float | None:
     (Schnitt INKLUSIVE des Tages) - ein zweiter Weg, jetzt entfernt. Die
     Rundung (Last und Schnitt auf eine Stelle, Verhaeltnis auf zwei) ist die
     von load_budget/readiness bis 0.74.0, bitgleich. Ohne Budget (unter 28
-    Tagen im Bestand) oder mit Schnitt 0: None.
+    Tagen vor `day`, 0.74.2) oder mit Schnitt 0: None.
     """
     window = load_budget(data, "green", today=day)
     if not window or not window.get("chronic"):
@@ -898,7 +903,7 @@ def planned_loads(events: Any, after: str | None, until: str | None = None) -> d
 
 def _window_point(day: str, budget: dict[str, Any] | None, series: list[dict[str, Any]]) -> dict[str, Any]:
     """Ein Tag des Verlaufs. Mit Budget kommen Last und Ziel aus DIESEM Aufruf
-    (keine eigene Rechnung). Ohne Budget (unter 28 Tagen) gibt es kein Ziel;
+    (keine eigene Rechnung). Ohne Budget (unter 28 Tagen vor dem Tag) kein Ziel;
     die Last sind dieselben sieben Tage (`_window_rows`), damit die Linie steht."""
     if budget:
         load, allowed = budget["window_load"], budget["window_allowed"]
