@@ -811,8 +811,8 @@ function today(kind) {
     history_days: historyDays(),
     // 0.74.3: die letzte GEMESSENE Nacht nach einer Einheit (coach._last_measured_night) -
     // die Nacht nach dem 09.09.; die Einheit vom 11.09. wartet noch auf ihre Nacht.
-    night: { available: true, headline: "Die Nacht sah aus wie sonst nach solchen Einheiten.",
-             detail: "Verglichen mit 13 früheren Einheiten ähnlicher Last.",
+    night: { available: true, headline: "Verglichen mit früheren Einheiten dieser Art: so erholt wie sonst.",
+             detail: "Verglichen mit 13 früheren Einheiten ähnlicher Last und Intensität.",
              night_date: "2026-09-10", activity_date: "2026-09-09",
              activity_name: "Rehburg-Loccum Gehen", activity_id: "a-2026-09-09" },
     night_pending: { date: "2026-09-11", name: "volumen", night_date: "2026-09-12", reason: "pending" },
@@ -1068,54 +1068,75 @@ function context(kind) {
   return full;
 }
 
+/* 0.74.4 · die Regel der Nacht, wie coach.night_verdict sie schreibt (test_coach prueft sie gegen den
+ * Erzeuger, Regel 9) - mit den Zahlen aus NIGHT_TOO_MUCH_Z, NIGHT_DIGESTED_Z und DAY_SWING_SD. */
+const NIGHT_RULE = "Hier geht es darum, wie du die Einheit verkraftet hast – nicht darum, ob du heute trainieren kannst. " +
+  "Verglichen wird deine HRV in den zwei Nächten nach der Einheit mit deinen letzten 60 Nächten. " +
+  "Deutlich darunter (ab 1,0) oder beide Nächte etwas darunter (ab 0,5): war zu viel. Etwas darunter: hat Kraft gekostet. " +
+  "Sonst: gut verkraftet. " +
+  "Zusätzlich vergleicht die App mit früheren Einheiten ähnlicher Last – wie du nach solchen Einheiten sonst schläfst. " +
+  "Die Zahl in Klammern sagt, wie weit du vom Normalwert weg bist; 1,0 ist die Schwankung an einem gewöhnlichen Tag. " +
+  "Die Grenzen sind eine Festlegung, keine Messung. Der Trainer richtet sich nicht danach.";
+const NIGHT_NUMBER = "Die Zahl in Klammern sagt, wie weit du vom Normalwert weg bist; 1,0 ist die Schwankung an einem gewöhnlichen Tag.";
+
 function night(kind) {
   if (kind === "keine") return { available: false, reason: "no_wellness", night_date: "2026-09-02" };
   if (kind === "unbekannt") return { available: false, reason: "unknown_activity" };
+  // 0.74.4: jedes z traegt seine Wortstufe aus coach.z_word (test_coach prueft jedes Wort gegen den Erzeuger)
   const base = {
     available: true, night_date: "2026-09-02", activity_date: "2026-09-01",
     load: 65, intensity: 91,
     night: {
-      hrv: { label: "Herzratenvariabilität", unit: "ms", value: 38.5, baseline: 49.2, z: -1.54 },
-      rhr: { label: "Ruhepuls", unit: "bpm", value: 60, baseline: 56.4, z: -1.3 },
-      sleep: { label: "Schlafdauer", unit: "h", value: 7.2, baseline: 7.4, z: -0.46 },
+      hrv: { label: "Herzratenvariabilität", unit: "ms", value: 38.5, baseline: 49.2, z: -1.54,
+             word: { level: 2, text: "deutlich unter deinem Normalwert" } },
+      rhr: { label: "Ruhepuls", unit: "bpm", value: 60, baseline: 56.4, z: -1.3,
+             word: { level: 2, text: "deutlich über deinem Normalwert" } },
+      sleep: { label: "Schlafdauer", unit: "h", value: 7.2, baseline: 7.4, z: -0.46,
+               word: { level: 0, text: "im Normalbereich" } },
     },
     reference: {
-      hrv: { mean: -1.49, sd: 1.08, n: 12 },
-      rhr: { mean: -1.26, sd: 0.86, n: 12 },
-      sleep: { mean: 0.23, sd: 1.13, n: 12 },
+      hrv: { mean: -1.49, sd: 1.08, n: 12, word: { level: 2, text: "deutlich unter deinem Normalwert" } },
+      rhr: { mean: -1.26, sd: 0.86, n: 12, word: { level: 2, text: "deutlich über deinem Normalwert" } },
+      sleep: { mean: 0.23, sd: 1.13, n: 12, word: { level: 0, text: "im Normalbereich" } },
     },
-    // L2 (0.69.0): die Bewertung der Nacht - nur Anzeige, Setzung
-    verdict: { key: "zu_viel", label: "zu viel — deutlich unter dem Band, oder die zweite Nacht noch darunter",
-               z_hrv: -1.54, z_hrv_next: -0.2, setting: true, note: null,
-               rule: "Setzung: verdaut ab −0,5 SD, gekostet darunter, zu viel unter −1,0 SD oder wenn die zweite Nacht unter −0,5 SD liegt. Nur Anzeige: der Trainer liest diese Bewertung nicht." },
+    // L2 (0.69.0): die Bewertung der Nacht - nur Anzeige; 0.74.4 im Wortlaut der Skizze §3.3
+    verdict: { key: "zu_viel", label: "Verglichen mit deinen normalen Nächten: war zu viel.",
+               z_hrv: -1.54, z_hrv_next: -0.2, setting: true, note: null, delayed: false,
+               z_hrv_word: { level: 2, text: "deutlich unter deinem Normalwert" },
+               z_hrv_next_word: { level: 0, text: "im Normalbereich" },
+               rule: NIGHT_RULE },
     state: "usual",
-    headline: "Die Nacht sah aus wie sonst nach solchen Einheiten.",
+    headline: "Verglichen mit früheren Einheiten dieser Art: so erholt wie sonst.",
     detail: "Verglichen mit 12 früheren Einheiten ähnlicher Last und Intensität.",
-    caveat: "Die Nacht direkt nach einer Einheit ist die sauberste Messbedingung; der Zusammenhang zwischen Last und HRV-Änderung ist glockenförmig, nicht gerade. Und es bleibt die Nachtmessung der Uhr.",
+    caveat: "Die Nacht direkt nach einer Einheit ist die sauberste Messbedingung; der Zusammenhang zwischen Last und HRV-Änderung ist glockenförmig, nicht gerade. Und es bleibt die Nachtmessung der Uhr. " + NIGHT_NUMBER,
   };
   if (kind === "hart") {
     return { ...base, state: "hard",
-      headline: "Die Nacht fiel deutlich gedämpfter aus als sonst nach solchen Einheiten.",
-      night: { ...base.night, hrv: { ...base.night.hrv, value: 28.1, z: -3.2 } } };
+      headline: "Verglichen mit früheren Einheiten dieser Art: deutlich schlechter erholt als sonst.",
+      night: { ...base.night, hrv: { ...base.night.hrv, value: 28.1, z: -3.2,
+                                     word: { level: 3, text: "stark unter deinem Normalwert" } } } };
   }
   if (kind === "verdaut") {
-    return { ...base, verdict: { ...base.verdict, key: "verdaut", label: "verdaut — die Nacht danach lag in deinem Band",
-                                 z_hrv: -0.3, z_hrv_next: null, note: "zweite Nacht liegt noch nicht vor" } };
+    return { ...base, verdict: { ...base.verdict, key: "verdaut", label: "Verglichen mit deinen normalen Nächten: gut verkraftet.",
+                                 z_hrv: -0.3, z_hrv_word: { level: 0, text: "im Normalbereich" },
+                                 z_hrv_next: null, z_hrv_next_word: null, note: "Zweite Nacht: kommt morgen" } };
   }
   if (kind === "etikett") {
-    // 0.74.2: wie coach.night_after sie schreibt, wenn die Nacht ein Etikett
-    // (Gewicht < 1) traegt und die zweite Nacht noch fehlt (Live 25.09.)
-    const why = "Nacht zum 26.09. mit Etikett Cannabis, Gewicht 0,5 — sie misst nicht nur die Einheit";
-    return { ...base, night_date: "2026-09-26", state: "unrated",
-      headline: `Nicht bewertbar: ${why}.`,
-      detail: "Die Werte der Nacht stehen darunter, ein Urteil über die Einheit fällt weg — das Etikett sagt, dass noch etwas anderes auf die Nacht gewirkt hat.",
-      night: { ...base.night, hrv: { ...base.night.hrv, value: 41.0, z: -1.3 } },
-      verdict: { ...base.verdict, key: "nicht_bewertbar", label: `nicht bewertbar — ${why}`, reason: why,
-                 delayed: false, z_hrv: -1.3, z_hrv_next: null, note: "zweite Nacht liegt noch nicht vor",
-                 rule: "Setzung: zu viel unter −1,0 SD oder wenn beide Nächte unter −0,5 SD liegen; gekostet unter −0,5 SD (verzögert, wenn erst die zweite Nacht darunter liegt); verdaut sonst — gegen deine Basislinie der 60 Nächte davor, gewichtet. Nur Anzeige: der Trainer liest diese Bewertung nicht." } };
+    // 0.74.4: wie coach.night_after sie schreibt, wenn die Nacht ein Etikett (Gewicht < 1) traegt
+    // und die zweite Nacht noch fehlt (Live 26.09.)
+    const why = "Du hast den 26.09. mit „Cannabis“ markiert. Das verfälscht die Nachtwerte, deshalb sagt die App nichts darüber, wie gut du die Einheit verkraftet hast.";
+    const hrvWord = { level: 2, text: "deutlich unter deinem Normalwert" };
+    return { ...base, night_date: "2026-09-26", activity_date: "2026-09-25", state: "unrated",
+      headline: "Diese Nacht zählt nicht.",
+      detail: why,
+      night: { ...base.night, hrv: { ...base.night.hrv, value: 41.0, z: -1.3, word: hrvWord } },
+      verdict: { ...base.verdict, key: "nicht_bewertbar", label: "Diese Nacht zählt nicht.", reason: why,
+                 delayed: false, z_hrv: -1.3, z_hrv_word: hrvWord, z_hrv_next: null, z_hrv_next_word: null,
+                 note: "Zweite Nacht: kommt morgen", rule: NIGHT_RULE } };
   }
   if (kind === "ohnereferenz") {
-    return { ...base, reference: {}, state: "unknown", headline: "Kein Vergleich möglich.",
+    return { ...base, reference: {}, state: "unknown",
+      headline: "Verglichen mit früheren Einheiten dieser Art: noch kein Vergleich möglich – dafür braucht es mindestens fünf ähnliche Einheiten mit gemessener Nacht.",
       detail: "Es liegen noch zu wenige frühere Einheiten ähnlicher Last vor." };
   }
   return base;
@@ -1572,4 +1593,4 @@ function dayContext(extra) {
   };
 }
 
-module.exports = { STAGE_WORDS, stageOf, TODAY, days, load, loadView, LV_KEYS, readiness, activities, streams, thresholds, fatigue, fatigueV2Block, blocks, calendar, pmc, laps, lapsWithBounds, steadyStream, night, context, goal, today, week, coach, signals, workouts, dayContext };
+module.exports = { STAGE_WORDS, stageOf, TODAY, days, load, loadView, LV_KEYS, readiness, activities, streams, thresholds, fatigue, fatigueV2Block, blocks, calendar, pmc, laps, lapsWithBounds, steadyStream, night, NIGHT_RULE, context, goal, today, week, coach, signals, workouts, dayContext };

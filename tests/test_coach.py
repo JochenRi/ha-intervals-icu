@@ -692,7 +692,9 @@ eq((coach.NIGHT_DIGESTED_Z, coach.NIGHT_TOO_MUCH_Z, coach.NIGHT_SECOND_Z), (-0.5
    "18b L2: die Schwellen sind nicht die der Entscheidung")
 _v = result.get("verdict") or {}
 eq(_v.get("key"), "zu_viel", f"18b L2: Nacht bei z {result['night']['hrv']['z']} ist nicht 'zu viel'")
-check(_v.get("setting") is True and "Setzung" in str(_v.get("rule")), "18b L2: die Bewertung ist nicht als Setzung beschriftet")
+# 0.74.4 umgestellt: der Wortlaut sagt "Festlegung" statt "Setzung" (Skizze §3.3)
+check(_v.get("setting") is True and "Die Grenzen sind eine Festlegung, keine Messung." in str(_v.get("rule")),
+      "18b L2: die Bewertung ist nicht als Festlegung beschriftet")
 check(_v.get("z_hrv") == result["night"]["hrv"]["z"], "18b L2: z der Nacht steht nicht an der Bewertung")
 check(_v.get("z_hrv_next") is not None, "18b L2: die zweite Nacht fehlt, obwohl sie im Bestand liegt")
 # (die zweite Nacht wird auf die Basislinie gesetzt - das Rauschen der Fixture
@@ -741,7 +743,7 @@ check("verz" in str(_NV(-0.23, -0.63).get("label")) or "zweite" in str(_NV(-0.23
 # letzte Einheit ohne zweite Nacht: Bewertung aus der ersten, die zweite als offen benannt
 _last = coach.night_after(base_data, hard_keys[-1]).get("verdict") or {}
 check(_last.get("key") in ("verdaut", "gekostet", "zu_viel") and _last.get("z_hrv_next") is None
-      and "zweite Nacht" in str(_last.get("note")), "18b L2: ohne zweite Nacht keine Bewertung oder kein Hinweis")
+      and "Zweite Nacht:" in str(_last.get("note")), "18b L2: ohne zweite Nacht keine Bewertung oder kein Hinweis")
 # KEIN EINGANG IN DEN TRAINER: state(), Deckel, Erholung, Urteil lesen die Bewertung nicht
 import ast as _ast2  # noqa: E402
 _csrc = (Path(__file__).resolve().parents[1] / "custom_components" / "intervals_icu" / "coach.py").read_text(encoding="utf-8")
@@ -1544,8 +1546,10 @@ import day_context as _dc
 _K = hard_keys[-2]
 _base = coach.night_after(base_data, _K)
 _ref_sha = hashlib.sha256(json.dumps(_base, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
-eq(_ref_sha, "c9bb94f983b78a6dfa6bee69e32144c90444429c89d144c420d1f2e47681d305",
-   "0.72.1 Gegenprobe: Nacht ohne Etikett nicht bitgenau wie 0.72.0")
+# 0.74.4 nachgezogen: die TEXTE der Nacht sind neu (Skizze_0.74.4 §3), die Zahlen nicht - die haelt der
+# 0.74.4-Fingerabdruck gegen 0.74.3 (unten). Vorher: c9bb94f983b78a6dfa6bee69e32144c90444429c89d144c420d1f2e47681d305
+eq(_ref_sha, "e7aa6f487319fea0879032f44cd0a9698667b8776824a08e913ae5a2cec3fa64",
+   "0.72.1 Gegenprobe: Nacht ohne Etikett nicht bitgenau wie 0.74.4")
 _act_day = str(base_data["activities"][_K]["start_date_local"])[:10]
 _n1 = (date.fromisoformat(_act_day) + timedelta(days=1)).isoformat()
 _n2 = (date.fromisoformat(_act_day) + timedelta(days=2)).isoformat()
@@ -1555,11 +1559,12 @@ def _tagged(day_iso, tag, weight=None):
     return coach.night_after(d, _K)
 # 1 · erste Nacht mit Etikett (Gewicht < 1): kein Urteil, Grund in einem Satz, Rohwerte bleiben
 _a = _tagged(_n1, "alkohol")
-_satz = f"Nacht zum {_n1[8:10]}.{_n1[5:7]}. mit Etikett Alkohol, Gewicht 0,5 — sie misst nicht nur die Einheit"
+# 0.74.4 umgestellt: Tag und Etikett, kein Gewicht im Satz (Skizze_0.74.4 §3.2)
+_satz = f"Du hast den {_n1[8:10]}.{_n1[5:7]}. mit „Alkohol“ markiert."
 eq((_a.get("verdict") or {}).get("key"), "nicht_bewertbar", "0.72.1 1: erste Nacht mit Alkohol wird bewertet")
-check(_satz in str((_a.get("verdict") or {}).get("label")), f"0.72.1 1: der Grund-Satz fehlt am L2-Urteil ({(_a.get('verdict') or {}).get('label')})")
+check(_satz in str((_a.get("verdict") or {}).get("reason")), f"0.72.1 1: der Grund-Satz fehlt am L2-Urteil ({(_a.get('verdict') or {}).get('reason')})")
 eq(_a.get("state"), "unrated", "0.72.1 1: der Vergleich mit frueheren Einheiten urteilt trotz Etikett")
-check(_satz in str(_a.get("headline")), "0.72.1 1: der Grund-Satz fehlt am Vergleich")
+check(_satz in str(_a.get("detail")), "0.72.1 1: der Grund-Satz fehlt am Vergleich")
 # (die zweite Nacht darf sich bewegen: das Etikett der ersten geht - wie seit S1 - gewichtet in
 # IHRE Basislinie der 60 Naechte davor ein; geprueft wird, dass der Rohwert dasteht)
 eq((_a["night"], (_a["verdict"] or {}).get("z_hrv")), (_base["night"], _base["verdict"]["z_hrv"]),
@@ -1568,7 +1573,7 @@ check((_a["verdict"] or {}).get("z_hrv_next") is not None, "0.72.1 1: der Rohwer
 # 1 · nur die zweite Nacht mit Etikett -> ebenfalls nicht bewertbar
 _b = _tagged(_n2, "krank")
 eq(((_b.get("verdict") or {}).get("key"), _b.get("state")), ("nicht_bewertbar", "unrated"), "0.72.1 1: zweite Nacht mit Etikett wird bewertet")
-check("Etikett Krank, Gewicht 0" in str((_b.get("verdict") or {}).get("label")) and f"Nacht zum {_n2[8:10]}.{_n2[5:7]}." in str((_b.get("verdict") or {}).get("label")),
+check(f"Du hast den {_n2[8:10]}.{_n2[5:7]}. mit „Krank“ markiert." in str((_b.get("verdict") or {}).get("reason")),
       "0.72.1 1: der Satz nennt die zweite Nacht nicht")
 # Gegenproben: Normal (1,0) unveraendert; Alkohol mit Gewicht 1,0 zaehlt als Gewicht 1 -> unveraendert;
 # Gewicht 0,75 -> nicht bewertbar; Etikett am Tag der Einheit (Nacht davor) -> Urteil unveraendert
@@ -1602,7 +1607,8 @@ _alte = {k: v for k, v in _dc.TAGS.items() if k != "cannabis"}
 eq(hashlib.sha256(json.dumps(_alte, sort_keys=True, ensure_ascii=False).encode()).hexdigest(),
    "ee6d9bc3847b5217b51d79defc275d9cdf94034cc3261a0a28bc74fec45628de", "0.72.1 3: ein vorhandenes Etikett wurde veraendert")
 _g = _tagged(_n1, "cannabis") if "cannabis" in _dc.TAGS else {}
-check("Etikett Cannabis, Gewicht 0,5" in str((_g.get("verdict") or {}).get("label")), "0.72.1 3: eine Cannabis-Nacht wird bewertet")
+check((_g.get("verdict") or {}).get("key") == "nicht_bewertbar" and "mit „Cannabis“ markiert." in str((_g.get("verdict") or {}).get("reason")),
+      "0.72.1 3: eine Cannabis-Nacht wird bewertet")
 # Nur Anzeige: der Trainer (coach(), state) liest weight_for nicht zusaetzlich - kein neuer Eingang
 _src_all = (Path(__file__).resolve().parents[1] / "custom_components" / "intervals_icu" / "coach.py").read_text(encoding="utf-8")
 _fn_na = _src_all[_src_all.index("def night_after"):_src_all.index("def night_after") + 6000]
@@ -2075,6 +2081,207 @@ for _fn, _want in (("_trained_today", "_is_session"), ("_last_measured_night", "
           f"0.74.3: {_fn} fuehrt eine eigene 900-s-Grenze")
 check(">= 900" in _insp743.getsource(coach._is_session) if hasattr(coach, "_is_session") else False,
       "0.74.3: _is_session traegt die 900-s-Grenze nicht")
+
+# ── 0.74.4 · Die Nacht in Klartext (SKIZZE_0.74.4 §2, §3, §5) ─────────────────────────────
+# Reiner Text-Release: keine Regel, keine Schwelle, keine Zahl aendert sich. Die Wortstufe steht an
+# EINER Stelle (coach.z_word), das Panel rechnet keine Stufe.
+_zw744 = getattr(coach, "z_word", None)
+check(callable(_zw744), "0.74.4 §2: coach.z_word fehlt")
+
+
+def _zl744(z, raw=None, base=None):
+    try:
+        out = _zw744(z, raw, base)
+        return out if isinstance(out, dict) else {}
+    except Exception as exc:  # noqa: BLE001 - die Mutation soll gezaehlt werden, nicht abstuerzen
+        return {"level": "ERR", "text": repr(exc)}
+
+
+# Stufen an ihren Grenzen, halboffen, beide Seiten gespiegelt (Rohwert auf der Seite von z)
+for _zv, _lv744 in ((0.49, 0), (0.5, 1), (0.99, 1), (1.0, 2), (1.99, 2), (2.0, 3)):
+    for _s in (1, -1):
+        eq(_zl744(_s * _zv, 50 + _s, 50).get("level"), _lv744,
+           f"0.74.4 §2 z_word: |z| = {_zv} ({'+' if _s > 0 else '-'}) ist nicht Stufe {_lv744}")
+eq([_zl744(z, 50 + (1 if z > 0 else -1), 50).get("text") for z in (0.3, 0.7, -1.3, -2.4, 2.0)],
+   ["im Normalbereich", "etwas über deinem Normalwert", "deutlich unter deinem Normalwert",
+    "stark unter deinem Normalwert", "stark über deinem Normalwert"], "0.74.4 §2: die Wortstufen stehen nicht wörtlich")
+# unter/ueber aus dem Rohwert gegen die Basislinie, NICHT aus dem Vorzeichen von z (Ruhepuls: z ungünstig = negativ)
+eq(_zl744(-1.2, 59, 56).get("text"), "deutlich über deinem Normalwert", "0.74.4 §2 Ruhepuls: 59 gegen 56 ist nicht 'über'")
+eq(_zl744(1.2, 53, 56).get("text"), "deutlich unter deinem Normalwert", "0.74.4 §2 Ruhepuls Gegenprobe: 53 gegen 56 ist nicht 'unter'")
+# fehlen Rohwert oder Basislinie, gilt das Vorzeichen von z
+eq((_zl744(-0.7).get("text"), _zl744(0.7, None, 50).get("text"), _zl744(-0.7, 50, None).get("text")),
+   ("etwas unter deinem Normalwert", "etwas über deinem Normalwert", "etwas unter deinem Normalwert"),
+   "0.74.4 §2: ohne Rohwert oder Basislinie gilt nicht das Vorzeichen von z")
+eq(_zl744(None).get("level"), None, "0.74.4 §2: z_word ohne z erfindet eine Stufe")
+# die Grenzen sind die benannten Konstanten (SWC_SD, DAY_SWING_SD, HRV_DROP_SD), kein neuer Wert
+eq((coach.SWC_SD, getattr(coach, "DAY_SWING_SD", None), coach.HRV_DROP_SD), (0.5, 1.0, 2.0),
+   "0.74.4 §2: die Grenzen der Wortstufen sind nicht 0,5 / 1,0 / 2,0 aus den Konstanten")
+for _cn, _probe, _want in (("SWC_SD", 0.55, 0), ("DAY_SWING_SD", 1.1, 1), ("HRV_DROP_SD", 2.1, 2)):
+    _saved744 = getattr(coach, _cn, None)
+    if _saved744 is None:
+        check(False, f"0.74.4 §2: Konstante {_cn} fehlt")
+        continue
+    setattr(coach, _cn, _saved744 + 0.2)
+    eq(_zl744(_probe, 51, 50).get("level"), _want, f"0.74.4 §2: die Grenze {_cn} steht als Literal in z_word")
+    setattr(coach, _cn, _saved744)
+
+# §3.3 (1): die fuenf Saetze "Verglichen mit frueheren Einheiten dieser Art", je mit echten Daten
+_H744 = {
+    "hard": "Verglichen mit früheren Einheiten dieser Art: deutlich schlechter erholt als sonst.",
+    "costly": "Verglichen mit früheren Einheiten dieser Art: etwas schlechter erholt als sonst.",
+    "easy": "Verglichen mit früheren Einheiten dieser Art: besser erholt als sonst.",
+    "usual": "Verglichen mit früheren Einheiten dieser Art: so erholt wie sonst.",
+    "unknown": ("Verglichen mit früheren Einheiten dieser Art: noch kein Vergleich möglich – dafür braucht es "
+                "mindestens fünf ähnliche Einheiten mit gemessener Nacht."),
+}
+_cases744 = {
+    "usual": coach.night_after(base_data, hard_keys[-2]),
+    "costly": coach.night_after(night_history(last_damp=20.0), hard_keys[-1]),
+    "hard": coach.night_after(night_history(last_damp=25.0), hard_keys[-1]),
+    "easy": coach.night_after(night_history(last_damp=-6.0), hard_keys[-1]),
+    "unknown": _fr,
+}
+for _st, _pl in _cases744.items():
+    eq(_pl.get("state"), _st, f"0.74.4 §3.3 Fixture: der Fall {_st} traegt einen anderen Zustand")
+    eq(_pl.get("headline"), _H744[_st], f"0.74.4 §3.3 (1): der Satz fuer '{_st}' steht nicht wörtlich")
+_n_peers744 = min(r["n"] for r in _cases744["usual"]["reference"].values())
+eq(_cases744["usual"].get("detail"), f"Verglichen mit {_n_peers744} früheren Einheiten ähnlicher Last und Intensität.",
+   "0.74.4 §3.3: das detail der bewerteten Nacht ist nicht geblieben")
+
+# §3.3 (2): die fuenf Karten-Labels, je mit echten Daten
+_L744 = {
+    "verdaut": "Verglichen mit deinen normalen Nächten: gut verkraftet.",
+    "gekostet": "Verglichen mit deinen normalen Nächten: hat Kraft gekostet.",
+    "gekostet_delayed": "Verglichen mit deinen normalen Nächten: hat Kraft gekostet – erst in der zweiten Nacht sichtbar.",
+    "zu_viel": "Verglichen mit deinen normalen Nächten: war zu viel.",
+    "unbekannt": "Verglichen mit deinen normalen Nächten: keine Bewertung – die HRV der Nacht fehlt.",
+}
+_vcases744 = {
+    "verdaut": _mild.get("verdict") or {},
+    "gekostet": _cost.get("verdict") or {},
+    "gekostet_delayed": _tv,
+    "zu_viel": result.get("verdict") or {},
+    "unbekannt": coach.night_after(_Mh, "luecke").get("verdict") or {},
+}
+for _k, _v744 in _vcases744.items():
+    eq((_v744.get("key"), bool(_v744.get("delayed"))), ("gekostet" if _k == "gekostet_delayed" else _k, _k == "gekostet_delayed"),
+       f"0.74.4 §3.3 Fixture: der Fall {_k} traegt ein anderes Urteil")
+    eq(_v744.get("label"), _L744[_k], f"0.74.4 §3.3 (2): das Karten-Label fuer '{_k}' steht nicht wörtlich")
+
+# jedes der zwei Urteile traegt seine Vergleichsbasis - in jedem bewerteten Fall
+for _st, _pl in _cases744.items():
+    check(str(_pl.get("headline")).startswith("Verglichen mit früheren Einheiten dieser Art: ")
+          and str((_pl.get("verdict") or {}).get("label")).startswith("Verglichen mit deinen normalen Nächten: "),
+          f"0.74.4 §5: im Fall {_st} traegt ein Urteil seine Vergleichsbasis nicht")
+
+# zweite Nacht fehlt: "Zweite Nacht: kommt morgen"
+_last744 = coach.night_after(base_data, hard_keys[-1]).get("verdict") or {}
+eq((_last744.get("z_hrv_next"), _last744.get("note")), (None, "Zweite Nacht: kommt morgen"),
+   "0.74.4 §3.3: ohne zweite Nacht steht nicht 'Zweite Nacht: kommt morgen'")
+check((_vcases744["zu_viel"].get("note")) is None, "0.74.4 §3.3 Gegenprobe: mit zweiter Nacht steht 'kommt morgen'")
+
+# die Wortstufen reisen in der Payload: je Signal, an der Referenz, an beiden Naechten der Karte
+_u744 = _cases744["usual"]
+for _key, _e in (_u744.get("night") or {}).items():
+    _w = _e.get("word") or {}
+    _lvl = 0 if abs(_e["z"]) < 0.5 else 1 if abs(_e["z"]) < 1.0 else 2 if abs(_e["z"]) < 2.0 else 3
+    eq(_w.get("level"), _lvl, f"0.74.4 §2: die Stufe von {_key} passt nicht zu z {_e['z']}")
+    if _lvl:
+        check(("über" in str(_w.get("text"))) == (_e["value"] > _e["baseline"]),
+              f"0.74.4 §2: {_key} {_e['value']} gegen {_e['baseline']} traegt die falsche Seite ({_w.get('text')})")
+_rhr744 = (_u744.get("night") or {}).get("rhr") or {}
+check(_rhr744.get("z", 0) < 0 and _rhr744.get("value", 0) > _rhr744.get("baseline", 0) and "über" in str((_rhr744.get("word") or {}).get("text")),
+      f"0.74.4 §2 Ruhepuls in der Payload: hoher Ruhepuls (z ungünstig) nicht als 'über' ({_rhr744})")
+# Referenz: der uebliche Ruhepuls nach solchen Einheiten liegt HOEHER (z negativ) -> "über"
+_rref744 = (_u744.get("reference") or {}).get("rhr") or {}
+check(_rref744.get("mean", 0) <= -0.5 and "über" in str((_rref744.get("word") or {}).get("text")),
+      f"0.74.4 §3.4 Ruhepuls-Referenz: der uebliche hoehere Ruhepuls steht nicht als 'über' ({_rref744})")
+_href744 = (_u744.get("reference") or {}).get("hrv") or {}
+check(_href744.get("mean", 0) <= -0.5 and "unter" in str((_href744.get("word") or {}).get("text")),
+      f"0.74.4 §3.4 HRV-Referenz: die uebliche gedaempfte HRV steht nicht als 'unter' ({_href744})")
+_uv744 = _u744.get("verdict") or {}
+eq(_uv744.get("z_hrv_word"), (_u744["night"].get("hrv") or {}).get("word"), "0.74.4: die Karte traegt ein anderes Wort als die Werte-Zeile")
+_sd744 = (date.fromisoformat(_u744["night_date"]) + timedelta(days=1)).isoformat()
+eq(_uv744.get("z_hrv_next_word"), (coach._night_z(base_data, _sd744).get("hrv") or {}).get("word"),
+   "0.74.4: das Wort der zweiten Nacht kommt nicht aus ihrer eigenen Messung")
+
+# §3.2 nicht bewertbar: Satz aus Tag und Etikett, kein Gewicht im Text
+# (eigene Faelle: _a/_b sind weiter oben als Schleifen- und Budgetnamen wiederverwendet)
+_a = _tagged(_n1, "alkohol")
+_b = _tagged(_n2, "krank")
+eq(_a.get("headline"), "Diese Nacht zählt nicht.", "0.74.4 §3.2: headline 'Diese Nacht zählt nicht.' fehlt")
+eq(_a.get("detail"), f"Du hast den {_n1[8:10]}.{_n1[5:7]}. mit „Alkohol“ markiert. Das verfälscht die Nachtwerte, deshalb sagt "
+                     "die App nichts darüber, wie gut du die Einheit verkraftet hast.", "0.74.4 §3.2: detail steht nicht wörtlich")
+check(str(_b.get("detail")).startswith(f"Du hast den {_n2[8:10]}.{_n2[5:7]}. mit „Krank“ markiert."),
+   "0.74.4 §3.2: bei Etikett auf der zweiten Nacht nennt der Satz nicht deren Tag")
+_nl744 = coach._night_label(base_data, _n1)
+check(_nl744 is None, "0.74.4 §3.2 Gegenprobe: _night_label meldet eine Nacht ohne Etikett")
+_d744 = _cp.deepcopy(base_data); _dc.set_entry(_d744, _n1, "cannabis")
+eq(coach._night_label(_d744, _n1), {"day": f"{_n1[8:10]}.{_n1[5:7]}.", "label": "Cannabis"},
+   "0.74.4 §3.2: _night_label liefert nicht Tag und Etikett einzeln")
+
+# §3.3 Regel (fuer "Wie wird das bewertet?"): woertlich, Zahlen aus den Konstanten
+_RULE744 = ("Hier geht es darum, wie du die Einheit verkraftet hast – nicht darum, ob du heute trainieren kannst. "
+            "Verglichen wird deine HRV in den zwei Nächten nach der Einheit mit deinen letzten 60 Nächten. "
+            "Deutlich darunter (ab 1,0) oder beide Nächte etwas darunter (ab 0,5): war zu viel. Etwas darunter: hat Kraft gekostet. "
+            "Sonst: gut verkraftet. "
+            "Zusätzlich vergleicht die App mit früheren Einheiten ähnlicher Last – wie du nach solchen Einheiten sonst schläfst. "
+            "Die Zahl in Klammern sagt, wie weit du vom Normalwert weg bist; 1,0 ist die Schwankung an einem gewöhnlichen Tag. "
+            "Die Grenzen sind eine Festlegung, keine Messung. Der Trainer richtet sich nicht danach.")
+eq(_uv744.get("rule"), _RULE744, "0.74.4 §3.3: die Regel steht nicht wörtlich")
+for _cn, _new, _needle in (("NIGHT_TOO_MUCH_Z", -1.2, "Deutlich darunter (ab 1,2)"), ("NIGHT_DIGESTED_Z", -0.6, "etwas darunter (ab 0,6)"),
+                           ("DAY_SWING_SD", 1.3, "1,3 ist die Schwankung")):
+    _saved744 = getattr(coach, _cn, None)
+    setattr(coach, _cn, _new)
+    _rr744 = coach.night_verdict(-0.1, None).get("rule")
+    setattr(coach, _cn, _saved744)
+    check(_needle in str(_rr744), f"0.74.4 §3.3: die Zahl aus {_cn} steht als Literal in der Regel")
+check("Die Zahl in Klammern sagt, wie weit du vom Normalwert weg bist; 1,0 ist die Schwankung an einem gewöhnlichen Tag."
+      in str(_u744.get("caveat")), "0.74.4 §3.4: 'Wie das zu lesen ist' traegt den Satz zur Zahl nicht")
+
+# die alten Fachwoerter stehen in keinem Text der Nacht mehr (Backend-Seite; das Panel prueft test_panel_views)
+_all744 = list(_cases744.values()) + [_a, _b, coach.night_after(_Mh, "luecke"), coach.night_after(base_data, hard_keys[-1])]
+for _pl in _all744:
+    _v = _pl.get("verdict") or {}
+    _txt = " ".join(str(x) for x in (_pl.get("headline"), _pl.get("detail"), _pl.get("caveat"), _v.get("label"), _v.get("rule"),
+                                     _v.get("note"), _v.get("reason")))
+    for _bad in ("SD", "Gewicht", "misst nicht nur", "Erholung, nicht Bereitschaft", "davon", "Setzung"):
+        check(_bad not in _txt, f"0.74.4 §5: '{_bad}' steht noch in einem Nacht-Text ({_pl.get('state')})")
+
+# KEINE ZAHL AENDERT SICH: alle Zahlen und Schluessel der Urteile bitgenau wie 0.74.3
+def _nums744(pl):
+    v = pl.get("verdict") or {}
+    return {"available": pl.get("available"), "night_date": pl.get("night_date"), "state": pl.get("state"),
+            "load": pl.get("load"), "intensity": pl.get("intensity"),
+            "night": {k: {f: e.get(f) for f in ("value", "baseline", "z", "baseline_weighted", "unit", "label")}
+                      for k, e in (pl.get("night") or {}).items()},
+            "reference": {k: {f: r.get(f) for f in ("mean", "sd", "n")} for k, r in (pl.get("reference") or {}).items()},
+            "verdict": {f: v.get(f) for f in ("key", "z_hrv", "z_hrv_next", "delayed", "setting")}}
+
+
+# Regel 9: die Panel-Fixture der Nacht traegt, was der Erzeuger schreibt - jedes Wort aus z_word
+# (Werte-Zeilen: Rohwert gegen Basislinie; Referenz: die Seite des ueblichen Werts), Labels, Regel.
+_fxn = _fx[_fx.index("function night(kind) {"):_fx.index("function laps(kind)")]
+_rows744 = _re74.findall(r'value: ([\d.]+), baseline: ([\d.]+), z: (-?[\d.]+),\s*word: \{ level: (\d), text: "([^"]+)" \}', _fxn)
+check(len(_rows744) >= 3, f"0.74.4 Regel 9: zu wenige Werte-Zeilen mit Wort in der Fixture gefunden ({len(_rows744)})")
+for _val, _base, _zz, _lvl, _txt in _rows744:
+    eq(_zl744(float(_zz), float(_val), float(_base)), {"level": int(_lvl), "text": _txt},
+       f"0.74.4 Regel 9: Fixture-Wort zu z {_zz} ({_val} gegen {_base}) ist nicht das des Erzeugers")
+_dir744 = {k: d for k, _f, _l, d, _lab, _u in coach.NIGHT_FIELDS}
+_refs744 = _re74.findall(r'(hrv|rhr|sleep): \{ mean: (-?[\d.]+), sd: [\d.]+, n: \d+, word: \{ level: (\d), text: "([^"]+)" \}', _fxn)
+check(len(_refs744) == 3, f"0.74.4 Regel 9: die drei Referenz-Worte der Fixture nicht gefunden ({len(_refs744)})")
+_base_ref744 = {k: {"mean": float(m)} for k, m, _l, _t in _refs744}
+_made744 = coach._reference_words(_base_ref744) if hasattr(coach, "_reference_words") else {}
+for _k, _m, _lvl, _txt in _refs744:
+    eq(((_made744.get(_k) or {}).get("word")), {"level": int(_lvl), "text": _txt},
+       f"0.74.4 Regel 9: Fixture-Referenzwort {_k} ist nicht das des Erzeugers")
+check(all(f'"{_t}"' in _fxn for _t in (_L744["zu_viel"], _L744["verdaut"])), "0.74.4 Regel 9: die Karten-Labels der Fixture sind nicht die des Erzeugers")
+_fxrule = "".join(_re74.findall(r'"([^"]*)"', _fx[_fx.index("const NIGHT_RULE = "):_fx.index("\nconst NIGHT_NUMBER", _fx.index("const NIGHT_RULE = "))]))
+eq(_fxrule, _uv744.get("rule"), "0.74.4 Regel 9: die Regel der Fixture ist nicht die des Erzeugers")
+
+# Soll-Fingerabdruck gemessen an 4549bc3 (0.74.3) vor jeder Aenderung, ueber alle Faelle dieses Blocks
+_fp744 = hashlib.sha256(json.dumps([_nums744(p) for p in _all744], sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+eq(_fp744, "15e0850bfa1a6c77921156cafceae55ff9b3530a5d2fd1b9bad72f3d00d99767", "0.74.4: eine Zahl oder ein Urteil der Nacht hat sich gegen 0.74.3 bewegt")
 
 print(f"test_coach: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:

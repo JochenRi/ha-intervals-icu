@@ -206,6 +206,11 @@ function dShort(iso) {
   const d = new Date(iso + "T00:00:00");
   return `${WD[(d.getDay() + 6) % 7]} ${String(d.getDate()).padStart(2, "0")}.`;
 }
+/* 0.74.4: "TT.MM." - der Tag einer Nacht, wie ihn auch der Satz aus coach.night_after schreibt */
+function dDay(iso) {
+  const p = String(iso || "").slice(0, 10).split("-");
+  return p.length === 3 ? `${p[2]}.${p[1]}.` : "";
+}
 function dMed(iso) {
   if (!iso) return "–";
   const p = String(iso).slice(0, 10).split("-");
@@ -4690,16 +4695,17 @@ class IntervalsIcuPanel extends HTMLElement {
     // gekuerzt wird nur per CSS (.tnname), der volle Name steht im title.
     const nname = (name) => `<span class="tnname" title="${esc(name)}">${esc(name)}</span>`;
     const np = t.night_pending;
+    // 0.74.4 (SKIZZE_0.74.4 §3.1): Klartext, die Worte der Nacht kommen aus coach.night_after
     const pendLine = np ? `<p class="hint tnpend">${ico("info", C.tx2, 14)}<span>${np.reason === "missing"
-      ? `Für die Nacht nach der Einheit vom ${esc(dShort(np.date))} (${nname(np.name)}) gibt es keine Nachtwerte.`
-      : `Die Nacht nach der Einheit vom ${esc(dShort(np.date))} (${nname(np.name)}) liegt noch nicht vor – sie erscheint, sobald die Uhr die Nacht an intervals.icu geliefert hat.`}</span></p>` : "";
+      ? `Für die Nacht nach ${esc(dShort(np.date))} (${nname(np.name)}) hat deine Uhr keine Werte geliefert.`
+      : `Die Nacht nach ${esc(dShort(np.date))} (${nname(np.name)}) fehlt noch – sie kommt, sobald deine Uhr sie überträgt.`}</span></p>` : "";
     const measured = t.night && t.night.available ? `
-      <div class="tlabel">DIE LETZTE GEMESSENE NACHT NACH EINER EINHEIT — Erholung, nicht Bereitschaft</div>
+      <div class="tnq">Wie hast du die Einheit verkraftet?</div>
       ${t.night.activity_date ? `<p class="tnafter">nach ${esc(dShort(t.night.activity_date))} · ${nname(t.night.activity_name)}</p>` : ""}
       <p class="tnhead">${esc(t.night.headline)}</p>
       <p class="hint">${esc(t.night.detail)}</p>
       ${this._nightVerdict(t.night.verdict)}` : "";
-    const noneLine = t.night_none ? `<p class="hint">Keine Einheit in den letzten sieben Tagen – darum keine Nacht danach.</p>` : "";
+    const noneLine = t.night_none ? `<p class="hint">In den letzten sieben Tagen gab es keine Einheit – darum hier keine Nacht.</p>` : "";
     const night = pendLine || measured || noneLine ? `<div class="tnight">${pendLine}${measured}${noneLine}</div>` : "";
 
     return `
@@ -4715,7 +4721,7 @@ class IntervalsIcuPanel extends HTMLElement {
         <span>${esc(t.context_note)}</span></div>` : ""}
 
       <h3 class="secname">Woher das kommt
-        <span class="hint">— die letzten sieben Tage und die letzte gemessene Nacht nach einer Einheit</span></h3>
+        <span class="hint">— die letzten sieben Tage und wie du deine letzte Einheit verkraftet hast</span></h3>
       <div class="card pad">
         <div class="tweek">${bars}</div>
         <div class="tweeksum">${fmt(t.week_load)} Last in sieben Tagen · ${t.rest_days}
@@ -6531,7 +6537,10 @@ class IntervalsIcuPanel extends HTMLElement {
 
   /* L2 (0.69.0) · DIE BEWERTUNG DER NACHT - nur Anzeige, eine Setzung. Wort,
      z der Nacht danach und der zweiten Nacht, die Regel; alles aus der Payload
-     (coach.night_verdict). Ohne Bewertung kein Kasten. */
+     (coach.night_verdict). Ohne Bewertung kein Kasten.
+     0.74.4 (SKIZZE_0.74.4 §3.3): Wortstufe und Zahl je Nacht - die Wortstufe kommt fertig aus
+     coach.z_word (z_hrv_word / z_hrv_next_word), das Panel rechnet keine. Die Regel steht
+     zugeklappt unter "Wie wird das bewertet?", mit den Zahlen aus dem Backend. */
   _nightVerdict(v) {
     if (!v || !v.key) return "";
     // 0.72.1: "nicht bewertbar" (Etikett auf der Nacht) ist KEIN Urteil - eigener,
@@ -6541,18 +6550,20 @@ class IntervalsIcuPanel extends HTMLElement {
     const tone = TONE[v.key] || "held";
     const mark = tone === "unrated" ? ico("info", C.tx2, 18)
       : ico(tone === "worse" ? "warn" : "ok", tone === "worse" ? C.amber : C.green, 18);
-    const z1 = v.z_hrv != null ? `${sign(v.z_hrv, 1)} SD` : "–";
-    // 0.74.2 (B2): `note` beginnt selbst mit "zweite Nacht" - dann steht sie allein.
-    const second = v.z_hrv_next != null ? `zweite Nacht ${sign(v.z_hrv_next, 1)} SD`
-      : (v.note ? esc(v.note) : "zweite Nacht –");
+    const word = (w) => esc((w && w.text) || "");
+    const z1 = v.z_hrv != null ? `${word(v.z_hrv_word)} (${sign(v.z_hrv, 1)})` : "–";
+    // 0.74.2 (B2): `note` beginnt selbst mit "Zweite Nacht" - dann steht sie allein.
+    const second = v.z_hrv_next != null ? `Zweite Nacht: ${word(v.z_hrv_next_word)} (${sign(v.z_hrv_next, 1)})`
+      : (v.note ? esc(v.note) : "Zweite Nacht: –");
     // 0.74.2 (B1): bei "nicht bewertbar" sagt der Kopf darueber es schon - die
     // Karte traegt dann kein eigenes Label, nur die Zeile und die Regel.
     const head = v.key === "nicht_bewertbar" ? "" : `<b>${esc(v.label || "")}</b>`;
     return `<div class="nverdict ${tone}">
       ${mark}
       <div>${head}
-        <span>Nacht danach ${z1} · ${second}</span>
-        <span class="mut">${esc(v.rule || "")}</span></div></div>`;
+        <span>HRV in der Nacht danach: ${z1} · ${second}</span>
+        <details class="more"><summary>Wie wird das bewertet?</summary>
+          <p class="src">${esc(v.rule || "")}</p></details></div></div>`;
   }
 
   _nightBlock(a) {
@@ -6572,20 +6583,21 @@ class IntervalsIcuPanel extends HTMLElement {
       const delta = ref && ref.sd > 0 ? (entry.z - ref.mean) / ref.sd : null;
       const col = delta == null ? C.tx3 : delta <= -1 ? C.amber : delta >= 1 ? C.green : C.tx3;
       const dec = entry.unit === "h" ? 1 : 0;
-      const usual = ref ? `üblich nach solchen Einheiten ${sign(ref.mean, 1)} SD`
+      // 0.74.4 (SKIZZE_0.74.4 §3.4): Wortstufe (coach.z_word) und z; die Abweichung von der
+      // ueblichen Antwort steht nicht mehr als Zahl hier - sie steckt im Satz darueber.
+      const word = (w) => esc((w && w.text) || "");
+      const usual = ref ? `nach solchen Einheiten sonst: ${word(ref.word)} (${sign(ref.mean, 1)})`
                         : "zu wenige Vergleichsnächte";
       return `<div class="nrow">
         <span class="nlab"><b>${esc(entry.label)}</b>
           <em>deine Basislinie ${fmt(entry.baseline, dec)} ${esc(entry.unit)}</em></span>
         <span class="nval tn">${fmt(entry.value, dec)}<small>${esc(entry.unit)}</small></span>
-        <span class="nz tn" style="color:${col}">${sign(entry.z, 1)} SD</span>
-        <span class="nref">${esc(usual)}${
-          delta != null ? ` · diese Nacht ${sign(Math.round(delta * 10) / 10, 1)} SD davon` : ""}</span>
+        <span class="nref"><b class="nz" style="color:${col}">${word(entry.word)} (${sign(entry.z, 1)})</b> · ${usual}</span>
       </div>`;
     }).join("");
 
     return `<h3 class="secname">Die Nacht danach
-      <span class="hint">— ${esc(n.night_date || "")}, gegen deine eigene übliche Antwort auf Einheiten dieser Größe</span></h3>
+      <span class="hint">— Nacht zum ${esc(dDay(n.night_date))}, verglichen mit deinen normalen Nächten und mit früheren Einheiten dieser Art</span></h3>
       <div class="cmpverdict ${tone}">
         ${tone === "unrated" ? ico("info", C.tx2, 18)
           : ico(tone === "worse" ? "warn" : "ok", tone === "worse" ? C.amber : C.green, 18)}
@@ -7606,6 +7618,7 @@ ul.rides span.r{color:${C.tx3};white-space:nowrap}
 .tweeksum{color:${C.tx2};font-size:13px;margin-top:10px;padding-top:10px;border-top:1px solid ${C.line}}
 .tnight{margin-top:12px;padding-top:12px;border-top:1px solid ${C.line}}
 .tnhead{font-size:15px;font-weight:600;margin:2px 0 2px}
+.tnq{color:${C.tx2};font-size:13px;font-weight:600;margin-bottom:4px}
 .tnafter{color:${C.tx3};font-size:12px;margin:0 0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tnname{display:inline-block;max-width:100%;vertical-align:bottom;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tnpend{display:flex;gap:6px;align-items:flex-start;margin:0 0 8px}
@@ -7771,16 +7784,16 @@ details.bgfold>summary b,details.testfold>summary b{color:${C.tx};font-size:15px
 
 /* Die Nacht danach */
 .nightbox{background:${C.card2};border-radius:10px;padding:6px 14px 10px}
-.nrow{display:grid;grid-template-columns:1fr 92px 78px minmax(200px,1.2fr);gap:12px;
+.nrow{display:grid;grid-template-columns:1fr 92px minmax(260px,1.8fr);gap:12px;
   align-items:baseline;padding:9px 0;border-bottom:1px solid ${C.line}44}
 .nrow:last-of-type{border-bottom:none}
 .nlab b{font-size:14px}
 .nlab em{font-style:normal;display:block;color:${C.tx3};font-size:11.5px}
 .nval{font-size:19px;text-align:right}
 .nval small{font-size:12px;color:${C.tx3};margin-left:3px}
-.nz{font-size:14.5px;text-align:right}
+.nz{font-weight:600}
 .nref{color:${C.tx2};font-size:12.5px}
-@media(max-width:860px){.nrow{grid-template-columns:1fr 80px 70px}.nref{grid-column:1 / -1;margin-top:-4px}}
+@media(max-width:860px){.nrow{grid-template-columns:1fr 80px}.nref{grid-column:1 / -1;margin-top:-4px}}
 
 /* Blockvergleich */
 .cmppanel{cursor:zoom-in}
@@ -7823,6 +7836,7 @@ details.bgfold>summary b,details.testfold>summary b{color:${C.tx};font-size:15px
 .nverdict b{display:block;margin-bottom:2px}
 .nverdict.unrated,.cmpverdict.unrated{background:${C.card2};border:1px solid ${C.line}}
 .nverdict span{display:block;color:${C.tx2};font-size:13.5px}
+.nverdict details{margin-top:4px}
 .cmpgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:12px}
 .cmppanel{background:${C.card2};border-radius:10px;padding:8px 6px 4px}
 .cmplab{font-size:13px;font-weight:650;margin:0 0 2px 10px}

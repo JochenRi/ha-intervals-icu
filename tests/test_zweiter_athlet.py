@@ -508,6 +508,38 @@ check("Z9: Verlauf und Wochen stehen da", len(_pz.get("window_history") or []) =
 eq("Z9: keine Zahl des ersten Athleten in den neuen Teilen",
    leaks({k: _pz.get(k) for k in ("weeks_by_group", "window_history", "window_projection", "headline", "planned")}), [])
 
+
+print("\n=== Z10. 0.74.4 Die Nacht in Klartext: seine Wortstufen aus seiner Basislinie ===")
+# Eigene Lage: HRV um 70 ms, Ruhepuls um 47 bpm, eigener Kalender weit vor dem Stichtag des ersten.
+# Nach der Einheit: HRV 60 (unter), Ruhepuls 52 (ueber) - die Worte muessen aus SEINER Basislinie kommen.
+_dn = importer.empty_data("i2")
+_start10 = _dtz.date(2026, 6, 1)
+for _i in range(70):
+    _day10 = (_start10 + _dtz.timedelta(days=_i)).isoformat()
+    _dn["wellness"][_day10] = {"hrv": 70 + (_i % 5) - 2, "restingHR": 47 + (_i % 3) - 1, "sleepSecs": 27000 + (_i % 4) * 600}
+_act10 = (_start10 + _dtz.timedelta(days=68)).isoformat()
+_night10 = (_start10 + _dtz.timedelta(days=69)).isoformat()
+_dn["activities"]["z10"] = {"start_date_local": _act10 + "T18:00:00", "type": "Ride", "name": "Abendrunde",
+                            "icu_training_load": 95, "icu_intensity": 85, "moving_time": 5400}
+_dn["wellness"][_night10].update({"hrv": 60, "restingHR": 52})
+ws._pick = lambda hass, athlete_id: FakeCoordinator(_dn)
+_n10 = FakeConn(); ws.websocket_night(None, _n10, {"id": 21, "activity_id": "z10"})
+_p10 = (_n10.results or [{}])[0]
+eq("Z10: der Befehl laeuft ohne Fehler", _n10.errors, [])
+_h10 = (_p10.get("night") or {}).get("hrv") or {}
+_r10 = (_p10.get("night") or {}).get("rhr") or {}
+check("Z10: seine Basislinie ist seine (HRV um 70, Ruhepuls um 47)",
+      68 <= (_h10.get("baseline") or 0) <= 72 and 46 <= (_r10.get("baseline") or 0) <= 48)
+check("Z10: HRV 60 gegen seine ~70 steht als 'unter deinem Normalwert'", "unter deinem Normalwert" in str((_h10.get("word") or {}).get("text")))
+check("Z10: Ruhepuls 52 gegen seine ~47 steht als 'über deinem Normalwert' (z ungünstig, Wort aus dem Rohwert)",
+      (_r10.get("z") or 0) < 0 and "über deinem Normalwert" in str((_r10.get("word") or {}).get("text")))
+check("Z10: die Karte traegt dasselbe Wort wie die Werte-Zeile (und es gibt eins)",
+      _h10.get("word") is not None and (_p10.get("verdict") or {}).get("z_hrv_word") == _h10.get("word"))
+check("Z10: das Karten-Label nennt seine Vergleichsbasis",
+      str((_p10.get("verdict") or {}).get("label")).startswith("Verglichen mit deinen normalen Nächten: "))
+eq("Z10: ohne zweite Nacht 'Zweite Nacht: kommt morgen'", (_p10.get("verdict") or {}).get("note"), "Zweite Nacht: kommt morgen")
+eq("Z10: keine Zahl des ersten Athleten in der Nacht", leaks(_p10), [])
+
 print(f"\ntest_zweiter_athlet: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

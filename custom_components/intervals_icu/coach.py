@@ -116,6 +116,9 @@ DFA_ANAEROBIC = 0.5        # ROGERS
 # DECOUPLING_GOOD lives in const.py - it is shown in the panel, so it may exist
 # exactly once in the whole house (docs/ausbau.md F4).
 SWC_SD = 0.5               # PLEWS/ALTINI: smallest worthwhile change
+# 0.74.4 (Skizze §2): gewöhnliche Tagesschwankung, kein neuer Wert - eine Standardabweichung.
+# Grenze der Wortstufe "etwas" -> "deutlich" in z_word und die Zahl im Satz zur Klammer.
+DAY_SWING_SD = 1.0
 
 
 def _f(value: Any) -> float | None:
@@ -1376,6 +1379,46 @@ NIGHT_FIELDS = (
 )
 
 
+def z_word(z: float | None, raw: float | None = None, baseline: float | None = None) -> dict[str, Any]:
+    """DIE WORTSTUFE EINES z-WERTS - die eine Stelle (0.74.4, Skizze §2). Das Panel rechnet keine.
+
+    Stufe aus |z|, halboffen, Grenzen aus den Konstanten:
+      |z| < SWC_SD (0,5)                  -> 0 "im Normalbereich"
+      SWC_SD <= |z| < DAY_SWING_SD (1,0)  -> 1 "etwas {unter|über} deinem Normalwert"
+      DAY_SWING_SD <= |z| < HRV_DROP_SD   -> 2 "deutlich ..."
+      |z| >= HRV_DROP_SD (2,0)            -> 3 "stark ..."
+    {unter|über} kommt aus dem Rohwert gegen die Basislinie, NICHT aus dem Vorzeichen von z:
+    z ist in NIGHT_FIELDS nach "günstig" gedreht (ein Ruhepuls über der Basislinie hat z < 0).
+    """
+    if z is None:
+        return {"level": None, "text": None}
+    size = abs(z)
+    if size < SWC_SD:
+        return {"level": 0, "text": "im Normalbereich"}
+    level = 1 if size < DAY_SWING_SD else 2 if size < HRV_DROP_SD else 3
+    if raw is not None and baseline is not None and raw != baseline:
+        above = raw > baseline
+    else:
+        # Fehlen Rohwert oder Basislinie (oder liegen sie gleich), gilt das Vorzeichen von z.
+        above = z > 0
+    step = ("etwas", "deutlich", "stark")[level - 1]
+    return {"level": level, "text": f"{step} {'über' if above else 'unter'} deinem Normalwert"}
+
+
+def _reference_words(reference: dict[str, Any]) -> dict[str, Any]:
+    """Die Wortstufe des ÜBLICHEN Werts nach solchen Einheiten (0.74.4, Skizze §3.4).
+
+    Die Referenz ist ein mittleres z, ohne eigenen Rohwert. Die Seite gegenüber der Basislinie
+    steckt trotzdem darin: in NIGHT_FIELDS ist z = Richtung × (Rohwert - Basislinie) / Streuung,
+    also liegt der übliche Rohwert auf der Seite Richtung × mittleres z. Das wird z_word als
+    Rohwert-Abstand zur Basislinie 0 übergeben - dieselbe Regel "Rohwert gegen Basislinie" wie
+    in den Werte-Zeilen, nicht das Vorzeichen von z (beim Ruhepuls wären die sonst verdreht).
+    """
+    direction = {key: sign for key, _field, _log, sign, _label, _unit in NIGHT_FIELDS}
+    return {key: {**ref, "word": z_word(ref["mean"], direction.get(key, 1) * ref["mean"], 0.0)}
+            for key, ref in reference.items()}
+
+
 def _night_z(data: dict[str, Any], day: str) -> dict[str, Any]:
     """Each wellness field of one night, as a z-score against the 60 days before."""
     wellness = data.get("wellness") or {}
@@ -1397,12 +1440,15 @@ def _night_z(data: dict[str, Any], day: str) -> dict[str, Any]:
         if z is None:
             continue
         scale = 1 / 3600 if field == "sleepSecs" else 1
+        base_raw = math.exp(band.base) if use_log else band.base
         entry = {
             "label": label, "unit": unit,
             "value": round(current * scale, 2),
-            "baseline": round((math.exp(band.base) if use_log else band.base) * scale, 2),
+            "baseline": round(base_raw * scale, 2),
             "z": round(z, 2),
             "baseline_weighted": band.weighted,
+            # 0.74.4: die Wortstufe zum gezeigten z, Seite aus Rohwert gegen Basislinie
+            "word": z_word(round(z, 2), current, base_raw),
         }
         if (note := _fallback_note(band)) is not None:
             entry["baseline_note"] = note
@@ -1423,38 +1469,62 @@ def _night_z(data: dict[str, Any], day: str) -> dict[str, Any]:
 NIGHT_DIGESTED_Z = -0.5
 NIGHT_TOO_MUCH_Z = -1.0
 NIGHT_SECOND_Z = -0.5
+# 0.74.4 (Skizze §3.3, Wortlaut von Johannes freigegeben 26.09.): jedes Label nennt seine
+# Vergleichsbasis - "deine normalen Nächte" (L2) gegen "frühere Einheiten dieser Art" (headline).
 NIGHT_VERDICT_WORDS = {
-    "verdaut": "verdaut — die Nacht danach lag in deinem Band",
-    "gekostet": "hat gekostet — die Nacht danach lag unter deinem Band",
-    "gekostet_delayed": "hat gekostet, verzögert — die Nacht danach lag im Band, die zweite darunter",
-    "zu_viel": "zu viel — deutlich unter dem Band, oder beide Nächte darunter",
-    "unbekannt": "keine Bewertung — HRV der Nacht danach fehlt",
-    "rule": ("Setzung: zu viel unter −1,0 SD oder wenn beide Nächte unter −0,5 SD liegen; gekostet "
-             "unter −0,5 SD (verzögert, wenn erst die zweite Nacht darunter liegt); verdaut sonst — "
-             "gegen deine Basislinie der 60 Nächte davor, gewichtet. Nur Anzeige: der Trainer liest "
-             "diese Bewertung nicht."),
-    "no_second": "zweite Nacht liegt noch nicht vor",
+    "verdaut": "Verglichen mit deinen normalen Nächten: gut verkraftet.",
+    "gekostet": "Verglichen mit deinen normalen Nächten: hat Kraft gekostet.",
+    "gekostet_delayed": "Verglichen mit deinen normalen Nächten: hat Kraft gekostet – erst in der zweiten Nacht sichtbar.",
+    "zu_viel": "Verglichen mit deinen normalen Nächten: war zu viel.",
+    "unbekannt": "Verglichen mit deinen normalen Nächten: keine Bewertung – die HRV der Nacht fehlt.",
+    "no_second": "Zweite Nacht: kommt morgen",
 }
+NIGHT_UNRATED_HEADLINE = "Diese Nacht zählt nicht."
+_PEER_BASIS = "Verglichen mit früheren Einheiten dieser Art:"
 
 
-def _night_label(data: dict[str, Any], day: str) -> str | None:
-    """Der Grund-Satz, wenn die Nacht zum Morgen `day` ein Etikett mit Gewicht < 1
-    traegt (0.72.1) - sonst None. Das Gewicht kommt aus day_context.weight_for,
-    dem einen Erzeuger; Tag D steht fuer die Nacht, die am Morgen D endet."""
+def _de1(value: float) -> str:
+    """Eine Grenze als Betrag mit einer Nachkommastelle und Komma (1.0 -> "1,0")."""
+    return f"{abs(value):.1f}".replace(".", ",")
+
+
+def _night_number_sentence() -> str:
+    """Der Satz zur Zahl in Klammern - eine Stelle für Regel und "Wie das zu lesen ist" (Skizze §3.3/§3.4)."""
+    return (f"Die Zahl in Klammern sagt, wie weit du vom Normalwert weg bist; {_de1(DAY_SWING_SD)} ist die "
+            "Schwankung an einem gewöhnlichen Tag.")
+
+
+def night_rule_text() -> str:
+    """Die Regel für "Wie wird das bewertet?" (Skizze §3.3), die Zahlen aus den Konstanten -
+    beim Aufruf gelesen, damit Text und Regel nicht auseinanderlaufen können."""
+    return ("Hier geht es darum, wie du die Einheit verkraftet hast – nicht darum, ob du heute trainieren kannst. "
+            "Verglichen wird deine HRV in den zwei Nächten nach der Einheit mit deinen letzten 60 Nächten. "
+            f"Deutlich darunter (ab {_de1(NIGHT_TOO_MUCH_Z)}) oder beide Nächte etwas darunter "
+            f"(ab {_de1(NIGHT_DIGESTED_Z)}): war zu viel. Etwas darunter: hat Kraft gekostet. "
+            "Sonst: gut verkraftet. "
+            "Zusätzlich vergleicht die App mit früheren Einheiten ähnlicher Last – wie du nach solchen Einheiten "
+            "sonst schläfst. "
+            f"{_night_number_sentence()} "
+            "Die Grenzen sind eine Festlegung, keine Messung. Der Trainer richtet sich nicht danach.")
+
+
+def _night_label(data: dict[str, Any], day: str) -> dict[str, str] | None:
+    """Tag (TT.MM.) und Etikett einzeln, wenn die Nacht zum Morgen `day` ein Etikett
+    mit Gewicht < 1 traegt (0.72.1; 0.74.4: kein Satz, kein Gewicht im Text) - sonst
+    None. Das Gewicht kommt aus day_context.weight_for, dem einen Erzeuger; Tag D
+    steht fuer die Nacht, die am Morgen D endet."""
     weight = day_context.weight_for(data, day)
     if weight >= 1.0:
         return None
     entry = day_context.entry_for(data, day) or {}
     label = day_context.TAGS.get(str(entry.get("tag") or ""), {}).get("label") or "ohne Namen"
-    w = f"{weight:g}".replace(".", ",")
-    return (f"Nacht zum {day[8:10]}.{day[5:7]}. mit Etikett {label}, Gewicht {w} — "
-            "sie misst nicht nur die Einheit")
+    return {"day": f"{day[8:10]}.{day[5:7]}.", "label": label}
 
 
 def night_verdict(z_first: float | None, z_second: float | None) -> dict[str, Any]:
     """Die eine Regel der Nacht-Bewertung (L2) - total ueber ihre Eingaben."""
     out: dict[str, Any] = {"z_hrv": z_first, "z_hrv_next": z_second, "setting": True,
-                           "rule": NIGHT_VERDICT_WORDS["rule"], "delayed": False,
+                           "rule": night_rule_text(), "delayed": False,
                            "note": None if z_second is not None else NIGHT_VERDICT_WORDS["no_second"]}
     second_low = z_second is not None and z_second < NIGHT_SECOND_Z
     if z_first is None:
@@ -1524,6 +1594,7 @@ def night_after(data: dict[str, Any], activity_id: str) -> dict[str, Any]:
         if len(values) >= 5:
             mean_z, spread = _band(values)
             reference[key] = {"mean": round(mean_z, 2), "sd": round(spread, 2), "n": len(values)}
+    reference = _reference_words(reference)
 
     # the verdict: how this night compares with the usual answer, where known
     # Weighting, not a plain average. The studies that establish this reading
@@ -1540,18 +1611,20 @@ def night_after(data: dict[str, Any], activity_id: str) -> dict[str, Any]:
     if marks:
         total = sum(weight for _, weight in marks)
         mean_mark = sum(value * weight for value, weight in marks) / total
+        # 0.74.4 (Skizze §3.3 (1)): der Satz nennt seine Vergleichsbasis; die Grenzen bleiben
         if mean_mark <= -1.5:
-            state, headline = "hard", "Die Nacht fiel deutlich gedämpfter aus als sonst nach solchen Einheiten."
+            state, headline = "hard", f"{_PEER_BASIS} deutlich schlechter erholt als sonst."
         elif mean_mark <= -0.7:
-            state, headline = "costly", "Die Nacht fiel etwas gedämpfter aus als sonst nach solchen Einheiten."
+            state, headline = "costly", f"{_PEER_BASIS} etwas schlechter erholt als sonst."
         elif mean_mark >= 1.0:
-            state, headline = "easy", "Die Nacht fiel besser aus als sonst nach solchen Einheiten."
+            state, headline = "easy", f"{_PEER_BASIS} besser erholt als sonst."
         else:
-            state, headline = "usual", "Die Nacht sah aus wie sonst nach solchen Einheiten."
+            state, headline = "usual", f"{_PEER_BASIS} so erholt wie sonst."
         detail = (f"Verglichen mit {min(r['n'] for r in reference.values())} früheren Einheiten "
                   f"ähnlicher Last und Intensität.")
     else:
-        state, headline = "unknown", "Kein Vergleich möglich."
+        state, headline = "unknown", (f"{_PEER_BASIS} noch kein Vergleich möglich – dafür braucht es "
+                                      "mindestens fünf ähnliche Einheiten mit gemessener Nacht.")
         detail = ("Es liegen noch zu wenige frühere Einheiten ähnlicher Last mit gemessener "
                   "Folgenacht vor — mindestens fünf werden gebraucht.")
 
@@ -1560,19 +1633,25 @@ def night_after(data: dict[str, Any], activity_id: str) -> dict[str, Any]:
     second_day = (date.fromisoformat(night_day) + timedelta(days=1)).isoformat()
     second = _night_z(data, second_day)
     verdict = night_verdict((night.get("hrv") or {}).get("z"), (second.get("hrv") or {}).get("z"))
+    # 0.74.4: die Worte der Karte sind die Worte der Werte-Zeilen (dieselbe Messung, z_word)
+    verdict["z_hrv_word"] = (night.get("hrv") or {}).get("word")
+    verdict["z_hrv_next_word"] = (second.get("hrv") or {}).get("word")
 
     # 0.72.1 (Skizze 1, Vorlage L2 vom 24.09.): TRAEGT DIE BEWERTETE NACHT EIN
     # ETIKETT (Gewicht < 1 - erste ODER zweite Nacht), misst sie nicht nur die
     # Einheit: kein Urteil, weder L2 noch der Vergleich mit frueheren Einheiten.
     # Die Rohwerte (z der Naechte, Referenz) bleiben stehen. Das Etikett am Tag
     # der Einheit selbst (die Nacht DAVOR) spielt hier keine Rolle.
-    why = _night_label(data, night_day) or _night_label(data, second_day)
-    if why:
+    tag = _night_label(data, night_day) or _night_label(data, second_day)
+    if tag:
+        # 0.74.4 (Skizze §3.2): der markierte Tag (erste oder zweite Nacht) und das Etikett, kein Gewicht
+        why = (f"Du hast den {tag['day']} mit „{tag['label']}“ markiert. Das verfälscht die Nachtwerte, "
+               "deshalb sagt die App nichts darüber, wie gut du die Einheit verkraftet hast.")
+        # label bleibt fuer andere Leser in der Payload; die Karte zeigt es nicht (0.74.2)
         verdict = {**verdict, "key": "nicht_bewertbar", "delayed": False, "reason": why,
-                   "label": f"nicht bewertbar — {why}"}
-        state, headline = "unrated", f"Nicht bewertbar: {why}."
-        detail = ("Die Werte der Nacht stehen darunter, ein Urteil über die Einheit fällt weg — "
-                  "das Etikett sagt, dass noch etwas anderes auf die Nacht gewirkt hat.")
+                   "label": NIGHT_UNRATED_HEADLINE}
+        state, headline = "unrated", NIGHT_UNRATED_HEADLINE
+        detail = why
 
     return {
         "available": True,
@@ -1590,7 +1669,8 @@ def night_after(data: dict[str, Any], activity_id: str) -> dict[str, Any]:
             "Zusammenhang zwischen Last und HRV-Änderung ist glockenförmig, nicht gerade. "
             "Eine sehr lockere und eine sehr harte Einheit können beide eine unauffällige "
             "Nacht hinterlassen — aus entgegengesetzten Gründen. Und es bleibt die "
-            "Nachtmessung der Uhr, nicht die validierte Morgenmessung im Liegen."
+            "Nachtmessung der Uhr, nicht die validierte Morgenmessung im Liegen. "
+            + _night_number_sentence()
         ),
     }
 

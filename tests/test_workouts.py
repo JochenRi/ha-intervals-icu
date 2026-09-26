@@ -922,6 +922,9 @@ _NOT_FOR_RAMP = {
     # der gesteuerten Familien; der Stufentest traegt sein Protokoll (`ramp_protocol`),
     # keine Steuerung - die Karte prueft das Feld mit `|| {}`.
     "steering_source",
+    # Seit 0.74.4: `entry.word` ist die Wortstufe einer Werte-Zeile in "Die Nacht danach"
+    # (_nightBlock, coach.z_word) - wie label/unit/value/z dort kein Feld der Trainer-Karte.
+    "word",
 }
 _card = W.scaled(W.BY_KEY["ramp_test"], 200.0, 160, None, _CURVE, _BLOCKS, None, None, _GA_N2)
 for _field in sorted(_panel_fields - _NOT_FOR_RAMP):
