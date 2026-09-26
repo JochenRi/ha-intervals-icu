@@ -1411,8 +1411,10 @@ def fit_for(family_key: str, state: str, intensity: float,
     # a second hard day inside the week downgrades, it does not hide
     if verdict == "ok" and intensity >= 80 and hard_days_last_7 >= 2:
         verdict = "maybe"
-        reason = ("Zwei harte Tage liegen schon in dieser Woche. Zwei sind der Standard "
-                  "für Wochen dieser Größe; ein dritter ist die Ausnahme, nicht die Regel.")
+        # 0.73.2 (T2): gezaehlt wird rollierend im Fenster des bewerteten Tags,
+        # nicht in der Kalenderwoche.
+        reason = ("Zwei harte Tage liegen schon in den sechs Tagen davor. Zwei in sieben Tagen "
+                  "sind der Standard; ein dritter ist die Ausnahme, nicht die Regel.")
     else:
         reason = "" if verdict == "ok" else FIT_REASON.get(state, "")
     # The protocol tests are blocked outside a green state for a reason that is

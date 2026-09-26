@@ -111,7 +111,8 @@ hard_capped = [e for e in capped if e["intensity"] >= 80]
 check(hard_capped, "4 zwei harte Tage: harte Einheiten verschwunden statt abgestuft")
 check(all(e["fit"] == "maybe" for e in hard_capped),
       "4 zwei harte Tage: dritter harter Tag unbesehen empfohlen")
-check(any("Standard für Wochen" in (e["fit_reason"] or "") for e in hard_capped),
+# 0.73.2 umgestellt (T2): "Standard für Wochen" -> "Zwei in sieben Tagen sind der Standard"
+check(any("Zwei in sieben Tagen sind der Standard" in (e["fit_reason"] or "") for e in hard_capped),
       "4 zwei harte Tage: Begründung nennt die Regel nicht")
 
 # --- 5  the athlete's own numbers ---------------------------------------------

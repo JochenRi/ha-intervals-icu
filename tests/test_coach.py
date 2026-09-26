@@ -1711,6 +1711,114 @@ _rd31 = _an.readiness(_g31, today=_d31)
 check("overall" in _rd31 and _rd31.get("components"), "0.73.1 2.1: readiness verliert Punkte oder overall")
 check("budget" not in _rd31, "0.73.1 2.1: readiness traegt noch das Feld budget ohne Leser")
 
+
+# --- 0.73.2 · T1 ein bewerteter Tag fuer alle Zaehler (Skizze 0.73.2) -----------
+def _live732(trained=True):
+    """Live-Fall 26.09.: harte Tage So 20. und Fr 25., am Sa 26. trainiert (unter IF 80)."""
+    d = build()
+    d["activities"]["so20"] = {"id": "so20", "start_date_local": day(-6) + "T09:00:00", "type": "Ride",
+                              "moving_time": 5400, "icu_intensity": 86, "icu_training_load": 90}
+    d["activities"]["fr25"] = {"id": "fr25", "start_date_local": day(-1) + "T09:00:00", "type": "Ride",
+                              "moving_time": 4000, "icu_intensity": 92, "icu_training_load": 75}
+    if trained:
+        d["activities"]["sa26"] = {"id": "sa26", "start_date_local": day(0) + "T09:00:00", "type": "Ride",
+                                  "moving_time": 3600, "icu_intensity": 70, "icu_training_load": 50}
+    return d
+_jd = getattr(coach, "judged_day", None)
+check(callable(_jd), "0.73.2 T1: coach.judged_day fehlt")
+_L = _live732()
+if callable(_jd):
+    eq(_jd(_L), (day(1), True), "0.73.2 T1: trainiert -> der bewertete Tag ist morgen")
+    eq(_jd(_live732(trained=False)), (day(0), False), "0.73.2 T1: nicht trainiert -> heute")
+    eq(coach._ceiling_budget(_L, "ready")[2], _jd(_L)[0], "0.73.2 T1: _ceiling_budget liest den Tag aus judged_day")
+_hd3 = lambda d, dd: coach._hard_days_recent(d, 7, dd)
+try:
+    eq((_hd3(_L, day(0)), _hd3(_L, day(1))), (2, 1), "0.73.2 T1 Live-Fall: heute-Fenster 2, morgen-Fenster 1")
+    # Grenzfall: day-6 zaehlt, day-7 nicht
+    eq(_hd3(_L, day(0)), 2, "0.73.2 T1 Grenzfall: harter Tag genau am Tag day-6 zaehlt")
+    eq(_hd3(_L, day(1)), 1, "0.73.2 T1 Grenzfall: harter Tag am Tag day-7 zaehlt nicht")
+    # nach oben begrenzt: ein harter Tag NACH dem bewerteten Tag zaehlt nicht
+    eq(_hd3(_L, day(-2)), 1, "0.73.2 T1: das Fenster endet am bewerteten Tag")
+except TypeError as _e:
+    check(False, f"0.73.2 T1: _hard_days_recent nimmt keinen Tag ({_e})")
+# heute-Modus unveraendert gegenueber 0.73.1 (Gegenprobe gleiche Zahl wie die alte Regel)
+_H = _live732(trained=False)
+def _alt_hard(d):
+    order = sorted(d["wellness"]); cutoff = (date.fromisoformat(order[-1]) - timedelta(days=6)).isoformat()
+    return len({str(a.get("start_date_local") or "")[:10] for a in d["activities"].values()
+                if str(a.get("start_date_local") or "")[:10] >= cutoff and (a.get("icu_intensity") or 0) >= 80})
+eq(coach.assessment(_H)["hard_days_last_7"], _alt_hard(_H), "0.73.2 T1 Gegenprobe: heute-Modus zaehlt wie 0.73.1")
+eq(coach.assessment(_L)["hard_days_last_7"], 1, "0.73.2 T1: assessment zaehlt fuer den bewerteten Tag (morgen)")
+# alle vier Aufrufer uebergeben den bewerteten Tag
+import re as _re732
+_ws732 = (Path(__file__).resolve().parents[1] / "custom_components" / "intervals_icu" / "websocket.py").read_text(encoding="utf-8")
+_co732 = (Path(__file__).resolve().parents[1] / "custom_components" / "intervals_icu" / "coach.py").read_text(encoding="utf-8")
+_calls = _re732.findall(r"_hard_days_recent\(([^)]*)\)", _ws732) + _re732.findall(r"(?<!def )_hard_days_recent\(([^)]*)\)", _co732)
+_calls = [c for c in _calls if not c.startswith("data: ")]
+check(len(_calls) >= 5 and all(len([x for x in c.split(",") if x.strip()]) == 3 for c in _calls),
+      f"0.73.2 T1: ein Aufrufer uebergibt den Tag nicht: {_calls}")
+check("judged_day(" in _ws732, "0.73.2 T1: websocket liest den Tag nicht aus judged_day")
+# je Handler: das dritte Argument ist GENAU der Name, den judged_day(...) dort liefert
+_hits732 = 0
+for _fn in [n for n in _ast2.walk(_ast2.parse(_ws732)) if isinstance(n, _ast2.FunctionDef)]:
+    _from_jd = set()
+    for _n in _ast2.walk(_fn):
+        if isinstance(_n, _ast2.Assign) and isinstance(_n.value, _ast2.Call) and getattr(_n.value.func, "attr", "") == "judged_day":
+            for _t in _n.targets:
+                for _e in (_t.elts if isinstance(_t, _ast2.Tuple) else [_t]):
+                    if isinstance(_e, _ast2.Name):
+                        _from_jd.add(_e.id)
+    for _n in _ast2.walk(_fn):
+        if isinstance(_n, _ast2.Call) and getattr(_n.func, "attr", "") == "_hard_days_recent":
+            _hits732 += 1
+            _a3 = _n.args[2] if len(_n.args) >= 3 else None
+            check(isinstance(_a3, _ast2.Name) and _a3.id in _from_jd,
+                  f"0.73.2 T1: {_fn.name} uebergibt nicht den Tag aus judged_day")
+eq(_hits732, 3, "0.73.2 T1 Treffer: drei Aufrufe in websocket gefunden")
+# Stufe VO2max morgen nicht herabgesetzt (1 harter Tag), heute schon (2)
+_vo = next(e for e in workouts.LIBRARY if e["key"] == "vo2_4x4")
+_fit = lambda n: workouts.suggest("ready", ftp=250, budget=500, hard_days_last_7=n)
+_v1 = next((x for x in _fit(1) if x.get("family") == "vo2max"), {})
+_v2 = next((x for x in _fit(2) if x.get("family") == "vo2max"), {})
+eq((_v1.get("fit"), _v2.get("fit")), ("ok", "maybe"), "0.73.2 Live: VO2max morgen (1) nicht herabgesetzt, bei 2 schon")
+# T2 der Satz im Katalog
+check((_v2.get("fit_reason") or "").startswith("Zwei harte Tage liegen schon in den sechs Tagen davor. Zwei in sieben Tagen sind der Standard;"),
+      f"0.73.2 T2: Satz workouts: {_v2.get('fit_reason')!r}")
+check("in dieser Woche" not in (_v2.get("fit_reason") or ""), "0.73.2 T2: 'in dieser Woche' steht noch")
+# T2 Begruendung im Zustandsblock: heute-Modus mit 2 harten Tagen
+_st_saved732 = coach.state
+try:
+    coach.state = lambda data, **kw: {"state": "ready", "label": "im Normalbereich", "detail": "", "infection_suspected": False}
+    _rs_h = [r for r in coach.assessment(_H)["reasons"] if "harte" in r["weil"]]
+    _rs_m = [r for r in coach.assessment(_L)["reasons"] if "harte" in r["weil"]]
+finally:
+    coach.state = _st_saved732
+eq([r["weil"] for r in _rs_h], ["2 harte Tage in den sechs Tagen vor heute"], "0.73.2 T2: Titel der Begruendung (heute)")
+check(bool(_rs_h) and _rs_h[0]["text"].endswith("— heute spricht das für Umfang.")
+      and _rs_h[0]["text"].startswith("Im Dreizonenmodell tragen 75–80 % der Einheiten"),
+      "0.73.2 T2: Text der Begruendung (heute), Rest unveraendert")
+eq(_rs_m, [], "0.73.2 Live: morgen (1 harter Tag) entfaellt die Begruendung")
+# T1 recovery_offered: bewerteter Tag, chronischer Schnitt aus week_budget
+_ro = coach.recovery_offered(_L)
+eq(_ro["hard_days_last_7"], 1, "0.73.2 T1: recovery_offered zaehlt fuer den bewerteten Tag")
+_wb = coach._ceiling_budget(_L, coach.state(_L)["state"])[0] or {}
+eq(_ro["chronic_daily_load"], _wb.get("chronic"), "0.73.2 T1: chronischer Schnitt = week_budget-chronic")
+check(any(m == "1 harter Tag in den sechs Tagen vor morgen" for m in _ro["missing"]),
+      f"0.73.2 T2: recovery_offered-Satz: {_ro['missing']}")
+check(any(m.endswith("in den sechs Tagen vor heute") for m in coach.recovery_offered(_H)["missing"]),
+      "0.73.2 T2: recovery_offered heute-Satz")
+# quiet-Fenster relativ zum bewerteten Tag: die RECOVERY_QUIET_DAYS Tage DAVOR
+_series = {p["date"]: p["load"] for p in _an.daily_load(_L)}
+_q = [(_series.get(day(1 - k)) or 0.0) for k in range(1, const.RECOVERY_QUIET_DAYS + 1)]
+eq(_ro["recent_daily_load"], round(sum(_q) / len(_q), 1), "0.73.2 T1: ruhige Tage = die Tage vor dem bewerteten Tag")
+_sH = {p["date"]: p["load"] for p in _an.daily_load(_H)}
+_qH = [(_sH.get(day(-k)) or 0.0) for k in range(1, const.RECOVERY_QUIET_DAYS + 1)]
+eq(coach.recovery_offered(_H)["recent_daily_load"], round(sum(_qH) / len(_qH), 1),
+   "0.73.2 T1: heute-Modus: ruhige Tage = die Tage VOR heute")
+_rsrc = _co732[_co732.index("def recovery_offered("):]
+_rsrc = _rsrc[:_rsrc.index("\ndef ", 10)]
+check("mean(loads[-28:])" not in _rsrc, "0.73.2 T1: recovery_offered rechnet noch einen eigenen chronischen Schnitt")
+
 print(f"test_coach: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

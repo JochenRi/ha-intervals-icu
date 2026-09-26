@@ -859,17 +859,21 @@ def pattern_after_breaks(data: dict[str, Any]) -> dict[str, Any] | None:
 # (workouts.suggest); this module only answers what state the athlete is in
 # and why, and hands over the measured anchors.
 
-def _hard_days_recent(data: dict[str, Any], days: int) -> int:
-    wellness = data.get("wellness") or {}
-    order = sorted(wellness)
-    if not order:
+def _hard_days_recent(data: dict[str, Any], days: int, day: str | None) -> int:
+    """Harte Tage (IF >= 80) im Fenster [day - (days-1), day] - DEM Fenster des Budgets.
+
+    0.73.2 (Skizze T1): `day` ist der bewertete Tag aus `judged_day` - nach dem
+    Training morgen. Bis 0.73.1 zaehlte das Fenster immer ab dem letzten
+    Wellness-Tag, also fuer heute, auch wenn die Karten schon fuer morgen galten.
+    """
+    if not day:
         return 0
-    cutoff = _shift(order[-1], -(days - 1))
+    cutoff = _shift(day, -(days - 1))
     hard = set()
     for activity in (data.get("activities") or {}).values():
-        day = str(activity.get("start_date_local") or "")[:10]
-        if day >= cutoff and (_f(activity.get("icu_intensity")) or 0) >= 80:
-            hard.add(day)
+        start = str(activity.get("start_date_local") or "")[:10]
+        if cutoff <= start <= day and (_f(activity.get("icu_intensity")) or 0) >= 80:
+            hard.add(start)
     return len(hard)
 
 
@@ -900,11 +904,18 @@ def recovery_offered(data: dict[str, Any]) -> dict[str, Any]:
     ratio per traffic light.
     """
     st = state(data)
-    hard = _hard_days_recent(data, 7)
+    # 0.73.2 (T1): alles bezogen auf den BEWERTETEN Tag (judged_day) - die harten
+    # Tage in dessen Fenster, die ruhigen Tage davor. Der chronische Schnitt ist
+    # der des Budgets (week_budget ueber _ceiling_budget), kein eigener dritter
+    # Weg mehr; das verschiebt ihn um bis zu einen Tag (gewollte Angleichung).
+    day, trained = judged_day(data)
+    when = "morgen" if trained else "heute"
+    hard = _hard_days_recent(data, 7, day)
 
     series = analytics.daily_load(data)
-    loads = [point.get("load") or 0.0 for point in series]
-    chronic = mean(loads[-28:]) if len(loads) >= 28 else None
+    loads = [point.get("load") or 0.0 for point in series if day and point["date"] < day]
+    budget = _ceiling_budget(data, st.get("state", "unknown"))[0]
+    chronic = (budget or {}).get("chronic")
     recent = loads[-RECOVERY_QUIET_DAYS:] if len(loads) >= RECOVERY_QUIET_DAYS else []
     recent_mean = mean(recent) if recent else None
 
@@ -917,8 +928,8 @@ def recovery_offered(data: dict[str, Any]) -> dict[str, Any]:
     if st.get("state") != "ready":
         missing.append(f"Zustand {st.get('label') or st.get('state')}, nicht unauffällig")
     if hard > RECOVERY_MAX_HARD_DAYS_7:
-        missing.append(f"{hard} harter Tag in den letzten sieben" if hard == 1
-                       else f"{hard} harte Tage in den letzten sieben")
+        missing.append(f"{hard} harter Tag in den sechs Tagen vor {when}" if hard == 1
+                       else f"{hard} harte Tage in den sechs Tagen vor {when}")
     if chronic is None or recent_mean is None:
         missing.append("zu wenige Tage für einen chronischen Vergleich")
     elif not quiet:
@@ -982,7 +993,9 @@ def assessment(data: dict[str, Any]) -> dict[str, Any]:
     anc = anchors(data)
     dur = durability(data)
     habit = pattern_after_breaks(data)
-    hard_recent = _hard_days_recent(data, 7)
+    judged, trained = judged_day(data)
+    when = "morgen" if trained else "heute"
+    hard_recent = _hard_days_recent(data, 7, judged)
 
     reasons: list[dict[str, str]] = []
     warnings: list[str] = []
@@ -1017,11 +1030,11 @@ def assessment(data: dict[str, Any]) -> dict[str, Any]:
                 "beschreibt.")
 
     if st["state"] in ("ready", "rebound", "elevated") and hard_recent >= 2:
-        reasons.append({"weil": f"{hard_recent} harte Tage in den letzten sieben",
+        reasons.append({"weil": f"{hard_recent} harte Tage in den sechs Tagen vor {when}",
                         "quelle": "Seiler",
                         "text": "Im Dreizonenmodell tragen 75–80 % der Einheiten den "
                                 "lockeren Bereich. Zwei harte Tage in einer Woche sind "
-                                "die übliche Obergrenze — heute spricht das für Umfang."})
+                                f"die übliche Obergrenze — {when} spricht das für Umfang."})
 
     return {
         "state": st,
@@ -1867,13 +1880,26 @@ def _ceiling_budget(data: dict[str, Any], state_key: str,
     Wochenplan) und der Heute-Kopf lesen hier. Der Modus wie seit 0.69.2; das
     Budget seit 0.73.1 aus dem Zustand (week_budget).
     """
+    day, trained = judged_day(data)
+    if trained and day:
+        return week_budget(data, state_key, day), trained, day
+    return week_budget(data, state_key, today_day), trained, day
+
+
+def judged_day(data: dict[str, Any]) -> tuple[str | None, bool]:
+    """DER BEWERTETE TAG - eine Stelle (0.73.2, Skizze T1).
+
+    Ist heute schon trainiert (>= 15 min), gelten Karten, Budget und Zaehler fuer
+    MORGEN, sonst fuer heute (den letzten Wellness-Tag). Dieselbe Regel wie seit
+    0.69.2 in session_ceiling - jetzt lesen sie auch die Zaehler der harten Tage
+    und recovery_offered.
+    """
     trained = _trained_today(data)
     order = sorted(data.get("wellness") or {})
     day = order[-1] if order else None
     if trained and day:
         day = (date.fromisoformat(day) + timedelta(days=1)).isoformat()
-        return week_budget(data, state_key, day), trained, day
-    return week_budget(data, state_key, today_day), trained, day
+    return day, trained
 
 
 def today(data: dict[str, Any], events: Any = None, day: str | None = None) -> dict[str, Any]:

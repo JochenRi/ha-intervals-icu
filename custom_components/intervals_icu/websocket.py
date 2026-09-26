@@ -1121,6 +1121,8 @@ def websocket_workouts(hass, connection, msg) -> None:
     # NACH DEM TRAINING DIE GRENZE VON MORGEN (0.69.2, F2): eine Stelle, coach.session_ceiling.
     # 0.73.1: das Budget aus dem ZUSTAND (coach.week_budget), nicht aus der Bereitschafts-Ampel.
     budget = coach_module.session_ceiling(data, st.get("state", "unknown"))["ceiling"]
+    # 0.73.2 (T1): der BEWERTETE Tag (heute, nach dem Training morgen) - eine Stelle.
+    judged, _trained = coach_module.judged_day(data)
     # FOUND WHILE BUILDING K: this handler never passed `recovery_offered`, so
     # `stage()` defaulted it to False and the session list for TODAY could not
     # reach the stimulus grade at all - while the week view (which does pass
@@ -1134,7 +1136,7 @@ def websocket_workouts(hass, connection, msg) -> None:
         max_hr=max_hr,
         infection=bool(st.get("infection_suspected")),
         budget=budget,
-        hard_days_last_7=coach_module._hard_days_recent(data, 7),
+        hard_days_last_7=coach_module._hard_days_recent(data, 7, judged),
         layoff_days=lay.get("days"),
         goal=(data.get("goal") or {}).get("goal"),
         recovery_offered=recovery,
@@ -1443,6 +1445,8 @@ def websocket_goal(hass, connection, msg) -> None:
         lay = coach_module.layoff(data)
         rec = coach_module.recovery_offered(data)
         budget = coach_module.session_ceiling(data, st.get("state", "unknown"))["ceiling"]
+        # 0.73.2 (T1): der BEWERTETE Tag fuer den Zaehler der harten Tage - eine Stelle.
+        judged, _trained = coach_module.judged_day(data)
         # DIESELBEN EINGAENGE WIE DIE TRAINER-KARTE (0.67.2, F3.2): bis 0.67.1
         # baute dieser Handler seine Eingaenge von Hand - ohne `steering`. Bei
         # Steuerung an zeigte der Trainer-Reiter den Startwert, der Wochenplan
@@ -1454,7 +1458,7 @@ def websocket_goal(hass, connection, msg) -> None:
             st.get("state", "unknown"),
             budget=budget,
             recovery_offered=bool(rec.get("offered")),
-            hard_days_last_7=coach_module._hard_days_recent(data, 7),
+            hard_days_last_7=coach_module._hard_days_recent(data, 7, judged),
             layoff_days=lay.get("days"),
             infection=bool(st.get("infection_suspected")),
             ftp=inputs["ftp"],
@@ -1473,7 +1477,7 @@ def websocket_goal(hass, connection, msg) -> None:
             "state_label": st.get("label"),
             "budget": budget,
             "recovery": rec,
-            "hard_days_last_7": coach_module._hard_days_recent(data, 7),
+            "hard_days_last_7": coach_module._hard_days_recent(data, 7, judged),
         }
     built["no_verdict_note"] = workout_lib.NO_VERDICT_NOTE
     built["stages"] = workout_lib.STAGES

@@ -3650,6 +3650,7 @@ class IntervalsIcuPanel extends HTMLElement {
             fmt(w.long_day_hours, 1)} h${w.big_day ? " <em>(die Ausnahme, die wächst)</em>" : ""}</span>` : ""}
         </div>
         ${rated ? this._weekDone(w) : ""}
+        ${rated ? `<p class="hint pwjudged">Bewertet für ${this._judgedTomorrow() ? "morgen" : "heute"}: jede Einheit so, als wäre sie deine nächste Fahrt. Welche du an welchem Tag fährst, entscheidest du.</p>` : ""}
         ${open ? `<div class="pwbody">
           <p class="hint">${esc(w.phase_note)}</p>
           ${rated ? this._weekReasons(w) : `<p class="hint noverdict">${ico("clock", C.tx3, 14)} ${
@@ -3721,8 +3722,14 @@ class IntervalsIcuPanel extends HTMLElement {
      heute schon trainiert ist (Modus), sonst "heute". Kein Leser haengt selbst
      etwas an oder ersetzt das Wort. */
   _stageWord(st, tomorrow) {
-    const t = tomorrow == null ? !!((this._coach || {}).trained_today) : !!tomorrow;
+    const t = tomorrow == null ? this._judgedTomorrow() : !!tomorrow;
     return esc(String((st || {}).word || "").split("{tag}").join(t ? "morgen" : "heute"));
+  }
+
+  /* 0.73.2: der Modus des bewerteten Tags (coach.judged_day -> trained_today) -
+     EINE Stelle fuer Stufenworte und die Zeile im Wochenplan. */
+  _judgedTomorrow() {
+    return !!((this._coach || {}).trained_today);
   }
 
   /* 0.72.2: die Menge als zweites, kleines Zeichen - nur wenn das Backend es
@@ -4536,7 +4543,7 @@ class IntervalsIcuPanel extends HTMLElement {
         <span class="fam">${esc(word)}</span></div>`;
     }).join("");
     return `<div class="tlabel hwlabel">Deine Fahrten in diesem Fenster</div>
-      ${rows ? `<div class="hwlist">${rows}</div>` : `<p class="hint">Keine Fahrt in den letzten 7 Tagen.</p>`}`;
+      ${rows ? `<div class="hwlist">${rows}</div>` : `<p class="hint">Keine Fahrt in diesem Fenster.</p>`}`;
   }
 
   rHeute(t) {
@@ -4556,7 +4563,8 @@ class IntervalsIcuPanel extends HTMLElement {
     const stateWord = t.state_label || STATE_WORD[t.state] || t.state;
     const head = `<div class="tcard ${tone}">
       <div class="tmain">
-        <div class="tlabel">Was dein Körper ${(t.week || {}).mode === "tomorrow" ? "morgen" : "heute"} kann ${badge(tone, WORD[tone])}</div>
+        <div class="tlabel">Was dein Körper ${(t.week || {}).mode === "tomorrow"
+          ? "morgen kann · nach dem Zustand von heute" : "heute kann"} ${badge(tone, WORD[tone])}</div>
         <div class="tbig" style="color:${col}">${esc(t.capacity)}</div>
         <p class="tsay">${esc(t.capacity_text)}</p>
         ${this._weekBox(t.week, stateWord)}

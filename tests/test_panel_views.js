@@ -2460,7 +2460,7 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
 
   // 2 - eine Begründung, die nur EINE Einheit betrifft, bleibt an ihr
   const g2 = F.goal();
-  g2.plan.weeks[0].sessions[1].fit_reason = "Zwei harte Tage liegen schon in dieser Woche.";
+  g2.plan.weeks[0].sessions[1].fit_reason = "Zwei harte Tage liegen schon in den sechs Tagen davor.";  // 0.73.2: Wortlaut wie workouts
   const week2 = q.rPlanWeeks(g2);
   contains(week2, "Zwei harte Tage", "warnung: die einzelne Begründung verschwindet");
   ok(week2.indexOf("Zwei harte Tage") > week2.indexOf('class="wocard'),
@@ -3737,7 +3737,8 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   const nn = { ...F.week("frei") }; nn.sessions = nn.sessions.map((x, i) => (i === 0 ? { ...x, name: null } : x));
   ok(/<span class="nm" title="Rad">Rad</.test(side(z(P.rHeute({ ...F.today(), week: nn })))), "0.73.0 §8: Name fehlt -> Sportwort");
   // leeres Fenster
-  ok(side(H("leer")).includes("Keine Fahrt in den letzten 7 Tagen.") && !/class="hwli"/.test(side(H("leer"))), "0.73.0 §6: leeres Fenster");
+  // 0.73.2 umgestellt (T3): "Keine Fahrt in diesem Fenster." statt "in den letzten 7 Tagen"
+  ok(side(H("leer")).includes("Keine Fahrt in diesem Fenster.") && !/class="hwli"/.test(side(H("leer"))), "0.73.2 T3: leeres Fenster");
   // Schraffur: eigene Regel im Stil, Farbe nie allein (Wort daneben)
   ok(/\.hatch\{[^}]*repeating-linear-gradient/.test(String(P._css())), "0.73.0 §6: Schraffur fehlt im Stil");
   // unter 760 px rutscht die rechte Spalte unter den Kasten
@@ -3797,11 +3798,43 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   ok(!/Du bist heute schon gefahren/.test(box(H(wv))), "0.73.1 2.4: Hinweissatz im Heute-Modus");
   ok(z(P.rHeute({ ...F.today(), week: F.week("ohnebudget") })).includes("Wie viel die Woche noch trägt · So 20.–Sa 26."), "0.73.1 2.4: Spanne ohne Budget");
   // Liste rechts: "Deine Fahrten in diesem Fenster" in beiden Modi
-  ok(/Deine Fahrten in diesem Fenster/.test(H(F.week("morgen"))) && !/letzte 7 Tage/.test(H(F.week("morgen")).replace(/Keine Fahrt in den letzten 7 Tagen\./, "")),
+  ok(/Deine Fahrten in diesem Fenster/.test(H(F.week("morgen"))) && !/letzte 7 Tage|letzten 7 Tagen/.test(H(F.week("morgen"))),
      "0.73.1 2.4: Listen-/Kastenbeschriftung sagt noch 'letzte 7 Tage'");
   // das Panel liest nur window_allowed und window_bands.risk
   const q = F.week("voll"); q.budget = { ...q.budget, window_bands: { low: 1, steady: 2, top: 3, risk: 295 } };
   ok(JSON.stringify(bands(H(q))) === JSON.stringify(bv), "0.73.1 2.2: das Panel liest low/steady/top");
+}
+
+/* ── 0.73.2 · Heute-Kopf morgen-Augenbraue, leeres Fenster, Wochenplan-Zeile ── */
+{
+  const P = new M.Panel(); P._nowIso = "2026-09-26";
+  const z = (h) => String(h).replace(/\s+/g, " ");
+  // T3 Augenbraue: morgen mit Zusatz, heute unveraendert
+  const mo = z(P.rHeute({ ...F.today(), week: F.week("morgen") }));
+  ok(/class="tlabel">Was dein Körper morgen kann · nach dem Zustand von heute </.test(mo), "0.73.2 T3: Morgen-Augenbraue ohne 'nach dem Zustand von heute'");
+  const he = z(P.rHeute({ ...F.today(), week: F.week("voll") }));
+  ok(/class="tlabel">Was dein Körper heute kann </.test(he) && !/nach dem Zustand von heute/.test(he), "0.73.2 T3 Gegenprobe: heute-Augenbraue veraendert");
+  // T3 leeres Fenster in beiden Modi
+  const leerM = F.week("leer"); leerM.mode = "tomorrow";
+  ok(z(P.rHeute({ ...F.today(), week: leerM })).includes("Keine Fahrt in diesem Fenster."), "0.73.2 T3: leeres Fenster im morgen-Modus");
+  // T4 Wochenplan, laufende Woche: eine Zeile, Modus wie die Stufenworte
+  const line = (w) => `Bewertet für ${w}: jede Einheit so, als wäre sie deine nächste Fahrt. Welche du an welchem Tag fährst, entscheidest du.`;
+  P._coach = { ...F.coach("ready"), trained_today: false };
+  const wh = z(P.rPlanWeeks(F.goal()));
+  const cur = wh.split('class="pweek ').slice(1).find((x) => /^[a-z]+[^"]* now"/.test(x)) || "";
+  const now = cur;
+  ok(now.includes(line("heute")), "0.73.2 T4: Zeile 'Bewertet für heute' fehlt in der laufenden Woche");
+  ok((wh.match(/Bewertet für (heute|morgen)/g) || []).length === 1, "0.73.2 T4: die Zeile steht nicht genau einmal (nur laufende Woche)");
+  ok(now.indexOf("Bewertet für") < now.indexOf('class="pwsess"'), "0.73.2 T4: die Zeile steht nicht ueber den Einheiten");
+  P._coach = { ...F.coach("ready"), trained_today: true };
+  const wm = z(P.rPlanWeeks(F.goal()));
+  ok(wm.includes(line("morgen")) && !wm.includes(line("heute")), "0.73.2 T4: Zeile 'Bewertet für morgen' nach dem Training fehlt");
+  // derselbe Modus wie die Stufenworte an den Chips
+  ok(/passt morgen/.test(wm) && /passt heute/.test(wh), "0.73.2 T4: Stufenworte und Zeile folgen nicht demselben Modus");
+  // aufgeklappt: die Zeile steht ueber den Karten
+  P._planOpen = "1";
+  const wo = z(P.rPlanWeeks(F.goal()));
+  ok(wo.includes(line("morgen")) && wo.indexOf("Bewertet für") < wo.indexOf('class="wogrid"'), "0.73.2 T4: aufgeklappt fehlt die Zeile ueber den Karten");
 }
 
 report("test_panel_views");
