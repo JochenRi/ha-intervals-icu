@@ -105,8 +105,36 @@ const acts = F.activities(), thr = F.thresholds();
   ok(M.monthTicks([]).length === 0, "5 achse: leere Reihe stürzt");
   ok(M.monthTicks(["2026-01-01"]).length === 1, "5 achse: einzelner Punkt verloren");
   const html = p.rDfa(thr, "all");
-  const axLabels = (html.match(/class="ax">(\d\d\.\d\d)</g) || []).map((m) => m.replace(/.*>/, ""));
+  const axLabels = (html.match(/class="ax">([A-ZÄÖÜ][a-zäöü]{2}(?: \d\d)?)</g) || []).map((m) => m.replace(/.*>/, ""));
+  ok(axLabels.length >= 2, `5 achse: DFA-Achse ohne Monatsnamen (${axLabels.join(",")})`);
   ok(new Set(axLabels).size === axLabels.length, `5 achse: DFA-Achse doppelt (${axLabels.join(",")})`);
+}
+
+/* ── 5b · 0.74.1 B1: Monatsname statt „MM.JJ“, Jahr nur beim Jahreswechsel,
+   Kollisionsregel 6 % der Gesamtbreite (der frühere Tick entfällt). ───────── */
+{
+  const days = (from, n) => {
+    const out = []; let t = Date.parse(from + "T00:00:00Z");
+    for (let k = 0; k < n; k++) { out.push(new Date(t).toISOString().slice(0, 10)); t += 864e5; }
+    return out;
+  };
+  const tl = (arr) => M.monthTicks(arr).map((x) => x.t).join(" · ");
+  // Belastungs-Verlauf am Livebestand: 60 Tage + 14 Vorschau ab 28.07. -> der Juli-Rest klebt am August
+  eq5("5b Monatsname, Juli-Rest entfällt", tl(days("2026-07-28", 74)), "Aug · Sep · Okt");
+  ok(!/\d\d\.\d\d/.test(tl(days("2026-05-01", 120))), "5b kein „MM.JJ“ mehr");
+  // Jahreswechsel: das Diagramm reicht über ihn -> erster Tick und Januar tragen das Jahr
+  eq5("5b Jahreswechsel", tl(days("2026-11-15", 88)), "Nov 26 · Dez · Jan 27 · Feb");
+  // kein Jahreswechsel im Diagramm -> nirgends ein Jahr
+  eq5("5b ohne Jahreswechsel kein Jahr", tl(days("2026-03-01", 100)), "Mär · Apr · Mai · Jun");
+  // Kollisionsregel an der Kante: Breite 100 Punkte-Abstände; 6 % bleibt, 5 % entfällt
+  eq5("5b Kollision genau 6 %: beide bleiben", tl(days("2026-01-26", 101)).split(" · ")[0], "Jan");
+  eq5("5b Kollision 5 %: der frühere entfällt", tl(days("2026-01-27", 101)).split(" · ")[0], "Feb");
+  // der frühere entfällt auch beim Jahreswechsel - dann trägt der erste verbliebene das Jahr
+  eq5("5b Dezember-Rest entfällt, Januar mit Jahr", tl(days("2026-12-29", 101)), "Jan 27 · Feb · Mär · Apr");
+  // leer und einzeln
+  eq5("5b leere Reihe", JSON.stringify(M.monthTicks([])), "[]");
+  eq5("5b einzelner Punkt", JSON.stringify(M.monthTicks(["2026-08-15"])), JSON.stringify([{ i: 0, t: "Aug" }]));
+  function eq5(name, got, want) { ok(got === want, `${name}: ${got} statt ${want}`); }
 }
 
 /* ── 6  the readout cannot leave the screen, because it no longer floats ──
@@ -145,17 +173,11 @@ const acts = F.activities(), thr = F.thresholds();
   ok(/zuletzt/.test(strip._x.textContent), "6 ableseleiste: kehrt nicht in den Ruhezustand zurück");
 }
 
-/* ── 7  one unit per tile ──────────────────────────────────────────────── */
+/* ── 7  0.74.1 B5: _sparkFor hatte keinen Aufrufer (toter Code) und ist entfernt.
+   Die frühere Prüfung „eine Einheit je Kachel“ lief nur gegen diese tote Funktion. ── */
 {
-  const sp = p._sparkFor("hrv", days, load);
-  ok(sp.unit === "ln rMSSD", `7 HRV: Kurve trägt die Einheit "${sp.unit}" unter einem ln-Großwert`);
-  ok(sp.t.includes("ln rMSSD"), "7 HRV: Beschriftung nennt die Einheit nicht");
-  const vals = sp.v.filter((v) => v != null);
-  ok(vals.every((v) => v > 2 && v < 6), "7 HRV: Kurve zeigt Millisekunden statt ln rMSSD");
-  ok(sp.band && sp.band.a < sp.band.b, "7 HRV: Basislinienband fehlt");
-  // the ms fallback stays available when no ln series exists
-  const fb = p._sparkFor("hrv", days, { hrv: null });
-  ok(fb.unit === "ms", "7 HRV: Rückfall auf Millisekunden fehlt");
+  ok(typeof p._sparkFor === "undefined", "7 B5: _sparkFor steht noch im Panel");
+  ok(!/_sparkFor/.test(H.source()), "7 B5: _sparkFor kommt im Panel-Quelltext noch vor");
 }
 
 /* ── 8  one lead figure per view ───────────────────────────────────────── */

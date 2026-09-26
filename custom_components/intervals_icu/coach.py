@@ -1268,11 +1268,10 @@ def signals(data: dict[str, Any], days_back: int = 180) -> dict[str, Any]:
             "decoupling": _f(activity.get("decoupling")),
         })
 
-    # ACWR je Tag aus analytics.acwr_series (Schnitt INKLUSIVE des Tages). Seit
-    # 0.74.0 hat der Belastungs-Reiter keine ACWR-Kurve mehr, und der Ampelpunkt
-    # "Akut zu chronisch" nimmt den Schnitt VOR heute aus load_budget - diese
-    # Reihe ist damit der letzte Leser von acwr_series (offener Befund 0.74.0).
-    acwr = {row["date"]: row.get("ratio") for row in analytics.acwr_series(data)}
+    # Akut zu chronisch je Tag aus analytics.window_ratio - DIESELBE Funktion wie
+    # der Ampelpunkt der readiness (0.74.1, B4). Bis 0.74.0 las diese Reihe
+    # die alte ACWR-Reihe (Schnitt INKLUSIVE des Tages), der letzte zweite Weg.
+    acwr = {day: analytics.window_ratio(data, day) for day in order}
     rows = []
     for day in order:
         acts = per_day.get(day, [])

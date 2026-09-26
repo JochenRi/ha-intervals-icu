@@ -1478,11 +1478,36 @@ check(_erz[_today] == 89 and _erz[(_base + _dt.timedelta(days=38)).isoformat()] 
 _t = coach.today(_d2) if "coach" in globals() else None
 _recent = {r["date"]: r["load"] for r in (_t or {}).get("recent") or []}
 eq(_recent.get(_today), 89, "S2 Treffer Heute: die Tageslast ist die des Erzeugers (ctlLoad), nicht die Aktivitaetssumme")
-# 2 · Signale-Reiter: dasselbe ACWR wie der Belastungs-Reiter (analytics.acwr_series)
+# 2 · Signale-Reiter: dasselbe Verhaeltnis wie die readiness - EINE Funktion (0.74.1 B4: analytics.window_ratio)
 _sig = coach.signals(_d2)
 _ac_sig = {r["date"]: r.get("acwr") for r in _sig.get("days") or []}
-_ac_an = {r["date"]: r.get("ratio") for r in _an.acwr_series(_d2)}
-eq(_ac_sig.get(_today), _ac_an.get(_today), "S2 Treffer Signale: das ACWR ist das des Erzeugers")
+_wr = getattr(_an, "window_ratio", None)
+eq(_ac_sig.get(_today), _wr(_d2, _today) if callable(_wr) else "FEHLT", "S2 Treffer Signale: das Verhaeltnis ist das von window_ratio")
+# 0.74.1 B4: an JEDEM Tag der Signale derselbe Wert wie window_ratio; die Fixture muss den alten
+# Schnitt (inklusive des Tages) vom neuen (vor dem Tag) unterscheiden, sonst prueft das nichts.
+def _alt_ratio(data, day):
+    rows = [r for r in _an.daily_load(data) if r["date"] <= day]
+    if len(rows) < 28:
+        return None
+    ld = [r["load"] for r in rows]
+    c = sum(ld[-28:]) / 28
+    return round((sum(ld[-7:]) / 7) / c, 2) if c else None
+_d3 = _json.loads(_json.dumps(_d2)) if "_json" in globals() else __import__("json").loads(__import__("json").dumps(_d2))
+for _k in (32, 36, 39):
+    _d3["wellness"][(_base + _dt.timedelta(days=_k)).isoformat()]["ctlLoad"] = 260.0
+_sig3 = {r["date"]: r.get("acwr") for r in coach.signals(_d3).get("days") or []}
+_mis = [d for d, v in _sig3.items() if callable(_wr) and v != _wr(_d3, d)]
+check(callable(_wr) and not _mis, f"0.74.1 B4: Signale weichen von window_ratio ab ({_mis[:3]})")
+_diff = [d for d, v in _sig3.items() if v is not None and _alt_ratio(_d3, d) is not None and _alt_ratio(_d3, d) != v]
+check(len(_diff) >= 3, f"0.74.1 B4 Fixture: alter und neuer Schnitt unterscheiden sich an zu wenigen Tagen ({len(_diff)})")
+_rd3 = next((c["value"] for c in _an.readiness(_d3)["components"] if c["id"] == "acwr"), None)
+_last3 = sorted(_d3["wellness"])[-1]
+check(_rd3 is not None and _rd3 == _sig3.get(_last3) == (_wr(_d3, _last3) if callable(_wr) else None),
+      f"0.74.1 B4: readiness ({_rd3}), Signale ({_sig3.get(_last3)}) und window_ratio am selben Tag verschieden")
+_csrc = Path(coach.__file__).read_text(encoding="utf-8") if "Path" in globals() else open(coach.__file__, encoding="utf-8").read()
+_sbody = _csrc[_csrc.index("def signals("):]; _sbody = _sbody[:_sbody.index("\ndef ", 10)]
+check("window_ratio(" in _sbody and "acwr_series" not in _sbody and "mean(" not in _sbody,
+      "0.74.1 B4 AST: signals rechnet das Verhaeltnis nicht ueber window_ratio")
 # 3 · Kalender-Woche: die Wochenlast ist die Summe der Tageslasten des Erzeugers
 _cal = _an.calendar_days(_d2, [])
 _wk = [w for w in (_cal.get("weeks") or []) if w.get("start") and w["start"] <= _today][-1] if (_cal.get("weeks") or []) else None

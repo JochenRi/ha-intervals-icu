@@ -3893,7 +3893,10 @@ const SEITE734 = (async () => {
   // §3.2 Wochen
   contains(b0, "Deine Wochen · Kalenderwochen", "0.74.0 §3.2 Titel");
   contains(b0, "Diese Woche bisher 47 Last, geplant noch 60", "0.74.0 §3.2 Überschrift mit Plan");
-  contains(b0, "Vorwoche 165 Last (-15 %).", "0.74.0 §3.2 Unterzeile Vorwoche gegen die Woche davor");
+  contains(b0, "Vorwoche 165 Last – -15 % gegenüber der Woche davor.", "0.74.1 B2 Unterzeile Vorwoche gegen die Woche davor, wörtlich");
+  ok(!b0.includes("Vorwoche 165 Last (-15 %)"), "0.74.1 B2 der mehrdeutige Klammer-Satz steht noch da");
+  { const one = F.load(); const cw = one.weeks_by_group.findIndex((w) => w.current); one.weeks_by_group = one.weeks_by_group.slice(cw - 1, cw + 1);
+    contains(z(P.rBelastung(one)), "Vorwoche 165 Last.</p>", "0.74.1 B2 ohne Woche davor: nur die Zahl, kein Prozent"); }
   const noPlan = bel({ plan: {} });
   contains(noPlan, "Diese Woche bisher 47 Last</b>", "0.74.0 §3.2 y = 0: der Zusatz entfällt");
   ok(!noPlan.includes(", geplant noch"), "0.74.0 §3.2 y = 0: „geplant noch“ steht trotzdem da");
@@ -3933,7 +3936,40 @@ const SEITE734 = (async () => {
   const alle = {}; for (let k = 1; k <= 14; k++) { const d = new Date(Date.UTC(2026, 8, 26 + k)); alle[d.toISOString().slice(0, 10)] = 400; }
   contains(bel({ week: "ueber", plan: alle }), "Mit diesem Plan bleibst du in den nächsten 14 Tagen über dem Ziel.", "0.74.0 §3.3 Vorschau: bleibt darüber");
   contains(bel({ plan: {} }), "Keine geplanten Einheiten im Kalender – die Vorschau zeigt, wann Last aus dem Fenster fällt.", "0.74.0 §3.3 Vorschau ohne Plan");
-  ok(!/Mit diesem Plan/.test(b0), "0.74.0 §3.3 nie über dem Ziel: kein Vorschau-Satz");
+  // 0.74.1 B3: je Fall genau EIN Satz, bestimmt aus heute + 14 Tagen Vorschau (`over` je Tag)
+  {
+    const fall = (todayOver, overIdx) => {
+      const L = F.load();
+      L.window_history[L.window_history.length - 1].over = todayOver;
+      L.window_projection.forEach((q, k) => { q.over = overIdx.includes(k); });
+      const html = z(P.rBelastung(L));
+      return { html, n: (html.match(/Mit diesem Plan/g) || []).length, d: (k) => { const x = L.window_projection[k].date.split("-"); return `${x[2]}.${x[1]}.`; } };
+    };
+    const range = (a, b) => Array.from({ length: b - a + 1 }, (_, k) => a + k);
+    const b3 = (name, f, satz) => {
+      contains(f.html, satz, `0.74.1 B3 ${name}`);
+      ok(f.n === 1, `0.74.1 B3 ${name}: ${f.n} Sätze statt genau einem`);
+    };
+    const f1 = fall(false, []);
+    b3("kein Tag über dem Ziel", f1, "Mit diesem Plan bleibst du in den nächsten 14 Tagen unter dem Ziel.");
+    const f2 = fall(false, range(0, 13));
+    b3("alle Vorschautage darüber", f2, "Mit diesem Plan bleibst du in den nächsten 14 Tagen über dem Ziel.");
+    const f3 = fall(false, [2, 3].concat(range(9, 13)));
+    b3("Ende darüber, nicht alle", f3, `Mit diesem Plan liegst du ab ${f3.d(9)} über dem Ziel.`);
+    const f3b = fall(true, range(0, 1).concat(range(6, 13)));
+    b3("Ende darüber, heute auch, dazwischen darunter", f3b, `Mit diesem Plan liegst du ab ${f3b.d(6)} über dem Ziel.`);
+    const f4 = fall(true, range(0, 3));
+    b3("heute darüber, Ende darunter", f4, `Mit diesem Plan liegst du ab ${f4.d(4)} wieder unter dem Ziel.`);
+    const f5 = fall(false, range(3, 6));
+    b3("heute nicht, dazwischen darüber, Ende darunter", f5,
+       `Mit diesem Plan kommst du am ${f5.d(3)} über das Ziel und liegst ab ${f5.d(7)} wieder darunter.`);
+    const f5b = fall(false, [2, 3, 8]);
+    b3("zwei Strecken dazwischen, Ende darunter", f5b,
+       `Mit diesem Plan kommst du am ${f5b.d(2)} über das Ziel und liegst ab ${f5b.d(9)} wieder darunter.`);
+    const f6 = z(P.rBelastung(F.load({ plan: {} })));
+    ok((f6.match(/Mit diesem Plan/g) || []).length === 0 && f6.includes("Keine geplanten Einheiten im Kalender"),
+       "0.74.1 B3 ohne geplante Einheiten: Satz wie bisher, kein Plan-Satz");
+  }
   const bu = bel({ week: "ueber" });
   ok((bu.match(/<circle [^>]*fill="#fbbf24"[^>]*stroke="#fbbf24"/g) || []).length >= 5, "0.74.0 §3.3 Tage über dem Ziel als Punkt in C.amber");
   ok(bu.includes(`stroke="${M.C.blue}" stroke-width="2.2" stroke-dasharray="5 4"`), "0.74.0 §3.3 Vorschau-Last gestrichelt in C.blue");
@@ -3983,6 +4019,54 @@ const SEITE734 = (async () => {
   const cw = F.load().weeks_by_group.find((w) => w.current);
   const liste = F.week().sessions.filter((x) => x.date >= cw.start && x.date <= F.TODAY).reduce((a, x) => a + x.load, 0);
   ok(cw.total === liste && b0.includes(`>${liste} + `), `0.74.0 §5: KW ${cw.total} ≠ Heute-Liste ${liste}`);
+}
+
+/* ── 0.74.1 · SEITENPROBE Fitness, Belastung, Signale, DFA (CLAUDE.md „Seitenprobe“):
+   jede Seite als Ganzes rendern und lesen. Achsen: Monatsname, kein „MM.JJ“,
+   kein Monat doppelt je Diagramm. Belastung: die Vorwoche-Zahl ist der Balken
+   der Vorwoche, die Prozentzahl die gegen die Woche davor, genau ein Satz zur
+   Vorschau, und der Satz passt zu den Amber-Punkten. */
+{
+  const S = new M.Panel(); S._nowIso = F.TODAY; S._status = { athlete: "Test", wellness_days: 487 };
+  const dd = F.days();
+  const seiten = {
+    Fitness: S.rFitness(F.pmc(dd), 182), Belastung: S.rBelastung(F.load()),
+    Signale: S.rSignale(F.signals()), DFA: S.rDfa(F.thresholds(), "all"),
+  };
+  for (const [name, html] of Object.entries(seiten)) {
+    const charts = [...String(html).matchAll(/<svg class="ch"[\s\S]*?<\/svg>/g)].map((m) => m[0]);
+    const achsen = charts.map((c) => (c.match(/text-anchor="middle" class="ax">[^<]*/g) || []).map((x) => x.replace(/.*>/, "")))
+      .filter((a) => a.length);
+    ok(achsen.length >= 1, `0.74.1 Seitenprobe ${name}: keine Monatsachse gerendert`);
+    for (const a of achsen) {
+      ok(a.every((t) => /^(Jan|Feb|Mär|Apr|Mai|Jun|Jul|Aug|Sep|Okt|Nov|Dez)( \d\d)?$/.test(t)),
+         `0.74.1 Seitenprobe ${name}: Achse nicht als Monatsname (${a.join(" · ")})`);
+      ok(new Set(a).size === a.length, `0.74.1 Seitenprobe ${name}: Monat doppelt (${a.join(" · ")})`);
+    }
+  }
+  const L = F.load(), wk = L.weeks_by_group, ci = wk.findIndex((w) => w.current);
+  const bt = String(seiten.Belastung).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ");
+  const pz = Math.round((wk[ci - 1].total - wk[ci - 2].total) / wk[ci - 2].total * 100);
+  contains(bt, `Vorwoche ${wk[ci - 1].total} Last – ${pz > 0 ? "+" : ""}${pz} % gegenüber der Woche davor.`,
+           "0.74.1 Seitenprobe Belastung: Vorwoche-Satz passt nicht zu den Balken der Wochen");
+  ok(String(seiten.Belastung).includes(`>${wk[ci - 1].total}<`), "0.74.1 Seitenprobe Belastung: Vorwoche-Zahl steht nicht über ihrem Balken");
+  ok((bt.match(/Mit diesem Plan/g) || []).length === 1, "0.74.1 Seitenprobe Belastung: nicht genau ein Satz zur Vorschau");
+  // der Satz spricht über heute + 14 Tage: gezählt werden nur Amber-Punkte ab der Linie „heute“
+  // nur das Verlauf-Diagramm (es trägt die Linie „heute“); andere Diagramme der Seite haben eigene Amber-Punkte
+  const probe = (html) => {
+    const v = [...String(html).matchAll(/<svg[\s\S]*?<\/svg>/g)].map((m) => m[0]).find((x) => /class="ax">heute</.test(x)) || "";
+    const xHeute = +((v.match(/<line x1="([\d.]+)"[^>]*stroke-dasharray="3 3"\/>/) || [])[1]);
+    const cx = [...v.matchAll(/<circle cx="([\d.]+)"[^>]*fill="#fbbf24"[^>]*stroke="#fbbf24"/g)].map((m) => +m[1]);
+    return { found: !!v && Number.isFinite(xHeute), ab: cx.filter((x) => x >= xHeute - 0.1).length };
+  };
+  const p0 = probe(seiten.Belastung);
+  ok(p0.found, "0.74.1 Seitenprobe Belastung: Verlauf mit Linie „heute“ nicht gefunden");
+  ok(/bleibst du in den nächsten 14 Tagen unter dem Ziel/.test(bt) && p0.ab === 0,
+     `0.74.1 Seitenprobe Belastung: Satz „unter dem Ziel“ und ${p0.ab} Tage ab heute über dem Ziel im Bild`);
+  // Gegenprobe mit Tagen über dem Ziel: der Satz „über“/„wieder unter“ steht, und ab heute gibt es Amber-Punkte
+  const hu = S.rBelastung(F.load({ week: "ueber" })), pu = probe(hu);
+  ok(pu.ab > 0 && !/unter dem Ziel\.<\/p>/.test(hu.replace(/wieder unter dem Ziel\./, "")),
+     `0.74.1 Seitenprobe Belastung Gegenprobe: ${pu.ab} Tage ab heute über dem Ziel, Satz passt nicht`);
 }
 
 SEITE734.then(() => report("test_panel_views"));

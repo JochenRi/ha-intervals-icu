@@ -273,20 +273,48 @@ function dayAxis(dates, o) {
 
 /* x ticks on calendar month boundaries. Spacing by point index put two ticks
  * inside the same month whenever the series was denser there - the axis then
- * read "05.2026  05.2026". Returns at most `max` labels, thinned evenly. */
+ * read "05.2026  05.2026". Returns at most `max` labels, thinned evenly.
+ * 0.74.1 (B1): the label is the short month name ("Aug"), not "08.26" - that
+ * read like a date. The year ("Jan 27") only where the year changes and on the
+ * first tick of a chart that reaches across a year change. A tick closer than
+ * 6 % of the total width to the next one is dropped - the EARLIER one, so a
+ * half month at the start never sits on top of the first full month. The width
+ * is the index width (n - 1): every caller passes n = dates.length to chart(). */
+const MONTH_SHORT = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
+const TICK_MIN_GAP_PCT = 6;
 function monthTicks(dates, max) {
-  const out = [];
+  let out = [];
   let last = null;
   for (let i = 0; i < dates.length; i++) {
     const d = String(dates[i] || "").slice(0, 7);
     if (!d || d === last) continue;
     last = d;
-    out.push({ i, t: d.slice(5) + "." + d.slice(2, 4) });
+    out.push({ i, ym: d });
+  }
+  // Kollisionsregel: von hinten, der fruehere von zwei zu nahen Ticks entfaellt
+  const span = dates.length - 1;
+  if (span > 0) {
+    const keep = [];
+    for (let k = out.length - 1; k >= 0; k--) {
+      const next = keep[0];
+      if (next && (next.i - out[k].i) * 100 < TICK_MIN_GAP_PCT * span) continue;
+      keep.unshift(out[k]);
+    }
+    out = keep;
   }
   const cap = max || 7;
-  if (out.length <= cap) return out;
-  const step = Math.ceil(out.length / cap);
-  return out.filter((_, k) => k % step === 0);
+  if (out.length > cap) {
+    const step = Math.ceil(out.length / cap);
+    out = out.filter((_, k) => k % step === 0);
+  }
+  const yr = (s) => s.slice(0, 4);
+  const first = String(dates[0] || "").slice(0, 7), lastD = String(dates[dates.length - 1] || "").slice(0, 7);
+  const across = !!first && !!lastD && yr(first) !== yr(lastD);
+  return out.map((x, k) => {
+    const mon = MONTH_SHORT[+x.ym.slice(5, 7) - 1] || x.ym.slice(5, 7);
+    const withYear = k === 0 ? across : yr(x.ym) !== yr(out[k - 1].ym);
+    return { i: x.i, t: withYear ? `${mon} ${x.ym.slice(2, 4)}` : mon };
+  });
 }
 
 function domainOf(seriesList, pad) {
@@ -4321,38 +4349,7 @@ class IntervalsIcuPanel extends HTMLElement {
   }
 
   /* ---------------- Heute ---------------- */
-  _sparkFor(id, days, load) {
-    const past = (days && days.days || []).filter((d) => !d.future).slice(-42);
-    const dts = past.map((d) => d.date);
-    const pick = (k) => past.map((d) => d[k] == null ? null : +d[k]);
-    if (id === "hrv") {
-      // The card's headline value is ln(rMSSD) against its baseline, so the
-      // curve has to be that same quantity - it used to plot raw ms below a
-      // logarithmic headline, two units in one tile.
-      const ser = (load && load.hrv && load.hrv.series || []).slice(-42);
-      if (ser.length > 2) {
-        const band = load.hrv.baseline != null && load.hrv.swc != null
-          ? { a: load.hrv.baseline - load.hrv.swc, b: load.hrv.baseline + load.hrv.swc } : null;
-        return { v: ser.map((x) => x.ln_rmssd_7d), d: ser.map((x) => x.date), unit: "ln rMSSD",
-                 t: "ln rMSSD, 7-Tage-Mittel · 6 Wochen (Band: Basislinie ± SWC)", band };
-      }
-      return { v: pick("hrv"), d: dts, unit: "ms", t: "HRV in ms · 6 Wochen" };
-    }
-    if (id === "rhr") return { v: pick("resting_hr"), d: dts, unit: "bpm", t: "Ruhepuls in bpm · 6 Wochen" };
-    if (id === "sleep") return { v: pick("sleep_hours"), d: dts, unit: "h", t: "Schlaf in h · 6 Wochen" };
-    if (id === "form") return { v: pick("form"), d: dts, unit: "%", t: "Form · 6 Wochen", zero: true };
-    if (id === "acwr" && load) {
-      const a = (load.acwr || []).slice(-42);
-      return { v: a.map((x) => x.ratio), d: a.map((x) => x.date), unit: "",
-               t: "Akut : chronisch · 6 Wochen", band: { a: 0.8, b: 1.3 } };
-    }
-    if (id === "monotony" && load) {
-      const w = (load.weeks || []).slice(-12);
-      return { v: w.map((x) => x.monotony), d: w.map((x) => x.week), unit: "", week: true,
-               t: "Monotonie je Woche · 12 Wochen", bars: true, hline: 2 };
-    }
-    return null;
-  }
+  // 0.74.1 (B5): die Kachelkurven-Hilfe ohne Aufrufer ist entfernt (las das entfernte load.acwr).
 
   /* Event track under an enlarged signal curve: one short stroke per training
      day, height by load, plus a marker on the days the trainer called a slump.
@@ -6631,7 +6628,9 @@ class IntervalsIcuPanel extends HTMLElement {
     let sub = "";
     if (prev) {
       const pz = prev2 && prev2.total > 0 ? Math.round((prev.total - prev2.total) / prev2.total * 100) : null;
-      sub = `Vorwoche ${fmt(prev.total)} Last${pz != null ? ` (${sign(pz)} %)` : ""}.`;
+      // 0.74.1 (B2): die Prozentzahl gehoert zur VORWOCHE (gegen die Woche davor),
+      // nicht zu dieser Woche - der Satz sagt das jetzt ausdruecklich.
+      sub = `Vorwoche ${fmt(prev.total)} Last${pz != null ? ` – ${sign(pz)} % gegenüber der Woche davor` : ""}.`;
     }
     const hasOther = wk.some((w) => ((w.groups || {}).other || 0) > 0);
     const order = TRAINER_FAMILIES.map(([id, name]) => [id, name, FAM[GROUP_TONE[id]].c])
@@ -6730,13 +6729,19 @@ class IntervalsIcuPanel extends HTMLElement {
     if (!Object.keys(load.planned || {}).length) {
       plan = "Keine geplanten Einheiten im Kalender – die Vorschau zeigt, wann Last aus dem Fenster fällt.";
     } else if (hasGoal && proj.length) {
+      // 0.74.1 (B3): je Fall genau EIN Satz, aus heute + Vorschau (`over` je Tag).
       const seq = [today].concat(proj);
-      const last = seq.map((p) => !!p.over).lastIndexOf(true);
-      if (proj.every((p) => p.over)) plan = "Mit diesem Plan bleibst du in den nächsten 14 Tagen über dem Ziel.";
-      else if (last >= 0 && last < seq.length - 1) {
-        const d = String(seq[last + 1].date).split("-");
-        plan = `Mit diesem Plan liegst du ab ${d[2]}.${d[1]}. wieder unter dem Ziel.`;
-      }
+      const ov = seq.map((p) => !!p.over), end = seq.length - 1;
+      const first = ov.indexOf(true), last = ov.lastIndexOf(true);
+      const dm = (p) => { const d = String(p.date).split("-"); return `${d[2]}.${d[1]}.`; };
+      if (first < 0) plan = "Mit diesem Plan bleibst du in den nächsten 14 Tagen unter dem Ziel.";
+      else if (proj.every((p) => p.over)) plan = "Mit diesem Plan bleibst du in den nächsten 14 Tagen über dem Ziel.";
+      else if (last === end) {
+        let k = end;
+        while (k > 0 && ov[k - 1]) k--;          // erster Tag der letzten zusammenhaengenden Strecke
+        plan = `Mit diesem Plan liegst du ab ${dm(seq[k])} über dem Ziel.`;
+      } else if (ov[0]) plan = `Mit diesem Plan liegst du ab ${dm(seq[last + 1])} wieder unter dem Ziel.`;
+      else plan = `Mit diesem Plan kommst du am ${dm(seq[first])} über das Ziel und liegst ab ${dm(seq[last + 1])} wieder darunter.`;
     }
     const legend = `<span class="lg"><i class="sw" style="background:${C.tx}"></i>Last der 7 Tage</span>`
       + (hasGoal ? `<span class="lg"><i class="sw" style="background:${C.green}"></i>Ziel</span>` : "")

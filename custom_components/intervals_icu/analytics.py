@@ -195,35 +195,6 @@ def weekly_summary(data: dict[str, Any]) -> list[dict[str, Any]]:
     return result
 
 
-def acwr_series(data: dict[str, Any], acute: int = 7, chronic: int = 28) -> list[dict[str, Any]]:
-    """Return the acute:chronic workload ratio per day.
-
-    Rolling averages, as in the original definition. Days before a full chronic
-    window has accumulated carry no ratio - a ratio against three days of
-    history says nothing.
-    """
-    series = daily_load(data)
-    loads = [point["load"] for point in series]
-    out: list[dict[str, Any]] = []
-
-    for index, point in enumerate(series):
-        if index + 1 < chronic:
-            out.append({"date": point["date"], "acute": None, "chronic": None, "ratio": None})
-            continue
-        acute_mean = mean(loads[index + 1 - acute : index + 1])
-        chronic_mean = mean(loads[index + 1 - chronic : index + 1])
-        ratio = (acute_mean / chronic_mean) if chronic_mean else None
-        out.append(
-            {
-                "date": point["date"],
-                "acute": round(acute_mean, 1),
-                "chronic": round(chronic_mean, 1),
-                "ratio": round(ratio, 2) if ratio else None,
-            }
-        )
-    return out
-
-
 def hrv_status(data: dict[str, Any], baseline_days: int = baseline.WINDOW) -> dict[str, Any] | None:
     """Return the HRV trend against its smallest worthwhile change.
 
@@ -491,8 +462,8 @@ def summary(data: dict[str, Any]) -> dict[str, Any]:
 
     0.74.0 (Skizze §3.1 i): ohne `acwr`, `acwr_latest` und `thresholds.acwr_*`
     - ihr einziger Leser war die ACWR-Kurve des Belastungs-Reiters, die durch
-    den Verlauf der 7-Tage-Last ersetzt ist (coach.load_view). `acwr_series`
-    bleibt: coach.signals liest es (Signale-Reiter).
+    den Verlauf der 7-Tage-Last ersetzt ist (coach.load_view). 0.74.1 (B4):
+    die alte ACWR-Reihe ist entfernt - das Verhaeltnis kommt nur aus `window_ratio`.
     """
     weeks = _safe("weekly", weekly_summary, data, default=[])
     days = sorted((data.get("wellness") or {}))
@@ -653,12 +624,12 @@ def readiness(data: dict[str, Any]) -> dict[str, Any]:
     # 0.74.0 (Skizze §3.1 h): EIN 4-Wochen-Schnitt. Das Verhaeltnis kommt aus
     # load_budget (heute = letzter Wellness-Tag): Fensterlast der 7 Tage bis
     # heute Abend / (7 x Schnitt der 28 Tage VOR heute) - derselbe Schnitt wie
-    # Heute-Kopf und Trainer. Bis 0.73.4 las dieser Punkt acwr_series (Schnitt
+    # Heute-Kopf und Trainer. Bis 0.73.4 las dieser Punkt die ACWR-Reihe (Schnitt
     # INKLUSIVE heute). Schwellen, Texte und Einstufung bleiben.
+    # 0.74.1 (B4): die Rechnung steht in window_ratio - dieselbe Funktion wie coach.signals.
     wellness_days = sorted(data.get("wellness") or {})
-    window = load_budget(data, "green", today=wellness_days[-1]) if wellness_days else None
-    if window and window.get("chronic"):
-        ratio = round(window["window_load"] / (7 * window["chronic"]), 2)
+    ratio = window_ratio(data, wellness_days[-1]) if wellness_days else None
+    if ratio is not None:
         if ratio > ACWR_RISK:
             state, detail = "red", "deutlich über dem Korridor"
         elif ratio > ACWR_HIGH:
@@ -842,6 +813,24 @@ def load_budget(data: dict[str, Any], state: str = "green", today: str | None = 
     }
 
 
+def window_ratio(data: dict[str, Any], day: str) -> float | None:
+    """Akut zu chronisch an `day` - EINE Stelle (0.74.1, B4).
+
+    = Fensterlast der 7 Tage bis `day` Abend / (7 x Schnitt der 28 Tage VOR
+    `day`), beides aus `load_budget(..., today=day)`, also derselbe Schnitt wie
+    Heute-Kopf und Trainer. Leser: `readiness` (Punkt "Akut zu chronisch") und
+    `coach.signals` (Signale-Reiter). Bis 0.74.0 las signals die ACWR-Reihe
+    (Schnitt INKLUSIVE des Tages) - ein zweiter Weg, jetzt entfernt. Die
+    Rundung (Last und Schnitt auf eine Stelle, Verhaeltnis auf zwei) ist die
+    von load_budget/readiness bis 0.74.0, bitgleich. Ohne Budget (unter 28
+    Tagen im Bestand) oder mit Schnitt 0: None.
+    """
+    window = load_budget(data, "green", today=day)
+    if not window or not window.get("chronic"):
+        return None
+    return round(window["window_load"] / (7 * window["chronic"]), 2)
+
+
 def _window_rows(series: list[dict[str, Any]], day_today: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Die Tage VOR heute und die Zeile von heute - EINE Stelle fuer Budget und Fenster.
 
@@ -884,11 +873,14 @@ def planned_loads(events: Any, after: str | None, until: str | None = None) -> d
     Geplant heisst: `category == "WORKOUT"`, Datum NACH `after` (heute zaehlt
     nicht - es ist Teil von heute), bis `until` einschliesslich,
     `icu_training_load` > 0, kein `paired_activity_id` (erledigt, steht schon
-    als Fahrt in der Tageslast).
+    als Fahrt in der Tageslast). 0.74.1 (B6): kein `hide_from_athlete` -
+    derselbe Filter wie `_day_planned`.
     """
     out: dict[str, float] = {}
     for event in events or []:
         if not isinstance(event, dict) or event.get("category") != "WORKOUT":
+            continue
+        if event.get("hide_from_athlete"):
             continue
         if event.get("paired_activity_id") not in (None, ""):
             continue

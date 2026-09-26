@@ -64,16 +64,19 @@ steady = {"wellness": {}, "activities": {}, "dfa": {}}
 start = date(2026, 1, 1)
 for index in range(40):
     steady["wellness"][(start + timedelta(days=index)).isoformat()] = {"ctlLoad": 50.0}
-acwr = analytics.acwr_series(steady)
-check("vor 28 Tagen kein Verhaeltnis", acwr[26]["ratio"], None)
-check("gleichmaessige Last ergibt 1.0", acwr[-1]["ratio"], 1.0)
+_wr0 = getattr(analytics, "window_ratio", None)
+_steady_last = (start + timedelta(days=39)).isoformat()
+check("unter 28 Tagen im Bestand kein Verhaeltnis (load_budget None)",
+      _wr0({"wellness": {k: v for k, v in list(steady["wellness"].items())[:20]}, "activities": {}, "dfa": {}},
+           (start + timedelta(days=19)).isoformat()) if callable(_wr0) else "FEHLT", None)
+check("gleichmaessige Last ergibt 1.0", _wr0(steady, _steady_last) if callable(_wr0) else "FEHLT", 1.0)
 
 spike = dict(steady["wellness"])
 for index in range(33, 40):
     spike[(start + timedelta(days=index)).isoformat()] = {"ctlLoad": 150.0}
-jump = analytics.acwr_series({"wellness": spike, "activities": {}, "dfa": {}})
+_jump = _wr0({"wellness": spike, "activities": {}, "dfa": {}}, _steady_last) if callable(_wr0) else None
 check("Belastungssprung hebt das Verhaeltnis ueber die Risikoschwelle",
-      jump[-1]["ratio"] > analytics.ACWR_RISK, True)
+      _jump is not None and _jump > analytics.ACWR_RISK, True)
 
 # --- three zone collapse ----------------------------------------------------------
 check("5-Zonen-Modell: 1-2 / 3 / 4-5",
@@ -383,11 +386,17 @@ _lvl3_ctx["day_context"] = {
                                       "note": "", "set_at": ""}
     for _o in range(1, 25)}
 
-for _name in ("daily_load", "weekly_summary", "acwr_series"):
+for _name in ("daily_load", "weekly_summary"):
     _fn = getattr(analytics, _name)
     check(f"Ebene 3: {_name} ignoriert Etiketten",
           _json.dumps(_fn(_lvl3), sort_keys=True, default=str)
           == _json.dumps(_fn(_lvl3_ctx), sort_keys=True, default=str), True)
+if callable(getattr(analytics, "window_ratio", None)):
+    _lvl3_day = sorted(_lvl3["wellness"])[-1]
+    check("Ebene 3: window_ratio ignoriert Etiketten",
+          analytics.window_ratio(_lvl3, _lvl3_day) == analytics.window_ratio(_lvl3_ctx, _lvl3_day), True)
+else:
+    check("Ebene 3: window_ratio fehlt", "FEHLT", "da")
 for _state in ("green", "amber", "red"):
     check(f"Ebene 3: load_budget ignoriert Etiketten ({_state})",
           analytics.load_budget(_lvl3, _state) == analytics.load_budget(_lvl3_ctx, _state), True)
@@ -943,6 +952,18 @@ _wp = getattr(analytics, "window_projection", None)
 _PL = _try(getattr(analytics, "planned_loads", lambda *a: "FEHLT"), _BEV, "2026-09-26", "2026-10-10")
 check("0.74.0 g: planned_loads nimmt nur WORKOUT, > heute, Last > 0, ungepaart, bis zum Ende",
       _PL, {"2026-09-27": 70.0, "2026-10-05": 80.0})
+# 0.74.1 B6: ein verborgenes Event (hide_from_athlete) zaehlt nicht - wie in _day_planned
+_BEVh = list(_BEV) + [{"id": 99, "category": "WORKOUT", "start_date_local": "2026-09-29T09:00:00",
+                       "icu_training_load": 55, "name": "verborgen", "hide_from_athlete": True},
+                      {"id": 98, "category": "WORKOUT", "start_date_local": "2026-09-30T09:00:00",
+                       "icu_training_load": 33, "name": "sichtbar", "hide_from_athlete": False}]
+check("0.74.1 B6: planned_loads zaehlt ein verborgenes Event nicht, ein sichtbares schon",
+      _try(analytics.planned_loads, _BEVh, "2026-09-26", "2026-10-10"),
+      {"2026-09-27": 70.0, "2026-09-30": 33.0, "2026-10-05": 80.0})
+check("0.74.1 B6: _day_planned und planned_loads filtern gleich",
+      sorted(d for d in analytics._day_planned(_BEVh) if "2026-09-26" < d <= "2026-10-10"
+             and any((x.get("load") or 0) > 0 and not x.get("done") for x in analytics._day_planned(_BEVh)[d])),
+      sorted(analytics.planned_loads(_BEVh, "2026-09-26", "2026-10-10")))
 check("0.74.0 e: analytics.window_projection existiert", callable(_wp), True)
 if callable(_wp) and isinstance(_PL, dict):
     _P = _wp(_BD, "amber", _PL, 14)
@@ -970,9 +991,29 @@ _rdy = analytics.readiness(_BDh)
 _ac = next((c for c in _rdy["components"] if c["id"] == "acwr"), {})
 _lb = analytics.load_budget(_BDh, "green", "2026-09-26")
 _neu = round(_lb["window_load"] / (7 * _lb["chronic"]), 2)
-_alt = [r for r in analytics.acwr_series(_BDh) if r["ratio"] is not None][-1]["ratio"]
-print(f"   0.74.0 h Beispielzahl: alt (acwr_series, Schnitt inkl. heute) {_alt} -> neu (load_budget, Schnitt vor heute) {_neu}")
+# der alte Weg (acwr_series bis 0.74.0, Schnitt INKLUSIVE des Tages) nur noch hier als Vergleich
+def _alt_ratio(data, day):
+    rows = [r for r in analytics.daily_load(data) if r["date"] <= day]
+    if len(rows) < 28:
+        return None
+    ld = [r["load"] for r in rows]
+    c = sum(ld[-28:]) / 28
+    return round((sum(ld[-7:]) / 7) / c, 2) if c else None
+_alt = _alt_ratio(_BDh, "2026-09-26")
+print(f"   0.74.0 h Beispielzahl: alt (Schnitt inkl. heute) {_alt} -> neu (load_budget, Schnitt vor heute) {_neu}")
 check("0.74.0 h Fixture: alter und neuer Weg unterscheiden sich", _neu != _alt, True)
+# --- 0.74.1 B4 · EINE Funktion fuer das Verhaeltnis ---------------------------------
+_wr = getattr(analytics, "window_ratio", None)
+check("0.74.1 B4: analytics.window_ratio existiert", callable(_wr), True)
+if callable(_wr):
+    check("0.74.1 B4: window_ratio = window_load / (7 x chronic) aus load_budget(day)", _wr(_BDh, "2026-09-26"), _neu)
+    for _dd in ("2026-09-24", "2026-09-25", "2026-09-26"):
+        _l = analytics.load_budget(_BDh, "green", _dd)
+        check(f"0.74.1 B4: window_ratio am {_dd} aus load_budget(today={_dd})", _wr(_BDh, _dd),
+              round(_l["window_load"] / (7 * _l["chronic"]), 2))
+        print(f"   0.74.1 B4 Fixture {_dd}: alt {_alt_ratio(_BDh, _dd)} -> neu {_wr(_BDh, _dd)}")
+    check("0.74.1 B4 unter 28 Tagen: None", _wr(_bl(n=20), "2026-09-26"), None)
+    check("0.74.1 B4 Tag ohne Wellness-Reihe (leer): None", _wr({"wellness": {}, "activities": {}, "dfa": {}}, "2026-09-26"), None)
 check("0.74.0 h: Akut zu chronisch = window_load / (7 x chronic) aus load_budget(heute)", _ac.get("value"), _neu)
 check("0.74.0 h: Schwellen und Texte bleiben (Einstufung am neuen Wert: 1,51 > 1,5 -> rot)",
       (_ac.get("reference"), _ac.get("label"), _ac.get("state"), _ac.get("detail")),
@@ -981,7 +1022,9 @@ _rsrc = (COMP / "analytics.py").read_text(encoding="utf-8")
 _rbody = _rsrc[_rsrc.index("def readiness("):]
 _rbody = _rbody[:_rbody.index("\ndef ", 10)]
 check("0.74.0 h AST: readiness ruft acwr_series nicht mehr, load_budget genau einmal",
-      ("acwr_series(" in _rbody, _rbody.count("load_budget(")), (False, 1))
+      ("acwr_series(" in _rbody, _rbody.count("load_budget(") + _rbody.count("window_ratio(")), (False, 1))
+check("0.74.1 B4 AST: readiness nimmt das Verhaeltnis aus window_ratio, nicht selbst aus load_budget",
+      (_rbody.count("window_ratio("), _rbody.count("load_budget(")), (1, 0))
 check("0.74.0 h Randfall unter 28 Tagen: kein Punkt", [c["id"] for c in analytics.readiness(_bl(n=20))["components"]].count("acwr"), 0)
 
 # --- i · summary ohne ACWR-Felder -------------------------------------------------
@@ -991,7 +1034,9 @@ check("0.74.0 i: thresholds ohne acwr_*", sorted(k for k in _sm["thresholds"] if
 check("0.74.0 i: der Rest der Payload bleibt",
       sorted(_sm), sorted(["weeks", "ramp_rate", "form", "form_percent", "form_zone", "intensity",
                            "dfa_distribution", "decoupling", "hrv", "thresholds"]))
-check("0.74.0 i: acwr_series bleibt (Leser coach.signals)", callable(getattr(analytics, "acwr_series", None)), True)
+check("0.74.1 B4: acwr_series ist entfernt", hasattr(analytics, "acwr_series"), False)
+check("0.74.1 B4: acwr_series kommt im Paket nicht mehr vor",
+      sorted(f.name for f in COMP.rglob("*.py") if "acwr_series" in f.read_text(encoding="utf-8")), [])
 
 print(f"test_analytics: {CHECKS} Prüfungen, {len(failures)} Fehler")
 print("FEHLER:", failures if failures else "keine")
