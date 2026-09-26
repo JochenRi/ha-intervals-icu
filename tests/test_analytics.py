@@ -264,7 +264,9 @@ check("alle Signale vorhanden",
 check("Grenzen der Kombination benannt", "nicht unabhängig validiert" in good["note"], True)
 
 # budget: the load allowed today follows straight from the ratio definition
-budget = good["budget"]
+# 0.73.1 umgestellt: readiness traegt kein Budget mehr (die Farbe kommt aus dem
+# Zustand, coach.BUDGET_LIGHT); die Formel selbst wird hier direkt geprueft.
+budget = analytics.load_budget(base, "green")
 loads = [point["load"] for point in analytics.daily_load(base)]
 expected = round(7 * (sum(loads[-28:]) / 28) * analytics.ACWR_HIGH - sum(loads[-6:]))
 check("Lastbudget folgt der Definition", budget["recommended"], expected)
@@ -284,8 +286,11 @@ states = {item["id"]: item["state"] for item in alarm["components"]}
 check("HRV meldet", states["hrv"] in ("amber", "red"), True)
 check("Ruhepuls meldet", states["rhr"] in ("amber", "red"), True)
 check("Schlaf meldet", states["sleep"] in ("amber", "red"), True)
-check("Budget schrumpft mit der Ampel",
-      alarm["budget"]["recommended"] < good["budget"]["recommended"], True)
+# 0.73.1 umgestellt: vorher "Budget schrumpft mit der Ampel" (readiness.overall -> Faktor).
+# Die Ampel faerbt nur noch sich selbst; der Faktor je Farbe bleibt (Formel unveraendert).
+check("readiness traegt kein Budget mehr (0.73.1)", "budget" in alarm, False)
+check("Faktor rot bleibt kleiner als gruen (Formel unveraendert)",
+      analytics.load_budget(stressed, "red")["recommended"] < analytics.load_budget(stressed, "green")["recommended"], True)
 
 # without any data the light says so instead of inventing a verdict
 check("ohne Daten keine Aussage",
@@ -612,7 +617,27 @@ check("0.73.0 3 Fenster: frei = recommended - used_today", _fb.get("window_free"
 _c = _fb["chronic"]
 check("0.73.0 3 Baender x0,8/1,0/1,3/1,5", _fb.get("window_bands"),
       {"low": round(7 * _c * 0.8), "steady": round(7 * _c * 1.0), "top": round(7 * _c * 1.3), "risk": round(7 * _c * 1.5)})
-check("0.73.0 3 der aelteste Fenstertag faellt morgen raus", _fb.get("drops_next"), {"date": "2026-09-20", "load": 90.0})
+# 0.73.1 umgestellt (2.3): drops_next = aeltester Fenstertag MIT Last, dazu leaves_on
+check("0.73.0/0.73.1 3 der aelteste Fenstertag mit Last und wann er geht", _fb.get("drops_next"),
+      {"date": "2026-09-20", "load": 90.0, "leaves_on": "2026-09-27"})
+# 0.73.1 · 2.3: Tage mit 0 werden uebersprungen
+_z = _fenster(); _z["wellness"]["2026-09-20"] = {"ctlLoad": 0.0}
+check("0.73.1 2.3 drops_next ueberspringt den Tag mit 0", analytics.load_budget(_z, "green", today="2026-09-26").get("drops_next"),
+      {"date": "2026-09-22", "load": 95.0, "leaves_on": "2026-09-29"})
+_n = _fenster(heute_last=0.0)
+for _day in ("2026-09-20", "2026-09-22", "2026-09-23", "2026-09-25"):
+    _n["wellness"][_day] = {"ctlLoad": 0.0}
+check("0.73.1 2.3 keiner mit Last -> None", analytics.load_budget(_n, "green", today="2026-09-26").get("drops_next", "fehlt"), None)
+_h = _fenster(); 
+for _day in ("2026-09-20", "2026-09-21", "2026-09-22", "2026-09-23", "2026-09-24", "2026-09-25"):
+    _h["wellness"][_day] = {"ctlLoad": 0.0}
+check("0.73.1 2.3 nur heute mit Last -> heute, geht in 7 Tagen", analytics.load_budget(_h, "green", today="2026-09-26").get("drops_next"),
+      {"date": "2026-09-26", "load": 40.0, "leaves_on": "2026-10-03"})
+# 0.73.1 · 2.4: der Tag vor dem Fenster (faellt gegenueber dem Fenster von gestern heraus), aus derselben Reihe
+check("0.73.1 2.4 window_before = Tag vor window_start mit seiner Last", _fb.get("window_before"), {"date": "2026-09-19", "load": 50.0})
+_mb = analytics.load_budget(_fenster(), "green", today="2026-09-27")
+check("0.73.1 2.4 Morgen-Fenster: 21.-27., davor der 20. mit 90",
+      (_mb.get("window_start"), _mb.get("window_end"), _mb.get("window_before")), ("2026-09-21", "2026-09-27", {"date": "2026-09-20", "load": 90.0}))
 _fa = analytics.load_budget(_fenster(), "amber", today="2026-09-26")
 _fr = analytics.load_budget(_fenster(), "red", today="2026-09-26")
 check("0.73.0 3 Ampel gelb: Zielstrich x1,0", _fa.get("window_allowed"), _fa.get("window_bands", {}).get("steady"))

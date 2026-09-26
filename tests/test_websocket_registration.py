@@ -239,8 +239,11 @@ goal_fn = functions.get("websocket_goal")
 check(goal_fn is not None, "goal: Handler fehlt")
 if goal_fn is not None:
     src = ast.get_source_segment(MODULE.read_text(), goal_fn) or ""
-    for call in ("rate_sessions", "week_done", "recovery_offered", "readiness"):
+    # 0.73.1 umgestellt: statt "readiness" das Budget ueber session_ceiling
+    # (Zustand -> coach.week_budget); readiness() darf hier NICHT mehr stehen.
+    for call in ("rate_sessions", "week_done", "recovery_offered", "session_ceiling"):
         check(call in src, f"goal: {call} wird nicht gerufen — die Ansicht rechnet selbst")
+    check("readiness(" not in src, "goal: das Budget kommt noch aus der Bereitschafts-Ampel")
     # only weeks[0] is graded, and it is the one marked as rated
     check('weeks[0]["rated"] = True' in src, "goal: die laufende Woche wird nicht markiert")
     check("weeks[1]" not in src and "for week in weeks" not in src,

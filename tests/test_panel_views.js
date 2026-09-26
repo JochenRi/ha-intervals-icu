@@ -3629,7 +3629,8 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
 
 /* ── 0.73.0 · Heute-Kopf Variante C (Skizze §6) ─────────────────────── */
 {
-  const P = new M.Panel(); P._nowIso = F.TODAY;
+  // 0.73.1: "heute" ist der 26.09. - das Fenster der Fixture (So 20.-Sa 26.) ist das von heute
+  const P = new M.Panel(); P._nowIso = "2026-09-26";
   const z = (h) => String(h).replace(/\s+/g, " ");
   const vis = (h) => z(h).replace(/title="[^"]*"/g, "").replace(/aria-label="[^"]*"/g, "");
   const H = (k, o) => z(P.rHeute({ ...F.today(), week: F.week(k), ...(o || {}) }));
@@ -3646,11 +3647,14 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   ok(/class="tbig"[^>]*>Alles möglich</.test(v), "0.73.0 §6: das Koerperwort ist nicht die Leitanzeige");
   // der Kasten
   const b = box(v);
-  contains(b, "Wie viel die Woche noch trägt · letzte 7 Tage", "0.73.0 §6: Augenbraue der Woche fehlt");
+  // 0.73.1 umgestellt (2.4): die Spanne statt "letzte 7 Tage"
+  contains(b, "Wie viel die Woche noch trägt · So 20.–Sa 26.", "0.73.1 2.4: Augenbraue der Woche ohne Datumsspanne");
   contains(b, ">Woche voll<", "0.73.0 §6 Fall Rest 0: 'Woche voll' fehlt");
-  contains(b, "Heute ist keine Last mehr frei. Morgen wird Platz: der Sonntag (90) fällt raus.", "0.73.0 §6: Satz 'Morgen wird Platz' falsch");
+  // 0.73.1 umgestellt (2.3): "fällt aus dem Fenster" statt "Morgen wird Platz"
+  contains(b, "Heute ist keine Last mehr frei. Ab morgen fällt die Fahrt vom So 20. (90) aus dem Fenster.", "0.73.1 2.3: Satz 'Ab morgen' falsch");
+  ok(!/Morgen wird Platz/.test(b), "0.73.1 2.3: 'Morgen wird Platz' steht noch");
   const l0 = box(H("leer0"));
-  ok(/Heute ist keine Last mehr frei\.</.test(l0) && !/Morgen wird Platz/.test(l0), "0.73.0 §6: 'Morgen wird Platz' bei Last 0 des aeltesten Tags");
+  ok(/Heute ist keine Last mehr frei\.</.test(l0) && !/aus dem Fenster/.test(l0), "0.73.1 2.3: Satz ohne Fenstertag mit Last");
   const fr = box(H("frei"));
   ok(/>Noch 116 Last frei</.test(fr) && fr.includes("So viel verträgt die Woche heute noch."), "0.73.0 §6 Fall Rest > 0 falsch");
   const zu = box(H("zustand"));
@@ -3661,7 +3665,9 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   contains(mo, "Was dein Körper morgen kann", "0.73.0 §6: Morgen-Augenbraue fehlt");
   ok(/>Noch 86 Last frei</.test(box(mo)) && box(mo).includes("So viel verträgt die Woche morgen noch."), "0.73.0 §6: Morgen-Satz falsch");
   const mv = z(P.rHeute({ ...F.today(), week: { ...F.week("voll"), mode: "tomorrow" } }));
-  ok(box(mv).includes("Morgen ist keine Last mehr frei.") && !/Morgen wird Platz/.test(mv), "0.73.0 §6: Morgen-Modus nennt 'Morgen wird Platz'");
+  // 0.73.1 umgestellt (2.3): der Satz steht in BEIDEN Modi
+  ok(box(mv).includes("Morgen ist keine Last mehr frei. Ab morgen fällt die Fahrt vom So 20. (90) aus dem Fenster.") && !/Morgen wird Platz/.test(mv),
+     "0.73.1 2.3: Morgen-Modus ohne 'fällt aus dem Fenster'");
   ok(/>Morgen höchstens 75 Last</.test(z(P.rHeute({ ...F.today(), week: { ...F.week("zustand"), mode: "tomorrow" } }))), "0.73.0 §6: Morgen-Modus bound_by state");
 
   // vier Zeilen je Gruppe, Reihenfolge, Breite auf gemeinsamer Skala max(Ziel, Summe)
@@ -3683,11 +3689,12 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   ok(![C.green, C.amber, C.red, C.orange].some((c) => fills.includes(c)), "0.73.0 §6: Zustandsfarbe an einer Familie");
   // Summenbalken: vier Baender, Fuellung = Summe, Zielstrich + "Ziel 256", Worte ohne Zahlen
   const mx = Math.max(295, 260) * 1.05;
-  ok((box(v).match(/class="hwband"/g) || []).length === 4, "0.73.0 §6: nicht vier Baender");
+  // 0.73.1 umgestellt (2.2): drei Flaechen am Ziel statt vier fester Baender
+  ok((box(v).match(/class="hwband"/g) || []).length === 3, "0.73.1 2.2: nicht drei Flaechen");
   ok(box(v).includes(`class="hwsumfill" style="width:${pct(260, mx)}"`), "0.73.0 §6: Fuellung nicht = Summe");
   ok(box(v).includes(`class="hwgoal" style="left:${pct(256, mx)}"`) && />Ziel 256</.test(box(v)), "0.73.0 §6: Zielstrich/Ziel-Beschriftung");
   const zones = (box(v).match(/class="hwzones">(.*?)<\/div>/) || ["", ""])[1];
-  ok(["wenig", "passt", "viel", "zu viel"].every((w) => zones.includes(`>${w}<`)) && !/\d/.test(zones.replace(/style="[^"]*"/g, "")),
+  ok(["passt", "über Ziel", "zu viel"].every((w) => zones.includes(`>${w}<`)) && !/>wenig</.test(zones) && !/>viel</.test(zones) && !/\d/.test(zones.replace(/style="[^"]*"/g, "")),
      "0.73.0 §6: Bandworte fehlen oder Zahlen an den Grenzen");
   // Zielstrich je Ampel (x1,0 / x0,8) aus dem Payload
   ok(box(H("gelb")).includes(`class="hwgoal" style="left:${pct(197, mx)}"`) && />Ziel 197</.test(box(H("gelb"))), "0.73.0: Zielstrich gelb nicht x1,0");
@@ -3697,7 +3704,8 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   const ue = box(H("ueber")); const mx2 = 380 * 1.05;
   ok(ue.includes(`class="hwsumfill" style="width:${pct(380, mx2)}"`) && ue.includes(`class="hwgoal" style="left:${pct(256, mx2)}"`), "0.73.0: Ueberlauf skaliert nicht mit");
   // Fusszeile woertlich
-  contains(b, "Zusammen 260 Last. Das Ziel ist das 1,3-Fache deines Durchschnitts der letzten 4 Wochen – eine Festlegung, keine Messung.",
+  // 0.73.1 umgestellt (2.2): mit dem Zustandswort
+  contains(b, "Zusammen 260 Last. Das Ziel ist das 1,3-Fache deines Durchschnitts der letzten 4 Wochen, weil dein Zustand „Normalbereich“ ist – eine Festlegung, keine Messung.",
            "0.73.0 §6: Fusszeile nicht woertlich");
   // entfallen: "nicht verdaust", "Obergrenze ... davon ... gefahren"
   ok(!/nicht verdaust/.test(v) && !/davon [\d]+ gefahren/.test(v) && !/class="tceil"/.test(v), "0.73.0 §6: alter Bullet/Satz steht noch");
@@ -3708,7 +3716,7 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
 
   // rechte Spalte: Zustand, dann die Fahrten = Legende
   const sd = side(v);
-  ok(/class="tlabel">Zustand</.test(sd) && /class="tlabel[^"]*">Deine Fahrten, letzte 7 Tage</.test(sd), "0.73.0 §6: Augenbrauen rechts");
+  ok(/class="tlabel">Zustand</.test(sd) && /class="tlabel[^"]*">Deine Fahrten in diesem Fenster</.test(sd), "0.73.0 §6: Augenbrauen rechts");
   ok(sd.indexOf("Zustand<") < sd.indexOf("Deine Fahrten"), "0.73.0 §6: Zustand steht nicht ueber den Fahrten");
   const li = [...sd.matchAll(/class="hwli">\s*<span class="hwchip( hatch)?" style="([^"]*)" title="([^"]*)"><\/span>\s*<span class="d">([^<]+)<\/span>\s*<span class="nm" title="([^"]*)">([^<]+)<\/span>\s*<span class="ld tn">([^<]+)<\/span>\s*<span class="fam">([^<]+)<\/span>/g)]
     .map((m) => ({ hatch: !!m[1], style: m[2], src: m[3], d: m[4], full: m[5], nm: m[6], ld: m[7], fam: m[8] }));
@@ -3740,6 +3748,60 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   ok(/>Noch 777 Last frei</.test(hx) && />555</.test(hx) && /Zusammen 999 Last/.test(hx), "0.73.0: das Panel rechnet frei/Gruppen/Summe selbst");
   // stale-Tag: der Kasten steht trotzdem
   ok(/class="hwbox"/.test(z(P.rHeute({ ...F.today(), date: "2026-09-09", week: F.week("voll") }))), "0.73.0 §8: stale-Tag ohne Wochenkasten");
+}
+
+/* ── 0.73.1 · Baender am Ziel, "faellt aus dem Fenster", Fenster beschriftet ── */
+{
+  const P = new M.Panel(); P._nowIso = "2026-09-26";
+  const z = (h) => String(h).replace(/\s+/g, " ");
+  const H = (w, o) => z(P.rHeute({ ...F.today(), week: w, ...(o || {}) }));
+  const box = (h) => h.slice(h.indexOf('class="hwbox"'), h.indexOf('class="tstate"'));
+  const pct = (v, m) => (v / m * 100).toFixed(1) + "%";
+  const { C } = M;
+  const bands = (h) => [...box(h).matchAll(/class="hwband" style="left:([\d.]+)%;width:([\d.]+)%;background:([^"]+)"/g)]
+    .map((m) => ({ l: m[1] + "%", w: m[2] + "%", c: m[3] }));
+  // 2.2 drei Flaechen: [0, Ziel) passt · [Ziel, Risiko) ueber Ziel · [Risiko, max) zu viel
+  const wv = F.week("voll"); const mx = Math.max(295, 260) * 1.05;
+  const bv = bands(H(wv));
+  ok(bv.length === 3 && bv[0].l === "0.0%" && bv[0].w === pct(256, mx) && bv[1].l === pct(256, mx) && bv[2].l === pct(295, mx),
+     `0.73.1 2.2: Flaechen nicht am Ziel ${JSON.stringify(bv)}`);
+  ok(bv.length === 3 && bv[0].c.startsWith(C.green) && bv[1].c.startsWith(C.amber) && bv[2].c.startsWith(C.red), "0.73.1 2.2: Farben passt/ueber Ziel/zu viel");
+  // der Abnahme-Fall: Faktor 0,8, Ziel 180, Summe 278 -> liegt in "ueber Ziel"
+  const r = F.week("rot"); r.budget = { ...r.budget, window_allowed: 180, window_bands: { low: 180, steady: 225, top: 293, risk: 338 } };
+  r.total = 278; const mr = 338 * 1.05;
+  const br = bands(H(r));
+  const fill = (box(H(r)).match(/class="hwsumfill" style="width:([\d.]+)%"/) || [])[1];
+  ok(br.length === 3 && br[1].l === pct(180, mr) && parseFloat(fill) > parseFloat(br[1].l) && parseFloat(fill) < parseFloat(br[2].l),
+     "0.73.1 2.2: Summe 278 bei Ziel 180 steht nicht in 'über Ziel'");
+  ok(br.length === 3 && box(H(r)).includes(`class="hwgoal" style="left:${pct(180, mr)}"`), "0.73.1 2.2: das Ziel ist nicht die Grenze passt|über Ziel");
+  // Randfall: Ziel >= Risiko -> nur zwei Flaechen
+  const rr = F.week("voll"); rr.budget = { ...rr.budget, window_allowed: 300 };
+  const b2 = bands(H(rr));
+  ok(b2.length === 2 && b2[0].c.startsWith(C.green) && b2[1].c.startsWith(C.red), `0.73.1 2.2 Randfall: Ziel >= Risiko -> zwei Flaechen (${b2.length})`);
+  ok(!/>über Ziel</.test(box(H(rr))), "0.73.1 2.2 Randfall: 'über Ziel' ohne Flaeche");
+  // Fusszeile mit dem Zustandswort von rechts oben (state_label)
+  contains(box(H(wv, { state_label: "beansprucht" })), "weil dein Zustand „beansprucht“ ist – eine Festlegung, keine Messung.", "0.73.1 2.2: Zustandswort nicht aus state_label");
+  // 2.3 "Ab {Wochentag}", wenn leaves_on nicht morgen ist
+  const f = F.week("frei"); f.budget = { ...f.budget, window_free: 0 };
+  ok(box(H(f)).includes("Ab Montag fällt die Fahrt vom Mo 21. (60) aus dem Fenster."), "0.73.1 2.3: 'Ab {Wochentag}' falsch");
+  ok(!/Ab morgen/.test(box(H(f))), "0.73.1 2.3: 'Ab morgen' obwohl leaves_on nicht morgen ist");
+  const mo = F.week("morgen"); mo.budget = { ...mo.budget, window_free: 0 };
+  ok(box(H(mo)).includes("Morgen ist keine Last mehr frei. Ab Dienstag fällt die Fahrt vom Di 22. (95) aus dem Fenster."), "0.73.1 2.3: Morgen-Modus 'Ab Dienstag'");
+  ok(!/aus dem Fenster/.test(box(H(F.week("frei")))), "0.73.1 2.3: der Satz steht auch ohne 'Woche voll'");
+  // 2.4 Fenster beschriftet: Modus morgen mit eigener Spanne und Hinweis
+  const bm = box(H(F.week("morgen")));
+  ok(bm.includes("Wie viel die Woche morgen trägt · Mo 21.–So 27.") && !/So 20\.–Sa 26\./.test(bm), "0.73.1 2.4: Morgen-Spanne falsch");
+  ok(bm.includes("Du bist heute schon gefahren, deshalb zählt das Fenster ab morgen. Die Fahrt vom So 20. ist dann nicht mehr drin."), "0.73.1 2.4: Hinweissatz im Morgen-Modus fehlt");
+  const m0 = F.week("morgen"); m0.budget = { ...m0.budget, window_before: { date: "2026-09-20", load: 0 } };
+  ok(box(H(m0)).includes("deshalb zählt das Fenster ab morgen.") && !/nicht mehr drin/.test(box(H(m0))), "0.73.1 2.4: zweiter Satz ohne Last des Tages");
+  ok(!/Du bist heute schon gefahren/.test(box(H(wv))), "0.73.1 2.4: Hinweissatz im Heute-Modus");
+  ok(z(P.rHeute({ ...F.today(), week: F.week("ohnebudget") })).includes("Wie viel die Woche noch trägt · So 20.–Sa 26."), "0.73.1 2.4: Spanne ohne Budget");
+  // Liste rechts: "Deine Fahrten in diesem Fenster" in beiden Modi
+  ok(/Deine Fahrten in diesem Fenster/.test(H(F.week("morgen"))) && !/letzte 7 Tage/.test(H(F.week("morgen")).replace(/Keine Fahrt in den letzten 7 Tagen\./, "")),
+     "0.73.1 2.4: Listen-/Kastenbeschriftung sagt noch 'letzte 7 Tage'");
+  // das Panel liest nur window_allowed und window_bands.risk
+  const q = F.week("voll"); q.budget = { ...q.budget, window_bands: { low: 1, steady: 2, top: 3, risk: 295 } };
+  ok(JSON.stringify(bands(H(q))) === JSON.stringify(bv), "0.73.1 2.2: das Panel liest low/steady/top");
 }
 
 report("test_panel_views");

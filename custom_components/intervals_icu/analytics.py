@@ -556,7 +556,7 @@ def _recent(data: dict[str, Any], field: str, days: int) -> list[float]:
 
 
 def readiness(data: dict[str, Any], today: str | None = None) -> dict[str, Any]:
-    """Return a per-signal traffic light plus a load budget for today."""
+    """Return a per-signal traffic light and its overall colour (since 0.73.1 without a load budget)."""
     components: list[dict[str, Any]] = []
 
     # --- HRV against its own smallest worthwhile change -----------------------
@@ -745,7 +745,6 @@ def readiness(data: dict[str, Any], today: str | None = None) -> dict[str, Any]:
     return {
         "overall": overall,
         "components": components,
-        "budget": load_budget(data, overall, today),
         "context_note": context_note,
         "note": "Die einzelnen Signale sind belegt, ihre Kombination ist es nicht: "
                 "keine veröffentlichte Studie verrechnet genau diese Werte, und die "
@@ -796,6 +795,14 @@ def load_budget(data: dict[str, Any], state: str = "green", today: str | None = 
     # Die Baender sind die Faktoren, die hier schon stehen (0,8/1,0/1,3/1,5).
     six = before[-6:]
     window_load = last_six + used_today
+    # 0.73.1 (2.3): WANN LAST AUS DEM FENSTER FAELLT - der aelteste Fenstertag
+    # MIT Last (ein Tag mit 0 macht beim Herausfallen nichts frei), und der Tag,
+    # an dem er nicht mehr zaehlt. Keine Aussage "wird Platz": der 28-Tage-
+    # Schnitt bewegt sich mit.
+    loaded = next((p for p in six + today_row if p["load"] > 0), None)
+    # 0.73.1 (2.4): der Tag VOR dem Fenster - gegenueber dem Fenster von gestern
+    # ist er herausgefallen (Hinweis im Morgen-Modus). Aus derselben Reihe.
+    prior = before[-7] if len(before) >= 7 else None
 
     def zone(factor: float) -> int:
         return round(7 * chronic * factor)
@@ -817,7 +824,10 @@ def load_budget(data: dict[str, Any], state: str = "green", today: str | None = 
         "window_free": max(0, round(7 * chronic * target - window_load)),
         "window_bands": {"low": zone(ACWR_LOW), "steady": zone(1.0),
                          "top": zone(ACWR_HIGH), "risk": zone(ACWR_RISK)},
-        "drops_next": {"date": six[0]["date"], "load": six[0]["load"]} if six else None,
+        "drops_next": {"date": loaded["date"], "load": loaded["load"],
+                       "leaves_on": (date.fromisoformat(loaded["date"]) + timedelta(days=7)).isoformat()}
+        if loaded else None,
+        "window_before": {"date": prior["date"], "load": prior["load"]} if prior else None,
     }
 
 

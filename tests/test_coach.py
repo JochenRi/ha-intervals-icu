@@ -769,30 +769,31 @@ _f2_today = sorted(_f2["wellness"])[-1]
 _f2["activities"]["heute"] = {"id": "heute", "start_date_local": _f2_today + "T17:00:00", "type": "Ride",
                               "moving_time": 4500, "icu_intensity": 62, "icu_training_load": 60,
                               "average_heartrate": 140, "icu_average_watts": 135}
-_f2_ready = _an.readiness(_f2, today=_f2_today) or {}
+# 0.73.1 umgestellt: das Budget kommt aus dem ZUSTAND (coach.week_budget,
+# BUDGET_LIGHT), nicht mehr aus readiness().overall/budget.
 _f2_state = coach.state(_f2).get("state", "unknown")
-_sc = coach.session_ceiling(_f2, _f2_state, _f2_ready)
+_sc = coach.session_ceiling(_f2, _f2_state, _f2_today)
 check(_sc.get("for_tomorrow") is True, "18c F2: nach dem Training gilt die Grenze nicht fuer morgen")
 _morgen = (date.fromisoformat(_f2_today) + timedelta(days=1)).isoformat()
 eq(_sc.get("day"), _morgen, "18c F2: der Tag der Grenze ist nicht morgen")
-_soll = coach.load_ceiling(_f2_state, _an.load_budget(_f2, _f2_ready.get("overall", "unknown"), today=_morgen))
+_soll = coach.load_ceiling(_f2_state, _an.load_budget(_f2, coach.BUDGET_LIGHT[_f2_state], today=_morgen))
 eq(_sc.get("ceiling"), _soll["ceiling"], "18c F2: die Grenze ist nicht die von morgen (Budget mit heute in den sechs Tagen)")
-_heute = coach.load_ceiling(_f2_state, _f2_ready.get("budget"))["ceiling"]
+_heute = coach.load_ceiling(_f2_state, coach.week_budget(_f2, _f2_state, _f2_today))["ceiling"]
 check(_sc.get("ceiling") != _heute, f"18c F2 Trefferzusicherung: morgen ({_sc.get('ceiling')}) = heute ({_heute}) - die Fixture unterscheidet nicht")
 check(_sc.get("ceiling") is not None and _heute is not None and _sc["ceiling"] < _heute,
       "18c F2 Richtung: die heutige Fahrt zaehlt fuer morgen zu den sechs Tagen - die Grenze muss sinken")
 check((_sc.get("used_today") or 0) == 0.0, "18c F2: fuer morgen ist noch nichts verbraucht")
 # GEGENPROBE: vor dem Training - heutiges Budget, bitgenau wie load_ceiling
-_g2 = build(); _g2_ready = _an.readiness(_g2, today=sorted(_g2["wellness"])[-1]) or {}
+_g2 = build(); _g2_today = sorted(_g2["wellness"])[-1]
 _g2_state = coach.state(_g2).get("state", "unknown")
-_gsc = coach.session_ceiling(_g2, _g2_state, _g2_ready)
+_gsc = coach.session_ceiling(_g2, _g2_state, _g2_today)
 check(_gsc.get("for_tomorrow") is False, "18c F2 Gegenprobe: ohne Training heute 'fuer morgen'")
-eq({k: v for k, v in _gsc.items() if k not in ("for_tomorrow", "day")}, coach.load_ceiling(_g2_state, _g2_ready.get("budget")),
+eq({k: v for k, v in _gsc.items() if k not in ("for_tomorrow", "day")}, coach.load_ceiling(_g2_state, coach.week_budget(_g2, _g2_state, _g2_today)),
    "18c F2 Gegenprobe: vor dem Training weicht die Grenze von load_ceiling ab")
 # GEGENPROBE: unter 28 Tagen kein Budget, trainiert oder nicht
 _k2 = build(days=20); _k2_today = sorted(_k2["wellness"])[-1]
 _k2["activities"]["heute"] = dict(_f2["activities"]["heute"], start_date_local=_k2_today + "T17:00:00")
-_ksc = coach.session_ceiling(_k2, "ready", _an.readiness(_k2, today=_k2_today) or {})
+_ksc = coach.session_ceiling(_k2, "ready", _k2_today)
 eq((_ksc.get("for_tomorrow"), _ksc.get("budget")), (True, None), "18c F2: unter 28 Tagen erfindet morgen ein Budget")
 # EIN ERZEUGER: die beiden Handler (Trainer-Karten, Wochenplan) lesen session_ceiling,
 # nicht load_ceiling direkt - sonst rechnet einer weiter mit heute.
@@ -957,7 +958,7 @@ check(coach.session_context(rides, "nope")["available"] is False,
 noload = night_history()
 for row in noload["wellness"].values():
     row.pop("load", None)
-today_view = coach.today(noload, {"recommended": 90})
+today_view = coach.today(noload)  # 0.73.1: kein Budget von aussen mehr
 check(today_view["available"], "22 heute: nicht auswertbar")
 check(today_view["week_load"] > 0,
       f"22 heute: Wochenlast 0 trotz Einheiten im Archiv ({today_view['week_load']})")
@@ -971,7 +972,7 @@ empty = night_history()
 empty["activities"] = {}
 for row in empty["wellness"].values():
     row.pop("load", None)
-quiet = coach.today(empty, None)
+quiet = coach.today(empty)
 eq(quiet["week_load"], 0, "22 heute: Last ohne Einheiten erfunden")
 eq(quiet["rest_days"], 7, "22 heute: Ruhetage nicht gezählt")
 
@@ -1474,7 +1475,7 @@ _today = (_base + _dt.timedelta(days=39)).isoformat()
 _erz = {r["date"]: r["load"] for r in _an.daily_load(_d2)}
 check(_erz[_today] == 89 and _erz[(_base + _dt.timedelta(days=38)).isoformat()] == 88, "S2 Fixture: der Erzeuger liest ctlLoad")
 # 1 · Heute-Reiter: die Tageslast der letzten 7 Tage kommt vom Erzeuger
-_t = coach.today(_d2, {"recommended": 60}) if "coach" in globals() else None
+_t = coach.today(_d2) if "coach" in globals() else None
 _recent = {r["date"]: r["load"] for r in (_t or {}).get("recent") or []}
 eq(_recent.get(_today), 89, "S2 Treffer Heute: die Tageslast ist die des Erzeugers (ctlLoad), nicht die Aktivitaetssumme")
 # 2 · Signale-Reiter: dasselbe ACWR wie der Belastungs-Reiter (analytics.acwr_series)
@@ -1606,31 +1607,32 @@ _last73 = _days73[-1]
 for _a in _h73["activities"].values():   # heute nicht trainiert -> Modus heute
     if str(_a.get("start_date_local") or "")[:10] == _last73:
         _a["start_date_local"] = _days73[-2] + "T08:00:00"
-_bud73 = _an73.load_budget(_h73, "green", today=_last73)
+_st73 = coach.state(_h73)["state"]
+# 0.73.1 umgestellt: das Budget des Heute-Payloads entsteht in coach (week_budget), nicht draussen
+_bud73 = coach.week_budget(_h73, _st73, _last73)
 check(_bud73 is not None, "0.73.0 Fixture: night_history traegt ein Budget")
-_t73 = coach.today(_h73, _bud73)
+_t73 = coach.today(_h73, day=_last73)
 _wk73 = _t73.get("week") or {}
 eq(_wk73.get("mode"), "today", "0.73.0 5.4: ohne Fahrt heute gilt der Modus heute")
 eq(_t73["week_load"], round((_bud73 or {}).get("window_load", -1)), "0.73.0 5.4: week_load == window_load bei lueckenlosen Tagen")
 eq(round(sum(x["load"] for x in _wk73.get("sessions") or []), 1), (_bud73 or {}).get("window_load"),
    "0.73.0 5.2: die Fahrten im Heute-Payload ergeben die Fensterlast")
-eq((_wk73.get("budget") or {}).get("window_allowed"), (_bud73 or {}).get("window_allowed"), "0.73.0: das Budget im Heute-Payload ist das uebergebene")
+eq((_wk73.get("budget") or {}).get("window_allowed"), (_bud73 or {}).get("window_allowed"), "0.73.0/0.73.1: das Budget im Heute-Payload ist das aus week_budget")
 eq(_wk73.get("bound_by"), coach.load_ceiling(_t73["state"], _bud73).get("bound_by", "fehlt"), "0.73.0 4: bound_by im Heute-Payload aus load_ceiling")
 eq(_t73.get("ceiling"), coach.load_ceiling(_t73["state"], _bud73)["ceiling"], "0.73.0: die Obergrenze des Heute-Reiters unveraendert")
 # Morgen-Modus: heute schon trainiert -> das Fenster von morgen (dieselbe Stelle wie session_ceiling)
 _m73 = _cp73.deepcopy(_h73)
 _m73["activities"]["heute73"] = {"start_date_local": _last73 + "T07:00:00", "type": "Ride", "name": "heute",
                                  "moving_time": 3600, "icu_training_load": 50}
-_bm73 = _an73.load_budget(_m73, "green", today=_last73)
-_tm73 = coach.today(_m73, _bm73)
+_tm73 = coach.today(_m73, day=_last73)
 _wm73 = _tm73.get("week") or {}
-_sc73 = coach.session_ceiling(_m73, _tm73["state"], {"budget": _bm73, "overall": "green"})
+_sc73 = coach.session_ceiling(_m73, _tm73["state"], _last73)
 eq(_wm73.get("mode"), "tomorrow", "0.73.0: heute trainiert -> Modus morgen")
 eq((_wm73.get("budget") or {}).get("window_end"), _sc73.get("day"), "0.73.0: Morgen-Fenster endet am Tag von session_ceiling")
 eq(_wm73.get("ceiling"), _sc73.get("ceiling"), "0.73.0: Morgen-Grenze = die der Trainer-Karten")
 check(any(x.get("name") == "heute" for x in _wm73.get("sessions") or []), "0.73.0: im Morgen-Fenster steht die heutige Fahrt")
 # ohne Budget (unter 28 Tagen): Liste trotzdem, Budget None
-_tn73 = coach.today(_h73, None)
+_tn73 = coach.today(night_history(days=20))  # 0.73.1: unter 28 Tagen statt Budget None von aussen
 eq((_tn73.get("week") or {}).get("budget"), None, "0.73.0 Budget None: kein Budget im Heute-Payload")
 check(isinstance((_tn73.get("week") or {}).get("sessions"), list), "0.73.0 Budget None: die Fahrtenliste steht trotzdem")
 # Events aus dem Koordinator werden durchgereicht
@@ -1644,9 +1646,9 @@ def _nz(labels):
 try:
     coach.state = lambda data, **kw: {"state": "ready", "label": "", "text": ""}
     coach._night_z = _nz([("hrv", "HRV", "ms"), ("rhr", "Ruhepuls", "bpm")])
-    _two = coach.today(_h73, _bud73).get("tension") or ""
+    _two = coach.today(_h73, day=_last73).get("tension") or ""
     coach._night_z = _nz([("rhr", "Ruhepuls", "bpm")])
-    _one = coach.today(_h73, _bud73).get("tension") or ""
+    _one = coach.today(_h73, day=_last73).get("tension") or ""
 finally:
     coach.state, coach._night_z = _state_saved73, _nz_saved73
 check(_two.startswith("HRV und Ruhepuls weichen heute ungünstig von deiner Basislinie ab — aber weder weit genug noch "),
@@ -1656,6 +1658,58 @@ check(_one.startswith("Ruhepuls weicht heute ungünstig von deiner Basislinie ab
 check("liegt heute unter" not in _two + _one, "0.73.0 6: 'liegt heute unter' steht noch")
 check(_one.endswith("Wenn es morgen wieder so aussieht, ist es keins mehr."), "0.73.0 6: der Rest des Satzes ist unveraendert")
 check("Die Regel entscheidet über das Mittel der letzten drei Tage" in _one, "0.73.0 6: der Rest des Satzes (Mitte) ist unveraendert")
+
+
+# --- 0.73.1 · 2.1 das Wochenziel folgt dem Zustand (BUDGET_LIGHT, ein Weg) ------
+eq(getattr(coach, "BUDGET_LIGHT", None),
+   {"ready": "green", "strained": "amber", "elevated": "amber", "recovering": "amber",
+    "rebound": "amber", "slump": "red", "unknown": "unknown"}, "0.73.1 2.1: BUDGET_LIGHT")
+_csrc = (Path(__file__).resolve().parents[1] / "custom_components" / "intervals_icu" / "coach.py").read_text(encoding="utf-8")
+_bl_at = _csrc.find("BUDGET_LIGHT = {")
+check(_bl_at > 0 and "setzung" in _csrc[max(0, _bl_at - 600):_bl_at].lower() and _bl_at > _csrc.find("CAPACITY = {") > 0,
+      "0.73.1 2.1: BUDGET_LIGHT steht nicht neben CAPACITY oder ist nicht als Setzung beschriftet")
+# je Zustand der Faktor, ueber den EINEN Weg (_ceiling_budget -> week_budget)
+_g31 = build(); _d31 = sorted(_g31["wellness"])[-1]
+for _st, _light, _fac in (("ready", "green", 1.3), ("strained", "amber", 1.0), ("elevated", "amber", 1.0),
+                          ("recovering", "amber", 1.0), ("rebound", "amber", 1.0), ("slump", "red", 0.8),
+                          ("unknown", "unknown", 1.0)):
+    _b31 = (coach._ceiling_budget(_g31, _st, _d31)[0] if hasattr(coach, "week_budget") else None) or {}
+    eq((_b31.get("state"), _b31.get("target_ratio")), (_light, _fac), f"0.73.1 2.1: Zustand {_st} -> Faktor")
+# die zweite Ampel entscheidet nicht mehr: readiness rot + Zustand ready -> 1,3 (der Live-Fall)
+_rd_saved = _an.readiness
+try:
+    _an.readiness = lambda data, today=None: {"overall": "red", "components": [], "budget": {"recommended": 0}}
+    _live = (coach._ceiling_budget(_g31, "ready", _d31)[0] if hasattr(coach, "week_budget") else None) or {}
+    _tl = coach.today(_g31, day=_d31) if hasattr(coach, "week_budget") else {}
+finally:
+    _an.readiness = _rd_saved
+eq(_live.get("target_ratio"), 1.3, "0.73.1 2.1 Live-Fall: readiness rot + Zustand ready -> Faktor 1,3")
+# Trainer-Obergrenze = Heute-Kopf-Obergrenze am selben Tag, fuer jeden Zustand
+for _st in ("ready", "strained", "slump", "unknown"):
+    if not hasattr(coach, "week_budget"):
+        check(False, "0.73.1 2.1: coach.week_budget fehlt"); break
+    _tr = coach.session_ceiling(_g31, _st, _d31)["ceiling"]
+    _hk = coach.load_ceiling(_st, coach.week_budget(_g31, _st, _d31))["ceiling"]
+    eq(_tr, _hk, f"0.73.1 2.1: Trainer-Obergrenze = Heute-Obergrenze ({_st})")
+_st31 = coach.state(_g31)["state"]
+_t31 = coach.today(_g31, day=_d31) if hasattr(coach, "week_budget") else {}
+eq((_t31.get("ceiling"), (_t31.get("week") or {}).get("ceiling")),
+   (coach.session_ceiling(_g31, _st31, _d31)["ceiling"],) * 2, "0.73.1 2.1: Heute-Payload und Trainer lesen dieselbe Grenze")
+eq(((_t31.get("week") or {}).get("budget") or {}).get("state"), coach.BUDGET_LIGHT.get(_st31) if hasattr(coach, "BUDGET_LIGHT") else "?",
+   "0.73.1 2.1: der Heute-Kopf rechnet mit der Farbe des Zustands")
+# keine Hintertuer: die Handler und coach lesen readiness() nicht mehr fuers Budget
+_wsrc31 = (Path(__file__).resolve().parents[1] / "custom_components" / "intervals_icu" / "websocket.py").read_text(encoding="utf-8")
+_wt31 = _ast2.parse(_wsrc31)
+for _hn in ("websocket_workouts", "websocket_goal", "websocket_today"):
+    _hs = _ast2.get_source_segment(_wsrc31, next(n for n in _ast2.walk(_wt31) if isinstance(n, _ast2.FunctionDef) and n.name == _hn))
+    check("readiness(" not in _hs and 'get("budget")' not in _hs and '"overall"' not in _hs,
+          f"0.73.1 2.1: {_hn} liest noch readiness()/budget/overall")
+check("readiness(" not in _csrc and 'get("overall"' not in _csrc, "0.73.1 2.1: coach liest noch readiness()/overall")
+check(_csrc.count("analytics.load_budget(") == 1, f"0.73.1 2.1: coach ruft load_budget an {_csrc.count('analytics.load_budget(')} Stellen (soll: eine)")
+# readiness behaelt Punkte und overall, das Feld budget hat keinen Leser mehr und ist fort
+_rd31 = _an.readiness(_g31, today=_d31)
+check("overall" in _rd31 and _rd31.get("components"), "0.73.1 2.1: readiness verliert Punkte oder overall")
+check("budget" not in _rd31, "0.73.1 2.1: readiness traegt noch das Feld budget ohne Leser")
 
 print(f"test_coach: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:

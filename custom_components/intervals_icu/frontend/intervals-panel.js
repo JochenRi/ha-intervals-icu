@@ -4440,22 +4440,35 @@ class IntervalsIcuPanel extends HTMLElement {
      Pixelbreiten. Der Bullet "Obergrenze ... davon gefahren" und der Satz
      "... den du heute nicht verdaust" sind entfallen - der Satz gehoerte zu
      einer Zustandsgrenze, die Zahl kam aus der Wochenlast (Skizze §1). */
-  _weekBox(w) {
+  _weekBox(w, stateWord) {
     if (!w) return "";
-    const head = `<div class="tlabel">Wie viel die Woche noch trägt · letzte 7 Tage</div>`;
     const b = w.budget;
-    if (!b) return `<div class="hwbox">${head}<p class="hwsub">Die Wochenlast braucht 28 Tage Verlauf.</p></div>`;
     const tomorrow = w.mode === "tomorrow";
+    // 0.73.1 (2.4): das Fenster sagt, welche sieben Tage es sind - im Morgen-Modus
+    // sein eigenes, mit dem Hinweis, welcher Tag gegenueber heute herausfaellt.
+    const from = (b || {}).window_start || w.start, to = (b || {}).window_end || w.end;
+    const span = from && to ? ` · ${dShort(from)}–${dShort(to)}` : "";
+    const before = (b || {}).window_before;
+    const head = `<div class="tlabel">Wie viel die Woche ${tomorrow ? "morgen" : "noch"} trägt${esc(span)}</div>${tomorrow
+      ? `<p class="hwnote">Du bist heute schon gefahren, deshalb zählt das Fenster ab morgen.${before && before.load > 0
+        ? ` Die Fahrt vom ${esc(dShort(before.date))} ist dann nicht mehr drin.` : ""}</p>` : ""}`;
+    if (!b) return `<div class="hwbox">${head}<p class="hwsub">Die Wochenlast braucht 28 Tage Verlauf.</p></div>`;
     const Day = tomorrow ? "Morgen" : "Heute";
     let verdict, sub;
     if (w.bound_by === "state") {
       verdict = `${Day} höchstens ${fmt(w.ceiling)} Last`;
       sub = `Die Woche hätte noch ${fmt(b.window_free)} frei, aber dein Zustand bremst.`;
     } else if (!b.window_free) {
+      // 0.73.1 (2.3): der aelteste Fenstertag MIT Last und der Tag, an dem er
+      // nicht mehr zaehlt (leaves_on, Backend). Kein "wird Platz": der
+      // 4-Wochen-Schnitt bewegt sich mit. "Ab morgen" nur, wenn leaves_on der
+      // echte morgige Tag ist - in beiden Modi.
       const drop = b.drops_next;
+      const when = drop && (isoMinus(drop.leaves_on, 1) === this._now() ? "Ab morgen"
+        : `Ab ${WDL[(new Date(drop.leaves_on + "T00:00:00").getDay() + 6) % 7]}`);
       verdict = "Woche voll";
-      sub = `${Day} ist keine Last mehr frei.${!tomorrow && drop && drop.load > 0
-        ? ` Morgen wird Platz: der ${WDL[(new Date(drop.date + "T00:00:00").getDay() + 6) % 7]} (${fmt(drop.load)}) fällt raus.` : ""}`;
+      sub = `${Day} ist keine Last mehr frei.${drop
+        ? ` ${when} fällt die Fahrt vom ${dShort(drop.date)} (${fmt(drop.load)}) aus dem Fenster.` : ""}`;
     } else {
       verdict = `Noch ${fmt(b.window_free)} Last frei`;
       sub = `So viel verträgt die Woche ${tomorrow ? "morgen" : "heute"} noch.`;
@@ -4471,10 +4484,16 @@ class IntervalsIcuPanel extends HTMLElement {
     const rows = TRAINER_FAMILIES.map(([id, name]) => row(name, g[id], FAM[GROUP_TONE[id]].c)).join("")
       + (g.other > 0 ? row("andere Sportarten", g.other, C.cyan) : "")
       + row("nicht zugeordnet", g.none, null);
-    const bd = b.window_bands || {};
-    const max = Math.max(bd.risk || 0, total) * 1.05 || 1;
-    const bands = [[0, bd.low, C.slate], [bd.low, bd.top, C.green], [bd.top, bd.risk, C.amber], [bd.risk, max, C.red]];
-    const words = ["wenig", "passt", "viel", "zu viel"];
+    // 0.73.1 (2.2): die Flaechen haengen am ZIEL - [0, Ziel) passt,
+    // [Ziel, Risiko) ueber Ziel, [Risiko, max) zu viel. Gelesen werden nur
+    // window_allowed und window_bands.risk. Liegt das Ziel nicht unter dem
+    // Risiko (mit Faktor <= 1,3 kommt das nicht vor), bleiben zwei Flaechen.
+    const risk = (b.window_bands || {}).risk || 0;
+    const goal = b.window_allowed || 0;
+    const max = Math.max(risk, total) * 1.05 || 1;
+    const areas = goal < risk
+      ? [[0, goal, C.green, "passt"], [goal, risk, C.amber, "über Ziel"], [risk, max, C.red, "zu viel"]]
+      : [[0, goal, C.green, "passt"], [goal, max, C.red, "zu viel"]];
     return `<div class="hwbox">
       <div class="hwhead">${head}
         <div class="hwverdict">${esc(verdict)}</div>
@@ -4482,13 +4501,13 @@ class IntervalsIcuPanel extends HTMLElement {
       <div class="hwrows">${rows}</div>
       <div class="hwsum">
         <div class="hwgoallab"><span style="left:${pc(b.window_allowed, max)}">Ziel ${fmt(b.window_allowed)}</span></div>
-        <div class="hwsumwrap"><div class="hwsumbar">${bands.map(([a, e, c]) =>
+        <div class="hwsumwrap"><div class="hwsumbar">${areas.map(([a, e, c]) =>
           `<i class="hwband" style="left:${pc(a, max)};width:${pc(e - a, max)};background:${c}33"></i>`).join("")}
           <span class="hwsumfill" style="width:${pc(total, max)}"></span></div>
           <span class="hwgoal" style="left:${pc(b.window_allowed, max)}"></span></div>
-        <div class="hwzones">${bands.map(([a, e], i) =>
-          `<span style="left:${pc((a + e) / 2, max)}">${words[i]}</span>`).join("")}</div>
-        <p class="hwfoot tn">Zusammen ${fmt(total)} Last. Das Ziel ist das ${fmt(b.target_ratio, 1)}-Fache deines Durchschnitts der letzten 4 Wochen – eine Festlegung, keine Messung.</p>
+        <div class="hwzones">${areas.map(([a, e, , word]) =>
+          `<span style="left:${pc((a + e) / 2, max)}">${word}</span>`).join("")}</div>
+        <p class="hwfoot tn">Zusammen ${fmt(total)} Last. Das Ziel ist das ${fmt(b.target_ratio, 1)}-Fache deines Durchschnitts der letzten 4 Wochen, weil dein Zustand „${esc(stateWord || "")}“ ist – eine Festlegung, keine Messung.</p>
       </div>
     </div>`;
   }
@@ -4516,7 +4535,7 @@ class IntervalsIcuPanel extends HTMLElement {
         <span class="ld tn">${fmt(x.load)}</span>
         <span class="fam">${esc(word)}</span></div>`;
     }).join("");
-    return `<div class="tlabel hwlabel">Deine Fahrten, letzte 7 Tage</div>
+    return `<div class="tlabel hwlabel">Deine Fahrten in diesem Fenster</div>
       ${rows ? `<div class="hwlist">${rows}</div>` : `<p class="hint">Keine Fahrt in den letzten 7 Tagen.</p>`}`;
   }
 
@@ -4533,16 +4552,18 @@ class IntervalsIcuPanel extends HTMLElement {
     // Colour never alone: the traffic-light word and its own icon shape ride
     // along, because roughly 8% of men cannot separate red from green.
     const WORD = { red: "rot", amber: "gelb", blue: "blau", green: "grün", grey: "keine Daten" };
+    // 0.73.1: EIN Zustandswort - rechts oben und in der Fusszeile des Wochenkastens
+    const stateWord = t.state_label || STATE_WORD[t.state] || t.state;
     const head = `<div class="tcard ${tone}">
       <div class="tmain">
         <div class="tlabel">Was dein Körper ${(t.week || {}).mode === "tomorrow" ? "morgen" : "heute"} kann ${badge(tone, WORD[tone])}</div>
         <div class="tbig" style="color:${col}">${esc(t.capacity)}</div>
         <p class="tsay">${esc(t.capacity_text)}</p>
-        ${this._weekBox(t.week)}
+        ${this._weekBox(t.week, stateWord)}
       </div>
       <div class="tstate">
         <div class="tlabel">Zustand</div>
-        <div class="tstateword" style="color:${col}">${esc(t.state_label || STATE_WORD[t.state] || t.state)}</div>
+        <div class="tstateword" style="color:${col}">${esc(stateWord)}</div>
         <p class="hint">${esc(t.state_text || "")}</p>
         ${this._weekList(t.week)}
       </div>
@@ -7415,6 +7436,7 @@ ul.rides span.r{color:${C.tx3};white-space:nowrap}
 .hwbox{background:${C.card2};border-radius:8px;padding:14px;display:grid;gap:12px;margin-top:14px}
 .hwverdict{font-size:17px;font-weight:700;margin-top:2px}
 .hwsub{font-size:13px;color:${C.tx2};margin:2px 0 0}
+.hwnote{font-size:12px;color:${C.tx3};margin:2px 0 0}
 .hwrows{display:grid;gap:6px}
 .hwrow{display:grid;grid-template-columns:160px minmax(0,1fr) 40px;gap:10px;align-items:center;font-size:13px}
 .hwn{text-align:right}

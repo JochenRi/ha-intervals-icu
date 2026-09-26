@@ -959,7 +959,10 @@ async def websocket_set_ramp_test(hass, connection, msg) -> None:
 )
 @callback
 def websocket_readiness(hass, connection, msg) -> None:
-    """Return the readiness traffic light and today's load budget."""
+    """Return the readiness traffic light (its points and overall).
+
+    Seit 0.73.1 ohne Lastbudget: das kommt aus dem Zustand (coach.week_budget).
+    """
     if (coordinator := _require(hass, connection, msg)) is None:
         return
     data = coordinator.archive.data
@@ -1103,7 +1106,6 @@ def websocket_workouts(hass, connection, msg) -> None:
     if (coordinator := _require(hass, connection, msg)) is None:
         return
     data = coordinator.archive.data
-    ready = analytics.readiness(data) or {}
     st = coach_module.state(data)
     lay = coach_module.layoff(data)
     # EINE Stelle fuer die Eingaenge, aus denen eine Einheit ihre Zahlen
@@ -1117,7 +1119,8 @@ def websocket_workouts(hass, connection, msg) -> None:
     # EINE LASTGRENZE (0.67.3, S5): die Karten lesen dieselbe Obergrenze wie der
     # Heute-Reiter - min(Budget, Zustandsdeckel), aus coach.load_ceiling.
     # NACH DEM TRAINING DIE GRENZE VON MORGEN (0.69.2, F2): eine Stelle, coach.session_ceiling.
-    budget = coach_module.session_ceiling(data, st.get("state", "unknown"), ready)["ceiling"]
+    # 0.73.1: das Budget aus dem ZUSTAND (coach.week_budget), nicht aus der Bereitschafts-Ampel.
+    budget = coach_module.session_ceiling(data, st.get("state", "unknown"))["ceiling"]
     # FOUND WHILE BUILDING K: this handler never passed `recovery_offered`, so
     # `stage()` defaulted it to False and the session list for TODAY could not
     # reach the stimulus grade at all - while the week view (which does pass
@@ -1439,8 +1442,7 @@ def websocket_goal(hass, connection, msg) -> None:
         st = coach_module.state(data)
         lay = coach_module.layoff(data)
         rec = coach_module.recovery_offered(data)
-        budget = coach_module.session_ceiling(
-            data, st.get("state", "unknown"), analytics.readiness(data) or {})["ceiling"]
+        budget = coach_module.session_ceiling(data, st.get("state", "unknown"))["ceiling"]
         # DIESELBEN EINGAENGE WIE DIE TRAINER-KARTE (0.67.2, F3.2): bis 0.67.1
         # baute dieser Handler seine Eingaenge von Hand - ohne `steering`. Bei
         # Steuerung an zeigte der Trainer-Reiter den Startwert, der Wochenplan
@@ -1539,10 +1541,9 @@ def websocket_today(hass, connection, msg) -> None:
     if (coordinator := _require(hass, connection, msg)) is None:
         return
     data = coordinator.archive.data
-    ready = analytics.readiness(data) or {}
-    # 0.73.0: die Events des Koordinators - analytics.activity_family liest daran die Paarung
-    connection.send_result(msg["id"], coach_module.today(
-        data, ready.get("budget"), (coordinator.data or {}).get("events")))
+    # 0.73.0: die Events des Koordinators - analytics.activity_family liest daran die Paarung.
+    # 0.73.1: das Budget entsteht in coach aus dem Zustand, nicht mehr aus der Bereitschafts-Ampel.
+    connection.send_result(msg["id"], coach_module.today(data, (coordinator.data or {}).get("events")))
 
 
 @websocket_api.websocket_command(

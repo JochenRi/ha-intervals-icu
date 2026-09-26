@@ -328,15 +328,19 @@ _a6 = second_athlete(steering_on=False)
 import datetime as _dt6
 for _i in range(40):
     _d = (_dt6.date(2026, 9, 24) - _dt6.timedelta(days=39 - _i)).isoformat()
-    _a6["wellness"][_d] = {"hrv": 55.0, "restingHR": 52, "ctlLoad": 40.0, "ctl": 40.0, "atl": 40.0, "sleepSecs": 25200}
+    _a6["wellness"][_d] = {"hrv": 55.0, "restingHR": 52, "ctlLoad": 40.0 if _i < 34 else 10.0,
+                           "ctl": 40.0, "atl": 40.0, "sleepSecs": 25200}
+# 0.73.1 umgestellt: das Budget kommt nicht mehr aus einer gestellten readiness(),
+# sondern aus B's eigener Reihe mit der Farbe des Zustands (strained -> amber, x1,0).
+# Leichte letzte sechs Tage (10) halten es ueber dem Deckel 75 - der Fall bleibt derselbe.
 _c6 = FakeCoordinator(_a6); _c6.archive = SaveArchive(_c6.archive.data)
 ws._pick = lambda hass, athlete_id: _c6
 _state_saved = ws.coach_module.state
 ws.coach_module.state = lambda data, **kw: {"state": "strained", "label": "beansprucht", "detail": "", "since": None,
     "week_z": -0.6, "recent_hrv_z": -0.6, "recent_rhr_z": 0.2, "infection_suspected": False, "warnings": [], "explained": [], "context": {}, "baseline_note": ""}
 _ready_saved = ws.analytics.readiness
-ws.analytics.readiness = lambda data, today=None: {"overall": "green", "components": [], "note": "",
-    "budget": {"recommended": 140, "used_today": 0.0, "chronic": 40.0, "last_six_days": 240.0, "target_ratio": 1.3, "steady": 100, "corridor_top": 140, "risk_top": 160, "state": "green"}}
+# die zweite Ampel darf die Grenze nicht mehr bewegen: rot gestellt, Grenze bleibt 75
+ws.analytics.readiness = lambda data, today=None: {"overall": "red", "components": [], "note": ""}
 _t6 = FakeConn(); ws.websocket_today(None, _t6, {"id": 9})
 _heute = (_t6.results or [{}])[0]
 # 0.73.0 (Regel 10): die Familie kommt aus B's EIGENEN Marken; ohne eigene Events

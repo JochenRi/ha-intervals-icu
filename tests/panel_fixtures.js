@@ -112,8 +112,7 @@ function readiness() {
       { id: "monotony", label: "Monotonie", state: "unknown", detail: "zu wenige Einheiten", source: "Q6" },
       { id: "subjective", label: "Eigene Einschätzung", state: "unknown", detail: "nicht erfasst", source: "Q7" },
     ],
-    budget: { chronic: 24.1, last_six_days: 2.1, target_ratio: 0.8, recommended: 133,
-              steady: 169, corridor_top: 222, risk_top: 258, state: "red" },
+    // 0.73.1: kein Feld budget mehr - das Lastbudget kommt aus dem Zustand (coach.week_budget)
     note: "Die Bestandteile sind belegt, ihre Kombination nicht.",
   };
 }
@@ -627,7 +626,8 @@ function week(kind) {
   const budget = (o) => ({ chronic: 28.1, last_six_days: 260, target_ratio: 1.3, recommended: 0,
     used_today: 0, steady: 0, corridor_top: 0, risk_top: 35, state: "green",
     window_start: "2026-09-20", window_end: "2026-09-26", window_load: 260, window_allowed: 256,
-    window_free: 0, window_bands: bands, drops_next: { date: "2026-09-20", load: 90 }, ...o });
+    window_free: 0, window_bands: bands, drops_next: { date: "2026-09-20", load: 90, leaves_on: "2026-09-27" },
+    window_before: { date: "2026-09-19", load: 50 }, ...o });
   const row = (date, name, load, group, source, o) => ({ date, id: name && `a-${date}`, name, sport: "Rad", load,
     group, source, families: [], commute: false, rest: false, ...o });
   const voll = [
@@ -644,15 +644,15 @@ function week(kind) {
     cap_load: null, start: "2026-09-20", end: "2026-09-26", sessions, groups: groups(sessions),
     total: sessions.reduce((a, x) => a + x.load, 0), mismatch: [], ...o });
   if (kind === "voll") return make(voll, budget({}));
-  if (kind === "leer0") {       // Woche voll, aber der aelteste Tag hatte 0 Last
-    return make(voll, budget({ drops_next: { date: "2026-09-20", load: 0 } }));
+  if (kind === "leer0") {       // Woche voll, aber kein Fenstertag hat Last (0.73.1: drops_next None)
+    return make(voll, budget({ drops_next: null }));
   }
   if (kind === "frei") {
     const s = [row("2026-09-21", "Grundlage lang", 60, "grundlage", "plan", { families: ["endurance"] }),
                row("2026-09-23", "SweetSpot", 50, "schwelle", "marks", { families: ["sweetspot"] }),
                row("2026-09-24", "Lauf", 20, null, "sport", { group: "other", sport: "Lauf" }),
                row("2026-09-24", null, 10, null, "rest", { rest: true, sport: null, id: null })];
-    return make(s, budget({ window_load: 140, window_free: 116, recommended: 116, last_six_days: 140, drops_next: { date: "2026-09-20", load: 0 } }));
+    return make(s, budget({ window_load: 140, window_free: 116, recommended: 116, last_six_days: 140, drops_next: { date: "2026-09-21", load: 60, leaves_on: "2026-09-28" } }));
   }
   if (kind === "zustand") {
     const s = [row("2026-09-22", "Rehburg-Loccum", 95, null, null), row("2026-09-25", "VO2max-Intervalle", 75, "vo2max", "marks")];
@@ -660,7 +660,8 @@ function week(kind) {
       { bound_by: "state", ceiling: 75, cap_load: 75 });
   }
   if (kind === "morgen") return make(voll.slice(1), budget({ window_load: 170, window_free: 86, recommended: 86,
-    window_start: "2026-09-21", window_end: "2026-09-27", drops_next: { date: "2026-09-21", load: 0 } }), { mode: "tomorrow" });
+    window_start: "2026-09-21", window_end: "2026-09-27", drops_next: { date: "2026-09-22", load: 95, leaves_on: "2026-09-29" },
+    window_before: { date: "2026-09-20", load: 90 } }), { mode: "tomorrow", start: "2026-09-21", end: "2026-09-27" });
   if (kind === "ueber") {       // ueber der Risikogrenze
     const s = [...voll, row("2026-09-26", "Lange Runde", 120, "grundlage", "marks", { families: ["endurance"] })];
     return make(s, budget({ window_load: 380, used_today: 120 }));
@@ -669,12 +670,13 @@ function week(kind) {
   if (kind === "rot") return make(voll, budget({ target_ratio: 0.8, window_allowed: 157, state: "red" }));
   if (kind === "ohnebudget") return make(voll, null, { bound_by: null });
   if (kind === "leer") return make([], budget({ window_load: 0, window_free: 256, recommended: 256, last_six_days: 0,
-    drops_next: { date: "2026-09-20", load: 0 } }));
+    drops_next: null }));
   // Standard: passend zu `recent` unten (09.09. Gehen 9, 11.09. Fahrt 38)
   return make([row("2026-09-09", "Rehburg-Loccum Gehen", 9, "other", "sport", { sport: "Gehen" }),
                row("2026-09-11", "volumen", 38, "grundlage", "marks", { families: ["endurance"] })],
     budget({ window_start: "2026-09-05", window_end: "2026-09-11", window_load: 47, window_free: 209, recommended: 247,
-      used_today: 38, last_six_days: 9, drops_next: { date: "2026-09-05", load: 0 } }),
+      used_today: 38, last_six_days: 9, drops_next: { date: "2026-09-09", load: 9, leaves_on: "2026-09-16" },
+      window_before: { date: "2026-09-04", load: 0 } }),
     { start: "2026-09-05", end: "2026-09-11" });
 }
 

@@ -1793,6 +1793,27 @@ CAPACITY = {
     "unknown": ("Nach Gefühl", "Zu wenige Daten für eine Aussage.", None),
 }
 
+# DAS WOCHENZIEL FOLGT DEM ZUSTAND (0.73.1, Skizze 2.1, Entscheidung Johannes
+# 26.09.). Welche Ampelfarbe - und damit welcher Faktor in analytics.load_budget
+# (gruen 1,3 / gelb 1,0 / rot 0,8) - ein Zustand bekommt, ist eine SETZUNG, kein
+# Befund. Bis 0.73.0 kam die Farbe aus analytics.readiness -> overall, einer zweiten Ampel
+# aus sieben Punkten, in der die Wochenlast selbst (ACWR) steckt: eine volle
+# Woche senkte so das Ziel der Woche, und der Kopf sagte "Alles moeglich" neben
+# Faktor 0,8. Jetzt eine Farbe, aus dem Zustand, der auch den Kopf faerbt.
+BUDGET_LIGHT = {
+    "ready": "green", "strained": "amber", "elevated": "amber", "recovering": "amber",
+    "rebound": "amber", "slump": "red", "unknown": "unknown",
+}
+
+
+def week_budget(data: dict[str, Any], state_key: str, day: str | None = None) -> dict[str, Any] | None:
+    """Das Lastbudget - EIN Weg fuer Trainer-Karten, Wochenplan und Heute (0.73.1).
+
+    analytics.load_budget mit der Farbe des Zustands (BUDGET_LIGHT). `day` wie
+    dort: None heisst der Kalendertag von heute.
+    """
+    return analytics.load_budget(data, BUDGET_LIGHT.get(state_key, "unknown"), today=day)
+
 
 def load_ceiling(state_key: str, budget: dict[str, Any] | None) -> dict[str, Any]:
     """min(Budget, Zustandsdeckel) - die Grenze, nach der Karten und Heute-Reiter urteilen."""
@@ -1818,7 +1839,7 @@ def load_ceiling(state_key: str, budget: dict[str, Any] | None) -> dict[str, Any
 
 
 def session_ceiling(data: dict[str, Any], state_key: str,
-                    ready: dict[str, Any] | None) -> dict[str, Any]:
+                    day: str | None = None) -> dict[str, Any]:
     """Die Obergrenze, nach der die Einheiten-Karten urteilen - EINE Stelle (0.69.2, F2).
 
     Ist heute schon trainiert, gelten die Karten fuer MORGEN (so sagt es der
@@ -1828,33 +1849,34 @@ def session_ceiling(data: dict[str, Any], state_key: str,
     Einheit "Obergrenze 0" bis hinunter zur Regeneration (Livebestand 25.09.).
     Vor dem Training: das heutige Budget aus der Bereitschaft, bitgenau wie
     zuvor. Der Zustand bleibt der von heute - fuer morgen gibt es keinen.
+    Seit 0.73.1 kommt das Budget aus dem Zustand (week_budget), nicht mehr aus
+    der Bereitschafts-Ampel; `day` ist der Tag von heute (None: der Kalendertag).
     """
-    budget, trained, day = _ceiling_budget(data, ready)
+    budget, trained, day = _ceiling_budget(data, state_key, day)
     out = load_ceiling(state_key, budget)
     out["for_tomorrow"] = trained
     out["day"] = day
     return out
 
 
-def _ceiling_budget(data: dict[str, Any], ready: dict[str, Any] | None) -> tuple[Any, bool, Any]:
+def _ceiling_budget(data: dict[str, Any], state_key: str,
+                    today_day: str | None = None) -> tuple[Any, bool, Any]:
     """Welches Budget gilt: heute, oder - ist heute schon trainiert - morgen.
 
     EINE Stelle fuer den Modus (0.73.0): session_ceiling (Trainer-Karten,
-    Wochenplan) und der Heute-Kopf lesen hier. Bitgenau der Weg aus 0.69.2.
+    Wochenplan) und der Heute-Kopf lesen hier. Der Modus wie seit 0.69.2; das
+    Budget seit 0.73.1 aus dem Zustand (week_budget).
     """
-    ready = ready or {}
-    budget = ready.get("budget")
     trained = _trained_today(data)
     order = sorted(data.get("wellness") or {})
     day = order[-1] if order else None
     if trained and day:
         day = (date.fromisoformat(day) + timedelta(days=1)).isoformat()
-        budget = analytics.load_budget(data, ready.get("overall", "unknown"), today=day)
-    return budget, trained, day
+        return week_budget(data, state_key, day), trained, day
+    return week_budget(data, state_key, today_day), trained, day
 
 
-def today(data: dict[str, Any], budget: dict[str, Any] | None = None,
-          events: Any = None) -> dict[str, Any]:
+def today(data: dict[str, Any], events: Any = None, day: str | None = None) -> dict[str, Any]:
     wellness = data.get("wellness") or {}
     if not wellness:
         return {"available": False}
@@ -1929,6 +1951,8 @@ def today(data: dict[str, Any], budget: dict[str, Any] | None = None,
 
     # EINE LASTGRENZE (0.67.3, S5): Heute-Reiter und Trainer-Karten lesen
     # dieselbe Funktion - min(Budget, Zustandsdeckel).
+    # 0.73.1: das Budget des Tages aus dem Zustand - derselbe Weg wie die Karten.
+    budget = week_budget(data, condition["state"], day)
     grenze = load_ceiling(condition["state"], budget)
     ceiling = grenze["ceiling"]
     capacity, capacity_text, cap_load = grenze["capacity"], grenze["capacity_text"], grenze["cap_load"]
@@ -1937,8 +1961,7 @@ def today(data: dict[str, Any], budget: dict[str, Any] | None = None,
     # und die Fahrten darin. Der Modus (heute/morgen) kommt aus derselben Stelle
     # wie die Obergrenze der Trainer-Karten (_ceiling_budget); `ceiling` oben
     # bleibt der Wert des Heute-Reiters wie bisher.
-    wbudget, trained, wday = _ceiling_budget(
-        data, {"budget": budget, "overall": (budget or {}).get("state", "unknown")})
+    wbudget, trained, wday = _ceiling_budget(data, condition["state"], day)
     wgrenze = load_ceiling(condition["state"], wbudget)
     wend = (wbudget or {}).get("window_end") or (wday if trained else current)
     wsessions = analytics.window_sessions(data, wend, events)
