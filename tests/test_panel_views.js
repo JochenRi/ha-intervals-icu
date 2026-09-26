@@ -1757,6 +1757,20 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
   const dlg2 = q._ctxPopover();
   ok(!/ctxremove/.test(dlg2), "beschriftung: Löschweg ohne Eintrag");
   ok(!/class="ctxchip on"/.test(dlg2), "beschriftung: Vorauswahl ohne Eintrag");
+  // 0.72.3: die Ueberschrift sagt, welche Nacht gemeint ist - das Etikett am Tag D
+  // wirkt auf die Nacht, die am Morgen D endet, also den Abend D-1.
+  const kopf = (d) => { q._ctxDlg = d; const h = q._ctxPopover();
+    const m = h.match(/class="ctxhead"><b>([^<]*)<\/b>/); return { h, b: m ? m[1] : "" }; };
+  const n26 = kopf("2026-09-26");
+  ok(/Nacht zum 26\.09\.2026/.test(n26.b) && /Abend des 25\.09\.2026/.test(n26.b),
+     `0.72.3: Ueberschrift nennt Nacht und Abend nicht: "${n26.b}"`);
+  ok(!/Tag beschriften/.test(n26.h), "0.72.3: 'Tag beschriften' steht noch im Dialog");
+  ok(/aria-label="Nacht beschriften"/.test(n26.h), "0.72.3: aria-label ist nicht 'Nacht beschriften'");
+  for (const [d, abend] of [["2026-10-01", "30.09.2026"], ["2027-01-01", "31.12.2026"], ["2026-10-26", "25.10.2026"]]) {
+    const k = kopf(d);
+    ok(k.b.includes(`Nacht zum ${d.slice(8, 10)}.${d.slice(5, 7)}.${d.slice(0, 4)}`) && k.b.includes(`Abend des ${abend}`),
+       `0.72.3: ${d} -> Abend des ${abend} erwartet, steht: "${k.b}"`);
+  }
   q._ctxDlg = null;
 
   // fester Dialog, kein am Klickpunkt schwebender Kasten (0.9.x-Klasse):

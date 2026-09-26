@@ -4639,6 +4639,9 @@ class IntervalsIcuPanel extends HTMLElement {
      Platz die Fehlerklasse beendet hat. Chips, Texte und Quellen kommen
      komplett aus dem day_context-Leseweg: eine Quelle, kein Drift. */
   _ctxPopover() {
+    // 0.72.3: das Etikett am Tag D wirkt auf die Wellness-Zeile D - die Nacht, die
+    // am Morgen D endet (day_context.weight_for). Die Ueberschrift nennt deshalb
+    // die Nacht UND den Abend davor; der Vortag kommt aus isoMinus (UTC).
     const date = this._ctxDlg;
     const dc = this._dayctx || {};
     const tags = dc.tags || {};
@@ -4660,8 +4663,8 @@ class IntervalsIcuPanel extends HTMLElement {
       `<li>${esc(b.text)} <em class="qq">${esc(b.source)}</em></li>`).join("");
     const setz = (srcs.setzung || []).map((s) => `<li>${esc(s)}</li>`).join("");
     return `<div class="ctxback" data-act="ctxclose"></div>
-      <div class="ctxdlg" role="dialog" aria-modal="true" aria-label="Tag beschriften">
-        <div class="ctxhead"><b>Tag beschriften — ${esc(dMed(date))}</b>
+      <div class="ctxdlg" role="dialog" aria-modal="true" aria-label="Nacht beschriften">
+        <div class="ctxhead"><b>Nacht zum ${esc(dMed(date))} beschriften — also der Abend des ${esc(dMed(isoMinus(date, 1)))}</b>
           <button class="ctxx" data-act="ctxclose" title="schließen">${ico("stop", C.tx2, 18)}</button></div>
         ${cur ? `<p class="ctxcur">Aktuell: <b>${esc((tags[cur.tag] || {}).label || cur.tag)}</b>
           · Gewicht ${wfmt(cur.weight)}</p>` : ""}
