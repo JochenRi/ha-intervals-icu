@@ -20,7 +20,9 @@ const load = F.load(), rd = F.readiness(), acts = F.activities();
 const thr = F.thresholds(), cal = F.calendar(), pmc = F.pmc(days);
 
 const EMPTY_DAYS = { today: F.TODAY, days: [], weeks: [], max_week_load: 0, avg_week_load: 0 };
-const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
+// 0.74.0: ohne acwr/acwr_latest - der Erzeuger (analytics.summary) schreibt sie nicht mehr
+const EMPTY_LOAD = { weeks: [], weeks_by_group: [], window_history: [], window_projection: [], planned: {},
+                     headline: {}, intensity: null,
                      dfa_distribution: null, decoupling: [], hrv: null, thresholds: {} };
 
 /* ── Heute ────────────────────────────────────────────────────────────── */
@@ -811,7 +813,8 @@ const EMPTY_LOAD = { weeks: [], acwr: [], acwr_latest: null, intensity: null,
 {
   const html = p.rBelastung(load);
   clean(html, "belastung");
-  for (const needle of ["Wochenlast", "ACWR", "Intensitätsverteilung", "HRV-Trend",
+  // 0.74.0 umgestellt: "Wochenlast"/"ACWR" -> die beiden neuen Abschnitte (Skizze §3.2/3.3)
+  for (const needle of ["Deine Wochen", "Die letzten 7 Tage im Verlauf", "Intensitätsverteilung", "HRV-Trend",
                         "Entkopplung", "Quelle und Grenzen", "Zu lesen als"]) {
     contains(html, needle, "belastung");
   }
@@ -3877,6 +3880,110 @@ const SEITE734 = (async () => {
   // der Tooltip am Knopf widerspricht der Rueckmeldung nicht (er spricht nicht von einer Kennung)
   ok(tags.every((t) => !/title="[^"]*Kennung/.test(t)), "0.73.4 Seitenprobe: ein Tooltip spricht von einer Kennung");
 })();
+
+/* ── 0.74.0 · Belastungs-Reiter neu (Skizze 0.74.0 §3.2, §3.3, §4, §5, §8) ──
+   Texte wörtlich aus §3. Die Fixture kommt aus F.loadView (Schlüssel gegen
+   coach.load_view gehalten in test_coach.py). */
+{
+  const P = new M.Panel(); P._nowIso = F.TODAY; P._status = { athlete: "Test" };
+  const z = (h) => String(h).replace(/\s+/g, " ");
+  const bel = (o) => z(P.rBelastung(F.load(o)));
+  const b0 = bel();
+  clean(P.rBelastung(F.load()), "0.74.0 belastung");
+  // §3.2 Wochen
+  contains(b0, "Deine Wochen · Kalenderwochen", "0.74.0 §3.2 Titel");
+  contains(b0, "Diese Woche bisher 47 Last, geplant noch 60", "0.74.0 §3.2 Überschrift mit Plan");
+  contains(b0, "Vorwoche 165 Last (-15 %).", "0.74.0 §3.2 Unterzeile Vorwoche gegen die Woche davor");
+  const noPlan = bel({ plan: {} });
+  contains(noPlan, "Diese Woche bisher 47 Last</b>", "0.74.0 §3.2 y = 0: der Zusatz entfällt");
+  ok(!noPlan.includes(", geplant noch"), "0.74.0 §3.2 y = 0: „geplant noch“ steht trotzdem da");
+  contains(b0, ">47 + 60 geplant<", "0.74.0 §3.2 laufende Woche: gefahren + geplant");
+  ok(!b0.includes(">107<"), "0.74.0 §8: der geplante Rest steckt in der Zahl über dem Balken");
+  contains(b0, ">165<", "0.74.0 §3.2 abgeschlossene Woche: gefahrene Summe über dem Balken");
+  contains(b0, "<title>geplant</title>", "0.74.0 §3.2 geplanter Rest mit title „geplant“");
+  ok(/stroke="[^"]+" stroke-width="1\.6" stroke-dasharray="4 3"><title>geplant/.test(b0) && b0.includes(`stroke="${M.C.blue}" stroke-width="1.6" stroke-dasharray`),
+     "0.74.0 §3.2 geplant: gestrichelt in C.blue");
+  for (const col of [M.FAM.endurance.c, M.FAM.vo2max.c, M.C.cyan]) {
+    ok(b0.includes(`fill="${col}"`), `0.74.0 §3.2 Stapelfarbe fehlt: ${col}`);
+  }
+  contains(b0, 'fill="url(#lwhatch)"', "0.74.0 §3.2 nicht zugeordnet schraffiert");
+  for (const w of ["Grundlage", "SweetSpot &amp; Schwelle", "VO2max", "andere Sportarten", "nicht zugeordnet", "geplant"]) {
+    contains(b0, `</i>${w}</span>`, "0.74.0 §3.2 Legende mit Wort");
+  }
+  // andere Sportarten nur, wenn > 0
+  const lo = F.load(); lo.weeks_by_group.forEach((w) => { w.groups.none += w.groups.other; w.groups.other = 0; });
+  ok(!z(P.rBelastung(lo)).includes("andere Sportarten"), "0.74.0 §3.2 andere Sportarten ohne Last trotzdem da");
+  contains(b0, "Punkt über dem Balken = Monotonie ≥ 2 (Woche ohne echten Ruhetag).", "0.74.0 §3.2 Monotonie-Satz");
+  ok((b0.match(/<circle [^>]*fill="#fbbf24"><title>Monotonie/g) || []).length === 1, "0.74.0 §3.2 genau ein Monotonie-Punkt");
+  contains(b0, "Familie aus deinen Marken oder der Paarung in intervals.icu. Die Paarung liest die App nur für die letzten 30 Tage; ältere Fahrten ohne Marke bleiben „nicht zugeordnet“. Eine sichere Steigerung von Woche zu Woche ist nicht belegt (Buist 2008, Nielsen 2014) – die Prozentzahl ist nur eine Zahl.",
+           "0.74.0 §3.2 Fußzeile wörtlich");
+  ok((b0.match(/KW \d+</g) || []).length === 12, "0.74.0 §3.2 zwölf Kalenderwochen");
+  // §3.3 Verlauf
+  contains(b0, "Die letzten 7 Tage im Verlauf · mit Vorschau aus deinem Kalender", "0.74.0 §3.3 Titel");
+  contains(b0, "Heute: 47 von 256 Last – noch 209 frei", "0.74.0 §3.3 Überschrift heute-Modus");
+  contains(b0, "Genau die Zahlen aus dem Heute-Kopf. Der weiße Punkt ist das Ende von heute (47 Last in den 7 Tagen bis heute Abend).",
+           "0.74.0 §3.3 Unterzeile");
+  const bm = bel({ week: "morgen" });
+  contains(bm, "Für morgen: 170 von 256 Last – noch 86 frei", "0.74.0 §3.3 Überschrift morgen-Modus");
+  contains(bm, "(200 Last in den 7 Tagen bis heute Abend)", "0.74.0 §3.3/§8 weißer Punkt = Verlauf heute, getrennt von der Überschrift");
+  contains(bel({ week: "zustand" }), "Heute höchstens 75 Last – dein Zustand bremst", "0.74.0 §3.3 bound_by state");
+  contains(b0, "Vorschau: Geplante Einheiten zählen mit ihrer geplanten Last, als würdest du sie genau so fahren; das Ziel nimmt den Zustand von heute an. Beides sind Festlegungen – morgen rechnet die App mit echten Werten neu.",
+           "0.74.0 §3.3 Fußzeile wörtlich");
+  contains(bel({ week: "ueber" }), "Mit diesem Plan liegst du ab 03.10. wieder unter dem Ziel.", "0.74.0 §3.3 Vorschau: wieder unter (nach dem letzten Tag darüber)");
+  const alle = {}; for (let k = 1; k <= 14; k++) { const d = new Date(Date.UTC(2026, 8, 26 + k)); alle[d.toISOString().slice(0, 10)] = 400; }
+  contains(bel({ week: "ueber", plan: alle }), "Mit diesem Plan bleibst du in den nächsten 14 Tagen über dem Ziel.", "0.74.0 §3.3 Vorschau: bleibt darüber");
+  contains(bel({ plan: {} }), "Keine geplanten Einheiten im Kalender – die Vorschau zeigt, wann Last aus dem Fenster fällt.", "0.74.0 §3.3 Vorschau ohne Plan");
+  ok(!/Mit diesem Plan/.test(b0), "0.74.0 §3.3 nie über dem Ziel: kein Vorschau-Satz");
+  const bu = bel({ week: "ueber" });
+  ok((bu.match(/<circle [^>]*fill="#fbbf24"[^>]*stroke="#fbbf24"/g) || []).length >= 5, "0.74.0 §3.3 Tage über dem Ziel als Punkt in C.amber");
+  ok(bu.includes(`stroke="${M.C.blue}" stroke-width="2.2" stroke-dasharray="5 4"`), "0.74.0 §3.3 Vorschau-Last gestrichelt in C.blue");
+  ok(bu.includes(`stroke="${M.C.green}" stroke-width="1.8" stroke-dasharray="5 4"`), "0.74.0 §3.3 Vorschau-Ziel gestrichelt in C.green");
+  ok(bu.includes(`stroke="${M.C.tx}" stroke-width="2.2" opacity`), "0.74.0 §3.3 Last-Linie in C.tx");
+  contains(bu, 'class="ax">heute</text>', "0.74.0 §3.3 Senkrechte „heute“");
+  // Scrollrahmen (Handy): das Diagramm steht in .lvscroll, CSS overflow-x:auto, Mindestbreite innen
+  ok(/<div class="lvscroll"><div class="lvin"><svg class="ch"/.test(b0), "0.74.0 §3.3 Diagramm nicht im eigenen Scrollrahmen");
+  ok(/\.lvscroll\{overflow-x:auto/.test(H.source()) && /\.lvin\{min-width:\d+px\}/.test(H.source()), "0.74.0 §4 Handy: Scrollrahmen-CSS fehlt");
+  // §4 unter 28 Tagen
+  const bk = bel({ short: true });
+  contains(bk, "Das Ziel braucht 28 Tage Verlauf.", "0.74.0 §4 unter 28 Tagen: der Satz");
+  ok(!/ von \d+ Last – noch/.test(bk) && !bk.includes("</i>Ziel</span>"), "0.74.0 §4 unter 28 Tagen: trotzdem ein Ziel");
+  clean(P.rBelastung(F.load({ short: true })), "0.74.0 §4 unter 28 Tagen");
+  clean(P.rBelastung(EMPTY_LOAD), "0.74.0 §4 leer");
+  // §4 zweiter Athlet ohne Marken und Events: alles „nicht zugeordnet“, kein Plan
+  const b2 = F.load({ plan: {} }); b2.weeks_by_group.forEach((w) => { w.groups = { grundlage: 0, schwelle: 0, vo2max: 0, other: 0, none: w.total }; });
+  const h2 = z(P.rBelastung(b2));
+  clean(P.rBelastung(b2), "0.74.0 §4 zweiter Athlet");
+  ok(!h2.includes(`fill="${M.FAM.endurance.c}"`) && h2.includes('fill="url(#lwhatch)"'), "0.74.0 §4 zweiter Athlet: nur schraffiert");
+  // Farben nur aus FAM/C: keine Hex-Literale in den neuen Stuecken
+  const src = H.source();
+  for (const fn of ["_loadWeeks(load) {", "_loadTrend(load) {"]) {
+    const body = src.slice(src.indexOf(fn), src.indexOf("\n  }\n", src.indexOf(fn)));
+    ok(body.length > 100 && !/#[0-9a-fA-F]{3,8}\b/.test(body.replace(/url\(#lwhatch\)|id="lwhatch"/g, "")), `0.74.0 §3 Farbliteral in ${fn}`);
+  }
+  // §5 Seitenprobe
+  ok(!/Korridor/.test(b0) && !/ACWR-Korridor/.test(b0), "0.74.0 §5: der Reiter spricht noch vom Korridor");
+  for (const k of [undefined, "morgen", "zustand", "voll", "frei"]) {
+    const t = { ...F.today(), week: F.week(k) };
+    const heute = z(P.rHeute(t)), b = bel({ week: k });
+    const w = F.week(k), bb = w.budget;
+    if (w.bound_by === "state") {
+      const s = `${w.mode === "tomorrow" ? "Morgen" : "Heute"} höchstens ${w.ceiling} Last`;
+      ok(heute.includes(s) && b.includes(s), `0.74.0 §5 (${k}): Obergrenze Heute-Kopf ≠ Verlauf`);
+    } else {
+      const free = `${bb.window_free} `;
+      ok(heute.includes(bb.window_free ? `Noch ${free}Last frei` : "Woche voll") && b.includes(`noch ${free}frei`),
+         `0.74.0 §5 (${k}): frei Heute-Kopf ≠ Verlauf`);
+    }
+    ok(b.includes(` ${bb.window_load} von ${bb.window_allowed} Last`) || w.bound_by === "state",
+       `0.74.0 §5 (${k}): Fensterlast/Ziel nicht die des Heute-Kopfs`);
+    ok(heute.includes(`Ziel ${bb.window_allowed}`), `0.74.0 §5 (${k}): Fixture-Beweis Heute-Kopf zeigt das Ziel`);
+    ok(!b.includes("Wie viel die Woche"), `0.74.0 §5 (${k}): zwei Fenster mit derselben Beschriftung`);
+  }
+  // Summe KW laufende Woche = Summe Heute-Liste, soweit die Tage sich decken
+  const cw = F.load().weeks_by_group.find((w) => w.current);
+  const liste = F.week().sessions.filter((x) => x.date >= cw.start && x.date <= F.TODAY).reduce((a, x) => a + x.load, 0);
+  ok(cw.total === liste && b0.includes(`>${liste} + `), `0.74.0 §5: KW ${cw.total} ≠ Heute-Liste ${liste}`);
+}
 
 SEITE734.then(() => report("test_panel_views"));
 })();

@@ -654,6 +654,33 @@ asyncio.run(ws.websocket_plan_workout(None, _kb, {"id": 1, "workout": "vo2_4x4",
 eq("0.73.4 §2 Rueckfall: 4xx geht als write_failed an das Panel", [c for c, _ in _kb.errors], ["write_failed"])
 eq("0.73.4 §2 Rueckfall: genau ein Versuch", len(_calls), 1)
 
+# --- 0.74.0 · websocket load: summary + coach.load_view (Skizze §3.1 g) --------
+# Rot vor dem Bau: der Handler schickte nur analytics.summary. Die Events kommen
+# aus coordinator.data (wie beim Heute-Reiter), nicht aus dem Archiv.
+import datetime as _dt74  # noqa: E402
+_d74 = importer.empty_data("i1")
+_t74 = _dt74.date(2026, 9, 26)
+for _i in range(40):
+    _dd = (_t74 - _dt74.timedelta(days=39 - _i)).isoformat()
+    _d74.setdefault("wellness", {})[_dd] = {"ctlLoad": 40.0 + (_i % 4) * 10, "hrv": 50, "restingHR": 55}
+_c74 = FakeCoordinator(_d74)
+_c74.data = {"events": [{"id": 1, "category": "WORKOUT", "start_date_local": "2026-09-28T09:00:00",
+                         "icu_training_load": 60}]}
+_conn74 = FakeConn()
+ws._pick = lambda hass, athlete_id: _c74
+ws.websocket_load(None, _conn74, {"id": 7})
+_p74 = (_conn74.results or [{}])[0]
+eq("0.74.0 g: load traegt die neuen Teile",
+   sorted(k for k in ("weeks_by_group", "window_history", "window_projection", "headline", "planned") if k in _p74),
+   sorted(["weeks_by_group", "window_history", "window_projection", "headline", "planned"]))
+eq("0.74.0 g: und weiter die summary (weeks, intensity, hrv)", all(k in _p74 for k in ("weeks", "intensity", "hrv", "thresholds")), True)
+eq("0.74.0 g: geplant aus coordinator.data events", _p74.get("planned"), {"2026-09-28": 60.0})
+eq("0.74.0 g: ohne ACWR-Felder", ("acwr" in _p74, "acwr_latest" in _p74), (False, False))
+_c74b = FakeCoordinator(_d74); _c74b.data = None
+_conn74b = FakeConn(); ws._pick = lambda hass, athlete_id: _c74b
+ws.websocket_load(None, _conn74b, {"id": 8})
+eq("0.74.0 §4 ohne coordinator.data: keine Events, nichts geplant", ((_conn74b.results or [{}])[0]).get("planned"), {})
+
 print(f"test_handlers: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

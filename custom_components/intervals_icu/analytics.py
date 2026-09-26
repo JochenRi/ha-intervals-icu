@@ -487,12 +487,14 @@ def _safe(label: str, function: Any, *args: Any, default: Any = None) -> Any:
 
 
 def summary(data: dict[str, Any]) -> dict[str, Any]:
-    """Return the whole load picture in one payload for the panel."""
+    """Return the whole load picture in one payload for the panel.
+
+    0.74.0 (Skizze §3.1 i): ohne `acwr`, `acwr_latest` und `thresholds.acwr_*`
+    - ihr einziger Leser war die ACWR-Kurve des Belastungs-Reiters, die durch
+    den Verlauf der 7-Tage-Last ersetzt ist (coach.load_view). `acwr_series`
+    bleibt: coach.signals liest es (Signale-Reiter).
+    """
     weeks = _safe("weekly", weekly_summary, data, default=[])
-    acwr = _safe("acwr", acwr_series, data, default=[])
-    latest_acwr = next(
-        (item for item in reversed(acwr) if item["ratio"] is not None), None
-    )
     days = sorted((data.get("wellness") or {}))
     latest_row = (data.get("wellness") or {}).get(days[-1]) if days else {}
     ctl = (latest_row or {}).get("ctl")
@@ -500,8 +502,6 @@ def summary(data: dict[str, Any]) -> dict[str, Any]:
 
     return {
         "weeks": weeks[-26:],
-        "acwr": acwr[-180:],
-        "acwr_latest": latest_acwr,
         "ramp_rate": ramp_rate(data),
         "form": (ctl - atl) if ctl is not None and atl is not None else None,
         "form_percent": form_percent(ctl, atl),
@@ -512,9 +512,6 @@ def summary(data: dict[str, Any]) -> dict[str, Any]:
         "decoupling": (_safe("decoupling", decoupling_series, data, default=[]) or [])[-40:],
         "hrv": _safe("hrv", hrv_status, data),
         "thresholds": {
-            "acwr_low": ACWR_LOW,
-            "acwr_high": ACWR_HIGH,
-            "acwr_risk": ACWR_RISK,
             "monotony_watch": MONOTONY_WATCH,
             "decoupling_good": DECOUPLING_GOOD,
             "polarized_low": POLARIZED_LOW,
@@ -653,10 +650,15 @@ def readiness(data: dict[str, Any]) -> dict[str, Any]:
         })
 
     # --- acute against chronic --------------------------------------------------------
-    series = acwr_series(data)
-    latest_acwr = next((item for item in reversed(series) if item["ratio"] is not None), None)
-    if latest_acwr:
-        ratio = latest_acwr["ratio"]
+    # 0.74.0 (Skizze §3.1 h): EIN 4-Wochen-Schnitt. Das Verhaeltnis kommt aus
+    # load_budget (heute = letzter Wellness-Tag): Fensterlast der 7 Tage bis
+    # heute Abend / (7 x Schnitt der 28 Tage VOR heute) - derselbe Schnitt wie
+    # Heute-Kopf und Trainer. Bis 0.73.4 las dieser Punkt acwr_series (Schnitt
+    # INKLUSIVE heute). Schwellen, Texte und Einstufung bleiben.
+    wellness_days = sorted(data.get("wellness") or {})
+    window = load_budget(data, "green", today=wellness_days[-1]) if wellness_days else None
+    if window and window.get("chronic"):
+        ratio = round(window["window_load"] / (7 * window["chronic"]), 2)
         if ratio > ACWR_RISK:
             state, detail = "red", "deutlich über dem Korridor"
         elif ratio > ACWR_HIGH:
@@ -753,17 +755,26 @@ def readiness(data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def load_budget(data: dict[str, Any], state: str = "green", today: str | None = None) -> dict[str, Any] | None:
+def load_budget(data: dict[str, Any], state: str = "green", today: str | None = None,
+                planned: dict[str, float] | None = None) -> dict[str, Any] | None:
     """Return how much load today may carry, derived from the ACWR definition.
 
     The ratio is the 7-day mean load over the 28-day mean. Solving it for
     today's load gives an upper bound: load = 7 x chronic x target minus the
     six days before. The target is tightened when the traffic light is not
     green - which is a choice, not a finding.
+
+    0.74.0 (Skizze §3.1 a): `planned` = {Datum: Last}. Ist er gesetzt (auch
+    leer), laeuft die Reihe lueckenlos bis `today` weiter, und geplante Tage
+    zaehlen, als waeren sie gefahren - eine Festlegung fuer die Vorschau. Ohne
+    `planned` bleibt alles bitgenau wie 0.73.4. Die 28 Tage Verlauf zaehlen
+    nur echte Tage.
     """
     series = daily_load(data)
     if len(series) < 28:
         return None
+    if planned is not None:
+        series = _with_planned(series, planned, str(today or date.today().isoformat())[:10])
 
     # BUDGET = GESAMTLAST DES TAGES, NICHT RESTLAST (0.67.3, F2.10, Entscheidung
     # 24.09.). Die Reihe endet am letzten wellness-Tag - am Livebestand ist das
@@ -841,6 +852,103 @@ def _window_rows(series: list[dict[str, Any]], day_today: str) -> tuple[list[dic
     before = [point for point in series if point["date"] < day_today]
     today_row = [point for point in series if point["date"] == day_today]
     return before, today_row
+
+
+def _with_planned(series: list[dict[str, Any]], planned: dict[str, float], until: str) -> list[dict[str, Any]]:
+    """Die Tagesreihe, lueckenlos verlaengert bis `until` bzw. bis zum letzten
+    geplanten Tag, mit der geplanten Last auf ihrem Tag (0.74.0, §3.1 a).
+
+    Kopie - `series` bleibt unberuehrt. Geplante Tage vor dem Beginn der
+    Reihe gibt es nicht; sie fallen weg.
+    """
+    rows = [dict(point) for point in series]
+    if not rows:
+        return rows
+    last = max([until] + [str(d)[:10] for d in planned])
+    current = date.fromisoformat(rows[-1]["date"]) + timedelta(days=1)
+    stop = date.fromisoformat(last)
+    while current <= stop:
+        rows.append({"date": current.isoformat(), "load": 0.0})
+        current += timedelta(days=1)
+    index = {point["date"]: point for point in rows}
+    for day, load in planned.items():
+        point = index.get(str(day)[:10])
+        if point is not None:
+            point["load"] = point["load"] + float(load or 0.0)
+    return rows
+
+
+def planned_loads(events: Any, after: str | None, until: str | None = None) -> dict[str, float]:
+    """Geplante Last je Tag aus den Kalender-Events - EINE Stelle (0.74.0, §3.1 g).
+
+    Geplant heisst: `category == "WORKOUT"`, Datum NACH `after` (heute zaehlt
+    nicht - es ist Teil von heute), bis `until` einschliesslich,
+    `icu_training_load` > 0, kein `paired_activity_id` (erledigt, steht schon
+    als Fahrt in der Tageslast).
+    """
+    out: dict[str, float] = {}
+    for event in events or []:
+        if not isinstance(event, dict) or event.get("category") != "WORKOUT":
+            continue
+        if event.get("paired_activity_id") not in (None, ""):
+            continue
+        day = str(event.get("start_date_local") or "")[:10]
+        if not day or (after and day <= after) or (until and day > until):
+            continue
+        try:
+            load = float(event.get("icu_training_load") or 0)
+        except (TypeError, ValueError):
+            continue
+        if load > 0:
+            out[day] = round(out.get(day, 0.0) + load, 1)
+    return out
+
+
+def _window_point(day: str, budget: dict[str, Any] | None, series: list[dict[str, Any]]) -> dict[str, Any]:
+    """Ein Tag des Verlaufs. Mit Budget kommen Last und Ziel aus DIESEM Aufruf
+    (keine eigene Rechnung). Ohne Budget (unter 28 Tagen) gibt es kein Ziel;
+    die Last sind dieselben sieben Tage (`_window_rows`), damit die Linie steht."""
+    if budget:
+        load, allowed = budget["window_load"], budget["window_allowed"]
+    else:
+        before, today_row = _window_rows(series, day)
+        load, allowed = round(sum(point["load"] for point in before[-6:] + today_row), 1), None
+    return {"date": day, "window_load": load, "window_allowed": allowed,
+            "over": allowed is not None and load > allowed}
+
+
+def window_history(data: dict[str, Any], light_by_day: dict[str, str], days: int = 60,
+                   today: str | None = None) -> list[dict[str, Any]]:
+    """Die letzten `days` Tage: je Tag die Last der 7 Tage bis Tagesende und das
+    Ziel dieses Tages - aus `load_budget(data, light_by_day[Tag], today=Tag)`
+    (0.74.0, §3.1 d). Fehlt das Licht eines Tages, gilt "unknown" (1,0).
+    """
+    series = daily_load(data)
+    if not series:
+        return []
+    end = str(today or series[-1]["date"])[:10]
+    dates = [point["date"] for point in series if point["date"] <= end][-days:]
+    return [_window_point(day, load_budget(data, light_by_day.get(day, "unknown"), today=day), series)
+            for day in dates]
+
+
+def window_projection(data: dict[str, Any], light: str, planned: dict[str, float] | None,
+                      days: int = 14, today: str | None = None) -> list[dict[str, Any]]:
+    """Die naechsten `days` Tage mit dem Plan (0.74.0, §3.1 e): je Tag
+    `load_budget(..., planned)`. Das Licht ist das von heute fuer alle Tage -
+    fuer morgen gibt es keinen Zustand. Beides ist eine Festlegung.
+    """
+    series = daily_load(data)
+    if not series:
+        return []
+    start = date.fromisoformat(str(today or series[-1]["date"])[:10])
+    plan = dict(planned or {})
+    out = []
+    for step in range(1, days + 1):
+        day = (start + timedelta(days=step)).isoformat()
+        out.append(_window_point(day, load_budget(data, light, today=day, planned=plan),
+                                 _with_planned(series, plan, day)))
+    return out
 
 
 def _planned_key(events: Any, paired_event_id: Any) -> str | None:
@@ -924,11 +1032,34 @@ def window_sessions(data: dict[str, Any], today: str | None = None, events: Any 
     (rest=True) daneben; dann ist die Summe = `window_load`. Ist sie KLEINER,
     wird nichts versteckt: der Tag steht in `mismatch`.
     Gilt auch unter 28 Tagen Verlauf (kein Budget, aber die Liste).
+    Seit 0.74.0 rechnet `sessions_between` (eine Stelle); hier stehen nur die
+    Tage des Fensters.
     """
     series = daily_load(data)
     day_today = str(today or date.today().isoformat())[:10]
     before, today_row = _window_rows(series, day_today)
     days = before[-6:] + today_row
+    span = (days[0]["date"], days[-1]["date"]) if days else (day_today, day_today)
+    return {
+        "start": days[0]["date"] if days else day_today,
+        "end": day_today,
+        **sessions_between(data, span[0], span[1], events, series),
+    }
+
+
+def sessions_between(data: dict[str, Any], start: str, end: str, events: Any = None,
+                     series: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    """Die Fahrten von `start` bis `end` (einschliesslich) mit Gruppe, Rest und
+    Fehlstellen - EINE Stelle fuer Heute-Liste und Wochen (0.74.0, §3.1 b).
+
+    Herausgeloest aus `window_sessions` (bis 0.73.4 dort), Rechnung unveraendert:
+    je Tag der lueckenlosen Tagesreihe die Aktivitaeten nach Startzeit, ihre
+    Gruppe aus `activity_family`; ist die Tageslast groesser als die Fahrten,
+    steht der Rest als Stueck ohne Einheit (Gruppe none), ist sie kleiner, steht
+    der Tag in `mismatch`. `total` ist die Summe der Tageslast.
+    """
+    series = daily_load(data) if series is None else series
+    days = [point for point in series if start <= point["date"] <= end]
     by_day: dict[str, list[tuple[str, dict[str, Any]]]] = {}
     for key, activity in (data.get("activities") or {}).items():
         day = str(activity.get("start_date_local") or "")[:10]
@@ -959,13 +1090,44 @@ def window_sessions(data: dict[str, Any], today: str | None = None, events: Any 
         slot = row["group"] if row["group"] in groups else "none"
         groups[slot] += row["load"]
     return {
-        "start": days[0]["date"] if days else day_today,
-        "end": day_today,
         "sessions": sessions,
         "groups": {k: round(v, 1) for k, v in groups.items()},
         "total": round(sum(point["load"] for point in days), 1),
         "mismatch": mismatch,
     }
+
+
+def weeks_by_group(data: dict[str, Any], events: Any = None, today: str | None = None,
+                   weeks: int = 12) -> list[dict[str, Any]]:
+    """Die letzten `weeks` Kalenderwochen (Mo-So) je Gruppe (0.74.0, §3.1 c).
+
+    Je Woche die Summen je Gruppe aus `sessions_between` (bis heute), dazu
+    `monotony` aus `weekly_summary` (ein Erzeuger) und fuer die laufende Woche
+    `planned`: die geplante Last der Tage nach heute bis Sonntag
+    (`planned_loads`). `total` ist die gefahrene Summe (Tageslast).
+    """
+    series = daily_load(data)
+    if not series:
+        return []
+    day_today = str(today or series[-1]["date"])[:10]
+    now = date.fromisoformat(day_today)
+    monday = now - timedelta(days=now.weekday())
+    monotony = {row["week"]: row.get("monotony") for row in weekly_summary(data)}
+    ahead = planned_loads(events, day_today, (monday + timedelta(days=6)).isoformat())
+    out: list[dict[str, Any]] = []
+    for back in range(weeks - 1, -1, -1):
+        start = monday - timedelta(weeks=back)
+        sunday = start + timedelta(days=6)
+        part = sessions_between(data, start.isoformat(), min(sunday, now).isoformat(), events, series)
+        key = _week_key(start.isoformat())
+        out.append({
+            "week": key, "start": start.isoformat(), "end": sunday.isoformat(),
+            "current": back == 0,
+            "groups": part["groups"], "total": part["total"], "mismatch": part["mismatch"],
+            "planned": round(sum(ahead.values()), 1) if back == 0 else 0.0,
+            "monotony": monotony.get(key),
+        })
+    return out
 
 
 # --- calendar ------------------------------------------------------------------

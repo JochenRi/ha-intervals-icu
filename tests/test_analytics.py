@@ -741,6 +741,258 @@ if callable(_fam):
     _r4 = _fam(_af4, "e4") or {}
     check("0.73.4 §3.2: umbenanntes eigenes Workout -> vo2max/plan", (_r4.get("group"), _r4.get("source")), ("vo2max", "plan"))
 
+# =============================================================================
+# 0.74.0 · BELASTUNGS-REITER NEU (Skizze 0.74.0 §3.1 a-i, §4, §8)
+# Rot vor dem Bau: die neuen Funktionen fehlen, `planned` ist unbekannt,
+# readiness liest acwr_series, summary traegt acwr/acwr_latest/thresholds.acwr_*.
+# Die Bitgenau-Pruefungen (load_budget ohne planned, window_sessions nach dem
+# Herausloesen) halten Pruefsummen, die an 0.73.4 (ce9b14b) gezogen wurden.
+# =============================================================================
+import hashlib as _hl  # noqa: E402
+import json as _js  # noqa: E402
+
+
+def _try(fn, *a, **k):
+    try:
+        return fn(*a, **k)
+    except Exception as exc:  # noqa: BLE001 - rot vor dem Bau
+        return f"FEHLT: {type(exc).__name__}: {exc}"
+
+
+def _sha(obj):
+    return _hl.sha256(_js.dumps(obj, sort_keys=True, default=str).encode()).hexdigest()[:16]
+
+
+_BL_END = date(2026, 9, 26)          # ein Samstag: KW 39 = 21.-27.09.
+_BL_PAT = [0.0, 62.0, 35.0, 0.0, 91.0, 44.0, 118.0]
+_BL_FAM = ["endurance", "sweetspot", "vo2max"]
+
+
+def _bl(n=70, end=_BL_END, marks=True, events=True):
+    """Erfundener Bestand (Regel 10): Tageslast = Aktivitaet, ausser an jedem
+    zehnten Tag (Rest 10), ein Lauf, und eine alte Fahrt mit Paarung ohne Event."""
+    d = {"wellness": {}, "activities": {}, "dfa": {}, "section_marks": {}, "events": []}
+    for i in range(n):
+        day = (end - timedelta(days=n - 1 - i)).isoformat()
+        base = _BL_PAT[i % 7]
+        load = base + float(i % 3) if base else 0.0
+        d["wellness"][day] = {"ctlLoad": load}
+        if not load:
+            continue
+        ride = load - 10.0 if i % 10 == 0 else load
+        key = f"b{i}"
+        d["activities"][key] = _act(day, f"Fahrt {i}", ride, typ="Run" if i % 13 == 0 else "Ride",
+                                    paired_event_id=("9" + str(i)) if i < 20 else None)
+        if marks and i % 13 and i % 4:
+            d["section_marks"][key] = {"marks": {_BL_FAM[i % 3]: [1]}}
+    if events:
+        e = lambda k: (end + timedelta(days=k)).isoformat() + "T09:00:00"  # noqa: E731
+        d["events"] = [
+            {"id": 1, "category": "WORKOUT", "start_date_local": e(1), "icu_training_load": 70, "name": "geplant"},
+            {"id": 2, "category": "WORKOUT", "start_date_local": e(2), "icu_training_load": 0, "name": "ohne Last"},
+            {"id": 3, "category": "WORKOUT", "start_date_local": e(3), "icu_training_load": 40, "name": "gepaart",
+             "paired_activity_id": "i99"},
+            {"id": 4, "category": "WORKOUT", "start_date_local": e(0), "icu_training_load": 55, "name": "heute"},
+            {"id": 5, "category": "NOTE", "start_date_local": e(4), "icu_training_load": 30, "name": "Notiz"},
+            {"id": 6, "category": "WORKOUT", "start_date_local": e(9), "icu_training_load": 80, "name": "naechste Woche"},
+            {"id": 7, "category": "WORKOUT", "start_date_local": e(20), "icu_training_load": 99, "name": "zu weit"},
+        ]
+    return d
+
+
+_BD = _bl()
+_BEV = _BD["events"]
+_dl = {r["date"]: r["load"] for r in analytics.daily_load(_BD)}
+_sum = lambda a, b: round(sum(v for k, v in _dl.items() if a <= k <= b), 1)  # noqa: E731
+
+# --- a · load_budget(planned=None) bitgenau wie 0.73.4 ------------------------
+_BUD_REF = [analytics.load_budget(_BD, s, t) for s in ("green", "amber", "red", "unknown")
+            for t in ("2026-09-20", "2026-09-26", "2026-09-27", "2026-09-30")]
+check("0.74.0 a bitgenau: load_budget ohne planned = Pruefsumme 0.73.4", _sha(_BUD_REF), "a14d78674c903d8a")
+check("0.74.0 a bitgenau: planned=None ausdruecklich = ohne Parameter",
+      [_try(analytics.load_budget, _BD, "green", t, planned=None) for t in ("2026-09-26", "2026-09-30")],
+      [analytics.load_budget(_BD, "green", t) for t in ("2026-09-26", "2026-09-30")])
+# --- a · planned zaehlt, als waere es gefahren --------------------------------
+_p0 = analytics.load_budget(_BD, "green", "2026-09-27")
+_p1 = _try(analytics.load_budget, _BD, "green", "2026-09-27", planned={"2026-09-27": 70.0})
+check("0.74.0 a planned: geplante Last des Tages ist used_today", (_p1 or {}).get("used_today") if isinstance(_p1, dict) else _p1, 70.0)
+check("0.74.0 a planned: window_load waechst um genau die geplante Last",
+      round(_p1["window_load"] - _p0["window_load"], 1) if isinstance(_p1, dict) else _p1, 70.0)
+check("0.74.0 a planned: window_load = sechs Tage davor + geplant (Known Answer)",
+      _p1.get("window_load") if isinstance(_p1, dict) else _p1, round(_sum("2026-09-21", "2026-09-26") + 70.0, 1))
+_p3 = _try(analytics.load_budget, _BD, "green", "2026-09-30", planned={})
+check("0.74.0 a planned={}: die Reihe laeuft lueckenlos bis zum Tag (Fenster 24.-30.)",
+      (_p3.get("window_start"), _p3.get("window_end"), _p3.get("window_load")) if isinstance(_p3, dict) else _p3,
+      ("2026-09-24", "2026-09-30", _sum("2026-09-24", "2026-09-26")))
+_ch = [(_dl.get((date(2026, 9, 2) + timedelta(days=k)).isoformat(), 0.0)) for k in range(28)]
+check("0.74.0 a planned={}: der Schnitt nimmt die 28 Tage davor, kuenftige Tage mit 0",
+      _p3.get("chronic") if isinstance(_p3, dict) else _p3, round(sum(_ch) / 28, 1))
+_kurz74 = _bl(n=20)
+check("0.74.0 a Randfall unter 28 Tagen: auch mit planned kein Budget",
+      _try(analytics.load_budget, _kurz74, "green", "2026-10-05", planned={"2026-09-27": 500.0}), None)
+
+# --- b · sessions_between; window_sessions bitgenau ----------------------------
+_WS_REF = [analytics.window_sessions(_BD, t, _BEV) for t in ("2026-09-20", "2026-09-26", "2026-09-27", "2026-10-01")] \
+    + [analytics.window_sessions(_bl(n=20), "2026-09-26", []), analytics.window_sessions({"wellness": {}}, "2026-09-26")]
+check("0.74.0 b bitgenau: window_sessions = Pruefsumme 0.73.4", _sha(_WS_REF), "9ba11225d5fd4471")
+_sb = getattr(analytics, "sessions_between", None)
+check("0.74.0 b: analytics.sessions_between existiert", callable(_sb), True)
+if callable(_sb):
+    _w26 = analytics.window_sessions(_BD, "2026-09-26", _BEV)
+    check("0.74.0 b: window_sessions = start/end + sessions_between (eine Stelle)",
+          {k: v for k, v in _w26.items() if k not in ("start", "end")}, _sb(_BD, "2026-09-20", "2026-09-26", _BEV))
+    _wsrc = (COMP / "analytics.py").read_text(encoding="utf-8")
+    _wbody = _wsrc[_wsrc.index("def window_sessions("):]
+    _wbody = _wbody[:_wbody.index("\ndef ", 10)]
+    check("0.74.0 b AST: window_sessions ruft sessions_between und rechnet keine Gruppen selbst",
+          ("sessions_between(" in _wbody, "activity_family(" in _wbody), (True, False))
+
+# --- c · weeks_by_group --------------------------------------------------------
+_wbg = getattr(analytics, "weeks_by_group", None)
+check("0.74.0 c: analytics.weeks_by_group existiert", callable(_wbg), True)
+if callable(_wbg):
+    _W = _wbg(_BD, _BEV, "2026-09-26")
+    check("0.74.0 c: 12 Kalenderwochen, Montag bis Sonntag, laufende zuletzt",
+          (len(_W), _W[-1]["week"], _W[-1]["start"], _W[-1]["end"], _W[0]["start"]),
+          (12, "2026-W39", "2026-09-21", "2026-09-27", "2026-07-06"))
+    _mono = {w["week"]: w["monotony"] for w in analytics.weekly_summary(_BD)}
+    check("0.74.0 c: Monotonie aus weekly_summary (ein Erzeuger)",
+          [w["monotony"] for w in _W], [_mono.get(w["week"]) for w in _W])
+    _bad = []
+    for w in _W:
+        end_ = min(w["end"], "2026-09-26")
+        if round(sum(w["groups"].values()), 1) != _sum(w["start"], end_) or w["total"] != _sum(w["start"], end_):
+            _bad.append(w["week"])
+    check("0.74.0 c: Summe der Gruppen = Summe daily_load je Woche (Rest in none)", _bad, [])
+    check("0.74.0 c: Fixture hat Rest (Tageslast > Fahrt) in den Wochen", any(w["groups"]["none"] > 0 for w in _W), True)
+    check("0.74.0 c: Gruppenschluessel", sorted(_W[-1]["groups"]), sorted(["grundlage", "schwelle", "vo2max", "other", "none"]))
+    check("0.74.0 c: Laufen landet unter other", sum(w["groups"]["other"] for w in _W) > 0, True)
+    check("0.74.0 c: geplant nur laufende Woche, nur nach heute, WORKOUT, Last > 0, ungepaart (70)",
+          [w["planned"] for w in _W], [0.0] * 11 + [70.0])
+    check("0.74.0 c: gefahrene Summe laufende Woche ohne das geplante",
+          _W[-1]["total"], _sum("2026-09-21", "2026-09-26"))
+    check("0.74.0 c: laufende Woche benannt", [w["current"] for w in _W], [False] * 11 + [True])
+    # gleiche Gruppen wie die Heute-Liste (window_sessions), wo die Tage sich decken
+    _gl = analytics.window_sessions(_BD, "2026-09-26", _BEV)
+    _sb21 = _sb(_BD, "2026-09-21", "2026-09-26", _BEV)
+    _sbw = sum(x["load"] for x in _gl["sessions"] if x["date"] >= "2026-09-21")
+    check("0.74.0 c/§5: Summe KW laufend = Summe Heute-Liste ab Montag", _W[-1]["total"], round(_sbw, 1))
+    check("0.74.0 c: laufende Woche = sessions_between(Montag, heute)", _W[-1]["groups"], _sb21["groups"])
+    # Randfall: Fahrten aelter als 30 Tage - Paarung ohne Event -> nur ueber Marken
+    _alt = [x for x in _sb(_BD, "2026-07-18", "2026-08-06", _BEV)["sessions"] if not x["rest"]]
+    check("0.74.0 §4 alte gepaarte Fahrt ohne Event: mit Marke zugeordnet, ohne Marke keine Gruppe",
+          (any(x["source"] == "marks" for x in _alt), any(x["source"] is None and x["group"] is None for x in _alt)),
+          (True, True))
+    check("0.74.0 §4 alte gepaarte Fahrt ohne Event: nie source=plan", [x for x in _alt if x["source"] == "plan"], [])
+    # Randfall: keine Events
+    _W0 = _wbg(_BD, [], "2026-09-26")
+    check("0.74.0 §4 keine Events: nichts geplant, gefahren unveraendert",
+          ([w["planned"] for w in _W0][-1], _W0[-1]["total"]), (0.0, _W[-1]["total"]))
+    # Randfall: Tageslast > Fahrten -> Rest in none; Tageslast < Fahrten -> benannt
+    _mmx = _bl(); _mmx["wellness"]["2026-09-24"]["ctlLoad"] = 1.0
+    _Wm = _wbg(_mmx, _BEV, "2026-09-26")
+    check("0.74.0 §4 Tageslast < Fahrten: Tag benannt, nichts versteckt", _Wm[-1]["mismatch"], ["2026-09-24"])
+    # Randfall: zweiter Athlet ohne Marken und Events
+    _Bb = _bl(marks=False, events=False)
+    _Wb = _wbg(_Bb, _Bb["events"], "2026-09-26")
+    check("0.74.0 §4 zweiter Athlet: keine Marke -> Rad nur none, Lauf other, nichts geplant",
+          (sum(w["groups"]["grundlage"] + w["groups"]["schwelle"] + w["groups"]["vo2max"] for w in _Wb),
+           sum(w["planned"] for w in _Wb)), (0.0, 0.0))
+    # Randfall: Jahreswechsel, ISO-Woche 53 (2026 hat 53 Wochen)
+    _J = _bl(n=70, end=date(2027, 1, 2))
+    _WJ = _wbg(_J, [], "2027-01-02")
+    check("0.74.0 §4 Jahreswechsel: KW 53 von 2026, Montag 28.12.", (_WJ[-1]["week"], _WJ[-1]["start"], _WJ[-2]["week"]),
+          ("2026-W53", "2026-12-28", "2026-W52"))
+    _J2 = _wbg(_bl(n=70, end=date(2027, 1, 5)), [], "2027-01-05")
+    check("0.74.0 §4 Jahreswechsel: KW 1 von 2027 nach KW 53", (_J2[-1]["week"], _J2[-2]["week"]), ("2027-W01", "2026-W53"))
+    _M = _wbg(_bl(n=70, end=date(2026, 10, 2)), [], "2026-10-02")
+    check("0.74.0 §4 Monatswechsel: Woche 28.09.-04.10. eine Woche", (_M[-1]["start"], _M[-1]["end"]), ("2026-09-28", "2026-10-04"))
+
+# --- d · window_history --------------------------------------------------------
+_wh = getattr(analytics, "window_history", None)
+check("0.74.0 d: analytics.window_history existiert", callable(_wh), True)
+_LBD = {d: "green" for d in _dl}
+_LBD["2026-09-20"] = "amber"; _LBD["2026-09-21"] = "red"; del _LBD["2026-09-22"]
+if callable(_wh):
+    _H = _wh(_BD, _LBD, 60)
+    check("0.74.0 d: 60 Tage bis heute", (len(_H), _H[0]["date"], _H[-1]["date"]), (60, "2026-07-29", "2026-09-26"))
+    _diff = [h["date"] for h in _H
+             if (lambda b: (h["window_load"], h["window_allowed"]) != (b["window_load"], b["window_allowed"]))(
+                 analytics.load_budget(_BD, _LBD.get(h["date"], "unknown"), h["date"]))]
+    check("0.74.0 d: je Tag window_load/allowed aus load_budget(Licht des Tages)", _diff, [])
+    _hd = {h["date"]: h for h in _H}
+    _c20 = analytics.load_budget(_BD, "green", "2026-09-20")["chronic"]
+    check("0.74.0 d/f: Faktor je Tag (gelb 1,0 / rot 0,8 / fehlt -> unknown 1,0)",
+          [_hd[x]["window_allowed"] for x in ("2026-09-20", "2026-09-21", "2026-09-22")],
+          [analytics.load_budget(_BD, s, x)["window_allowed"] for s, x in
+           (("amber", "2026-09-20"), ("red", "2026-09-21"), ("unknown", "2026-09-22"))])
+    check("0.74.0 d: heute = Last bis heute Abend (7 Tage bis Ende heute)",
+          _hd["2026-09-26"]["window_load"], _sum("2026-09-20", "2026-09-26"))
+    check("0.74.0 d: over = Last ueber dem Ziel", [h["over"] for h in _H],
+          [h["window_load"] > h["window_allowed"] for h in _H])
+    check("0.74.0 d: Fixture hat Tage ueber und unter dem Ziel", ({h["over"] for h in _H}), {True, False})
+    _Hk = _wh(_bl(n=20), {}, 60)
+    check("0.74.0 §4 unter 28 Tagen: kein Ziel, nur die Last-Linie",
+          (len(_Hk), {h["window_allowed"] for h in _Hk}, {h["over"] for h in _Hk}), (20, {None}, {False}))
+    _k20 = _bl(n=20); _kd = {r["date"]: r["load"] for r in analytics.daily_load(_k20)}
+    check("0.74.0 §4 unter 28 Tagen: Last = Summe der 7 Tage bis Tagesende",
+          _Hk[-1]["window_load"], round(sum(v for k, v in _kd.items() if "2026-09-20" <= k <= "2026-09-26"), 1))
+
+# --- e · window_projection ------------------------------------------------------
+_wp = getattr(analytics, "window_projection", None)
+_PL = _try(getattr(analytics, "planned_loads", lambda *a: "FEHLT"), _BEV, "2026-09-26", "2026-10-10")
+check("0.74.0 g: planned_loads nimmt nur WORKOUT, > heute, Last > 0, ungepaart, bis zum Ende",
+      _PL, {"2026-09-27": 70.0, "2026-10-05": 80.0})
+check("0.74.0 e: analytics.window_projection existiert", callable(_wp), True)
+if callable(_wp) and isinstance(_PL, dict):
+    _P = _wp(_BD, "amber", _PL, 14)
+    check("0.74.0 e: 14 Tage ab morgen", (len(_P), _P[0]["date"], _P[-1]["date"]), (14, "2026-09-27", "2026-10-10"))
+    _pd = [p["date"] for p in _P if (lambda b: (p["window_load"], p["window_allowed"]) !=
+           (b["window_load"], b["window_allowed"]))(analytics.load_budget(_BD, "amber", p["date"], planned=_PL))]
+    check("0.74.0 e: je Tag aus load_budget(planned, Licht von heute)", _pd, [])
+    _pp = {p["date"]: p for p in _P}
+    check("0.74.0 e: geplante 70 am 27. in der Vorschau", _pp["2026-09-27"]["window_load"],
+          round(_sum("2026-09-21", "2026-09-26") + 70.0, 1))
+    check("0.74.0 e: am 03.10. nur noch 27.09. (70) im Fenster, sonst 0",
+          _pp["2026-10-03"]["window_load"], 70.0)
+    check("0.74.0 e: am 05.10. die 80 der naechsten Woche", _pp["2026-10-05"]["window_load"], 80.0)
+    _P0 = _wp(_BD, "amber", {}, 14)
+    check("0.74.0 §8 Gegenprobe planned: ohne Plan am 27. weniger um genau 70",
+          round(_pp["2026-09-27"]["window_load"] - {p["date"]: p for p in _P0}["2026-09-27"]["window_load"], 1), 70.0)
+    check("0.74.0 e: Ziel = Faktor von heute (gelb -> 7 x chronisch x 1,0)",
+          _pp["2026-09-27"]["window_allowed"], analytics.load_budget(_BD, "amber", "2026-09-27", planned=_PL)["window_bands"]["steady"])
+    check("0.74.0 §4 unter 28 Tagen: Vorschau ohne Ziel", {p["window_allowed"] for p in _wp(_bl(n=20), "green", {}, 14)}, {None})
+
+# --- h · readiness: Akut zu chronisch aus load_budget ---------------------------
+# heute ein grosser Tag: der alte Schnitt (inklusive heute) und der neue (vor heute) gehen auseinander
+_BDh = _bl(); _BDh["wellness"]["2026-09-26"]["ctlLoad"] = 300.0
+_rdy = analytics.readiness(_BDh)
+_ac = next((c for c in _rdy["components"] if c["id"] == "acwr"), {})
+_lb = analytics.load_budget(_BDh, "green", "2026-09-26")
+_neu = round(_lb["window_load"] / (7 * _lb["chronic"]), 2)
+_alt = [r for r in analytics.acwr_series(_BDh) if r["ratio"] is not None][-1]["ratio"]
+print(f"   0.74.0 h Beispielzahl: alt (acwr_series, Schnitt inkl. heute) {_alt} -> neu (load_budget, Schnitt vor heute) {_neu}")
+check("0.74.0 h Fixture: alter und neuer Weg unterscheiden sich", _neu != _alt, True)
+check("0.74.0 h: Akut zu chronisch = window_load / (7 x chronic) aus load_budget(heute)", _ac.get("value"), _neu)
+check("0.74.0 h: Schwellen und Texte bleiben (Einstufung am neuen Wert: 1,51 > 1,5 -> rot)",
+      (_ac.get("reference"), _ac.get("label"), _ac.get("state"), _ac.get("detail")),
+      (analytics.ACWR_HIGH, "Akut zu chronisch", "red", "deutlich über dem Korridor"))
+_rsrc = (COMP / "analytics.py").read_text(encoding="utf-8")
+_rbody = _rsrc[_rsrc.index("def readiness("):]
+_rbody = _rbody[:_rbody.index("\ndef ", 10)]
+check("0.74.0 h AST: readiness ruft acwr_series nicht mehr, load_budget genau einmal",
+      ("acwr_series(" in _rbody, _rbody.count("load_budget(")), (False, 1))
+check("0.74.0 h Randfall unter 28 Tagen: kein Punkt", [c["id"] for c in analytics.readiness(_bl(n=20))["components"]].count("acwr"), 0)
+
+# --- i · summary ohne ACWR-Felder -------------------------------------------------
+_sm = analytics.summary(_BD)
+check("0.74.0 i: summary ohne acwr, acwr_latest", ("acwr" in _sm, "acwr_latest" in _sm), (False, False))
+check("0.74.0 i: thresholds ohne acwr_*", sorted(k for k in _sm["thresholds"] if k.startswith("acwr")), [])
+check("0.74.0 i: der Rest der Payload bleibt",
+      sorted(_sm), sorted(["weeks", "ramp_rate", "form", "form_percent", "form_zone", "intensity",
+                           "dfa_distribution", "decoupling", "hrv", "thresholds"]))
+check("0.74.0 i: acwr_series bleibt (Leser coach.signals)", callable(getattr(analytics, "acwr_series", None)), True)
+
 print(f"test_analytics: {CHECKS} Prüfungen, {len(failures)} Fehler")
 print("FEHLER:", failures if failures else "keine")
 sys.exit(1 if failures else 0)

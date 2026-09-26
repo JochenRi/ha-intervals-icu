@@ -1268,7 +1268,10 @@ def signals(data: dict[str, Any], days_back: int = 180) -> dict[str, Any]:
             "decoupling": _f(activity.get("decoupling")),
         })
 
-    # EIN ACWR (S2): dasselbe wie im Belastungs-Reiter und in der Ampel.
+    # ACWR je Tag aus analytics.acwr_series (Schnitt INKLUSIVE des Tages). Seit
+    # 0.74.0 hat der Belastungs-Reiter keine ACWR-Kurve mehr, und der Ampelpunkt
+    # "Akut zu chronisch" nimmt den Schnitt VOR heute aus load_budget - diese
+    # Reihe ist damit der letzte Leser von acwr_series (offener Befund 0.74.0).
     acwr = {row["date"]: row.get("ratio") for row in analytics.acwr_series(data)}
     rows = []
     for day in order:
@@ -2090,4 +2093,40 @@ def today(data: dict[str, Any], events: Any = None, day: str | None = None) -> d
             "Signale hier einzeln, mit dem System, über das sie etwas aussagen, und "
             "mit dem, was sie nicht können."
         ),
+    }
+
+
+def load_view(data: dict[str, Any], events: Any = None) -> dict[str, Any]:
+    """Der Belastungs-Reiter (0.74.0, Skizze §3.1 f/g) - nur verdrahtet, nichts gerechnet.
+
+    - Wochen je Gruppe: analytics.weeks_by_group (heute = letzter Wellness-Tag).
+    - Verlauf 60 Tage: analytics.window_history mit dem Licht des Zustands DIESES
+      Tages (BUDGET_LIGHT[state_series]); fehlt der Zustand, gilt "unknown" (1,0).
+    - Vorschau 14 Tage: analytics.window_projection mit dem Licht von HEUTE und
+      der geplanten Last aus den Events (analytics.planned_loads) - Festlegung.
+    - Ueberschrift: die Werte von today().week - derselbe Aufruf wie der
+      Heute-Kopf, keine eigene Rechnung.
+    Tabellen (BUDGET_LIGHT, CAPACITY) und Faktoren bleiben unberuehrt.
+    """
+    order = sorted(data.get("wellness") or {})
+    current = order[-1] if order else None
+    light_by_day = {row["date"]: BUDGET_LIGHT.get(row["state"], "unknown") for row in state_series(data)}
+    light_now = BUDGET_LIGHT.get(state(data)["state"], "unknown")
+    planned = analytics.planned_loads(events, current)
+    head = today(data, events).get("week") or {}
+    budget = head.get("budget") or {}
+    return {
+        "weeks_by_group": analytics.weeks_by_group(data, events, current),
+        "window_history": analytics.window_history(data, light_by_day, 60, current),
+        "window_projection": analytics.window_projection(data, light_now, planned, 14, current),
+        "planned": planned,
+        "headline": {
+            "mode": head.get("mode"),
+            "window_load": budget.get("window_load"),
+            "window_allowed": budget.get("window_allowed"),
+            "window_free": budget.get("window_free"),
+            "bound_by": head.get("bound_by"),
+            "ceiling": head.get("ceiling"),
+            "available": bool(budget),
+        },
     }

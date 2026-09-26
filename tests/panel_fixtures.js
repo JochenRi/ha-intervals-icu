@@ -61,15 +61,7 @@ function days(opts) {
 
 function load(opts) {
   opts = opts || {};
-  const acwr = [];
-  let d = new Date("2026-03-02T00:00:00");
-  for (let i = 0; i < 193; i++) {
-    const iso = d.toISOString().slice(0, 10);
-    // one genuine outlier - the case that squashed the chart in 0.9.0
-    const ratio = i < 28 ? null : (opts.spike && i === 80 ? 3.9 : 0.7 + ((i * 13) % 70) / 90);
-    acwr.push({ date: iso, acute: i < 28 ? null : 20, chronic: i < 28 ? null : 24, ratio });
-    d = new Date(d.getTime() + 864e5);
-  }
+  let d;
   const hrv = [];
   d = new Date("2026-06-01T00:00:00");
   for (let i = 0; i < 100; i++) {
@@ -88,15 +80,102 @@ function load(opts) {
       week: `2026-W${String(10 + i).padStart(2, "0")}`, load: 150 + ((i * 37) % 150),
       days: 7, days_trained: i % 5 ? 4 : 2, monotony: i % 5 ? 1.4 : 2.3, strain: i % 5 ? 400 : 700,
     })),
-    acwr, acwr_latest: { date: TODAY, acute: 18, chronic: 23, ratio: 0.78 },
     ramp_rate: 1.2, form: -6.9, form_percent: -18, form_zone: "grey",
     intensity: { days: 90, sessions: 24, low: 74, middle: 12, high: 14, hours: 60 },
     dfa_distribution: { days: 90, sessions: 20, aerobic: 85, transition: 10, anaerobic: 5, hours: 44 },
     decoupling: dcp,
     hrv: { series: hrv, latest: 3.733, baseline: 3.872, swc: 0.041, state: "below",
            baseline_days: 60, note: "Nachtmessung" },
-    thresholds: { acwr_low: 0.8, acwr_high: 1.3, acwr_risk: 1.5, monotony_watch: 2,
+    ...loadView(opts),
+    thresholds: { monotony_watch: 2,
                   decoupling_good: 5, polarized_low: 75, polarized_middle: 8 },
+  };
+}
+
+/* 0.74.0 (Skizze §3.2/3.3): der Belastungs-Reiter aus coach.load_view -
+ * weeks_by_group, window_history, window_projection, planned, headline.
+ * Schluessel je Zeile stehen in den *_KEYS-Listen; test_coach.py haelt sie
+ * gegen den Erzeuger (Regel 9). Die Ueberschrift entsteht wie in
+ * coach.load_view aus der Woche des Heute-Payloads (week(kind)), die Fenster
+ * aus einer ausgedachten Tagesreihe, deren Fenstertage die Fahrten der Woche
+ * tragen - rechnerisch stimmig: der Punkt "heute" ist die Summe der sieben
+ * Tage bis heute, im heute-Modus gleich window_load der Ueberschrift.
+ * opts: week (Art der Woche), plan (Datum -> Last), short (unter 28 Tagen). */
+const LV_KEYS = {
+  weeks_by_group: ["week", "start", "end", "current", "groups", "total", "mismatch", "planned", "monotony"],
+  window_history: ["date", "window_load", "window_allowed", "over"],
+  headline: ["mode", "window_load", "window_allowed", "window_free", "bound_by", "ceiling", "available"],
+};
+function loadView(opts) {
+  opts = opts || {};
+  const wk = week(opts.week);
+  const b = wk.budget || {};
+  const iso = (x) => x.toISOString().slice(0, 10);
+  const add = (s, n) => iso(new Date(new Date(s + "T00:00:00Z").getTime() + n * 864e5));
+  const end = wk.mode === "tomorrow" ? add(wk.end, -1) : wk.end;          // heute
+  const allowed = opts.short ? null : (b.window_allowed || 256);
+  // Tagesreihe: vor dem Fenster ein Muster, im Fenster genau die Fahrten der Woche
+  const dayLoad = {}, dayGroup = {};
+  const PAT = [40, 0, 70, 0, 55, 0, 30], GR = ["grundlage", "schwelle", "vo2max", "grundlage", "none", "grundlage", "schwelle"];
+  const days = opts.short ? 20 : 90;
+  for (let k = days - 1; k >= 0; k--) {
+    const dd = add(end, -k);
+    if (dd >= wk.start) { dayLoad[dd] = 0; continue; }
+    dayLoad[dd] = PAT[k % 7]; dayGroup[dd] = { [GR[k % 7]]: PAT[k % 7] };
+  }
+  for (const x of wk.sessions || []) {
+    if (x.date > end) continue;
+    dayLoad[x.date] = (dayLoad[x.date] || 0) + x.load;
+    const g = x.group || "none";
+    dayGroup[x.date] = dayGroup[x.date] || {};
+    dayGroup[x.date][g] = (dayGroup[x.date][g] || 0) + x.load;
+  }
+  const plan = opts.plan === undefined ? { [add(end, 1)]: 60, [add(end, 5)]: 80 } : opts.plan;
+  const win = (dd, withPlan) => {
+    let sum = 0;
+    for (let k = 0; k < 7; k++) {
+      const x = add(dd, -k);
+      sum += x > end ? (withPlan ? plan[x] || 0 : 0) : dayLoad[x] || 0;
+    }
+    return sum;
+  };
+  const row = (dd, withPlan) => {
+    const l = win(dd, withPlan);
+    return { date: dd, window_load: l, window_allowed: allowed, over: allowed != null && l > allowed };
+  };
+  const hist = [];
+  for (let k = Math.min(59, days - 1); k >= 0; k--) hist.push(row(add(end, -k), false));
+  const proj = [];
+  for (let k = 1; k <= 14; k++) proj.push(row(add(end, k), true));
+  // Kalenderwochen Mo-So, die laufende zuletzt
+  const wd = (new Date(end + "T00:00:00Z").getUTCDay() + 6) % 7;
+  const monday = add(end, -wd), sunday = add(monday, 6);
+  const isoWeek = (s) => {
+    const t = new Date(s + "T00:00:00Z"); t.setUTCDate(t.getUTCDate() + 3 - ((t.getUTCDay() + 6) % 7));
+    const y0 = new Date(Date.UTC(t.getUTCFullYear(), 0, 4));
+    return `${t.getUTCFullYear()}-W${String(1 + Math.round(((t - y0) / 864e5 - 3 + ((y0.getUTCDay() + 6) % 7)) / 7)).padStart(2, "0")}`;
+  };
+  const weeks = [];
+  for (let back = 11; back >= 0; back--) {
+    const st = add(monday, -7 * back), en = add(st, 6);
+    const groups = { grundlage: 0, schwelle: 0, vo2max: 0, other: 0, none: 0 };
+    let total = 0;
+    for (let k = 0; k < 7; k++) {
+      const x = add(st, k);
+      if (x > end) break;
+      total += dayLoad[x] || 0;
+      for (const [g, v] of Object.entries(dayGroup[x] || {})) groups[g] += v;
+    }
+    const planned = back === 0 ? Object.entries(plan).filter(([x]) => x > end && x <= sunday).reduce((a, [, v]) => a + v, 0) : 0;
+    weeks.push({ week: isoWeek(st), start: st, end: en, current: back === 0, groups, total, mismatch: [],
+                 planned, monotony: back === 4 ? 2.3 : 1.4 });
+  }
+  return {
+    weeks_by_group: weeks, window_history: hist, window_projection: proj,
+    planned: Object.fromEntries(Object.entries(plan).filter(([x]) => x > end)),
+    headline: { mode: wk.mode, window_load: b.window_load ?? null, window_allowed: b.window_allowed ?? null,
+                window_free: b.window_free ?? null, bound_by: wk.bound_by, ceiling: wk.ceiling,
+                available: !!wk.budget && !opts.short },
   };
 }
 
@@ -1425,4 +1504,4 @@ function dayContext(extra) {
   };
 }
 
-module.exports = { STAGE_WORDS, stageOf, TODAY, days, load, readiness, activities, streams, thresholds, fatigue, fatigueV2Block, blocks, calendar, pmc, laps, lapsWithBounds, steadyStream, night, context, goal, today, week, coach, signals, workouts, dayContext };
+module.exports = { STAGE_WORDS, stageOf, TODAY, days, load, loadView, LV_KEYS, readiness, activities, streams, thresholds, fatigue, fatigueV2Block, blocks, calendar, pmc, laps, lapsWithBounds, steadyStream, night, context, goal, today, week, coach, signals, workouts, dayContext };

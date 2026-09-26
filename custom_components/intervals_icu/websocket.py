@@ -503,10 +503,19 @@ def websocket_status(hass, connection, msg) -> None:
 )
 @callback
 def websocket_load(hass, connection, msg) -> None:
-    """Return the whole training load picture: weeks, ACWR, intensity, HRV."""
+    """Return the whole training load picture: weeks, intensity, HRV.
+
+    0.74.0 (Skizze §3.1 g): dazu der Belastungs-Reiter aus coach.load_view -
+    Wochen je Gruppe, Verlauf der 7-Tage-Last mit Vorschau, Ueberschrift wie
+    der Heute-Kopf. Die Events kommen aus coordinator.data (wie bei today).
+    """
     if (coordinator := _require(hass, connection, msg)) is None:
         return
-    connection.send_result(msg["id"], analytics.summary(coordinator.archive.data))
+    data = coordinator.archive.data
+    payload = analytics.summary(data)
+    payload.update(analytics._safe("load_view", coach_module.load_view, data,
+                                   (getattr(coordinator, "data", None) or {}).get("events"), default={}) or {})
+    connection.send_result(msg["id"], payload)
 
 
 @websocket_api.websocket_command(

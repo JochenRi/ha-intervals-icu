@@ -82,17 +82,15 @@ const acts = F.activities(), thr = F.thresholds();
 }
 
 /* ── 4  one outlier must not squash the ACWR chart ─────────────────────── */
+/* 0.74.0 umgestellt: die ACWR-Kurve ist durch den Verlauf der 7-Tage-Last
+   ersetzt (Skizze 0.74.0 §3.3). Der Ausreißer-Schutz hing an der
+   Verhältnisachse; der Verlauf zeigt Last in ihrer Einheit, die Achse reicht
+   bis zum größten Wert. Übrig bleibt: sauber, keine Klemmung, kein Korridor. */
 {
   const html = p.rBelastung(load);
-  clean(html, "4 acwr");
-  // axis capped at 2.2 - the 3.9 spike is clamped and called out
-  ok(html.includes("geklemmt"), "4 acwr: Ausreißer wird nicht als geklemmt ausgewiesen");
-  ok(html.includes("3,90"), "4 acwr: Höchstwert wird nicht genannt");
-  const yLabels = (html.match(/class="ax">([0-9],[0-9])</g) || []).map((m) => m.replace(/.*>/, ""));
-  ok(!yLabels.includes("4,0") && !yLabels.includes("3,5"),
-     "4 acwr: Achse reicht weiter als der Korridor braucht");
-  // the two corridor labels no longer share a side
-  ok(html.includes('text-anchor="start"'), "4 acwr: keine Beschriftung nach links ausgewichen");
+  clean(html, "4 verlauf");
+  ok(!html.includes("geklemmt"), "4 verlauf: es wird noch geklemmt");
+  ok(!/Korridor bis 1,3|Korridor ab 0,8/.test(html), "4 verlauf: der ACWR-Korridor steht noch da");
 }
 
 /* ── 5  month ticks, never the same month twice ────────────────────────── */
@@ -587,7 +585,8 @@ const acts = F.activities(), thr = F.thresholds();
   const dfa = hits(/y:\s*0\.(75|5)\b/);
   const acwr = hits(/ratio\s*>\s*1\.(3|5)\b/);
   ok(dfa.length === 2, `Wächter: DFA-Schwellen im Frontend jetzt ${dfa.length} statt 2 — eigenes Paket`);
-  ok(acwr.length === 2, `Wächter: ACWR-Korridor im Frontend jetzt ${acwr.length} statt 2 — eigenes Paket`);
+  // 0.74.0: das Paket ist gelaufen - die ACWR-Kurve ist weg, der Korridor steht nicht mehr im Frontend.
+  ok(acwr.length === 0, `Wächter: ACWR-Korridor im Frontend jetzt ${acwr.length} statt 0 — neue Dublette`);
 
   // Und die Kachel selbst: jede Zahl, die sie zeigt, kommt aus der Payload.
   const tile = (/rDurability\(d\) \{[\s\S]*?\n  \}/.exec(src) || [""])[0];

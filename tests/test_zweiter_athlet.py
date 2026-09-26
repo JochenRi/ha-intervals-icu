@@ -490,6 +490,24 @@ _st8 = W.stage("ok", False, False)
 eq("Z8 Gegenprobe: mit Zustand bleibt die Art (gruen + Gelaender)", (_st8["key"], _st8["blocked_by"], _st8["over_ceiling"]), ("green", None, True))
 ws.dt_util = _dt_saved
 
+
+print("\n=== Z9. 0.74.0 Belastungs-Reiter: seine Wochen, sein Verlauf, keine Zahl des ersten ===")
+import datetime as _dtz  # noqa: E402
+_dz = second_athlete()
+for _i in range(45):
+    _day = (_dtz.date(2026, 8, 15) - _dtz.timedelta(days=44 - _i)).isoformat()  # fern vom Stichtag des ersten
+    _dz["wellness"][_day] = {"ctlLoad": [0.0, 60.0, 0.0, 45.0, 0.0, 80.0, 25.0][_i % 7], "hrv": 70, "restingHR": 48}
+_cz = FakeCoordinator(_dz); _cz.data = {"events": []}
+ws._pick = lambda hass, athlete_id: _cz
+_lz = FakeConn()
+ws.websocket_load(None, _lz, {"id": 9})
+_pz = (_lz.results or [{}])[0]
+eq("Z9: der Befehl laeuft ohne Fehler", _lz.errors, [])
+eq("Z9: ohne Events nichts geplant", _pz.get("planned"), {})
+check("Z9: Verlauf und Wochen stehen da", len(_pz.get("window_history") or []) == 45 and len(_pz.get("weeks_by_group") or []) == 12)
+eq("Z9: keine Zahl des ersten Athleten in den neuen Teilen",
+   leaks({k: _pz.get(k) for k in ("weeks_by_group", "window_history", "window_projection", "headline", "planned")}), [])
+
 print(f"\ntest_zweiter_athlet: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

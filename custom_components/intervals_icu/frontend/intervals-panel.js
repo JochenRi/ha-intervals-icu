@@ -3765,9 +3765,11 @@ class IntervalsIcuPanel extends HTMLElement {
     </div>`;
   }
 
-  /* Ridden against planned - and nothing paired. The archive holds duration
-     and load, no label saying which planned session a ride was meant to be;
-     pairing them automatically would be a claim nobody here can back up
+  /* Ridden against planned, as sums - this row pairs nothing itself. Which
+     ride belongs to which family is read elsewhere since 0.73.0
+     (analytics.activity_family: the athlete's marks, or the pairing that
+     intervals.icu made); the Heute head and the Belastung tab use it. Pairing
+     here on our own would still be a claim nobody can back up
      (docs/ausbau.md I2). */
   _weekDone(w) {
     const d = w.done;
@@ -6610,6 +6612,145 @@ class IntervalsIcuPanel extends HTMLElement {
   }
 
   /* ---------------- Belastung ---------------- */
+  /* 0.74.0 (Skizze §3.2): DEINE WOCHEN. Gestapelt in der Reihenfolge der
+     Skizze: Grundlage, SweetSpot & Schwelle, VO2max (Farben wie im Heute-Kopf,
+     FAM[GROUP_TONE]), andere Sportarten (C.cyan, nur wenn > 0), nicht
+     zugeordnet (Schraffur). Laufende Woche: der geplante Rest gestrichelt
+     obendrauf (C.blue, title "geplant"). Die Zahl ueber dem Balken ist die
+     GEFAHRENE Summe (total = Tageslast der Woche). Eigenes SVG, damit die
+     Beschriftung am Handy nicht verzerrt: viewBox mit Seitenverhaeltnis. */
+  _loadWeeks(load) {
+    const wk = load.weeks_by_group || [];
+    if (!wk.length) return `<p class="mut">Noch keine Wochen im Archiv.</p>`;
+    const at = wk.findIndex((w) => w.current);
+    const ci = at >= 0 ? at : wk.length - 1;
+    const cur = wk[ci], prev = ci > 0 ? wk[ci - 1] : null, prev2 = ci > 1 ? wk[ci - 2] : null;
+    const x = cur.total || 0, y = cur.planned || 0;
+    const head = `Diese Woche bisher ${fmt(x)} Last${y > 0 ? `, geplant noch ${fmt(y)}` : ""}`;
+    // Vorwoche gegen die Woche davor - beide vollstaendig. Nur als Zahl, ohne Farbe.
+    let sub = "";
+    if (prev) {
+      const pz = prev2 && prev2.total > 0 ? Math.round((prev.total - prev2.total) / prev2.total * 100) : null;
+      sub = `Vorwoche ${fmt(prev.total)} Last${pz != null ? ` (${sign(pz)} %)` : ""}.`;
+    }
+    const hasOther = wk.some((w) => ((w.groups || {}).other || 0) > 0);
+    const order = TRAINER_FAMILIES.map(([id, name]) => [id, name, FAM[GROUP_TONE[id]].c])
+      .concat(hasOther ? [["other", "andere Sportarten", C.cyan]] : [])
+      .concat([["none", "nicht zugeordnet", null]]);
+    const W = 880, H = 236, padL = 40, padR = 10, padT = 34, padB = 24;
+    const pw = W - padL - padR, ph = H - padT - padB, n = wk.length;
+    const slot = pw / n, bw = slot * 0.62;
+    const stackOf = (w) => order.reduce((a, [id]) => a + ((w.groups || {})[id] || 0), 0);
+    const top = Math.max(1, ...wk.map((w) => Math.max(stackOf(w), w.total || 0) + (w.current ? w.planned || 0 : 0))) * 1.08;
+    const Y = (v) => padT + ph * (1 - v / top);
+    const watch = (load.thresholds || {}).monotony_watch;
+    let g = `<defs><pattern id="lwhatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <rect width="6" height="6" fill="${C.line}"/><rect width="3" height="6" fill="${C.tx3}"/></pattern></defs>`;
+    g += `<line x1="${padL}" x2="${W - padR}" y1="${Y(0)}" y2="${Y(0)}" stroke="${C.line}" stroke-width="1"/>`;
+    wk.forEach((w, i) => {
+      const cx = padL + slot * (i + 0.5), x0 = (cx - bw / 2).toFixed(1);
+      let base = 0;
+      for (const [id, name, col] of order) {
+        const v = (w.groups || {})[id] || 0;
+        if (v <= 0) continue;
+        g += `<rect x="${x0}" y="${Y(base + v).toFixed(1)}" width="${bw.toFixed(1)}" height="${(Y(base) - Y(base + v)).toFixed(1)}"
+          fill="${col || "url(#lwhatch)"}"><title>${esc(name)}: ${fmt(v)}</title></rect>`;
+        base += v;
+      }
+      const planned = w.current ? w.planned || 0 : 0;
+      if (planned > 0) {
+        g += `<rect x="${x0}" y="${Y(base + planned).toFixed(1)}" width="${bw.toFixed(1)}" height="${(Y(base) - Y(base + planned)).toFixed(1)}"
+          fill="none" stroke="${C.blue}" stroke-width="1.6" stroke-dasharray="4 3"><title>geplant</title></rect>`;
+      }
+      const ly = Y(base + planned) - 6;
+      const label = planned > 0 ? `${fmt(w.total)} + ${fmt(planned)} geplant` : fmt(w.total);
+      if (w.total > 0 || planned > 0) {
+        g += `<text x="${cx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="${w.current && planned > 0 && i === n - 1 ? "end" : "middle"}"
+          class="ax" fill="${C.tx2}">${esc(label)}</text>`;
+      }
+      if (w.monotony != null && watch != null && w.monotony >= watch) {
+        g += `<circle cx="${cx.toFixed(1)}" cy="${(ly - 14).toFixed(1)}" r="4" fill="${C.amber}"><title>Monotonie ${fmt(w.monotony, 2)}</title></circle>`;
+      }
+      g += `<text x="${cx.toFixed(1)}" y="${H - 6}" text-anchor="middle" class="ax">KW ${+String(w.week).split("-W")[1]}</text>`;
+    });
+    const legend = order.map(([, name, col]) => col
+      ? `<span class="lg"><i class="sw" style="background:${col}"></i>${esc(name)}</span>`
+      : `<span class="lg"><i class="sw hatch"></i>${esc(name)}</span>`).join("")
+      + `<span class="lg"><i class="sw" style="background:none;border:1px dashed ${C.blue}"></i>geplant</span>`;
+    return `<div class="statrow"><b class="tn big3">${esc(head)}</b></div>
+      ${sub ? `<p class="hint tn">${esc(sub)}</p>` : ""}
+      <svg class="lwchart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(head)}">${g}</svg>
+      <div class="legend">${legend}</div>
+      <p class="hint">${ico("warn", C.amber, 13)} Punkt über dem Balken = Monotonie ≥ 2 (Woche ohne echten Ruhetag).</p>
+      <p class="hint">Familie aus deinen Marken oder der Paarung in intervals.icu. Die Paarung liest die App nur für die letzten 30 Tage; ältere Fahrten ohne Marke bleiben „nicht zugeordnet“. Eine sichere Steigerung von Woche zu Woche ist nicht belegt (Buist 2008, Nielsen 2014) – die Prozentzahl ist nur eine Zahl.</p>`;
+  }
+
+  /* 0.74.0 (Skizze §3.3): DIE LETZTEN 7 TAGE IM VERLAUF. Je Tag die Last der
+     sieben Tage bis Tagesende und das Ziel des Tages (window_history), danach
+     14 Tage Vorschau aus dem Kalender (window_projection) - beides aus
+     analytics.load_budget, hier wird nichts gerechnet. Die Ueberschrift ist
+     today().week (headline): dieselben Zahlen wie im Heute-Kopf. Das
+     Diagramm steht in einem eigenen Scrollrahmen (Handy). */
+  _loadTrend(load) {
+    const hist = load.window_history || [];
+    const proj = load.window_projection || [];
+    const hd = load.headline || {};
+    if (!hist.length) return `<p class="mut">Noch kein Verlauf im Archiv.</p>`;
+    const today = hist[hist.length - 1];
+    const hasGoal = hist.some((h) => h.window_allowed != null);
+    let head = "", sub = "";
+    if (hd.available) {
+      const tomorrow = hd.mode === "tomorrow";
+      head = hd.bound_by === "state"
+        ? `${tomorrow ? "Morgen" : "Heute"} höchstens ${fmt(hd.ceiling)} Last – dein Zustand bremst`
+        : `${tomorrow ? "Für morgen" : "Heute"}: ${fmt(hd.window_load)} von ${fmt(hd.window_allowed)} Last – noch ${fmt(hd.window_free)} frei`;
+      sub = `Genau die Zahlen aus dem Heute-Kopf. Der weiße Punkt ist das Ende von heute (${fmt(today.window_load)} Last in den 7 Tagen bis heute Abend).`;
+    }
+    const all = hist.concat(proj);
+    const n = all.length, iT = hist.length - 1;
+    const pick = (k, from, to) => all.map((p, i) => (i >= from && i <= to ? p[k] : null));
+    const top = Math.max(1, ...all.map((p) => Math.max(p.window_load || 0, p.window_allowed || 0))) * 1.12;
+    const h = 220, padT = 8, padB = 22;
+    const X = (i) => 48 + (i / (Math.max(2, n) - 1)) * (880 - 48 - 14);
+    const extra = `<line x1="${X(iT).toFixed(1)}" x2="${X(iT).toFixed(1)}" y1="${padT}" y2="${h - padB}" stroke="${C.tx2}" stroke-width="1" stroke-dasharray="3 3"/>
+      <text x="${(X(iT) + 4).toFixed(1)}" y="${padT + 10}" class="ax">heute</text>`;
+    const over = all.map((p, i) => (p.over ? { i, v: p.window_load, c: C.amber, r: 5.2 } : null)).filter(Boolean);
+    const svg = chart({
+      h, n, y0: 0, y1: top, padT, padB, xt: monthTicks(all.map((p) => p.date)), extra,
+      s: [
+        { t: "line", v: pick("window_allowed", 0, iT), c: C.green, w: 1.8 },
+        { t: "line", v: pick("window_load", 0, iT), c: C.tx, w: 2.2 },
+        { t: "line", v: pick("window_allowed", iT, n - 1), c: C.green, w: 1.8, d: "5 4" },
+        { t: "line", v: pick("window_load", iT, n - 1), c: C.blue, w: 2.2, d: "5 4" },
+        { t: "dots", p: over, c: C.amber },
+        { t: "dots", p: [{ i: iT, v: today.window_load, c: C.tx, r: 3.6 }], c: C.tx },
+      ],
+    });
+    let plan = "";
+    if (!Object.keys(load.planned || {}).length) {
+      plan = "Keine geplanten Einheiten im Kalender – die Vorschau zeigt, wann Last aus dem Fenster fällt.";
+    } else if (hasGoal && proj.length) {
+      const seq = [today].concat(proj);
+      const last = seq.map((p) => !!p.over).lastIndexOf(true);
+      if (proj.every((p) => p.over)) plan = "Mit diesem Plan bleibst du in den nächsten 14 Tagen über dem Ziel.";
+      else if (last >= 0 && last < seq.length - 1) {
+        const d = String(seq[last + 1].date).split("-");
+        plan = `Mit diesem Plan liegst du ab ${d[2]}.${d[1]}. wieder unter dem Ziel.`;
+      }
+    }
+    const legend = `<span class="lg"><i class="sw" style="background:${C.tx}"></i>Last der 7 Tage</span>`
+      + (hasGoal ? `<span class="lg"><i class="sw" style="background:${C.green}"></i>Ziel</span>` : "")
+      + `<span class="lg"><i class="sw" style="background:none;border:1px dashed ${C.blue}"></i>Vorschau</span>`
+      + (hasGoal ? `<span class="lg"><i class="sw" style="background:${C.amber};width:8px;height:8px;border-radius:4px"></i>über dem Ziel</span>` : "");
+    return `${head ? `<div class="statrow"><b class="tn big3">${esc(head)}</b></div>` : ""}
+      ${sub ? `<p class="hint tn">${esc(sub)}</p>` : ""}
+      ${hasGoal ? "" : `<p class="hint">Das Ziel braucht 28 Tage Verlauf.</p>`}
+      <div class="lvscroll"><div class="lvin">${svg}</div></div>
+      <div class="legend">${legend}</div>
+      ${plan ? `<p class="hint">${esc(plan)}</p>` : ""}
+      <p class="hint">Vorschau: Geplante Einheiten zählen mit ihrer geplanten Last, als würdest du sie genau so fahren; das Ziel nimmt den Zustand von heute an. Beides sind Festlegungen – morgen rechnet die App mit echten Werten neu.</p>`;
+  }
+
   rBelastung(load) {
     if (!load) return this._dataGap("load", "Die Belastungsdaten");
     const sec = (icon, title, readAs, body, source) => `
@@ -6620,58 +6761,14 @@ class IntervalsIcuPanel extends HTMLElement {
         <details class="more"><summary>Quelle und Grenzen</summary><p class="src">${source}</p></details>
       </section>`;
 
-    /* weekly load */
-    const weeks = (load.weeks || []).slice(-20);
-    let weeklyHtml = `<p class="mut">Noch keine Wochen im Archiv.</p>`;
-    if (weeks.length) {
-      const loads = weeks.map((w) => w.load);
-      const avg = meanOf(loads);
-      const maxL = Math.max(1, ...loads);
-      const xt = weeks.map((w, i) => i % Math.ceil(weeks.length / 8) === 0 ? { i, t: "KW " + (+w.week.split("-W")[1]) } : null).filter(Boolean);
-      const dots = weeks.map((w, i) => (w.monotony != null && w.monotony >= (load.thresholds || {}).monotony_watch)
-        ? { i, v: w.load + maxL * 0.06, c: C.amber, r: 4 } : null).filter(Boolean);
-      weeklyHtml = chart({
-        h: 200, n: weeks.length, y0: 0, y1: maxL * 1.16, xt,
-        hl: avg != null ? [{ y: avg, c: C.tx2, d: 1, t: "Mittel " + fmt(avg) }] : [],
-        s: [{ t: "bars", v: loads, c: ROLE.series, op: 0.8 }, { t: "dots", p: dots, c: C.amber }],
-      }) + `<p class="hint">${ico("warn", C.amber, 13)} Punkt über dem Balken = Monotonie ≥ 2 (Woche ohne echten Ruhetag).</p>`;
-    }
-
-    /* ACWR */
-    const acwr = load.acwr || [];
-    let acwrHtml = `<p class="mut">Noch kein volles 28-Tage-Fenster.</p>`;
-    if (acwr.some((x) => x.ratio != null)) {
-      const raw = acwr.map((x) => x.ratio);
-      // A single spike used to stretch the axis to 4.0 and squash the whole
-      // corridor into the bottom sliver. Cap the axis just above the corridor,
-      // clamp what sticks out and mark it, so the readable range stays readable.
-      const hi = 2.2;
-      const vals = raw.map((v) => v == null ? null : Math.min(v, hi));
-      const over = raw.map((v, i) => (v != null && v > hi) ? { i, v: hi, c: C.red, r: 4.4 } : null).filter(Boolean);
-      const xt = monthTicks(acwr.map((x) => x.date));
-      const la = load.acwr_latest;
-      const laState = la ? (la.ratio > 1.5 ? "red" : la.ratio > 1.3 ? "amber" : "green") : "unknown";
-      acwrHtml = `<div class="statrow">
-          <b class="tn big2">${la ? fmt(la.ratio, 2) : "–"}</b>
-          ${badge(laState, la ? (la.ratio > 1.5 ? "deutlich über dem Korridor" : la.ratio > 1.3 ? "über dem Korridor" : la.ratio < 0.8 ? "unter dem Korridor — Luft" : "im Korridor") : undefined)}
-        </div>` + chart({
-        h: 210, n: acwr.length, y0: 0.3, y1: hi, xt, yf: (v) => fmt(v, 1),
-        bands: [
-          { a: 0.8, b: 1.3, c: C.green, op: 0.11 },
-          { a: 1.3, b: 1.5, c: C.amber, op: 0.12 },
-          { a: 1.5, b: hi, c: C.red, op: 0.12 },
-        ],
-        hl: [
-          { y: 0.8, c: C.green, d: 1, t: "Korridor ab 0,8", side: "left" },
-          { y: 1.3, c: C.green, d: 1, t: "Korridor bis 1,3" },
-          { y: 1.5, c: C.red, d: 1, t: "erhöht ab 1,5", side: "left" },
-        ],
-        s: [
-          { t: "line", v: vals, c: ROLE.series, w: 2.2 },
-          { t: "dots", p: over, c: C.red },
-        ],
-      }) + (over.length ? `<p class="hint">${ico("warn", C.amber, 13)} ${over.length} Tag(e) über ${fmt(hi, 1)} — für die Lesbarkeit an der Achse geklemmt, Höchstwert ${fmt(Math.max(...raw.filter((v) => v != null)), 2)}.</p>` : "");
-    }
+    /* 0.74.0 (Skizze §3.2): DEINE WOCHEN - 12 Kalenderwochen, gestapelt nach
+       Gruppe (analytics.weeks_by_group). Farben aus FAM/C wie der Heute-Kopf,
+       "nicht zugeordnet" schraffiert, in der laufenden Woche der geplante Rest
+       gestrichelt obendrauf. Die Zahl ueber dem Balken ist die GEFAHRENE Summe. */
+    const weeksHtml = this._loadWeeks(load);
+    /* 0.74.0 (Skizze §3.3): DIE LETZTEN 7 TAGE IM VERLAUF - window_history und
+       window_projection, Ueberschrift = today().week (headline). */
+    const trendHtml = this._loadTrend(load);
 
     /* intensity */
     const iBar = (d, labels) => {
@@ -6736,15 +6833,14 @@ class IntervalsIcuPanel extends HTMLElement {
       });
     }
 
-    const T = load.thresholds || {};
-    return sec("bolt", "Wochenlast, Monotonie, Strain",
-        "Balkenhöhe = Wochensumme der Last; der gelbe Punkt markiert eintönige Wochen.",
-        weeklyHtml,
-        "Foster: Monotonie = Wochenmittel der Tageslast geteilt durch ihre Streuung, Strain = Wochenlast × Monotonie. Unter drei Trainingstagen sagt der Wert nichts — die Ruhetage bestimmen dann die Streuung.")
-      + sec("trend", "Akute zu chronischer Last (ACWR)",
-        `im grünen Band ${fmt(T.acwr_low, 1)}–${fmt(T.acwr_high, 1)} unauffällig, ab ${fmt(T.acwr_risk, 1)} erhöht.`,
-        acwrHtml,
-        "Gabbett/Blanch. Die Belege sind korrelativ und mathematisch gekoppelt; eine formelle Richtigstellung wurde beantragt, eine randomisierte Studie fand keinen Nutzen. Als Indikator lesen, nie als Urteil.")
+    return sec("bolt", "Deine Wochen · Kalenderwochen",
+        "Balkenhöhe = Wochensumme der Last, aufgeteilt nach der Art der Einheit; der gelbe Punkt markiert eintönige Wochen.",
+        weeksHtml,
+        "Foster: Monotonie = Wochenmittel der Tageslast geteilt durch ihre Streuung. Unter drei Trainingstagen sagt der Wert nichts — die Ruhetage bestimmen dann die Streuung. Die Aufteilung nach Art zeigt auch Garmin („Load Focus“); eine Zielspanne je Art gibt es hier nicht, weil sie nicht belegt ist.")
+      + sec("trend", "Die letzten 7 Tage im Verlauf · mit Vorschau aus deinem Kalender",
+        "die Linie ist die Last der sieben Tage bis zu diesem Tag, die grüne Linie das Ziel des Tages — dieselbe Rechnung wie im Heute-Kopf.",
+        trendHtml,
+        "Das Ziel ist das Verhältnis von 7 zu 28 Tagen (Gabbett/Blanch), nach der Wochenlast umgestellt: 7 × Durchschnitt der 4 Wochen davor × Faktor deines Zustands. Das Verhältnis ist umstritten — Impellizzeri 2020/2021, Wang 2020 und Lolli 2018 raten, es nicht als Urteil zu lesen. Hier ist es eine Festlegung, keine Messung.")
       + sec("gauge", "Intensitätsverteilung",
         "zwei Sichten auf dieselbe Frage — geplante Zonen oben, gemessene DFA-Bänder darunter. Große Abweichung zwischen beiden heißt: die Zonen passen nicht zu deiner Physiologie.",
         intHtml,
@@ -7043,6 +7139,8 @@ details.more summary:hover,details.calc summary:hover{color:${C.tx}}
 .src{color:${C.tx2};font-size:13.5px;line-height:1.55;max-width:760px}
 .src.pre{white-space:pre-wrap}
 svg.ch{display:block;width:100%;height:auto}
+.lvscroll{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}.lvin{min-width:560px}
+svg.lwchart{display:block;width:100%;height:auto;margin:4px 0 6px}
 .ax{font:11.5px ui-sans-serif,system-ui,sans-serif;fill:${C.tx3}}
 svg.evtrack{margin-top:-2px}
 .evleg{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:2px 0 8px;padding:0 10px}

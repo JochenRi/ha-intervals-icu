@@ -1819,6 +1819,89 @@ _rsrc = _co732[_co732.index("def recovery_offered("):]
 _rsrc = _rsrc[:_rsrc.index("\ndef ", 10)]
 check("mean(loads[-28:])" not in _rsrc, "0.73.2 T1: recovery_offered rechnet noch einen eigenen chronischen Schnitt")
 
+# --- 0.74.0 · Belastungs-Reiter: coach.load_view (Skizze 0.74.0 §3.1 f/g, §5, §8) ---
+# Rot vor dem Bau: load_view fehlt. Der Verlauf liest je Tag das Licht des
+# Zustands dieses Tages (BUDGET_LIGHT[state_series]), die Vorschau das Licht von
+# heute, die Ueberschrift ist today().week - dieselben Zahlen wie der Heute-Kopf.
+import analytics as _an74  # noqa: E402
+_lv = getattr(coach, "load_view", None)
+check(callable(_lv), "0.74.0 f: coach.load_view fehlt")
+_ev74 = [{"id": 71, "category": "WORKOUT", "start_date_local": day(1) + "T09:00:00", "icu_training_load": 65},
+         {"id": 72, "category": "WORKOUT", "start_date_local": day(0) + "T18:00:00", "icu_training_load": 50},
+         {"id": 73, "category": "WORKOUT", "start_date_local": day(3) + "T09:00:00", "icu_training_load": 45,
+          "paired_activity_id": "x"},
+         {"id": 74, "category": "WORKOUT", "start_date_local": day(5) + "T09:00:00", "icu_training_load": 40}]
+for _lbl, _dd in (("ohne Fahrt heute", build()), ("Einbruch heute", slump),
+                  ("mit Fahrt heute", build(activities={**build()["activities"],
+                                                        "heute": {"start_date_local": day(0) + "T07:00:00", "type": "Ride",
+                                                                  "moving_time": 3600, "icu_training_load": 80,
+                                                                  "icu_intensity": 70}}))):
+    if not callable(_lv):
+        break
+    _v = _lv(_dd, _ev74)
+    check(sorted(_v) == sorted(["weeks_by_group", "window_history", "window_projection", "headline", "planned"]),
+          f"0.74.0 g ({_lbl}): Schluessel {sorted(_v)}")
+    _ss = {r["date"]: r["state"] for r in coach.state_series(_dd)}
+    _bad = [h["date"] for h in _v["window_history"]
+            if h["window_allowed"] != (_an74.load_budget(_dd, coach.BUDGET_LIGHT.get(_ss.get(h["date"], "unknown"), "unknown"),
+                                                          today=h["date"]) or {}).get("window_allowed")]
+    check(not _bad, f"0.74.0 f ({_lbl}): Ziel je Tag aus dem Licht des Tages - abweichend {_bad[:3]}")
+    _now = coach.BUDGET_LIGHT.get(coach.state(_dd)["state"], "unknown")
+    _pl = _an74.planned_loads(_ev74, day(0))
+    eq(_v["planned"], _pl, f"0.74.0 g ({_lbl}): geplant aus den Events nach heute")
+    eq(_pl, {day(1): 65.0, day(5): 40.0}, f"0.74.0 g ({_lbl}): heute und gepaart zaehlen nicht")
+    _pbad = [p["date"] for p in _v["window_projection"]
+             if (p["window_load"], p["window_allowed"]) != (lambda b: (b["window_load"], b["window_allowed"]))(
+                 _an74.load_budget(_dd, _now, today=p["date"], planned=_pl))]
+    check(not _pbad, f"0.74.0 f ({_lbl}): Vorschau mit Licht von heute und Plan - abweichend {_pbad[:3]}")
+    _wk = coach.today(_dd, _ev74)["week"]
+    _b = _wk.get("budget") or {}
+    eq(_v["headline"], {"mode": _wk["mode"], "window_load": _b.get("window_load"), "window_allowed": _b.get("window_allowed"),
+                        "window_free": _b.get("window_free"), "bound_by": _wk["bound_by"], "ceiling": _wk["ceiling"],
+                        "available": bool(_b)},
+       f"0.74.0 g/§5 ({_lbl}): Ueberschrift = today().week")
+    eq(_v["window_history"][-1]["date"], day(0), f"0.74.0 d ({_lbl}): der Verlauf endet heute")
+_sl = _lv(slump, _ev74) if callable(_lv) else None
+if _sl:
+    eq(coach.state(slump)["state"], "slump", "0.74.0 f Fixture: heute Einbruch")
+    _h0 = _sl["window_history"][-1]
+    _c0 = _an74.load_budget(slump, "red", today=day(0))
+    eq(_h0["window_allowed"], _c0["window_bands"]["low"], "0.74.0 f/§8 Einbruch heute: Ziel x0,8, nicht fest 1,3")
+    check(_sl["window_history"][-2]["window_allowed"] != _an74.load_budget(slump, "red", today=day(-1))["window_allowed"],
+          "0.74.0 f Gegenprobe: gestern (bereit) traegt nicht das Einbruch-Ziel")
+    _pp = _sl["window_projection"][0]
+    eq(_pp["window_allowed"], _an74.load_budget(slump, "red", today=day(1), planned=_sl["planned"])["window_bands"]["low"],
+       "0.74.0 f Vorschau: Licht von heute (rot, x0,8)")
+_lsrc = (Path(coach.__file__)).read_text(encoding="utf-8")
+if "def load_view(" in _lsrc:
+    _lbody = _lsrc[_lsrc.index("def load_view("):]
+    _lbody = _lbody[:_lbody.find("\ndef ", 10) if _lbody.find("\ndef ", 10) > 0 else None]
+    check("today(" in _lbody and "window_load" not in _lbody.replace('"window_load"', ""),
+          "0.74.0 §8: Ueberschrift aus today().week, keine eigene Rechnung")
+    check("load_budget(" not in _lbody, "0.74.0 §8: load_view rechnet kein eigenes Budget")
+
+# Regel 9: die Panel-Fixture (tests/panel_fixtures.js, LV_KEYS) traegt dieselben
+# Schluessel wie der Erzeuger - je Zeile der Wochen, des Verlaufs und die Ueberschrift.
+import re as _re74  # noqa: E402
+_fx = (Path(__file__).resolve().parent / "panel_fixtures.js").read_text(encoding="utf-8")
+_lvk = _fx[_fx.index("const LV_KEYS = {"):_fx.index("};", _fx.index("const LV_KEYS = {"))]
+_fxkeys = {m.group(1): _re74.findall(r'"([a-z_]+)"', m.group(2)) for m in _re74.finditer(r'(\w+): \[([^\]]*)\]', _lvk)}
+if callable(_lv):
+    _vv = _lv(build(), _ev74)
+    eq(sorted(_fxkeys.get("weeks_by_group", [])), sorted(_vv["weeks_by_group"][-1]), "0.74.0 Regel 9: Fixture-Schluessel Wochen")
+    eq(sorted(_fxkeys.get("window_history", [])), sorted(_vv["window_history"][-1]), "0.74.0 Regel 9: Fixture-Schluessel Verlauf")
+    eq(sorted(_fxkeys.get("window_history", [])), sorted(_vv["window_projection"][-1]), "0.74.0 Regel 9: Fixture-Schluessel Vorschau")
+    eq(sorted(_fxkeys.get("headline", [])), sorted(_vv["headline"]), "0.74.0 Regel 9: Fixture-Schluessel Ueberschrift")
+check("acwr_low" not in _fx and "acwr_latest" not in _fx, "0.74.0 Regel 9: die Fixture traegt ACWR-Felder, die der Erzeuger nicht mehr schreibt")
+
+# §5 Seitenprobe ueber drei Stellen: Ueberschrift Verlauf = Heute-Kopf = Trainer-Obergrenze (gleicher Tag)
+if callable(_lv):
+    for _lbl, _dd in (("ohne Fahrt", build()), ("Einbruch", slump)):
+        _hh = _lv(_dd, _ev74)["headline"]
+        _sc = coach.session_ceiling(_dd, coach.state(_dd)["state"])
+        _want = _hh["window_free"] if _hh["bound_by"] == "week" else _hh["ceiling"]
+        eq((_hh["ceiling"], _want), (_sc["ceiling"], _sc["ceiling"]), f"0.74.0 §5 ({_lbl}): Ueberschrift/frei = Trainer-Obergrenze")
+
 print(f"test_coach: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)
