@@ -2475,6 +2475,82 @@ check("moved: Math.abs(z) > 0.5" in _fx745 and 'direction: z > 0.5 ? "günstig" 
 
 # Nicht angefasst (Skizze §3): Urteil und Wortstufe bleiben - der Fingerabdruck von 0.74.4 steht oben unveraendert.
 
+# === 0.74.6 (SKIZZE_0.74.6) · Aufraeumen =========================================================
+# Fingerabdruecke, eingefroren auf v0.74.5 (11c1b7c) VOR der ersten Zeile 0.74.6: was hier steht, darf
+# sich durch A (layoff), B (Streifen ohne Luecke) und C (norm_band) nicht bewegen.
+import hashlib as _h746  # noqa: E402
+import json as _j746  # noqa: E402
+import ast as _ast746  # noqa: E402
+import inspect as _insp746  # noqa: E402
+import copy as _cp746  # noqa: E402
+import baseline as _bl746  # noqa: E402
+
+
+def _fp746(obj) -> str:
+    return _h746.sha256(_j746.dumps(obj, sort_keys=True, default=str, ensure_ascii=False).encode()).hexdigest()[:16]
+
+
+def _a746(key, day_iso, moving):
+    act = {"id": key, "start_date_local": day_iso + "T10:00:00", "type": "Ride", "icu_training_load": 40,
+           "icu_intensity": 65}
+    if moving != "fehlt":
+        act["moving_time"] = moving
+    return act
+
+
+# A: Einheiten 899/900/901 s, moving_time None und ganz ohne Feld, in allen Reihenfolgen des Datums
+_lay746 = []
+for _order in ((901, 900, 899, None, "fehlt"), (899, 900, 901, "fehlt", None), (899, None, "fehlt", 900, 901),
+               (899, 899, None, "fehlt", 899), (900,), (901,), (899,), ()):
+    for _base in (build(days=30), build(days=30, activities={})):
+        _d = _cp746.deepcopy(_base)
+        for _i, _mv in enumerate(_order):
+            _d["activities"][f"l{_i}"] = _a746(f"l{_i}", day(-12 + 2 * _i), _mv)
+        _lay746.append(coach.layoff(_d))
+for _d in (build(), night_history(), night_history(days=40), ctx_build(True), recovery_case(), _live732(),
+           {"wellness": {}, "activities": {}}):
+    _lay746.append(coach.layoff(_d))
+eq(_fp746(_lay746), "ce3271ada8203680", "0.74.6 A Fingerabdruck: layoff weicht von 0.74.5 ab")
+# Trefferzusicherung: die Grenze liegt IM Fingerabdruck - 899 s zaehlt nicht, 900 s zaehlt, ohne Feld zaehlt nicht
+_e746 = build(days=30, activities={})
+for _mv, _want in ((899, None), (900, day(-12)), (901, day(-12)), (None, None), ("fehlt", None)):
+    _d = _cp746.deepcopy(_e746); _d["activities"]["x"] = _a746("x", day(-12), _mv)
+    eq(coach.layoff(_d)["last"], _want, f"0.74.6 A Grenze: moving_time {_mv}")
+
+# B: lueckenloser Bestand - Streifen, week_load, rest_days
+_strip746 = []
+for _d in (build(), night_history(), night_history(days=40), ctx_build(True), recovery_case(), _live732(), _live732(False)):
+    _t = coach.today(_d)
+    _strip746.append({"recent": _t.get("recent"), "week_load": _t.get("week_load"), "rest_days": _t.get("rest_days")})
+eq(_fp746(_strip746), "3e2171fe6cce82e4", "0.74.6 B Fingerabdruck: Streifen ohne Luecke weicht von 0.74.5 ab")
+check(any(r["week_load"] and 0 < r["rest_days"] < 7 for r in _strip746) and all(len(r["recent"]) == 7 for r in _strip746),
+      "0.74.6 B Trefferzusicherung: kein Bestand mit Last und Ruhetagen, oder ein Streifen ohne sieben Tage")
+
+# Das weite Netz: die ganze Heute-Seite und jede Nacht danach im langen Bestand (Johannes-artig) unveraendert
+_wide746 = [coach.today(build()), coach.today(night_history())]
+_nh746 = night_history()
+_wide746 += [coach.night_after(_nh746, _k) for _k in sorted(_nh746["activities"])]
+eq(_fp746(_wide746), "72e1fe73d58bf586", "0.74.6 Fingerabdruck: Heute/Nacht im langen Bestand weicht von 0.74.5 ab")
+
+# C: norm_band bitgleich - Laengen um MIN_VALUES, log mit Nullen, flach, gewichtet
+_nb746 = []
+for _n in (0, 1, 5, 18, 19, 20, 21, 25, 60):
+    for _log in (False, True):
+        for _shape in ("wellig", "flach", "nullen", "gewichtet", "flach_gewichtet"):
+            _raw = [50.0 + ((_i * 7) % 5 - 2) for _i in range(_n)]
+            _w = None
+            if _shape.startswith("flach"):
+                _raw = [50.0] * _n
+            if _shape == "nullen":
+                _raw = [0.0 if _i % 4 == 0 else _v for _i, _v in enumerate(_raw)]
+            if _shape.endswith("gewichtet"):
+                _w = [0.5 if _i % 3 == 0 else 1.0 for _i in range(_n)]
+            _b = _bl746.norm_band(_raw, log=_log, weights=_w)
+            _nb746.append(None if _b is None else tuple(round(x, 12) if isinstance(x, float) else x for x in _b))
+eq(_fp746(_nb746), "b45b8d780d921523", "0.74.6 C Fingerabdruck: norm_band weicht von 0.74.5 ab")
+check(_nb746.count(None) > 0 and len(_nb746) - _nb746.count(None) > 0,
+      "0.74.6 C Trefferzusicherung: das Raster trifft nicht beide Seiten (Band / kein Band)")
+
 print(f"test_coach: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)
