@@ -190,6 +190,12 @@ function dur(secs) {
   const s = Math.round(+secs), h = Math.floor(s / 3600), m = Math.round((s % 3600) / 60);
   return h ? `${h}h${String(m).padStart(2, "0")}m` : `${m}m`;
 }
+/* 0.74.8 (SKIZZE_0.74.8 §2.2): Dauer einer Vergleichsspanne - unter 60 "min", sonst "h:mm h". */
+function minHM(m) {
+  if (m == null || Number.isNaN(+m)) return "–";
+  const t = Math.round(+m);
+  return t < 60 ? `${t} min` : `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")} h`;
+}
 function kmf(m) { return m == null ? "–" : fmt(m / 1000, 1) + " km"; }
 function hhmm(secs) {
   const s = Math.max(0, Math.round(+secs || 0));
@@ -6356,6 +6362,10 @@ class IntervalsIcuPanel extends HTMLElement {
      at 5-10%. Cutting into quarters instead of halves adds the one thing the
      single number cannot say: WHEN it started. */
   _lapCompare(a) {
+    // 0.74.8: welcher Vergleich tatsaechlich gezeichnet wurde - _ctxBlock (rendert danach) verweist nur dann
+    // auf den Blockvergleich, wenn er auf dieser Seite steht. Gesetzt erst beim fertigen Rueckgabewert.
+    this._lapDrawn = this._lapDrawn || {};
+    this._lapDrawn[a.id] = null;
     const data = this._laps[a.id], st = this._streams[a.id];
     if (!st || st.error || !st.points) return "";
     const ch = st.channels || {}, time = ch.time || [];
@@ -6409,7 +6419,7 @@ class IntervalsIcuPanel extends HTMLElement {
         if (i1 - i0 < 3) continue;
         const w = stat("watts", i0, i1, true), hr = stat("heartrate", i0, i1, true);
         segments.push({
-          label: `${k + 1}. Viertel`,
+          label: `${k + 1}. Viertel`, q: k + 1,
           watts: w, hr, dfa: stat("dfa_a1", i0, i1, true),
           ef: (w && hr) ? w / hr : null, hrr: null,
         });
@@ -6439,7 +6449,8 @@ class IntervalsIcuPanel extends HTMLElement {
     // the verdict, graded against the published benchmarks
     let head, body, tone;
     const drop = def == null ? null : -def;
-    if (drop == null) {
+    // 0.74.8: "fehlen die Daten" gilt nur noch dem Blockvergleich - der Viertel-Kasten urteilt ueber die Kachel
+    if (drop == null && isInterval) {
       tone = "held"; head = "Kein Urteil möglich.";
       body = "Für Watt pro Herzschlag fehlen die Daten.";
     } else if (isInterval) {
@@ -6451,25 +6462,43 @@ class IntervalsIcuPanel extends HTMLElement {
         drop > 3 ? "Mehr Puls für weniger Leistung bei gleicher Vorgabe — das ist Ermüdung über die Serie."
                  : "Leistung je Herzschlag praktisch unverändert — die Serie war verkraftbar."}`;
     } else {
-      const mark = this._decGood();
-      tone = (mark != null && drop > mark) ? "worse" : "held";
-      const grade = mark == null
-        ? "die Einordnung braucht die Marke aus dem Archiv-Status — sie steht gerade nicht bereit"
-        : drop <= 3 ? "unter 3 % — das ist das Niveau, das trainierte Fahrer halten"
-        : drop <= mark ? `unter ${fmt(mark, 0)} % — Friels Richtwert, eine Trainerfaustregel und keine Studiengrenze`
-        : drop <= 10 ? `zwischen ${fmt(mark, 0)} und 10 % — der Bereich, in dem Freizeitfahrer typischerweise liegen`
-        : "über 10 % — die Einheit lag wahrscheinlich über der aeroben Schwelle, oder die Grundlage trägt diese Dauer noch nicht";
-      head = `Entkopplung über die Fahrt: ${fmt(drop, 1)} %`;
-      body = `${grade}. ${dh != null ? `Der Puls stieg um ${sign(dh)} Schläge` : ""}${
-        dw != null ? ` bei ${sign(Math.round(dw * 10) / 10, 1)} % Leistung` : ""}. ` +
-        "Ein steigender Puls bei gleicher Leistung ist die kardiale Drift — normal und bei " +
-        "trainierten Fahrern schwächer ausgeprägt. Die Frage ist nicht, ob der Puls steigt, " +
-        "sondern ob die Leistung je Herzschlag zusammenhält.";
+      // 0.74.8 (SKIZZE_0.74.8 §2.3): die Viertel bekommen KEIN eigenes Urteil mehr. Die Einordnung gilt dem
+      // Kachel-Wert a.decoupling (erste gegen zweite Haelfte, intervals.icu) - dieselbe Zahl, dieselbe
+      // Schreibweise wie die Kachel "Entkopplung" oben. Ob die Fahrt gleichmaessig war, sagt das Backend
+      // (session_context.steady, eine Stelle); ohne diese Antwort steht kein Kasten da.
+      const r1 = (v) => Math.round(v * 10) / 10 || 0;     // || 0: kein "-0,0" bei einer gerundeten Null
+      const bits = [];
+      if (def != null) bits.push(`Watt pro Herzschlag vom ${base.q}. zum ${last.q}. Viertel: ${sign(r1(def), 1)} %`);
+      if (dh != null) bits.push(`Puls ${sign(Math.round(dh) || 0)} Schläge${dw != null ? ` bei ${sign(r1(dw), 1)} % Leistung` : ""}`);
+      const plain = bits.length ? bits.join(" · ") + "." : "";
+      const steady = (this._ctx[a.id] || {}).steady;
+      if (!steady) {
+        tone = null;
+      } else if (!steady.ok) {
+        tone = "info"; head = `Keine Entkopplung – diese Fahrt ${steady.text || ""}.`; body = plain;
+      } else if (a.decoupling == null) {
+        tone = "info"; head = "Kein Urteil möglich – intervals.icu hat für diese Fahrt keine Entkopplung berechnet.";
+        body = plain;
+      } else {
+        const shown = r1(a.decoupling);     // eingeordnet wird der GEZEIGTE Wert - Zahl und Satz widersprechen sich nie
+        const mark = this._decGood();
+        tone = (mark != null && shown > mark) ? "worse" : "held";
+        const grade = mark == null
+          ? "die Einordnung braucht die Marke aus dem Archiv-Status — sie steht gerade nicht bereit"
+          : shown <= 3 ? "unter 3 % — das ist das Niveau, das trainierte Fahrer halten"
+          : shown <= mark ? `unter ${fmt(mark, 0)} % — Friels Richtwert, eine Trainerfaustregel und keine Studiengrenze`
+          : shown <= 10 ? `zwischen ${fmt(mark, 0)} und 10 % — der Bereich, in dem Freizeitfahrer typischerweise liegen`
+          : "über 10 % — die Einheit lag wahrscheinlich über der aeroben Schwelle, oder die Grundlage trägt diese Dauer noch nicht";
+        head = `Entkopplung: ${fmt(a.decoupling, 1)} % (erste gegen zweite Hälfte)`;
+        body = `${grade}.${plain ? " " + plain : ""}`;
+      }
     }
 
-    const verdict = `<div class="cmpverdict ${tone}">
-      ${ico(tone === "worse" ? "warn" : "ok", tone === "worse" ? C.amber : C.green, 18)}
-      <div><b>${esc(head)}</b><span>${esc(body)}</span></div></div>`;
+    // "info" (0.74.8): kein Urteil - Ton held, Info-Zeichen statt Haken; null: gar kein Kasten
+    const verdict = tone == null ? "" : `<div class="cmpverdict ${tone === "info" ? "held" : tone}">
+      ${tone === "info" ? ico("info", C.tx2, 18)
+        : ico(tone === "worse" ? "warn" : "ok", tone === "worse" ? C.amber : C.green, 18)}
+      <div><b>${esc(head)}</b>${body ? `<span>${esc(body)}</span>` : ""}</div></div>`;
 
     const rests = laps.filter((l) => !work.includes(l) && (l.moving_time || 0) >= 60);
     let restBlock = "";
@@ -6486,6 +6515,7 @@ class IntervalsIcuPanel extends HTMLElement {
           <span>Dauer</span><span>Ø HF</span><span>Ø Watt</span><span>DFA</span></div>${rows}</div></details>`;
     }
 
+    this._lapDrawn[a.id] = isInterval ? "blocks" : "quarters";
     return `<h3 class="secname">${title} <span class="hint">— ${esc(intro)}</span></h3>
       ${verdict}
       ${this._devTable(segments, measures, { note })}
@@ -6506,25 +6536,39 @@ class IntervalsIcuPanel extends HTMLElement {
      after a session like this one. */
   /* Where this session sits among the rider's own comparable ones.
 
-     A decoupling of 11.4% means nothing by itself. Friel's 5% is a population
-     benchmark; what actually answers "is that a lot FOR ME" is the spread of
-     this rider's own comparable rides. Drawn as a bullet-style range: the
-     middle half of past sessions as a band, the median as a tick, this
-     session as a dot - position on a common scale, the most accurately read
-     encoding, with the percentile spelled out in words underneath. */
+     0.74.8 (SKIZZE_0.74.8 §2.2): nur eine gleichmaessige Fahrt wird verglichen, und nur mit frueheren
+     gleichmaessigen Fahrten (coach.session_context, derive.steady_ride_reason - eine Stelle). Ist sie es
+     nicht, steht statt der Zeilen EIN Satz mit dem Grund aus dem Backend; das Panel schreibt keinen Grund.
+     Je Zeile: der Wert, "üblich" und die gezaehlte Zeile ("höher als bei k von n", Backend). Das Band ist die
+     mittlere Haelfte, der Strich das Uebliche, der Punkt diese Einheit - rechts ist immer der hoehere Wert,
+     deshalb keine Skala "schlechter · besser" mehr darueber. Ø Herzfrequenz wird eingeordnet, nicht beurteilt. */
   _ctxBlock(a) {
     const c = this._ctx[a.id];
     if (!c || !c.available) return "";
+    const st = c.steady || {};
+    if (st.ok === false) {
+      const blocks = (this._lapDrawn || {})[a.id] === "blocks"
+        ? " Wie die Blöcke zueinander standen, zeigt der Blockvergleich weiter oben." : "";
+      return `<h3 class="secname">Wie diese Einheit dasteht</h3>
+      <div class="ctxbox">
+        <p class="ctxinfo">${ico("info", C.tx2, 15)} <span>${esc(
+          "Entkopplung und Watt pro Herzschlag sagen nur bei gleichmäßigen, ruhigen Fahrten etwas aus – diese Fahrt "
+          + (st.text || "") + "." + blocks)}</span></p>
+        <details class="more"><summary>Warum hier kein Vergleich steht</summary>
+          <p class="src">${esc(c.steady_why || "")}</p></details>
+      </div>`;
+    }
     const entries = Object.entries(c.metrics || {});
     if (!entries.length) return "";
+    const num = (v, m) => `${fmt(v, m.dec)}${m.unit ? " " + m.unit : ""}`;
 
     const rows = entries.map(([key, m]) => {
       if (!m.enough) {
         return `<div class="ctxrow thin">
           <span class="ctxlab"><b>${esc(m.label)}</b></span>
-          <span class="ctxval tn">${fmt(m.value, 2)}<small>${esc(m.unit)}</small></span>
+          <span class="ctxval tn">${fmt(m.value, m.dec)}<small>${esc(m.unit)}</small></span>
           <span class="ctxbar"></span>
-          <span class="ctxsay">${esc(m.say || `nur ${m.n} vergleichbare Einheiten — zu wenig für eine Einordnung`)}</span>
+          <span class="ctxsay">${esc(m.say || "")}</span>
         </div>`;
       }
       const lo = Math.min(m.best, m.worst, m.value);
@@ -6532,32 +6576,30 @@ class IntervalsIcuPanel extends HTMLElement {
       const pad = (hi - lo) * 0.08 || 1;
       const pos = (v) => ((v - (lo - pad)) / ((hi + pad) - (lo - pad))) * 100;
       const band = [pos(Math.min(m.p25, m.p75)), pos(Math.max(m.p25, m.p75))];
-      const good = m.verdict === "besser als sonst";
-      const bad = m.verdict === "schlechter als sonst";
+      const good = m.judged && m.verdict === "besser als sonst";
+      const bad = m.judged && m.verdict === "schlechter als sonst";
       const col = good ? C.green : bad ? C.amber : C.tx2;
-      const share = m.good === "up" ? m.rank : 100 - m.rank;
+      const word = m.judged ? m.verdict : m.tendency;
       return `<div class="ctxrow">
         <span class="ctxlab"><b>${esc(m.label)}</b>
-          <em>Median ${fmt(m.median, 2)}${esc(m.unit)} · ${m.n} Einheiten<br>
-          ${fmt(m.stage, 1)} SD: Dauer ${sign(m.duration_low_pct, 0)} % bis ${sign(m.duration_high_pct, 0)} %,
-          Intensität ±${fmt(m.intensity_points, 1)}</em></span>
-        <span class="ctxval tn" style="color:${col}">${fmt(m.value, 2)}<small>${esc(m.unit)}</small></span>
-        <span class="ctxbar" title="mittlere Hälfte deiner Vergleichseinheiten: ${fmt(m.p25, 2)} bis ${fmt(m.p75, 2)}">
+          <em>üblich ${num(m.median, m)} · ${m.n} ähnliche Fahrten (${minHM(m.dur_low_min)}–${minHM(m.dur_high_min)})</em></span>
+        <span class="ctxval tn" style="color:${col}">${fmt(m.value, m.dec)}<small>${esc(m.unit)}</small></span>
+        <span class="ctxbar" title="mittlere Hälfte deiner ähnlichen Fahrten: ${num(m.p25, m)} bis ${num(m.p75, m)}">
           <i class="ctxband" style="left:${band[0].toFixed(1)}%;width:${Math.max(1, band[1] - band[0]).toFixed(1)}%"></i>
           <i class="ctxmed" style="left:${pos(m.median).toFixed(1)}%"></i>
           <i class="ctxdot" style="left:${pos(m.value).toFixed(1)}%;background:${col}"></i>
         </span>
-        <span class="ctxsay" style="color:${col}">${esc(m.verdict)}
-          <em>${good || !bad ? "besser" : "schlechter"} als ${fmt(good || !bad ? share : 100 - share, 0)} % deiner Vergleichseinheiten</em></span>
+        <span class="ctxsay" style="color:${col}">${esc(word || "")}
+          <em>${esc(m.count || "")}${m.judged ? "" : " · ohne Urteil"}</em></span>
       </div>`;
     }).join("");
 
     return `<h3 class="secname">Wie diese Einheit dasteht
-      <span class="hint">— gegen deine ${c.earlier} früheren Einheiten derselben Sportart; die Toleranz
-      weitet sich je Kennzahl, bis mindestens ${c.min_peers} Vergleichswerte zusammenkommen</span></h3>
+      <span class="hint">— verglichen mit deinen früheren gleichmäßigen Fahrten ähnlicher Länge und Intensität</span></h3>
       <div class="ctxbox">
-        <div class="ctxscale"><span>schlechter</span><span>mittlere Hälfte</span><span>besser</span></div>
         ${rows}
+        <p class="ctxleg"><i class="lg band"></i> die mittlere Hälfte deiner ähnlichen Fahrten ·
+          <i class="lg med"></i> üblich · <i class="lg dot"></i> diese Einheit · rechts = höherer Wert</p>
         <details class="more"><summary>Wie die Vergleichsgruppe gebildet wird</summary>
           <p class="src">${esc(c.note)}</p></details>
       </div>`;
@@ -7788,11 +7830,6 @@ details.bgfold>summary b,details.testfold>summary b{color:${C.tx};font-size:15px
 .protoblock{border-color:var(--divider-color,#3336)}
 .protowhy{margin:0 0 6px;display:flex;gap:8px;align-items:flex-start}
 .ctxbox{background:${C.card2};border-radius:10px;padding:10px 14px}
-.ctxscale{display:grid;grid-template-columns:1fr 92px minmax(160px,1.4fr) minmax(190px,1fr);gap:12px;
-  color:${C.tx3};font-size:11px;text-transform:uppercase;letter-spacing:.05em}
-.ctxscale span:nth-child(1){grid-column:3;text-align:left}
-.ctxscale span:nth-child(2){grid-column:3;text-align:center;margin-top:-14px}
-.ctxscale span:nth-child(3){grid-column:3;text-align:right;margin-top:-14px}
 .ctxrow{display:grid;grid-template-columns:1fr 92px minmax(160px,1.4fr) minmax(190px,1fr);gap:12px;
   align-items:center;padding:10px 0;border-bottom:1px solid ${C.line}44}
 .ctxrow:last-of-type{border-bottom:none}
@@ -7807,8 +7844,13 @@ details.bgfold>summary b,details.testfold>summary b{color:${C.tx};font-size:15px
 .ctxsay{font-size:13.5px}
 .ctxsay em{font-style:normal;display:block;color:${C.tx3};font-size:11.5px}
 .ctxrow.thin .ctxsay{color:${C.tx3};font-size:12.5px}
+.ctxleg{margin:8px 0 2px;color:${C.tx3};font-size:11.5px;display:flex;flex-wrap:wrap;gap:4px 6px;align-items:center}
+.ctxleg .lg{display:inline-block;vertical-align:middle}
+.ctxleg .lg.band{width:18px;height:10px;background:${C.slate};opacity:.5;border-radius:3px}
+.ctxleg .lg.med{width:2px;height:12px;background:${C.tx2}}
+.ctxleg .lg.dot{width:7px;height:12px;border-radius:3px;background:${C.tx2}}
+.ctxinfo{display:flex;gap:8px;align-items:flex-start;margin:4px 0 6px;color:${C.tx2};font-size:13.5px;line-height:1.5}
 @media(max-width:900px){
-  .ctxscale{display:none}
   .ctxrow{grid-template-columns:1fr 84px}
   .ctxbar,.ctxsay{grid-column:1 / -1}
 }

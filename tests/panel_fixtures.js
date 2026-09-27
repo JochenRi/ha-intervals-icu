@@ -1106,41 +1106,75 @@ function goal(kind) {
   return base;
 }
 
+/* 0.74.8 (SKIZZE_0.74.8 §2.2): die Texte, wie coach.session_context sie schreibt (test_coach prueft sie
+ * gegen den Erzeuger, Regel 9) - mit den Zahlen aus DURABILITY_MIN_MINUTES, DURABILITY_MAX_INTENSITY,
+ * PEER_CALIPER_STAGES und MIN_PEERS_TO_RANK_METRIC. */
+const CTX_STEADY_TEXT = {
+  structured: "hatte Intervalle oder Blöcke",
+  intense: "war dafür zu intensiv",
+  variable: "war dafür zu ungleichmäßig",
+  short: "war dafür zu kurz (unter 45 min)",
+  indoor: "war eine Indoor-Fahrt – Wärme und fester Widerstand verschieben den Puls",
+  no_power: "hatte keine Leistungsmessung",
+};
+const CTX_WHY = "Entkopplung und Watt pro Herzschlag messen, wie gut dein Puls mit der Leistung Schritt hält. " +
+  "Das funktioniert nur, wenn die Leistung gleichmäßig und ruhig ist. Bei Intervallen wechseln Belastung und Pause, " +
+  "der Puls läuft jedes Mal hinterher – die Zahl misst dann den Wechsel, nicht deine Ausdauer. Deshalb vergleicht " +
+  "die App diese Werte nur bei gleichmäßigen Fahrten ab 45 min, unter Intensität 80 und ohne große Leistungssprünge; " +
+  "dieselbe Prüfung gilt für deine Entkopplungs-Kurve.";
+const CTX_NOTE = "Verglichen wird nur mit deinen früheren gleichmäßigen Fahrten derselben Sportart, die ähnlich lang " +
+  "und ähnlich intensiv waren. Was „ähnlich“ heißt, richtet sich nach deinen eigenen Fahrten: Die App fängt eng an " +
+  "und wird in 5 Schritten großzügiger, bis mindestens 6 Fahrten diesen Wert haben. Bei der Dauer zählt das " +
+  "Verhältnis: 45 und 60 min liegen so weit auseinander wie 3 und 4 h – deshalb ist die Spanne nach oben breiter. " +
+  "Ein einzelner Vergleich ist ein Hinweis, kein Befund: Hitze, Koffein, Schlaf und Strecke verschieben den Puls. " +
+  "Verlässlicher ist der Verlauf über Wochen.";
+
 function context(kind) {
   if (kind === "leer") return { available: false };
   const full = {
-    /* ab 0.39.0: "peers" gibt es nicht mehr - die Zahl war zweideutig, weil je
-       Kennzahl unterschiedlich viele Einheiten einen Wert tragen. Geweitet wird
-       gegen das n DER KENNZAHL, und die gegriffene Stufe steht bei der Zeile. */
-    available: true, group: "ride", earlier: 18, min_peers: 6,
+    /* ab 0.39.0: geweitet wird gegen das n DER KENNZAHL. 0.74.8: nur gleichmaessige Fahrten, die
+       Zeile traegt "üblich", die gezaehlte Zeile (count) und die Dauer in Minuten; HF ohne Urteil. */
+    available: true, group: "ride", earlier: 18, earlier_steady: 14, min_peers: 6,
     stages: [0.2, 0.4, 0.6, 0.8, 1.0], widest_used: 0.4,
     sd_log_duration: 0.511, sd_intensity: 14.0, population: 137,
     window: { intensity: 61, minutes: 208 },
+    steady: { ok: true, reason: null, text: null }, steady_why: CTX_WHY,
     metrics: {
-      decoupling: { label: "Entkopplung", unit: "%", value: 10.6, median: 2.1,
+      decoupling: { label: "Entkopplung", unit: "%", dec: 1, value: 10.6, median: 2.1,
         best: -0.6, worst: 16.9, p25: 0.9, p75: 5.4, n: 17, enough: true,
-        rank: 94, good: "down", verdict: "schlechter als sonst",
-        stage: 0.4, duration_low_pct: -18.5, duration_high_pct: 22.7, intensity_points: 5.6 },
-      ef: { label: "Watt pro Herzschlag", unit: "", value: 0.923, median: 0.695,
+        rank: 94, good: "down", judged: true, verdict: "schlechter als sonst", tendency: null,
+        count: "höher als bei 16 von 17",
+        stage: 0.4, duration_low_pct: -18.5, duration_high_pct: 22.7, intensity_points: 5.6,
+        dur_low_min: 170, dur_high_min: 255 },
+      ef: { label: "Watt pro Herzschlag", unit: "", dec: 2, value: 0.923, median: 0.695,
         best: 0.98, worst: 0.55, p25: 0.63, p75: 0.79, n: 17, enough: true,
-        rank: 76, good: "up", verdict: "besser als sonst",
-        stage: 0.4, duration_low_pct: -18.5, duration_high_pct: 22.7, intensity_points: 5.6 },
-      hr: { label: "Ø Herzfrequenz", unit: "bpm", value: 142, median: 139,
+        rank: 76, good: "up", judged: true, verdict: "besser als sonst", tendency: null,
+        count: "höher als bei 14 von 17",
+        stage: 0.4, duration_low_pct: -18.5, duration_high_pct: 22.7, intensity_points: 5.6,
+        dur_low_min: 170, dur_high_min: 255 },
+      hr: { label: "Ø Herzfrequenz", unit: "bpm", dec: 0, value: 142, median: 139,
         best: 128, worst: 151, p25: 134, p75: 144, n: 17, enough: true,
-        rank: 55, good: "down", verdict: "im üblichen Bereich",
-        stage: 0.2, duration_low_pct: -9.7, duration_high_pct: 10.8, intensity_points: 2.8 },
+        rank: 55, good: "down", judged: false, verdict: null, tendency: "wie sonst",
+        count: "höher als bei 10 von 17",
+        stage: 0.2, duration_low_pct: -9.7, duration_high_pct: 10.8, intensity_points: 2.8,
+        dur_low_min: 188, dur_high_min: 230 },
     },
-    note: "Verglichen wird mit deinen eigenen FRÜHEREN Einheiten derselben Sportart. Die Toleranz ist keine feste Prozentzahl, sondern ein Vielfaches deiner eigenen Streuung — bei der Dauer auf dem Logarithmus gerechnet. Die Streuung wandert mit dem Bestand.",
+    note: CTX_NOTE,
   };
   if (kind === "duenn") {
     /* Zwei Dünn-Gründe, zwei Sätze - der erste heilt mit der Zeit, der zweite
        nicht. Die Fixture führt beide, sonst prüft der Test nur einen davon. */
     return { ...full, earlier: 3, metrics: {
-      decoupling: { label: "Entkopplung", unit: "%", value: 10.6, n: 2, enough: false,
-        why: "too_early", say: "zu früh in deiner Historie — davor liegen erst 3 Einheiten mit diesem Wert" },
-      ef: { label: "Watt pro Herzschlag", unit: "", value: 0.923, n: 4, enough: false,
-        why: "too_few", say: "zu wenige vergleichbare Einheiten — auch auf der weitesten Stufe (1.0 SD) nur 4" },
+      decoupling: { label: "Entkopplung", unit: "%", dec: 1, value: 10.6, n: 3, enough: false,
+        why: "too_early", say: "noch kein Vergleich – davor liegen erst 3 gleichmäßige Fahrten mit diesem Wert, nötig sind 6" },
+      ef: { label: "Watt pro Herzschlag", unit: "", dec: 2, value: 0.923, n: 4, enough: false,
+        why: "too_few", say: "noch kein Vergleich – nur 4 frühere gleichmäßige Fahrten ähnlicher Länge und Intensität haben diesen Wert, nötig sind 6" },
+      hr: { label: "Ø Herzfrequenz", unit: "bpm", dec: 0, value: 161, n: 0, enough: false,
+        why: "too_few", say: "noch kein Vergleich – keine frühere gleichmäßige Fahrt ähnlicher Länge und Intensität hat diesen Wert, nötig sind 6" },
     } };
+  }
+  if (kind && CTX_STEADY_TEXT[kind]) {
+    return { ...full, steady: { ok: false, reason: kind, text: CTX_STEADY_TEXT[kind] }, metrics: {} };
   }
   return full;
 }
@@ -1748,4 +1782,4 @@ function dayContext(extra) {
   };
 }
 
-module.exports = { TENSION_TAIL, NEU_FEW_19, NEU_FLAT, NEU_CARD_10, NEU_SECOND_11, STAGE_WORDS, stageOf, TODAY, days, load, loadView, LV_KEYS, readiness, activities, streams, thresholds, fatigue, fatigueV2Block, blocks, calendar, pmc, laps, lapsWithBounds, steadyStream, night, NIGHT_RULE, NIGHT_CAVEAT, context, goal, today, week, coach, signals, workouts, dayContext };
+module.exports = { TENSION_TAIL, NEU_FEW_19, NEU_FLAT, NEU_CARD_10, NEU_SECOND_11, STAGE_WORDS, stageOf, TODAY, days, load, loadView, LV_KEYS, readiness, activities, streams, thresholds, fatigue, fatigueV2Block, blocks, calendar, pmc, laps, lapsWithBounds, steadyStream, night, NIGHT_RULE, NIGHT_CAVEAT, context, CTX_STEADY_TEXT, CTX_WHY, CTX_NOTE, goal, today, week, coach, signals, workouts, dayContext };

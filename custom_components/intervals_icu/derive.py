@@ -1202,6 +1202,36 @@ def steady_endurance_reason(
     return None
 
 
+def steady_ride_reason(activity: dict[str, Any]) -> str | None:
+    """Return None when a ride is steady enough to compare, else why not.
+
+    0.74.8 (SKIZZE_0.74.8 §2.1 + NACHTRAG N1): THE one place for "gleichmaessige
+    Fahrt" in the activity view. Decoupling and watts per heartbeat only mean
+    something on a steady, aerobic ride; intervals make them measure the change
+    of load, not endurance.
+
+    It is steady_endurance_reason() plus the structure question that
+    fatigue_curve_reason() already asks - the VI lets structured blocks through
+    (see there). Order: "short" and "indoor" win over everything, then the
+    structure, then whatever steady_endurance_reason said ("intense",
+    "no_power", "variable" or None). The SET of steady rides is the same as
+    asking both in any order; only the NAME of the reason differs for rides that
+    fail several tests - a 4x4 at intensity 85 is named for its intervals.
+
+    A ride WITHOUT zone times stays admitted (share None): the structure cannot
+    be seen, and dropping it would silently shrink the comparison group of every
+    rider whose archive lacks the field. steady_endurance_reason() itself stays
+    unchanged, so the decoupling curve and the durability tile do not move.
+    """
+    reason = steady_endurance_reason(activity)
+    if reason in ("no_activity", "short", "indoor"):
+        return reason
+    share = above_endurance_share(activity)
+    if share is not None and share > FATIGUE_MAX_ABOVE_Z2:
+        return "structured"
+    return reason
+
+
 def steady_weight(activity: dict[str, Any]) -> float:
     """Return how much a qualifying ride counts, from 1.0 down to 0.0.
 

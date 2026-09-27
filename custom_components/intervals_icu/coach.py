@@ -1846,18 +1846,70 @@ def _caliper_percent(width: float) -> tuple[float, float]:
     return (round((math.exp(-width) - 1) * 100, 1), round((math.exp(width) - 1) * 100, 1))
 
 
+# 0.74.8 (SKIZZE_0.74.8 §2.2): der Grund, warum eine Fahrt nicht verglichen wird - EINE Stelle fuer die
+# Saetze (das Panel schreibt keinen davon). Die Zahl in "short" kommt aus der Konstanten.
+_STEADY_TEXT = {
+    "structured": "hatte Intervalle oder Blöcke",
+    "intense": "war dafür zu intensiv",
+    "variable": "war dafür zu ungleichmäßig",
+    "short": f"war dafür zu kurz (unter {DURABILITY_MIN_MINUTES} min)",
+    "indoor": "war eine Indoor-Fahrt – Wärme und fester Widerstand verschieben den Puls",
+    "no_power": "hatte keine Leistungsmessung",
+}
+_STEADY_WHY = (
+    "Entkopplung und Watt pro Herzschlag messen, wie gut dein Puls mit der Leistung Schritt hält. "
+    "Das funktioniert nur, wenn die Leistung gleichmäßig und ruhig ist. Bei Intervallen wechseln Belastung "
+    "und Pause, der Puls läuft jedes Mal hinterher – die Zahl misst dann den Wechsel, nicht deine Ausdauer. "
+    f"Deshalb vergleicht die App diese Werte nur bei gleichmäßigen Fahrten ab {DURABILITY_MIN_MINUTES} min, "
+    f"unter Intensität {DURABILITY_MAX_INTENSITY} und ohne große Leistungssprünge; dieselbe Prüfung gilt für "
+    "deine Entkopplungs-Kurve."
+)
+# "45 und 60 min ... wie 3 und 4 h" ist ein BEISPIEL fuer ein Verhaeltnis (3:4), keine Grenze - es haengt
+# bewusst nicht an DURABILITY_MIN_MINUTES, sonst stimmte das Beispiel nach einer Aenderung nicht mehr.
+_CTX_NOTE = (
+    "Verglichen wird nur mit deinen früheren gleichmäßigen Fahrten derselben Sportart, die ähnlich lang und "
+    "ähnlich intensiv waren. Was „ähnlich“ heißt, richtet sich nach deinen eigenen Fahrten: Die App fängt eng "
+    f"an und wird in {len(PEER_CALIPER_STAGES)} Schritten großzügiger, bis mindestens {MIN_PEERS_TO_RANK_METRIC} "
+    "Fahrten diesen Wert haben. Bei der Dauer zählt das Verhältnis: 45 und 60 min liegen so weit auseinander wie "
+    "3 und 4 h – deshalb ist die Spanne nach oben breiter. Ein einzelner Vergleich ist ein Hinweis, kein Befund: "
+    "Hitze, Koffein, Schlaf und Strecke verschieben den Puls. Verlässlicher ist der Verlauf über Wochen."
+)
+
+
+def _count_text(values: list[float], value: float) -> str:
+    """'höher als bei k von n' - gezaehlt, nicht als Prozent (0.74.8 §2.2).
+
+    "höher", wenn der Wert ueber dem Median liegt, sonst "niedriger"; k zaehlt die Vergleichsfahrten ECHT
+    darunter bzw. darueber, ein Gleichstand zaehlt nicht mit. k = n heisst "als bei allen n".
+    """
+    n = len(values)
+    if value > median(values):
+        word, k = "höher", sum(1 for v in values if v < value)
+    else:
+        word, k = "niedriger", sum(1 for v in values if v > value)
+    return f"{word} als bei allen {n}" if k == n else f"{word} als bei {k} von {n}"
+
+
 def session_context(data: dict[str, Any], activity_id: str) -> dict[str, Any]:
     """Place this session's key numbers among the athlete's comparable sessions.
+
+    0.74.8 (SKIZZE_0.74.8 §2.2): ONLY a steady ride is compared, and only with
+    earlier steady rides (derive.steady_ride_reason - the one place). Decoupling
+    and watts per heartbeat mean nothing on an interval session; a ride that is
+    not steady gets `steady` with its reason and no metric rows at all.
 
     Comparable means: same sport group, and duration and intensity inside a
     CALIPER measured in the athlete's own standard deviations - on the log
     duration, because durations are right-skewed and 45 min to 3 h is not a
     symmetric plus/minus. The caliper widens in fixed steps until a metric has
-    enough peers to be ranked, and the step that was reached is always reported.
+    enough peers to be ranked. The spread itself is still measured over the
+    whole sport group (unchanged in 0.74.8 - "Caliper unveraendert").
 
     The widening runs against the n OF THE METRIC, not against the number of
     peers: only some sessions carry a decoupling value, and widening against
     the peer count would print "8 sessions" beside "too thin" (docs/ausbau.md C3).
+    Heart rate is placed but NOT judged: a higher or lower average pulse is no
+    clear sign either way (Buchheit 2014; Aubry/Le Meur 2015).
     """
     activities = data.get("activities") or {}
     activity = activities.get(str(activity_id))
@@ -1868,11 +1920,13 @@ def session_context(data: dict[str, Any], activity_id: str) -> dict[str, Any]:
     group = _sport_group(activity)
     intensity = _f(activity.get("icu_intensity")) or 0.0
     minutes = (activity.get("moving_time") or 0) / 60
+    reason = derive.steady_ride_reason(activity)
+    steady = {"ok": reason is None, "reason": reason,
+              "text": None if reason is None else _STEADY_TEXT.get(reason)}
 
     # The spread is measured over the whole group, not only over the earlier
     # sessions - otherwise the caliper of an old session would be computed from
-    # a handful of values. It therefore MOVES as the archive grows, and the
-    # panel says so.
+    # a handful of values. It therefore MOVES as the archive grows.
     population = [
         other for other in activities.values()
         if isinstance(other, dict) and _sport_group(other) == group
@@ -1883,7 +1937,7 @@ def session_context(data: dict[str, Any], activity_id: str) -> dict[str, Any]:
     sd_log = pstdev(log_durations) if len(log_durations) > 1 else 0.0
     sd_intensity = pstdev(intensities) if len(intensities) > 1 else 0.0
 
-    earlier = []
+    earlier, earlier_steady = [], []
     for key, other in activities.items():
         if key == str(activity_id) or _sport_group(other) != group:
             continue
@@ -1891,6 +1945,8 @@ def session_context(data: dict[str, Any], activity_id: str) -> dict[str, Any]:
         if not other_day or other_day >= day:
             continue
         earlier.append(other)
+        if derive.steady_ride_reason(other) is None:
+            earlier_steady.append(other)
 
     log_minutes = math.log(minutes) if minutes > 0 else None
 
@@ -1906,28 +1962,29 @@ def session_context(data: dict[str, Any], activity_id: str) -> dict[str, Any]:
                 return False
         return True
 
+    # key, label, unit, decimals shown, good direction (None = placed, not judged), getter
     metrics = (
-        ("decoupling", "Entkopplung", "%", "down", lambda e: _f(e.get("decoupling"))),
-        ("ef", "Watt pro Herzschlag", "", "up",
+        ("decoupling", "Entkopplung", "%", 1, "down", lambda e: _f(e.get("decoupling"))),
+        ("ef", "Watt pro Herzschlag", "", 2, "up",
          lambda e: (_f(e.get("icu_weighted_avg_watts") or e.get("icu_average_watts")) or 0)
                    / (_f(e.get("average_heartrate")) or 1)
                    if e.get("average_heartrate") else None),
-        ("hr", "Ø Herzfrequenz", "bpm", "down", lambda e: _f(e.get("average_heartrate"))),
+        ("hr", "Ø Herzfrequenz", "bpm", 0, None, lambda e: _f(e.get("average_heartrate"))),
     )
 
     out: dict[str, Any] = {}
     widest = None
-    for key, label, unit, good, getter in metrics:
+    for key, label, unit, dec, good, getter in (metrics if steady["ok"] else ()):
         value = getter(activity)
         if value is None:
             continue
         # Two different reasons for "no group", two different sentences. The
         # first heals by itself as the archive grows, the second does not.
-        available = [v for v in (getter(other) for other in earlier) if v is not None]
+        available = [v for v in (getter(other) for other in earlier_steady) if v is not None]
         chosen, history = None, []
         for stage in PEER_CALIPER_STAGES:
             history = [
-                v for v in (getter(other) for other in earlier if within(other, stage))
+                v for v in (getter(other) for other in earlier_steady if within(other, stage))
                 if v is not None
             ]
             if len(history) >= MIN_PEERS_TO_RANK_METRIC:
@@ -1935,17 +1992,19 @@ def session_context(data: dict[str, Any], activity_id: str) -> dict[str, Any]:
                 break
         if chosen is None:
             too_early = len(available) < MIN_PEERS_TO_RANK_METRIC
+            if too_early:
+                say = (f"noch kein Vergleich – davor liegen erst {len(available)} gleichmäßige Fahrten "
+                       f"mit diesem Wert, nötig sind {MIN_PEERS_TO_RANK_METRIC}")
+            elif history:
+                say = (f"noch kein Vergleich – nur {len(history)} frühere gleichmäßige Fahrten ähnlicher "
+                       f"Länge und Intensität haben diesen Wert, nötig sind {MIN_PEERS_TO_RANK_METRIC}")
+            else:
+                say = ("noch kein Vergleich – keine frühere gleichmäßige Fahrt ähnlicher Länge und "
+                       f"Intensität hat diesen Wert, nötig sind {MIN_PEERS_TO_RANK_METRIC}")
             out[key] = {
-                "label": label, "unit": unit, "value": round(value, 2),
-                "n": len(history), "enough": False,
-                "why": "too_early" if too_early else "too_few",
-                "say": (
-                    f"zu früh in deiner Historie — davor liegen erst {len(available)} "
-                    f"Einheiten mit diesem Wert"
-                ) if too_early else (
-                    f"zu wenige vergleichbare Einheiten — auch auf der weitesten Stufe "
-                    f"({PEER_CALIPER_STAGES[-1]:.1f} SD) nur {len(history)}"
-                ),
+                "label": label, "unit": unit, "dec": dec, "value": round(value, 2),
+                "n": len(available) if too_early else len(history), "enough": False,
+                "why": "too_early" if too_early else "too_few", "say": say,
             }
             continue
         widest = chosen if widest is None else max(widest, chosen)
@@ -1959,28 +2018,45 @@ def session_context(data: dict[str, Any], activity_id: str) -> dict[str, Any]:
         # words and the picture cannot disagree.
         low, high = ordered[max(0, len(ordered) // 4 - 1)], ordered[min(len(ordered) - 1, (3 * len(ordered)) // 4)]
         above, below = value > high, value < low
-        favourable = above if good == "up" else below
-        unfavourable = below if good == "up" else above
+        judged = good is not None
+        if judged:
+            favourable = above if good == "up" else below
+            unfavourable = below if good == "up" else above
+            verdict = ("besser als sonst" if favourable else
+                       "schlechter als sonst" if unfavourable else "im üblichen Bereich")
+            tendency = None
+        else:
+            verdict = None
+            tendency = "höher als sonst" if above else "niedriger als sonst" if below else "wie sonst"
+        # "best"/"worst" keep their old meaning for the bar ends; unjudged rows use low/high
+        down = good != "up"
+        width = chosen * sd_log
         out[key] = {
-            "label": label, "unit": unit, "value": round(value, 2),
+            "label": label, "unit": unit, "dec": dec, "value": round(value, 2),
             "median": round(median(ordered), 2),
-            "best": round(ordered[0] if good == "down" else ordered[-1], 2),
-            "worst": round(ordered[-1] if good == "down" else ordered[0], 2),
-            "p25": round(ordered[max(0, len(ordered) // 4 - 1)], 2),
-            "p75": round(ordered[min(len(ordered) - 1, (3 * len(ordered)) // 4)], 2),
+            "best": round(ordered[0] if down else ordered[-1], 2),
+            "worst": round(ordered[-1] if down else ordered[0], 2),
+            "p25": round(low, 2),
+            "p75": round(high, 2),
             "n": len(history), "enough": True, "rank": rank, "good": good,
+            "judged": judged, "verdict": verdict, "tendency": tendency,
+            "count": _count_text(ordered, value),
             "stage": chosen,
             "duration_low_pct": low_pct,
             "duration_high_pct": high_pct,
+            "dur_low_min": round(minutes * math.exp(-width)),
+            "dur_high_min": round(minutes * math.exp(width)),
             "intensity_points": round(chosen * sd_intensity, 1),
-            "verdict": ("besser als sonst" if favourable else
-                        "schlechter als sonst" if unfavourable else "im üblichen Bereich"),
         }
 
     return {
-        "available": bool(out),
+        # a ride that is not steady still gets its block - it says why there is no comparison
+        "available": bool(out) or not steady["ok"],
         "group": group,
         "earlier": len(earlier),
+        "earlier_steady": len(earlier_steady),
+        "steady": steady,
+        "steady_why": _STEADY_WHY,
         "stages": list(PEER_CALIPER_STAGES),
         "widest_used": widest,
         "min_peers": MIN_PEERS_TO_RANK_METRIC,
@@ -1989,19 +2065,7 @@ def session_context(data: dict[str, Any], activity_id: str) -> dict[str, Any]:
         "population": len(population),
         "window": {"intensity": round(intensity), "minutes": round(minutes)},
         "metrics": out,
-        "note": (
-            "Verglichen wird mit deinen eigenen FRÜHEREN Einheiten derselben Sportart. "
-            "Die Toleranz ist keine feste Prozentzahl, sondern ein Vielfaches deiner "
-            "eigenen Streuung — bei der Dauer auf dem Logarithmus gerechnet, weil "
-            "45 Minuten und 3 Stunden kein symmetrisches Plus/Minus sind. Deshalb "
-            "steht die Spanne mit zwei Zahlen da und nicht als ±. Reicht die engste "
-            "Stufe nicht, wird in festen Schritten geweitet, bis genug Einheiten "
-            "zusammenkommen; die erreichte Stufe steht bei jeder Zeile. Geweitet wird "
-            "gegen die Zahl der Einheiten MIT DIESEM WERT, nicht gegen die Zahl der "
-            "Vergleichseinheiten. Die Streuung wird aus deinem gesamten Bestand dieser "
-            "Sportart gerechnet und wandert deshalb mit: dieselbe alte Einheit kann in "
-            "einigen Monaten eine etwas andere Gruppe bekommen."
-        ),
+        "note": _CTX_NOTE,
     }
 
 

@@ -676,6 +676,53 @@ eq("Z13 ohne Band: keine Kachel, sein Satz mit n = 19",
    ([], "gibt es noch keinen Vergleich – die App braucht dafür 20 Nächte mit Werten, bisher sind es 19."))
 eq("Z13 ohne Band: keine Zahl des ersten Athleten", leaks({"gap": _h13n.get("signals_gap")}), [])
 
+
+print("\n=== Z14 (0.74.8). Einordnung: seine gleichmäßigen Fahrten, seine Gründe ===")
+def _z14(indoor=False):
+    d = importer.empty_data("i2")
+    for i in range(10):
+        d["activities"][f"g{i}"] = {"start_date_local": f"2026-08-{i + 1:02d}T07:00:00", "name": "lang",
+            "type": "VirtualRide" if indoor else "Ride", "moving_time": 3 * 3600 + i * 300,
+            "icu_intensity": 70.0 + i * 0.45, "icu_weighted_avg_watts": 224, "icu_average_watts": 218,
+            "decoupling": 1.0 + i * 0.4, "average_heartrate": 128.0 + i, "icu_training_load": 150,
+            "icu_zone_times": [{"id": "Z1", "secs": 6000}, {"id": "Z2", "secs": 4000}, {"id": "Z3", "secs": 800}]}
+    # sein Alltag: kurze Wege, weit unter der Mindestdauer - weiten die Streuung, zaehlen nie als Vergleich
+    for i in range(6):
+        d["activities"][f"w{i}"] = {"start_date_local": f"2026-08-{i + 11:02d}T07:00:00", "name": "weg",
+            "type": "Ride", "moving_time": 25 * 60, "icu_intensity": 48.0 + i * 7,
+            "icu_weighted_avg_watts": 150, "icu_average_watts": 140, "decoupling": 0.5,
+            "average_heartrate": 115.0, "icu_training_load": 15}
+    # eine Intervallfahrt passender Länge und Intensität - darf nicht mitzählen
+    d["activities"]["iv"] = {"start_date_local": "2026-08-20T07:00:00", "name": "4x8", "type": "Ride",
+        "moving_time": 3 * 3600, "icu_intensity": 71.0, "icu_weighted_avg_watts": 230, "icu_average_watts": 214,
+        "decoupling": 25.0, "average_heartrate": 150.0, "icu_training_load": 160,
+        "icu_zone_times": [{"id": "Z1", "secs": 5000}, {"id": "Z2", "secs": 1000}, {"id": "Z4", "secs": 4800}]}
+    d["activities"]["neu"] = {"start_date_local": "2026-08-25T07:00:00", "name": "lang", "type": d["activities"]["g0"]["type"],
+        "moving_time": 3 * 3600 + 600, "icu_intensity": 71.0, "icu_weighted_avg_watts": 226, "icu_average_watts": 220,
+        "decoupling": 3.1, "average_heartrate": 132.0, "icu_training_load": 155,
+        "icu_zone_times": [{"id": "Z1", "secs": 6000}, {"id": "Z2", "secs": 4000}, {"id": "Z3", "secs": 800}]}
+    return d
+
+
+for _indoor in (False, True):
+    _c14 = FakeCoordinator(_z14(_indoor)); ws._pick = lambda hass, athlete_id: _c14
+    _b14 = FakeConn(); ws.websocket_context(None, _b14, {"id": 1, "activity_id": "neu"})
+    _p14 = (_b14.results or [{}])[0]
+    eq(f"Z14 ({'indoor' if _indoor else 'draussen'}): der Befehl laeuft", _b14.errors, [])
+    eq(f"Z14 ({'indoor' if _indoor else 'draussen'}): keine Zahl des ersten Athleten", leaks(_p14), [])
+    _st14 = _p14.get("steady") or {}
+    if _indoor:
+        eq("Z14 indoor: sein Grund", (_st14.get("ok"), _st14.get("reason")), (False, "indoor"))
+        eq("Z14 indoor: keine Kennzahl-Zeilen", _p14.get("metrics"), {})
+    else:
+        eq("Z14: gleichmäßig", _st14.get("ok"), True)
+        _m14 = (_p14.get("metrics") or {}).get("decoupling") or {}
+        eq("Z14: frühere gleichmäßige Fahrten = seine 10 langen (Wege und Intervallfahrt nicht)", _p14.get("earlier_steady"), 10)
+        check("Z14: verglichen mit mindestens min_peers seiner Fahrten", (_m14.get("n") or 0) >= _p14.get("min_peers", 99))
+        check("Z14: der Intervallwert 25 steht nicht in der Gruppe", 25.0 not in (_m14.get("best"), _m14.get("worst")))
+        check("Z14: seine Dauer (3 h) in der Spanne, nicht 45 min",
+              (_m14.get("dur_low_min") or 0) > 150 and (_m14.get("dur_high_min") or 0) > 180)
+
 print(f"\ntest_zweiter_athlet: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

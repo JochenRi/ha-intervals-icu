@@ -644,111 +644,176 @@ const EMPTY_LOAD = { weeks: [], weeks_by_group: [], window_history: [], window_p
   }
 
   // --- Dieselbe Tabelle für eine Fahrt OHNE Intervalle --------------------
+  // 0.74.8 (SKIZZE_0.74.8 §2.3): die vier Viertel bleiben als Bild, bekommen aber KEIN eigenes Urteil.
+  // Der Kopf zeigt genau den Kachel-Wert a.decoupling (erste gegen zweite Hälfte), eine Quelle.
   {
+    const kachel = (h) => { const m = /<small>Entkopplung<\/small><b class="tn">([^<]*)<\/b>/.exec(h); return m ? m[1] : null; };
+    const box = (h) => { const i = h.indexOf("Wie sich die Fahrt entwickelt hat"); return i < 0 ? "" : h.slice(i, h.indexOf('class="devbox"', i) > 0 ? h.indexOf('class="devbox"', i) : h.length); };
+    const withDec = (v) => ({ ...acts[0], decoupling: v });
     const steadyRide = F.steadyStream();
     p._laps[acts[0].id] = { laps: [], source: "none" };
     p._streams[acts[0].id] = steadyRide;
+    p._ctx[acts[0].id] = F.context();
     const html = p.rAkt(acts, acts[0]);
     clean(html, "grundlagenfahrt");
     contains(html, "Wie sich die Fahrt entwickelt hat", "grundlage: keine Segmentanalyse");
     contains(html, "vier gleich lange Abschnitte", "grundlage: Einteilung nicht erklärt");
-    ok((html.match(/class="devcell colhead"/g) || []).length === 3,
-       "grundlage: nicht drei Vergleichsspalten");
+    ok((html.match(/class="devcell colhead"/g) || []).length === 3, "grundlage: nicht drei Vergleichsspalten");
     contains(html, "2. Viertel", "grundlage: Abschnitte nicht benannt");
-    contains(html, "Entkopplung über die Fahrt", "grundlage: kein Entkopplungsurteil");
-    // The verdict must GRADE against the published benchmarks, and grade
-    // differently for different rides - otherwise it is a number with a
-    // sentence glued to it. Trained riders hold under 3%, Friel's benchmark
-    // is 5%, recreational riders sit at 5-10%, above that the effort was
-    // likely over threshold.
-    const grades = [
-      ["stabil", /unter 3 %/, "eine fast driftfreie Fahrt"],
-      ["", /unter 5 %/, "eine Fahrt im Richtwert"],
-      ["mittel", /zwischen 5 und 10 %/, "eine Fahrt im Freizeitbereich"],
-      ["hart", /über 10 %/, "eine Fahrt über der Schwelle"],
-    ];
-    for (const [kind, pattern, label] of grades) {
-      p._streams[acts[0].id] = F.steadyStream(kind);
-      const graded = p.rAkt(acts, acts[0]);
-      clean(graded, "grundlage " + (kind || "normal"));
-      ok(pattern.test(graded), `grundlage: ${label} wird falsch eingeordnet`);
-    }
-    // the worst case must also read as a warning, not as a neutral note
+    contains(html, "WANN", "grundlage: Hinweis WANN fehlt");
+    ok(!html.includes("Entkopplung über die Fahrt"), "0.74.8: das alte Viertel-Urteil steht noch da");
+    // eine Quelle: Kopf == Kachel, dieselbe Zeichenkette
+    const k0 = kachel(html);
+    ok(k0 === "10,6 %", `0.74.8 Fixture-Beweis: Kachel zeigt ${k0}`);
+    contains(box(html), `Entkopplung: ${k0} (erste gegen zweite Hälfte)`, "0.74.8 §2.3: Kopf ist nicht der Kachel-Wert");
+    contains(box(html), "Watt pro Herzschlag vom 1. zum 4. Viertel:", "0.74.8 §2.3: neutrale Zeile fehlt");
+    ok(/ Schläge bei [+-]?\d/.test(box(html)), "0.74.8 §2.3: Puls/Leistung in der neutralen Zeile fehlt");
+    // die Stromrechnung darf den Kopf nicht bewegen: starke Drift im Strom, Kachel 2,1 -> Kopf 2,1 und 'unter 3 %'
     p._streams[acts[0].id] = F.steadyStream("hart");
-    ok(/class="cmpverdict worse/.test(p.rAkt(acts, acts[0])),
-       "grundlage: starke Entkopplung nicht als Warnung gezeigt");
-    p._streams[acts[0].id] = F.steadyStream("stabil");
-    ok(/class="cmpverdict held/.test(p.rAkt(acts, acts[0])),
-       "grundlage: driftfreie Fahrt als Warnung gezeigt");
+    const drift = p.rAkt(acts, withDec(2.1));
+    contains(box(drift), "Entkopplung: 2,1 % (erste gegen zweite Hälfte)", "0.74.8 §2.3: Kopf aus Q1/Q4 statt Kachel");
+    contains(box(drift), "unter 3 %", "0.74.8 §2.3: Einordnung nicht auf den Kachel-Wert angewandt");
+    ok(/class="cmpverdict held/.test(box(drift)), "0.74.8 §2.3: Kachel 2,1 trotzdem als Warnung (Ton aus dem Strom)");
     p._streams[acts[0].id] = steadyRide;
-    contains(html, "kardiale Drift", "grundlage: Drift nicht erklärt");
+    // Einordnung an den Marken (Wortlaut wie bisher), auf den GEZEIGTEN Wert (eine Nachkommastelle)
+    const grades = [
+      [2.9, /unter 3 %/, "held"], [3.0, /unter 3 %/, "held"], [5.0, /unter 5 %/, "held"],
+      [5.04, /unter 5 %/, "held"], [5.1, /zwischen 5 und 10 %/, "worse"], [10.0, /zwischen 5 und 10 %/, "worse"],
+      [10.1, /über 10 %/, "worse"], [-4.2, /unter 3 %/, "held"],
+    ];
+    for (const [v, pattern, tone] of grades) {
+      const g = p.rAkt(acts, withDec(v));
+      clean(g, "grundlage " + v);
+      ok(pattern.test(box(g)), `0.74.8 §2.3: ${v} % falsch eingeordnet`);
+      ok(new RegExp(`class="cmpverdict ${tone}`).test(box(g)), `0.74.8 §2.3: Ton bei ${v} % nicht ${tone}`);
+      contains(box(g), `Entkopplung: ${kachel(g)} (erste gegen zweite Hälfte)`, `0.74.8 §2.3: Kopf != Kachel bei ${v}`);
+    }
+    // Seitenprobe-Befund 0.74.8: eine gerundete Null steht als "0,0", nie als "-0,0"
+    const flat = F.steadyStream(); flat.channels.watts = flat.channels.watts.map((w, i) => (i < flat.channels.watts.length / 2 ? 158.02 : 158));
+    p._streams[acts[0].id] = flat;
+    ok(!/-0,0 %|[-]0 Schläge/.test(box(p.rAkt(acts, acts[0]))), "0.74.8: '-0,0' in der neutralen Zeile");
+    p._streams[acts[0].id] = steadyRide;
+    // fehlender Wert
+    const none = p.rAkt(acts, withDec(null));
+    clean(none, "grundlage ohne entkopplung");
+    contains(box(none), "Kein Urteil möglich – intervals.icu hat für diese Fahrt keine Entkopplung berechnet.", "0.74.8 §2.3: fehlender Wert");
+    contains(box(none), "Watt pro Herzschlag vom 1. zum 4. Viertel:", "0.74.8 §2.3: neutrale Zeile fehlt ohne Wert");
+    ok(!box(none).includes("Entkopplung: "), "0.74.8 §2.3: Kopf ohne Wert gezeigt");
+    // nicht gleichmäßig: neutral, Info-Zeichen, Grund aus dem Backend
+    p._ctx[acts[0].id] = F.context("variable");
+    const nv = p.rAkt(acts, acts[0]);
+    clean(nv, "grundlage nicht gleichmäßig");
+    contains(box(nv), "Keine Entkopplung – diese Fahrt war dafür zu ungleichmäßig.", "0.74.8 §2.3: nicht gleichmäßig");
+    ok(/class="cmpverdict held/.test(box(nv)), "0.74.8 §2.3: nicht gleichmäßig nicht im Ton held");
+    ok(!box(nv).includes("Entkopplung: ") && !/unter 3 %|unter 5 %|zwischen 5|über 10 %/.test(box(nv)),
+       "0.74.8 §2.3: nicht gleichmäßig und trotzdem Kopf/Einordnung");
+    contains(box(nv), "Watt pro Herzschlag vom 1. zum 4. Viertel:", "0.74.8 §2.3: neutrale Zeile fehlt (nicht gleichmäßig)");
+    // ohne Kontext (Abruf gescheitert): kein Kasten, keine erfundene Aussage
+    p._ctx[acts[0].id] = { available: false };
+    const nc = p.rAkt(acts, acts[0]);
+    clean(nc, "grundlage ohne kontext");
+    ok(!/class="cmpverdict/.test(box(nc)), "0.74.8: ohne Prüfung trotzdem ein Urteil im Viertel-Kasten");
+    p._ctx[acts[0].id] = F.context();
     // heart rate recovery makes no sense without rests - it must be absent
     ok(!html.includes("Puls-Erholung"), "grundlage: Puls-Erholung ohne Pausen behauptet");
     // and a short ride must not be cut into quarters at all
     p._streams[acts[0].id] = F.steadyStream("kurz");
     const short = p.rAkt(acts, acts[0]);
     clean(short, "grundlage kurz");
-    ok(!short.includes("Wie sich die Fahrt entwickelt hat"),
-       "grundlage: zu kurze Fahrt trotzdem geviertelt");
-    p._laps = {}; p._streams = {};
+    ok(!short.includes("Wie sich die Fahrt entwickelt hat"), "grundlage: zu kurze Fahrt trotzdem geviertelt");
+    p._laps = {}; p._streams = {}; p._ctx = {};
   }
 
-  // --- Wie diese Einheit dasteht -----------------------------------------
+  // --- Wie diese Einheit dasteht (0.74.8 §2.2) ------------------------------
   {
+    const box = (h) => { const i = h.indexOf("Wie sich die Fahrt entwickelt hat"); return i < 0 ? "" : h.slice(i, h.indexOf('class="devbox"', i) > 0 ? h.indexOf('class="devbox"', i) : h.length); };
+    const sec = (h) => { const i = h.indexOf("Wie diese Einheit dasteht"); return i < 0 ? "" : h.slice(i, h.indexOf("</details>", i) + 10); };
     p._laps[acts[0].id] = { laps: [], source: "none" };
     p._streams[acts[0].id] = F.steadyStream();
     p._ctx[acts[0].id] = F.context();
     const html = p.rAkt(acts, acts[0]);
     clean(html, "einordnung");
-    contains(html, "Wie diese Einheit dasteht", "einordnung");
-    contains(html, "gegen deine 18 früheren Einheiten", "einordnung: Vergleichsgruppe nicht benannt");
-    contains(html, "bis mindestens 6 Vergleichswerte", "einordnung: die Weitung wird verschwiegen");
-    // Die gegriffene Stufe steht bei der Zeile, und die Dauerspanne NIE als
-    // symmetrisches ± - der Log-Caliper ist in Prozent unsymmetrisch, ein
-    // einzelnes ± wäre in einer Richtung gelogen.
-    contains(html, "0,4 SD", "einordnung: gegriffene Stufe nicht ausgewiesen");
-    contains(html, "-19 % bis +23 %", "einordnung: Dauerspanne nicht mit beiden Zahlen");
-    ok(!/±\s*\d+(,\d+)?\s*%/.test(html), "einordnung: Dauerspanne als symmetrisches ± ausgewiesen");
-    // the number alone says nothing - the rider's own median must be there
-    contains(html, "Median 2,10", "einordnung: eigener Median fehlt");
-    contains(html, "17 Einheiten", "einordnung: Umfang der Vergleichsgruppe fehlt");
-    // range, median tick and this session's dot - position on a common scale
-    ok((html.match(/class="ctxband"/g) || []).length === 3, "einordnung: keine Streuungsbänder");
-    ok((html.match(/class="ctxmed"/g) || []).length === 3, "einordnung: keine Medianmarken");
-    ok((html.match(/class="ctxdot"/g) || []).length === 3, "einordnung: dieser Wert nicht verortet");
-    // the verdict has to differ per metric - and the direction must be respected
-    contains(html, "schlechter als sonst", "einordnung: schlechte Entkopplung nicht benannt");
-    contains(html, "besser als sonst", "einordnung: guter EF-Wert nicht benannt");
-    contains(html, "im üblichen Bereich", "einordnung: mittlerer Wert falsch eingestuft");
-    // a LOW decoupling is good, a HIGH one bad - the rank must be read that way
-    // scoped to the context block - the segment verdict above also mentions
-    // "Entkopplung" and carries its own colour, which would mask the defect
-    const box = html.slice(html.indexOf('class="ctxbox"'));
-    const decRow = box.slice(box.indexOf("Entkopplung"), box.indexOf("Watt pro Herzschlag"));
-    ok(/#fbbf24/.test(decRow), "einordnung: schlechte Entkopplung nicht als ungünstig gefärbt");
-    ok(!/#34d399/.test(decRow),
-       "einordnung: hohe Entkopplung als günstig gefärbt - die Richtung wird ignoriert");
-    const efRow = box.slice(box.indexOf("Watt pro Herzschlag"), box.indexOf("Ø Herzfrequenz"));
-    ok(/#34d399/.test(efRow), "einordnung: guter Wert nicht als günstig gefärbt");
-    ok(!/#fbbf24/.test(efRow), "einordnung: guter Wert als ungünstig gefärbt");
+    const s = sec(html);
+    contains(s, "Wie diese Einheit dasteht", "einordnung");
+    contains(s, "— verglichen mit deinen früheren gleichmäßigen Fahrten ähnlicher Länge und Intensität", "0.74.8: Überschrift");
+    contains(s, "üblich 2,1 % · 17 ähnliche Fahrten (2:50 h–4:15 h)", "0.74.8: Zeile Entkopplung links");
+    contains(s, "üblich 0,70 · 17 ähnliche Fahrten (2:50 h–4:15 h)", "0.74.8: Zeile Watt pro Herzschlag links");
+    contains(s, "üblich 139 bpm · 17 ähnliche Fahrten (3:08 h–3:50 h)", "0.74.8: Zeile HF links");
+    contains(s, ">10,6<", "0.74.8: Entkopplung eine Nachkommastelle");
+    contains(s, ">0,92<", "0.74.8: Watt pro Herzschlag zwei Nachkommastellen");
+    contains(s, ">142<", "0.74.8: HF ohne Nachkommastelle");
+    for (const bad of ["SD", "Median", "Stufe", "% deiner Vergleichseinheiten", ",00", "ctxscale", "<span>schlechter</span>"]) {
+      ok(!s.includes(bad), `0.74.8: '${bad}' steht noch in "Wie diese Einheit dasteht"`);
+      ok(!box(html).includes(bad), `0.74.8: '${bad}' steht im Viertel-Abschnitt`);
+    }
+    contains(s, "höher als bei 16 von 17", "0.74.8: gezählte Zeile Entkopplung");
+    contains(s, "höher als bei 10 von 17 · ohne Urteil", "0.74.8: HF gezählt, ohne Urteil");
+    const decRow = s.slice(s.indexOf("Entkopplung"), s.indexOf("Watt pro Herzschlag"));
+    const efRow = s.slice(s.indexOf("Watt pro Herzschlag"), s.indexOf("Ø Herzfrequenz"));
+    const hrRow = s.slice(s.indexOf("Ø Herzfrequenz"), s.indexOf('class="ctxleg'));
+    contains(decRow, "schlechter als sonst", "einordnung: schlechte Entkopplung nicht benannt");
+    ok(/#fbbf24/.test(decRow) && !/#34d399/.test(decRow), "einordnung: Entkopplung falsch gefärbt");
+    contains(efRow, "besser als sonst", "einordnung: guter EF-Wert nicht benannt");
+    ok(/#34d399/.test(efRow) && !/#fbbf24/.test(efRow), "einordnung: EF falsch gefärbt");
+    contains(hrRow, "wie sonst", "0.74.8: HF-Tendenz fehlt");
+    ok(!/besser als sonst|schlechter als sonst|im üblichen Bereich/.test(hrRow), "0.74.8: HF trägt ein Urteil");
+    ok(!/#fbbf24|#34d399/.test(hrRow), "0.74.8: HF farbig statt grau");
+    ok((s.match(/class="ctxband"/g) || []).length === 3 && (s.match(/class="ctxdot"/g) || []).length === 3,
+       "einordnung: Band/Punkt fehlen");
+    contains(s, "die mittlere Hälfte deiner ähnlichen Fahrten", "0.74.8: Legende Band");
+    contains(s, "rechts = höherer Wert", "0.74.8: Legende Richtung");
+    ok(/ctxleg[\s\S]*üblich[\s\S]*diese Einheit/.test(s), "0.74.8: Legende Strich/Punkt");
+    contains(s, "Wie die Vergleichsgruppe gebildet wird", "0.74.8: Aufklapper");
+    contains(s, F.CTX_NOTE.slice(0, 60), "0.74.8: Aufklapper-Text aus dem Backend");
 
-    // too few comparable sessions: say so, do not rank against three rides
     p._ctx[acts[0].id] = F.context("duenn");
-    const thin = p.rAkt(acts, acts[0]);
+    const thin = sec(p.rAkt(acts, acts[0]));
     clean(thin, "einordnung dünn");
-    // Zwei Gründe, zwei Sätze. Der Anfangsfall heilt mit der Zeit, der andere
-    // nicht - sie dürfen nicht dieselbe Formulierung bekommen.
-    contains(thin, "zu früh in deiner Historie", "einordnung: Anfangsfall ohne eigenen Satz");
-    contains(thin, "zu wenige vergleichbare Einheiten", "einordnung: dünner Fall ohne eigenen Satz");
-    ok(thin.indexOf("zu früh in deiner Historie") !== thin.indexOf("zu wenige vergleichbare"),
-       "einordnung: die beiden Dünn-Gründe sind im Panel nicht unterscheidbar");
+    contains(thin, "davor liegen erst 3 gleichmäßige Fahrten mit diesem Wert, nötig sind 6", "0.74.8: too_early");
+    contains(thin, "nur 4 frühere gleichmäßige Fahrten", "0.74.8: too_few");
+    contains(thin, "keine frühere gleichmäßige Fahrt ähnlicher Länge", "0.74.8: n = 0");
     ok(!thin.includes("ctxband"), "einordnung: Streuungsband ohne Datenbasis gezeichnet");
+    ok(!thin.includes(",00"), "0.74.8: ',00' in der dünnen Zeile");
+    contains(thin, ">161<", "0.74.8: dünne HF-Zeile ohne Nachkommastellen");
 
+    // je Grund: keine Zeilen, Info-Zeile mit dem Grund aus dem Backend, Aufklapper
+    for (const why of Object.keys(F.CTX_STEADY_TEXT)) {
+      p._ctx[acts[0].id] = F.context(why);
+      const h = p.rAkt(acts, acts[0]); clean(h, "einordnung " + why);
+      const g = sec(h);
+      ok(!g.includes('class="ctxrow'), `0.74.8: '${why}' mit Kennzahl-Zeilen`);
+      contains(g, "Entkopplung und Watt pro Herzschlag sagen nur bei gleichmäßigen, ruhigen Fahrten etwas aus – diese Fahrt "
+        + F.CTX_STEADY_TEXT[why] + ".", `0.74.8: Info-Zeile '${why}'`);
+      contains(g, "Warum hier kein Vergleich steht", `0.74.8: Aufklapper '${why}'`);
+      contains(g, F.CTX_WHY.slice(-60), `0.74.8: Aufklapper-Text '${why}'`);
+      ok(!g.includes("zeigt der Blockvergleich"), `0.74.8: Blockvergleich-Satz ohne Blockvergleich ('${why}')`);
+      ok(!g.includes("— verglichen mit"), `0.74.8: Vergleichs-Überschrift ohne Vergleich ('${why}')`);
+    }
     p._ctx[acts[0].id] = F.context("leer");
-    clean(p.rAkt(acts, acts[0]), "einordnung leer");
-    ok(!p.rAkt(acts, acts[0]).includes("Wie diese Einheit dasteht"),
-       "einordnung: leerer Block gezeigt");
+    ok(!p.rAkt(acts, acts[0]).includes("Wie diese Einheit dasteht"), "einordnung: leerer Block gezeigt");
+
+    // VO2max-Fall: Intervalle, Blockvergleich gezeichnet -> Info-Zeile + Verweis; kein Viertel-Zweig
+    const set = F.lapsWithBounds();
+    p._laps[acts[0].id] = { laps: set.laps, seen_keys: set.seen_keys, source: set.source };
+    p._streams[acts[0].id] = set.stream;
+    p._ctx[acts[0].id] = F.context("structured");
+    const vo = p.rAkt(acts, acts[0]); clean(vo, "einordnung vo2max");
+    contains(vo, "Blockvergleich", "0.74.8: VO2max ohne Blockvergleich");
+    ok(!vo.includes("Wie sich die Fahrt entwickelt hat"), "0.74.8: VO2max geviertelt");
+    contains(sec(vo), "diese Fahrt hatte Intervalle oder Blöcke. Wie die Blöcke zueinander standen, zeigt der Blockvergleich weiter oben.",
+             "0.74.8: VO2max Info-Zeile mit Blockvergleich-Satz");
+    ok(!sec(vo).includes('class="ctxrow'), "0.74.8: VO2max mit Kennzahl-Zeilen");
     p._ctx = {}; p._laps = {}; p._streams = {};
+  }
+
+  // eine Stelle: die Grund-Sätze stehen nicht im Panel (sie kommen aus coach.session_context)
+  {
+    const src = require("fs").readFileSync(require("path").join(__dirname, "..", "custom_components", "intervals_icu",
+      "frontend", "intervals-panel.js"), "utf8");
+    for (const t of Object.values(F.CTX_STEADY_TEXT)) {
+      ok(!src.includes(t), `0.74.8: Grund-Text im Panel geschrieben: ${t}`);
+    }
+    ok(!src.includes("Entkopplung über die Fahrt"), "0.74.8: altes Viertel-Urteil im Panel-Quelltext");
   }
 
   // --- Die Nacht danach ---------------------------------------------------
