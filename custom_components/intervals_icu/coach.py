@@ -400,7 +400,8 @@ def layoff(data: dict[str, Any]) -> dict[str, Any]:
     today = days[-1] if days else None
     last = None
     for activity in acts.values():
-        if (activity.get("moving_time") or 0) < 900:
+        # 0.74.6 (SKIZZE_0.74.6 A): was als Einheit zaehlt, sagt _is_session - die eine Stelle
+        if not _is_session(activity):
             continue
         day = str(activity.get("start_date_local") or "")[:10]
         if day and (last is None or day > last):
@@ -973,8 +974,8 @@ def _is_session(activity: dict[str, Any]) -> bool:
     """EINE Stelle (0.74.3): was als Einheit zaehlt - mindestens 15 min Bewegungszeit.
 
     Die Grenze ist die seit jeher bestehende aus _trained_today (Setzung, keine neue
-    Zahl). Es lesen: _trained_today (trainiert heute?) und today() (die Nacht nach
-    der letzten Einheit)."""
+    Zahl). Es lesen: _trained_today (trainiert heute?), today() (die Nacht nach
+    der letzten Einheit) und seit 0.74.6 layoff (Tage seit der letzten Einheit)."""
     return (activity.get("moving_time") or 0) >= 900
 
 

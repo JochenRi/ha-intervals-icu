@@ -2551,6 +2551,16 @@ eq(_fp746(_nb746), "b45b8d780d921523", "0.74.6 C Fingerabdruck: norm_band weicht
 check(_nb746.count(None) > 0 and len(_nb746) - _nb746.count(None) > 0,
       "0.74.6 C Trefferzusicherung: das Raster trifft nicht beide Seiten (Band / kein Band)")
 
+# --- 0.74.6 A: eine Grenze fuer "Einheit" - layoff liest _is_session, keine eigene Zahl ---
+def _calls746(fn) -> set:
+    return {n.func.id for n in _ast746.walk(_ast746.parse(_insp746.getsource(fn)))
+            if isinstance(n, _ast746.Call) and isinstance(n.func, _ast746.Name)}
+
+
+check("_is_session" in _calls746(coach.layoff), "0.74.6 A: layoff liest _is_session nicht")
+check("moving_time" not in _insp746.getsource(coach.layoff) and "900" not in _insp746.getsource(coach.layoff),
+      "0.74.6 A: layoff prueft die Bewegungszeit selbst (zweite Grenze neben _is_session)")
+
 print(f"test_coach: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)
