@@ -42,6 +42,7 @@ Sources, once, so the rules below can refer to them:
 from __future__ import annotations
 
 import math
+from decimal import ROUND_UP, Decimal
 from datetime import date, timedelta
 from statistics import mean, median, pstdev
 from typing import Any, NamedTuple
@@ -997,6 +998,17 @@ def _trained_today(data: dict[str, Any]) -> bool:
 NIGHT_WINDOW_DAYS = 7
 
 
+def _night_absence(data: dict[str, Any], night_day: str) -> str:
+    """Warum eine Nacht keine Werte hat - EINE Stelle (0.74.3 night_pending, Nachtrag §8.4 zweite Nacht).
+
+    "pending": die Nacht liegt nach dem letzten Wellness-Tag (die Uhr hat noch nicht uebertragen);
+    "missing": der Tag ist erreicht, die Werte fehlen. Letzter Wellness-Tag = sorted(wellness)[-1],
+    derselbe Tag, den today() als `current` fuehrt."""
+    wellness = data.get("wellness") or {}
+    last = max(wellness) if wellness else ""
+    return "pending" if night_day > last else "missing"
+
+
 def _last_measured_night(data: dict[str, Any], current: str) -> dict[str, Any]:
     """DIE LETZTE GEMESSENE NACHT NACH EINER EINHEIT - eine Stelle (0.74.3, Skizze §3.1).
 
@@ -1033,7 +1045,7 @@ def _last_measured_night(data: dict[str, Any], current: str) -> dict[str, Any]:
     if night.get("activity_id") != newest_key:
         night_date = (date.fromisoformat(newest_stamp[:10]) + timedelta(days=1)).isoformat()
         pending = {"date": newest_stamp[:10], "name": _name(newest), "night_date": night_date,
-                   "reason": "pending" if night_date > current else "missing"}
+                   "reason": _night_absence(data, night_date)}
     return {"night": night, "night_pending": pending, "night_none": False}
 
 
@@ -1379,30 +1391,45 @@ NIGHT_FIELDS = (
 )
 
 
-def z_word(z: float | None, raw: float | None = None, baseline: float | None = None) -> dict[str, Any]:
-    """DIE WORTSTUFE EINES z-WERTS - die eine Stelle (0.74.4, Skizze §2). Das Panel rechnet keine.
+def z_shown(z: float) -> float:
+    """Die gezeigte Zahl zu z: eine Nachkommastelle, VOM NULLPUNKT WEG gerundet (Nachtrag §8.1).
 
-    Stufe aus |z|, halboffen, Grenzen aus den Konstanten:
-      |z| < SWC_SD (0,5)                  -> 0 "im Normalbereich"
-      SWC_SD <= |z| < DAY_SWING_SD (1,0)  -> 1 "etwas {unter|über} deinem Normalwert"
-      DAY_SWING_SD <= |z| < HRV_DROP_SD   -> 2 "deutlich ..."
-      |z| >= HRV_DROP_SD (2,0)            -> 3 "stark ..."
+    Gerechnet über Decimal(str(z)) mit ROUND_UP (Setzung Nachtrag §8.1): gerundet wird die kurze
+    Dezimalform von z, nicht ihre binäre Näherung.
+    Damit gilt ohne Ausnahme: |gezeigt| > 0,5 <=> |z| > 0,5 (dasselbe für 1,0 und 2,0) - die Klammer
+    kann dem Wort und dem Urteil an keiner Grenze widersprechen. Null wird als 0,0 gezeigt, nie als -0,0.
+    """
+    shown = float(Decimal(str(z)).quantize(Decimal("0.1"), rounding=ROUND_UP))
+    return shown if shown != 0 else 0.0
+
+
+def z_word(z: float | None, raw: float | None = None, baseline: float | None = None) -> dict[str, Any]:
+    """DIE WORTSTUFE EINES z-WERTS - die eine Stelle (0.74.4, Skizze §2; Nachtrag §8.1). Das Panel rechnet keine.
+
+    Stufe aus |z|, alle drei Grenzen "mehr als" (wie das Urteil: z < NIGHT_DIGESTED_Z, z < NIGHT_TOO_MUCH_Z),
+    Grenzen aus den Konstanten:
+      |z| <= SWC_SD (0,5)                  -> 0 "im Normalbereich"
+      |z| >  SWC_SD                        -> 1 "etwas {unter|über} deinem Normalwert"
+      |z| >  DAY_SWING_SD (1,0)            -> 2 "deutlich ..."
+      |z| >  HRV_DROP_SD (2,0)             -> 3 "stark ..."
+    `shown` ist die Zahl, die das Panel in Klammern zeigt (z_shown) - das Panel rundet nicht selbst.
     {unter|über} kommt aus dem Rohwert gegen die Basislinie, NICHT aus dem Vorzeichen von z:
     z ist in NIGHT_FIELDS nach "günstig" gedreht (ein Ruhepuls über der Basislinie hat z < 0).
     """
     if z is None:
-        return {"level": None, "text": None}
+        return {"level": None, "text": None, "shown": None}
     size = abs(z)
-    if size < SWC_SD:
-        return {"level": 0, "text": "im Normalbereich"}
-    level = 1 if size < DAY_SWING_SD else 2 if size < HRV_DROP_SD else 3
+    shown = z_shown(z)
+    if size <= SWC_SD:
+        return {"level": 0, "text": "im Normalbereich", "shown": shown}
+    level = 3 if size > HRV_DROP_SD else 2 if size > DAY_SWING_SD else 1
     if raw is not None and baseline is not None and raw != baseline:
         above = raw > baseline
     else:
         # Fehlen Rohwert oder Basislinie (oder liegen sie gleich), gilt das Vorzeichen von z.
         above = z > 0
     step = ("etwas", "deutlich", "stark")[level - 1]
-    return {"level": level, "text": f"{step} {'über' if above else 'unter'} deinem Normalwert"}
+    return {"level": level, "text": f"{step} {'über' if above else 'unter'} deinem Normalwert", "shown": shown}
 
 
 def _reference_words(reference: dict[str, Any]) -> dict[str, Any]:
@@ -1477,7 +1504,9 @@ NIGHT_VERDICT_WORDS = {
     "gekostet_delayed": "Verglichen mit deinen normalen Nächten: hat Kraft gekostet – erst in der zweiten Nacht sichtbar.",
     "zu_viel": "Verglichen mit deinen normalen Nächten: war zu viel.",
     "unbekannt": "Verglichen mit deinen normalen Nächten: keine Bewertung – die HRV der Nacht fehlt.",
-    "no_second": "Zweite Nacht: kommt morgen",
+    # Nachtrag §8.4: dieselbe Unterscheidung wie night_pending (_night_absence)
+    "second_pending": "Zweite Nacht: fehlt noch",
+    "second_missing": "Zweite Nacht: keine Werte geliefert",
 }
 NIGHT_UNRATED_HEADLINE = "Diese Nacht zählt nicht."
 _PEER_BASIS = "Verglichen mit früheren Einheiten dieser Art:"
@@ -1499,9 +1528,9 @@ def night_rule_text() -> str:
     beim Aufruf gelesen, damit Text und Regel nicht auseinanderlaufen können."""
     return ("Hier geht es darum, wie du die Einheit verkraftet hast – nicht darum, ob du heute trainieren kannst. "
             "Verglichen wird deine HRV in den zwei Nächten nach der Einheit mit deinen letzten 60 Nächten. "
-            f"Deutlich darunter (ab {_de1(NIGHT_TOO_MUCH_Z)}) oder beide Nächte etwas darunter "
-            f"(ab {_de1(NIGHT_DIGESTED_Z)}): war zu viel. Etwas darunter: hat Kraft gekostet. "
-            "Sonst: gut verkraftet. "
+            f"Deutlich darunter (mehr als {_de1(NIGHT_TOO_MUCH_Z)}) oder beide Nächte etwas darunter "
+            f"(mehr als {_de1(NIGHT_DIGESTED_Z)}): war zu viel. "
+            f"Etwas darunter (mehr als {_de1(NIGHT_DIGESTED_Z)}): hat Kraft gekostet. Sonst: gut verkraftet. "
             "Zusätzlich vergleicht die App mit früheren Einheiten ähnlicher Last – wie du nach solchen Einheiten "
             "sonst schläfst. "
             f"{_night_number_sentence()} "
@@ -1521,11 +1550,16 @@ def _night_label(data: dict[str, Any], day: str) -> dict[str, str] | None:
     return {"day": f"{day[8:10]}.{day[5:7]}.", "label": label}
 
 
-def night_verdict(z_first: float | None, z_second: float | None) -> dict[str, Any]:
-    """Die eine Regel der Nacht-Bewertung (L2) - total ueber ihre Eingaben."""
+def night_verdict(z_first: float | None, z_second: float | None,
+                  second_absence: str = "pending") -> dict[str, Any]:
+    """Die eine Regel der Nacht-Bewertung (L2) - total ueber ihre Eingaben.
+
+    `second_absence` ("pending"/"missing", aus _night_absence) waehlt nur den Satz zur fehlenden
+    zweiten Nacht (Nachtrag §8.4); die Regel liest es nicht."""
+    note = None if z_second is not None else NIGHT_VERDICT_WORDS[
+        "second_missing" if second_absence == "missing" else "second_pending"]
     out: dict[str, Any] = {"z_hrv": z_first, "z_hrv_next": z_second, "setting": True,
-                           "rule": night_rule_text(), "delayed": False,
-                           "note": None if z_second is not None else NIGHT_VERDICT_WORDS["no_second"]}
+                           "rule": night_rule_text(), "delayed": False, "note": note}
     second_low = z_second is not None and z_second < NIGHT_SECOND_Z
     if z_first is None:
         key = "unbekannt"
@@ -1625,14 +1659,15 @@ def night_after(data: dict[str, Any], activity_id: str) -> dict[str, Any]:
     else:
         state, headline = "unknown", (f"{_PEER_BASIS} noch kein Vergleich möglich – dafür braucht es "
                                       "mindestens fünf ähnliche Einheiten mit gemessener Nacht.")
-        detail = ("Es liegen noch zu wenige frühere Einheiten ähnlicher Last mit gemessener "
-                  "Folgenacht vor — mindestens fünf werden gebraucht.")
+        # Nachtrag §8.4: die headline nennt den Grund schon - kein zweiter Satz
+        detail = None
 
     # L2: die Bewertung der Nacht (nur Anzeige) - HRV-z der Nacht danach und
     # der zweiten Nacht gegen das eine Band.
     second_day = (date.fromisoformat(night_day) + timedelta(days=1)).isoformat()
     second = _night_z(data, second_day)
-    verdict = night_verdict((night.get("hrv") or {}).get("z"), (second.get("hrv") or {}).get("z"))
+    verdict = night_verdict((night.get("hrv") or {}).get("z"), (second.get("hrv") or {}).get("z"),
+                            _night_absence(data, second_day))
     # 0.74.4: die Worte der Karte sind die Worte der Werte-Zeilen (dieselbe Messung, z_word)
     verdict["z_hrv_word"] = (night.get("hrv") or {}).get("word")
     verdict["z_hrv_next_word"] = (second.get("hrv") or {}).get("word")
@@ -1662,14 +1697,14 @@ def night_after(data: dict[str, Any], activity_id: str) -> dict[str, Any]:
         "reference": reference,
         "verdict": verdict,
         "state": state, "headline": headline, "detail": detail,
+        # Nachtrag §8.2 (woertlich): die zwei Vergleiche der Seite beim Namen, dazu der Satz zur Zahl
         "caveat": (
-            "Die Nacht direkt nach einer Einheit ist die sauberste Messbedingung, die es "
-            "gibt — kein Alltag stört. Gelesen wird sie hier gegen deine eigene übliche "
-            "Antwort auf gleich große Einheiten, nicht gegen einen Normwert: der "
-            "Zusammenhang zwischen Last und HRV-Änderung ist glockenförmig, nicht gerade. "
-            "Eine sehr lockere und eine sehr harte Einheit können beide eine unauffällige "
-            "Nacht hinterlassen — aus entgegengesetzten Gründen. Und es bleibt die "
-            "Nachtmessung der Uhr, nicht die validierte Morgenmessung im Liegen. "
+            "Die Nacht direkt nach einer Einheit ist die sauberste Messung, die es gibt – kein Alltag "
+            "stört. Die App vergleicht sie zweimal: mit deinen normalen Nächten und mit den Nächten nach "
+            "früheren Einheiten ähnlicher Last. Der zweite Vergleich ist nötig, weil eine sehr lockere und "
+            "eine sehr harte Einheit beide eine unauffällige Nacht hinterlassen können – aus "
+            "entgegengesetzten Gründen. Gemessen hat die Uhr in der Nacht; genauer wäre eine Messung "
+            "morgens im Liegen. "
             + _night_number_sentence()
         ),
     }

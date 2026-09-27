@@ -4703,7 +4703,7 @@ class IntervalsIcuPanel extends HTMLElement {
       <div class="tnq">Wie hast du die Einheit verkraftet?</div>
       ${t.night.activity_date ? `<p class="tnafter">nach ${esc(dShort(t.night.activity_date))} · ${nname(t.night.activity_name)}</p>` : ""}
       <p class="tnhead">${esc(t.night.headline)}</p>
-      <p class="hint">${esc(t.night.detail)}</p>
+      ${t.night.detail ? `<p class="hint">${esc(t.night.detail)}</p>` : ""}
       ${this._nightVerdict(t.night.verdict)}` : "";
     const noneLine = t.night_none ? `<p class="hint">In den letzten sieben Tagen gab es keine Einheit – darum hier keine Nacht.</p>` : "";
     const night = pendLine || measured || noneLine ? `<div class="tnight">${pendLine}${measured}${noneLine}</div>` : "";
@@ -6550,10 +6550,12 @@ class IntervalsIcuPanel extends HTMLElement {
     const tone = TONE[v.key] || "held";
     const mark = tone === "unrated" ? ico("info", C.tx2, 18)
       : ico(tone === "worse" ? "warn" : "ok", tone === "worse" ? C.amber : C.green, 18);
-    const word = (w) => esc((w && w.text) || "");
-    const z1 = v.z_hrv != null ? `${word(v.z_hrv_word)} (${sign(v.z_hrv, 1)})` : "–";
+    // Nachtrag §8.1: Wort UND Zahl kommen fertig aus coach.z_word (`shown`, vom Nullpunkt weg gerundet) -
+    // das Panel rundet kein z selbst, sonst widerspricht die Klammer an den Grenzen dem Wort.
+    const said = (w) => (w && w.text ? `${esc(w.text)} (${sign(w.shown, 1)})` : "–");
+    const z1 = v.z_hrv != null ? said(v.z_hrv_word) : "–";
     // 0.74.2 (B2): `note` beginnt selbst mit "Zweite Nacht" - dann steht sie allein.
-    const second = v.z_hrv_next != null ? `Zweite Nacht: ${word(v.z_hrv_next_word)} (${sign(v.z_hrv_next, 1)})`
+    const second = v.z_hrv_next != null ? `Zweite Nacht: ${said(v.z_hrv_next_word)}`
       : (v.note ? esc(v.note) : "Zweite Nacht: –");
     // 0.74.2 (B1): bei "nicht bewertbar" sagt der Kopf darueber es schon - die
     // Karte traegt dann kein eigenes Label, nur die Zeile und die Regel.
@@ -6585,14 +6587,15 @@ class IntervalsIcuPanel extends HTMLElement {
       const dec = entry.unit === "h" ? 1 : 0;
       // 0.74.4 (SKIZZE_0.74.4 §3.4): Wortstufe (coach.z_word) und z; die Abweichung von der
       // ueblichen Antwort steht nicht mehr als Zahl hier - sie steckt im Satz darueber.
-      const word = (w) => esc((w && w.text) || "");
-      const usual = ref ? `nach solchen Einheiten sonst: ${word(ref.word)} (${sign(ref.mean, 1)})`
+      // Nachtrag §8.1: Wort und Zahl aus coach.z_word (`shown`), auch fuer ref.mean
+      const said = (w) => (w && w.text ? `${esc(w.text)} (${sign(w.shown, 1)})` : "–");
+      const usual = ref ? `nach solchen Einheiten sonst: ${said(ref.word)}`
                         : "zu wenige Vergleichsnächte";
       return `<div class="nrow">
         <span class="nlab"><b>${esc(entry.label)}</b>
           <em>deine Basislinie ${fmt(entry.baseline, dec)} ${esc(entry.unit)}</em></span>
         <span class="nval tn">${fmt(entry.value, dec)}<small>${esc(entry.unit)}</small></span>
-        <span class="nref"><b class="nz" style="color:${col}">${word(entry.word)} (${sign(entry.z, 1)})</b> · ${usual}</span>
+        <span class="nref"><b class="nz" style="color:${col}">${said(entry.word)}</b> · ${usual}</span>
       </div>`;
     }).join("");
 
@@ -6601,7 +6604,7 @@ class IntervalsIcuPanel extends HTMLElement {
       <div class="cmpverdict ${tone}">
         ${tone === "unrated" ? ico("info", C.tx2, 18)
           : ico(tone === "worse" ? "warn" : "ok", tone === "worse" ? C.amber : C.green, 18)}
-        <div><b>${esc(n.headline || "")}</b><span>${esc(n.detail || "")}</span></div></div>
+        <div><b>${esc(n.headline || "")}</b>${n.detail ? `<span>${esc(n.detail)}</span>` : ""}</div></div>
       ${this._nightVerdict(n.verdict)}
       <div class="nightbox">${rows}
         <details class="more"><summary>Wie das zu lesen ist</summary>

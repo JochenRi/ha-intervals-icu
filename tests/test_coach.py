@@ -817,8 +817,10 @@ check(coach.night_after(base_data, "gibtsnicht")["available"] is False,
 nowell = coach.night_after({"activities": base_data["activities"]}, hard_keys[-1])
 check(nowell["available"] is False, "19 nacht: Urteil ohne Wellness-Daten")
 # the caveat has to travel with the number, always
-check("glockenförmig" in result["caveat"], "19 nacht: Glockenform nicht genannt")
-check("Nachtmessung" in result["caveat"], "19 nacht: Messgrenze nicht genannt")
+# 0.74.4 Nachtrag §8.2 umgestellt: dieselben zwei Aussagen in Klartext (Glockenform, Messgrenze)
+check("aus entgegengesetzten Gründen" in result["caveat"], "19 nacht: Glockenform nicht genannt")
+check("Gemessen hat die Uhr in der Nacht; genauer wäre eine Messung morgens im Liegen." in result["caveat"],
+      "19 nacht: Messgrenze nicht genannt")
 
 # --- 20  where a session sits among comparable ones ---------------------------
 # The point: 11.4% decoupling means nothing against a population benchmark.
@@ -1546,9 +1548,10 @@ import day_context as _dc
 _K = hard_keys[-2]
 _base = coach.night_after(base_data, _K)
 _ref_sha = hashlib.sha256(json.dumps(_base, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
-# 0.74.4 nachgezogen: die TEXTE der Nacht sind neu (Skizze_0.74.4 §3), die Zahlen nicht - die haelt der
-# 0.74.4-Fingerabdruck gegen 0.74.3 (unten). Vorher: c9bb94f983b78a6dfa6bee69e32144c90444429c89d144c420d1f2e47681d305
-eq(_ref_sha, "e7aa6f487319fea0879032f44cd0a9698667b8776824a08e913ae5a2cec3fa64",
+# 0.74.4 nachgezogen: die TEXTE der Nacht sind neu (Skizze_0.74.4 §3; Nachtrag §8: shown, caveat, Regel "mehr als",
+# Satz zur zweiten Nacht), die Zahlen nicht - die haelt der 0.74.4-Fingerabdruck gegen 0.74.3 (unten).
+# Vorher: c9bb94f983b78a6dfa6bee69e32144c90444429c89d144c420d1f2e47681d305 (0.72.0), e7aa6f48… (ed837d5)
+eq(_ref_sha, "4246857edb25a606dffcc8254576b2706a088bd817a4f013496a7a372c17e95c",
    "0.72.1 Gegenprobe: Nacht ohne Etikett nicht bitgenau wie 0.74.4")
 _act_day = str(base_data["activities"][_K]["start_date_local"])[:10]
 _n1 = (date.fromisoformat(_act_day) + timedelta(days=1)).isoformat()
@@ -2097,12 +2100,13 @@ def _zl744(z, raw=None, base=None):
         return {"level": "ERR", "text": repr(exc)}
 
 
-# Stufen an ihren Grenzen, halboffen, beide Seiten gespiegelt (Rohwert auf der Seite von z)
-for _zv, _lv744 in ((0.49, 0), (0.5, 1), (0.99, 1), (1.0, 2), (1.99, 2), (2.0, 3)):
+# Stufen an ihren Grenzen, beide Seiten gespiegelt (Rohwert auf der Seite von z).
+# Nachtrag §8.1: alle drei Grenzen "mehr als" - genau 0,5 / 1,0 / 2,0 gehoeren zur unteren Stufe.
+for _zv, _lv744 in ((0.49, 0), (0.5, 0), (0.51, 1), (0.99, 1), (1.0, 1), (1.01, 2), (1.99, 2), (2.0, 2), (2.01, 3)):
     for _s in (1, -1):
         eq(_zl744(_s * _zv, 50 + _s, 50).get("level"), _lv744,
            f"0.74.4 §2 z_word: |z| = {_zv} ({'+' if _s > 0 else '-'}) ist nicht Stufe {_lv744}")
-eq([_zl744(z, 50 + (1 if z > 0 else -1), 50).get("text") for z in (0.3, 0.7, -1.3, -2.4, 2.0)],
+eq([_zl744(z, 50 + (1 if z > 0 else -1), 50).get("text") for z in (0.3, 0.7, -1.3, -2.4, 2.01)],
    ["im Normalbereich", "etwas über deinem Normalwert", "deutlich unter deinem Normalwert",
     "stark unter deinem Normalwert", "stark über deinem Normalwert"], "0.74.4 §2: die Wortstufen stehen nicht wörtlich")
 # unter/ueber aus dem Rohwert gegen die Basislinie, NICHT aus dem Vorzeichen von z (Ruhepuls: z ungünstig = negativ)
@@ -2174,17 +2178,51 @@ for _st, _pl in _cases744.items():
           and str((_pl.get("verdict") or {}).get("label")).startswith("Verglichen mit deinen normalen Nächten: "),
           f"0.74.4 §5: im Fall {_st} traegt ein Urteil seine Vergleichsbasis nicht")
 
-# zweite Nacht fehlt: "Zweite Nacht: kommt morgen"
+# Nachtrag §8.4: zweite Nacht ohne HRV - dieselbe Unterscheidung wie night_pending (0.74.3), EINE Hilfsfunktion.
+# frische Einheit: die zweite Nacht liegt nach dem letzten Wellness-Tag -> "fehlt noch"
 _last744 = coach.night_after(base_data, hard_keys[-1]).get("verdict") or {}
-eq((_last744.get("z_hrv_next"), _last744.get("note")), (None, "Zweite Nacht: kommt morgen"),
-   "0.74.4 §3.3: ohne zweite Nacht steht nicht 'Zweite Nacht: kommt morgen'")
-check((_vcases744["zu_viel"].get("note")) is None, "0.74.4 §3.3 Gegenprobe: mit zweiter Nacht steht 'kommt morgen'")
+_ld744 = sorted(base_data["wellness"])[-1]
+_sd_last744 = (date.fromisoformat(str(base_data["activities"][hard_keys[-1]]["start_date_local"])[:10]) + timedelta(days=2)).isoformat()
+check(_sd_last744 > _ld744, "0.74.4 §8.4 Fixture: die zweite Nacht der letzten Einheit liegt nicht nach dem letzten Wellness-Tag")
+eq((_last744.get("z_hrv_next"), _last744.get("note")), (None, "Zweite Nacht: fehlt noch"),
+   "0.74.4 §8.4: frische Einheit ohne zweite Nacht steht nicht als 'Zweite Nacht: fehlt noch'")
+# alte Einheit, zweite Nacht im Bestand, aber ohne HRV -> "keine Werte geliefert"
+_old744 = _cp.deepcopy(base_data)
+_k_old744 = hard_keys[-2]
+_sd_old744 = (date.fromisoformat(str(_old744["activities"][_k_old744]["start_date_local"])[:10]) + timedelta(days=2)).isoformat()
+_old744["wellness"][_sd_old744].pop("hrv")
+_ov744 = coach.night_after(_old744, _k_old744).get("verdict") or {}
+eq((_ov744.get("z_hrv_next"), _ov744.get("note")), (None, "Zweite Nacht: keine Werte geliefert"),
+   "0.74.4 §8.4: alte Einheit, zweite Nacht ohne HRV, steht nicht als 'keine Werte geliefert'")
+# Gegenprobe: der ganze Tag fehlt im Bestand (Luecke vor dem letzten Wellness-Tag) -> ebenfalls "keine Werte geliefert"
+_gap744 = _cp.deepcopy(base_data); _gap744["wellness"].pop(_sd_old744)
+eq((coach.night_after(_gap744, _k_old744).get("verdict") or {}).get("note"), "Zweite Nacht: keine Werte geliefert",
+   "0.74.4 §8.4 Gegenprobe: Luecke vor dem letzten Wellness-Tag steht nicht als 'keine Werte geliefert'")
+check((_vcases744["zu_viel"].get("note")) is None, "0.74.4 §8.4 Gegenprobe: mit gemessener zweiter Nacht steht ein Satz zur zweiten Nacht")
+# "kommt morgen" steht nirgends mehr
+check("kommt morgen" not in (Path(coach.__file__)).read_text(encoding="utf-8"), "0.74.4 §8.4: 'kommt morgen' steht noch in coach.py")
+# EINE Hilfsfunktion, gelesen von _last_measured_night UND night_after; keiner vergleicht das Nachtdatum selbst
+import ast as _ast744  # noqa: E402
+import inspect as _insp744  # noqa: E402
+check(callable(getattr(coach, "_night_absence", None)), "0.74.4 §8.4: die Hilfsfunktion _night_absence fehlt")
+for _fn744 in ("_last_measured_night", "night_after"):
+    _src744 = _insp744.getsource(getattr(coach, _fn744))
+    _calls744 = {n.func.id for n in _ast744.walk(_ast744.parse(_src744)) if isinstance(n, _ast744.Call) and isinstance(n.func, _ast744.Name)}
+    check("_night_absence" in _calls744, f"0.74.4 §8.4: {_fn744} liest _night_absence nicht")
+    check("> current" not in _src744 and '"pending" if' not in _src744, f"0.74.4 §8.4: {_fn744} fuehrt eine eigene pending-Unterscheidung")
+if callable(getattr(coach, "_night_absence", None)):
+    eq((coach._night_absence(base_data, _sd_last744), coach._night_absence(base_data, _sd_old744), coach._night_absence(base_data, _ld744)),
+       ("pending", "missing", "missing"), "0.74.4 §8.4: _night_absence trennt nicht nach dem letzten Wellness-Tag (Grenze: der Tag selbst ist 'missing')")
+
+# Nachtrag §8.4: unknown - detail entfaellt, die headline nennt den Grund schon
+eq((_fr.get("state"), _fr.get("detail")), ("unknown", None), "0.74.4 §8.4: bei 'unknown' steht noch ein detail")
+check(_cases744["usual"].get("detail") is not None, "0.74.4 §8.4 Gegenprobe: die bewertete Nacht verliert ihr detail")
 
 # die Wortstufen reisen in der Payload: je Signal, an der Referenz, an beiden Naechten der Karte
 _u744 = _cases744["usual"]
 for _key, _e in (_u744.get("night") or {}).items():
     _w = _e.get("word") or {}
-    _lvl = 0 if abs(_e["z"]) < 0.5 else 1 if abs(_e["z"]) < 1.0 else 2 if abs(_e["z"]) < 2.0 else 3
+    _lvl = 0 if abs(_e["z"]) <= 0.5 else 1 if abs(_e["z"]) <= 1.0 else 2 if abs(_e["z"]) <= 2.0 else 3
     eq(_w.get("level"), _lvl, f"0.74.4 §2: die Stufe von {_key} passt nicht zu z {_e['z']}")
     if _lvl:
         check(("über" in str(_w.get("text"))) == (_e["value"] > _e["baseline"]),
@@ -2194,10 +2232,10 @@ check(_rhr744.get("z", 0) < 0 and _rhr744.get("value", 0) > _rhr744.get("baselin
       f"0.74.4 §2 Ruhepuls in der Payload: hoher Ruhepuls (z ungünstig) nicht als 'über' ({_rhr744})")
 # Referenz: der uebliche Ruhepuls nach solchen Einheiten liegt HOEHER (z negativ) -> "über"
 _rref744 = (_u744.get("reference") or {}).get("rhr") or {}
-check(_rref744.get("mean", 0) <= -0.5 and "über" in str((_rref744.get("word") or {}).get("text")),
+check(_rref744.get("mean", 0) < -0.5 and "über" in str((_rref744.get("word") or {}).get("text")),
       f"0.74.4 §3.4 Ruhepuls-Referenz: der uebliche hoehere Ruhepuls steht nicht als 'über' ({_rref744})")
 _href744 = (_u744.get("reference") or {}).get("hrv") or {}
-check(_href744.get("mean", 0) <= -0.5 and "unter" in str((_href744.get("word") or {}).get("text")),
+check(_href744.get("mean", 0) < -0.5 and "unter" in str((_href744.get("word") or {}).get("text")),
       f"0.74.4 §3.4 HRV-Referenz: die uebliche gedaempfte HRV steht nicht als 'unter' ({_href744})")
 _uv744 = _u744.get("verdict") or {}
 eq(_uv744.get("z_hrv_word"), (_u744["night"].get("hrv") or {}).get("word"), "0.74.4: die Karte traegt ein anderes Wort als die Werte-Zeile")
@@ -2223,21 +2261,28 @@ eq(coach._night_label(_d744, _n1), {"day": f"{_n1[8:10]}.{_n1[5:7]}.", "label": 
 # §3.3 Regel (fuer "Wie wird das bewertet?"): woertlich, Zahlen aus den Konstanten
 _RULE744 = ("Hier geht es darum, wie du die Einheit verkraftet hast – nicht darum, ob du heute trainieren kannst. "
             "Verglichen wird deine HRV in den zwei Nächten nach der Einheit mit deinen letzten 60 Nächten. "
-            "Deutlich darunter (ab 1,0) oder beide Nächte etwas darunter (ab 0,5): war zu viel. Etwas darunter: hat Kraft gekostet. "
-            "Sonst: gut verkraftet. "
+            "Deutlich darunter (mehr als 1,0) oder beide Nächte etwas darunter (mehr als 0,5): war zu viel. "
+            "Etwas darunter (mehr als 0,5): hat Kraft gekostet. Sonst: gut verkraftet. "
             "Zusätzlich vergleicht die App mit früheren Einheiten ähnlicher Last – wie du nach solchen Einheiten sonst schläfst. "
             "Die Zahl in Klammern sagt, wie weit du vom Normalwert weg bist; 1,0 ist die Schwankung an einem gewöhnlichen Tag. "
             "Die Grenzen sind eine Festlegung, keine Messung. Der Trainer richtet sich nicht danach.")
 eq(_uv744.get("rule"), _RULE744, "0.74.4 §3.3: die Regel steht nicht wörtlich")
-for _cn, _new, _needle in (("NIGHT_TOO_MUCH_Z", -1.2, "Deutlich darunter (ab 1,2)"), ("NIGHT_DIGESTED_Z", -0.6, "etwas darunter (ab 0,6)"),
+for _cn, _new, _needle in (("NIGHT_TOO_MUCH_Z", -1.2, "Deutlich darunter (mehr als 1,2)"),
+                           ("NIGHT_DIGESTED_Z", -0.6, "beide Nächte etwas darunter (mehr als 0,6)"),
+                           ("NIGHT_DIGESTED_Z", -0.6, "Etwas darunter (mehr als 0,6): hat Kraft gekostet."),
                            ("DAY_SWING_SD", 1.3, "1,3 ist die Schwankung")):
     _saved744 = getattr(coach, _cn, None)
     setattr(coach, _cn, _new)
     _rr744 = coach.night_verdict(-0.1, None).get("rule")
     setattr(coach, _cn, _saved744)
     check(_needle in str(_rr744), f"0.74.4 §3.3: die Zahl aus {_cn} steht als Literal in der Regel")
-check("Die Zahl in Klammern sagt, wie weit du vom Normalwert weg bist; 1,0 ist die Schwankung an einem gewöhnlichen Tag."
-      in str(_u744.get("caveat")), "0.74.4 §3.4: 'Wie das zu lesen ist' traegt den Satz zur Zahl nicht")
+eq(_u744.get("caveat"),
+   "Die Nacht direkt nach einer Einheit ist die sauberste Messung, die es gibt – kein Alltag stört. Die App vergleicht sie zweimal: "
+   "mit deinen normalen Nächten und mit den Nächten nach früheren Einheiten ähnlicher Last. Der zweite Vergleich ist nötig, weil "
+   "eine sehr lockere und eine sehr harte Einheit beide eine unauffällige Nacht hinterlassen können – aus entgegengesetzten "
+   "Gründen. Gemessen hat die Uhr in der Nacht; genauer wäre eine Messung morgens im Liegen. "
+   "Die Zahl in Klammern sagt, wie weit du vom Normalwert weg bist; 1,0 ist die Schwankung an einem gewöhnlichen Tag.",
+   "0.74.4 §8.2: 'Wie das zu lesen ist' steht nicht wörtlich (samt Satz zur Zahl)")
 
 # die alten Fachwoerter stehen in keinem Text der Nacht mehr (Backend-Seite; das Panel prueft test_panel_views)
 _all744 = list(_cases744.values()) + [_a, _b, coach.night_after(_Mh, "luecke"), coach.night_after(base_data, hard_keys[-1])]
@@ -2262,22 +2307,86 @@ def _nums744(pl):
 # Regel 9: die Panel-Fixture der Nacht traegt, was der Erzeuger schreibt - jedes Wort aus z_word
 # (Werte-Zeilen: Rohwert gegen Basislinie; Referenz: die Seite des ueblichen Werts), Labels, Regel.
 _fxn = _fx[_fx.index("function night(kind) {"):_fx.index("function laps(kind)")]
-_rows744 = _re74.findall(r'value: ([\d.]+), baseline: ([\d.]+), z: (-?[\d.]+),\s*word: \{ level: (\d), text: "([^"]+)" \}', _fxn)
+_rows744 = _re74.findall(r'value: ([\d.]+), baseline: ([\d.]+), z: (-?[\d.]+),\s*word: \{ level: (\d), text: "([^"]+)", shown: (-?[\d.]+) \}', _fxn)
 check(len(_rows744) >= 3, f"0.74.4 Regel 9: zu wenige Werte-Zeilen mit Wort in der Fixture gefunden ({len(_rows744)})")
-for _val, _base, _zz, _lvl, _txt in _rows744:
-    eq(_zl744(float(_zz), float(_val), float(_base)), {"level": int(_lvl), "text": _txt},
+for _val, _base, _zz, _lvl, _txt, _shw in _rows744:
+    eq(_zl744(float(_zz), float(_val), float(_base)), {"level": int(_lvl), "text": _txt, "shown": float(_shw)},
        f"0.74.4 Regel 9: Fixture-Wort zu z {_zz} ({_val} gegen {_base}) ist nicht das des Erzeugers")
 _dir744 = {k: d for k, _f, _l, d, _lab, _u in coach.NIGHT_FIELDS}
-_refs744 = _re74.findall(r'(hrv|rhr|sleep): \{ mean: (-?[\d.]+), sd: [\d.]+, n: \d+, word: \{ level: (\d), text: "([^"]+)" \}', _fxn)
+_refs744 = _re74.findall(r'(hrv|rhr|sleep): \{ mean: (-?[\d.]+), sd: [\d.]+, n: \d+, word: \{ level: (\d), text: "([^"]+)", shown: (-?[\d.]+) \}', _fxn)
 check(len(_refs744) == 3, f"0.74.4 Regel 9: die drei Referenz-Worte der Fixture nicht gefunden ({len(_refs744)})")
-_base_ref744 = {k: {"mean": float(m)} for k, m, _l, _t in _refs744}
+_base_ref744 = {k: {"mean": float(m)} for k, m, _l, _t, _sh in _refs744}
 _made744 = coach._reference_words(_base_ref744) if hasattr(coach, "_reference_words") else {}
-for _k, _m, _lvl, _txt in _refs744:
-    eq(((_made744.get(_k) or {}).get("word")), {"level": int(_lvl), "text": _txt},
+for _k, _m, _lvl, _txt, _shw in _refs744:
+    eq(((_made744.get(_k) or {}).get("word")), {"level": int(_lvl), "text": _txt, "shown": float(_shw)},
        f"0.74.4 Regel 9: Fixture-Referenzwort {_k} ist nicht das des Erzeugers")
 check(all(f'"{_t}"' in _fxn for _t in (_L744["zu_viel"], _L744["verdaut"])), "0.74.4 Regel 9: die Karten-Labels der Fixture sind nicht die des Erzeugers")
 _fxrule = "".join(_re74.findall(r'"([^"]*)"', _fx[_fx.index("const NIGHT_RULE = "):_fx.index("\nconst NIGHT_NUMBER", _fx.index("const NIGHT_RULE = "))]))
 eq(_fxrule, _uv744.get("rule"), "0.74.4 Regel 9: die Regel der Fixture ist nicht die des Erzeugers")
+
+# ── Nachtrag §8.1: Wort, gezeigte Zahl und Urteil an den Grenzen - kein Paar widerspricht sich ─────
+# shown = z auf eine Nachkommastelle VOM NULLPUNKT WEG (Decimal(str(z)), ROUND_UP). Dann gilt ohne Ausnahme:
+# |gezeigt| > 0,5 <=> Wort "etwas" oder staerker <=> Urteil rechnet "darunter" (erste Nacht, z < NIGHT_DIGESTED_Z);
+# |gezeigt| > 1,0 <=> Wort "deutlich" oder staerker <=> "zu viel" allein aus der ersten Nacht.
+_T81 = ((-0.46, -0.5, 0, "verdaut"), (-0.50, -0.5, 0, "verdaut"), (-0.53, -0.6, 1, "gekostet"),
+        (-0.96, -1.0, 1, "gekostet"), (-1.00, -1.0, 1, "gekostet"), (-1.04, -1.1, 2, "zu_viel"),
+        (-1.97, -2.0, 2, "zu_viel"), (-2.00, -2.0, 2, "zu_viel"), (-2.01, -2.1, 3, "zu_viel"))
+for _z81, _sh81, _lv81, _key81 in _T81:
+    for _s81 in (1, -1):
+        _zz = _s81 * _z81
+        _w81 = _zl744(_zz, 50 - _s81, 50)  # Rohwert auf der Seite von z
+        _k81 = coach.night_verdict(_zz, None).get("key")
+        _want81 = (_s81 * _sh81, _lv81, _key81 if _zz < 0 else "verdaut")
+        eq((_w81.get("shown"), _w81.get("level"), _k81), _want81, f"0.74.4 §8.1 Tabelle z {_zz:+.2f}: gezeigt/Stufe/Urteil")
+        _shv = _w81.get("shown")
+        _lvv = _w81.get("level") if isinstance(_w81.get("level"), int) else -1
+        check(isinstance(_shv, float) and (abs(_shv) > 0.5) == (_lvv >= 1) and (abs(_shv) > 1.0) == (_lvv >= 2)
+              and (abs(_shv) > 2.0) == (_lvv >= 3), f"0.74.4 §8.1 z {_zz:+.2f}: gezeigte Zahl {_shv} und Wortstufe {_lvv} widersprechen sich")
+        if _zz < 0:
+            check((_lvv >= 1) == (_k81 != "verdaut") and (_lvv >= 2) == (_k81 == "zu_viel"),
+                  f"0.74.4 §8.1 z {_zz:+.2f}: Wortstufe {_lvv} und Urteil {_k81} widersprechen sich")
+        check(("im Normalbereich" == _w81.get("text")) == (_lvv == 0), f"0.74.4 §8.1 z {_zz:+.2f}: Wort passt nicht zur Stufe")
+# vom Nullpunkt weg, kein "-0,0". (float*10 mit Aufrunden ergibt auf allen Eingaben mit 2-3 Nachkommastellen dasselbe -
+# nachgerechnet 26./27.09. an 1.998 Werten; der vorgeschriebene Weg Decimal(str(z)) + ROUND_UP steht deshalb als
+# Quelltext-Waechter darunter, nicht als Zahlenfall.)
+eq([_zl744(z).get("shown") for z in (0.3, -0.7, 1.1, -2.3, 0.07, -0.04, 0.0, -0.0)],
+   [0.3, -0.7, 1.1, -2.3, 0.1, -0.1, 0.0, 0.0], "0.74.4 §8.1: shown nicht vom Nullpunkt weg ueber Decimal gerundet")
+check(all(str(_zl744(z).get("shown")) == "0.0" for z in (0.0, -0.0)), "0.74.4 §8.1: z = 0 wird als -0,0 gezeigt")
+check(json.dumps(_zl744(-0.53)) == '{"level": 1, "text": "etwas unter deinem Normalwert", "shown": -0.6}',
+      "0.74.4 §8.1: z_word ist nicht JSON-faehig oder traegt andere Felder")
+eq(_zl744(None).get("shown"), None, "0.74.4 §8.1: z_word ohne z erfindet eine Zahl")
+_zs744 = _insp744.getsource(coach.z_shown) if hasattr(coach, "z_shown") else ""
+check("Decimal(str(z))" in _zs744 and "ROUND_UP" in _zs744 and "* 10" not in _zs744 and "*10" not in _zs744,
+      "0.74.4 §8.1: z_shown rechnet nicht ueber Decimal(str(z)) mit ROUND_UP")
+check("z_shown(" in _insp744.getsource(coach.z_word), "0.74.4 §8.1: z_word liest z_shown nicht (zweiter Rundungsweg)")
+
+# End-to-End ueber night_after: die letzte Einheit (keine zweite Nacht) bei 61 Daempfungen quer ueber 0,5 und 1,0.
+# Geprueft an der Payload, die das Panel bekommt: Werte-Zeile, Karte und Urteil.
+_hits81 = {"unter05": 0, "05bis10": 0, "ueber10": 0}
+for _i81 in range(61):
+    _pl81 = coach.night_after(night_history(last_damp=7.0 + _i81 * 0.1), hard_keys[-1])
+    _h81 = (_pl81.get("night") or {}).get("hrv") or {}
+    _v81 = _pl81.get("verdict") or {}
+    _w81 = _h81.get("word") or {}
+    _shv, _lvv, _k81 = _w81.get("shown"), _w81.get("level"), _v81.get("key")
+    if _shv is None or _lvv is None:
+        check(False, f"0.74.4 §8.1 E2E Daempfung {7.0 + _i81 * 0.1:.1f}: Wort oder gezeigte Zahl fehlt")
+        continue
+    _hits81["unter05" if _h81["z"] >= -0.5 else "05bis10" if _h81["z"] >= -1.0 else "ueber10"] += 1
+    ok81 = (_v81.get("z_hrv_word") == _w81 and _v81.get("z_hrv") == _h81.get("z")
+            and (abs(_shv) > 0.5 and _shv < 0) == (_k81 != "verdaut")
+            and (abs(_shv) > 1.0 and _shv < 0) == (_k81 == "zu_viel")
+            and (_lvv >= 1 and _shv < 0) == (_k81 != "verdaut"))
+    check(ok81, f"0.74.4 §8.1 E2E z {_h81.get('z')}: gezeigt {_shv}, Stufe {_lvv}, Urteil {_k81} widersprechen sich")
+check(all(v >= 3 for v in _hits81.values()), f"0.74.4 §8.1 E2E Trefferzusicherung: nicht jede Zone getroffen ({_hits81})")
+# jedes Wort in jeder Payload dieses Blocks traegt shown passend zur Stufe (Werte, Referenz, Karte)
+for _pl in list(_cases744.values()) + [_a, _b]:
+    _ws81 = [e.get("word") for e in (_pl.get("night") or {}).values()] + [r.get("word") for r in (_pl.get("reference") or {}).values()]
+    _ws81 += [(_pl.get("verdict") or {}).get("z_hrv_word"), (_pl.get("verdict") or {}).get("z_hrv_next_word")]
+    for _w in [w for w in _ws81 if w]:
+        check(isinstance(_w.get("shown"), float) and (abs(_w["shown"]) > 0.5) == (_w.get("level", 0) >= 1)
+              and (abs(_w["shown"]) > 1.0) == (_w.get("level", 0) >= 2),
+              f"0.74.4 §8.1: Wort {_w} in der Payload ({_pl.get('state')}) widerspricht seiner gezeigten Zahl")
 
 # Soll-Fingerabdruck gemessen an 4549bc3 (0.74.3) vor jeder Aenderung, ueber alle Faelle dieses Blocks
 _fp744 = hashlib.sha256(json.dumps([_nums744(p) for p in _all744], sort_keys=True, ensure_ascii=False).encode()).hexdigest()

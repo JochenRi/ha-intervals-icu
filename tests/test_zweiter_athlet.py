@@ -537,7 +537,24 @@ check("Z10: die Karte traegt dasselbe Wort wie die Werte-Zeile (und es gibt eins
       _h10.get("word") is not None and (_p10.get("verdict") or {}).get("z_hrv_word") == _h10.get("word"))
 check("Z10: das Karten-Label nennt seine Vergleichsbasis",
       str((_p10.get("verdict") or {}).get("label")).startswith("Verglichen mit deinen normalen Nächten: "))
-eq("Z10: ohne zweite Nacht 'Zweite Nacht: kommt morgen'", (_p10.get("verdict") or {}).get("note"), "Zweite Nacht: kommt morgen")
+# Nachtrag §8.4: seine zweite Nacht liegt nach seinem letzten Wellness-Tag -> "fehlt noch"
+eq("Z10: frische Einheit ohne zweite Nacht 'Zweite Nacht: fehlt noch'", (_p10.get("verdict") or {}).get("note"), "Zweite Nacht: fehlt noch")
+# Nachtrag §8.1: gezeigte Zahl vom Nullpunkt weg, passend zur Stufe, aus SEINEM z
+for _k10, _e10 in (_p10.get("night") or {}).items():
+    _w10 = _e10.get("word") or {}
+    check(f"Z10 §8.1: {_k10} gezeigt {_w10.get('shown')} passt zu z {_e10.get('z')} und Stufe {_w10.get('level')}",
+          isinstance(_w10.get("shown"), float) and abs(_w10["shown"]) >= abs(_e10["z"]) and abs(_w10["shown"]) - abs(_e10["z"]) < 0.1
+          and (abs(_w10["shown"]) > 0.5) == ((_w10.get("level") or 0) >= 1))
+# eine ALTE Einheit von ihm, deren zweite Nacht im Bestand liegt, aber ohne HRV -> "keine Werte geliefert"
+_act10b = (_start10 + _dtz.timedelta(days=60)).isoformat()
+_dn["activities"]["z10b"] = {"start_date_local": _act10b + "T18:00:00", "type": "Ride", "name": "Mittwochsrunde",
+                             "icu_training_load": 90, "icu_intensity": 84, "moving_time": 5400}
+_dn["wellness"][(_start10 + _dtz.timedelta(days=62)).isoformat()].pop("hrv")
+_n10b = FakeConn(); ws.websocket_night(None, _n10b, {"id": 22, "activity_id": "z10b"})
+_p10b = (_n10b.results or [{}])[0]
+eq("Z10 §8.4: alte Einheit, zweite Nacht ohne HRV -> 'Zweite Nacht: keine Werte geliefert'",
+   (_p10b.get("verdict") or {}).get("note"), "Zweite Nacht: keine Werte geliefert")
+eq("Z10 §8.4: keine Zahl des ersten Athleten", leaks(_p10b), [])
 eq("Z10: keine Zahl des ersten Athleten in der Nacht", leaks(_p10), [])
 
 print(f"\ntest_zweiter_athlet: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
