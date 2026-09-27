@@ -1324,11 +1324,11 @@ _fbt = coach.today(_fb)
 eq(_fbt["bands"]["hrv"]["weighted"], False,
    "31 rückfall: unter Σw=30 wird trotzdem gewichtet")
 _note = _fbt["bands"]["hrv"].get("note", "")
-check("25" in _note and "30" in _note and "35 Tage sind etikettiert" in _note,
+check("25 von 30" in _note and "35 Tage markiert" in _note,
       f"31 rückfall: Hinweis nennt die Zahlen nicht: {_note!r}")
-check("zurückgefallen" in _note, "31 rückfall: Hinweis benennt den Rückfall nicht")
+check("zählen im Normalwert gerade voll mit" in _note, "31 rückfall: Hinweis benennt den Rückfall nicht")
 _fbs = coach.state(_fb)
-check(_fbs.get("baseline_note") and "belastbare" in _fbs["baseline_note"],
+check(_fbs.get("baseline_note") and "unmarkierte" in _fbs["baseline_note"],
       "31 rückfall: Trainerurteil trägt den Hinweis nicht")
 check(_fbt.get("context_note") and "25" in _fbt["context_note"],
       "31 rückfall: today() reicht den Hinweis nicht durch")
@@ -2986,7 +2986,8 @@ def _proj747(t):
     for k in ("tension", "band_scale", "signals_gap"):
         t.pop(k, None)
     for s in t.get("signals") or []:
-        for k in ("system", "limit", "word", "meaning", "about"):
+        # 0.74.9 A2: `line` (Wort der gelben Linie) ist neu - alles andere bleibt bitgleich
+        for k in ("system", "limit", "word", "meaning", "about", "line"):
             s.pop(k, None)
     return t
 
@@ -3272,6 +3273,90 @@ _fx_dec = _fx748[_fx748.index("function context(kind)"):]
 _fx_dec = _fx_dec[_fx_dec.index("decoupling: {"):_fx_dec.index("ef: {")]
 _fx_keys = set(_re748.findall(r"(\w+):", _fx_dec)) - {"decoupling"}
 eq(sorted(_fx_keys ^ _prod_keys), [], "0.74.8 Regel 9: Felder der Fixture-Zeile und des Erzeugers unterscheiden sich")
+
+# --- 0.74.9 A5 (SKIZZE_0.74.9): swc = SWC_SD und _z_series(window=baseline.WINDOW), bitgleich --------------------
+# Fingerabdruck eingefroren auf v0.74.8 (89cbfc7) VOR der ersten Zeile 0.74.9: state() ganz und state_series() ueber
+# die Bestaende von 0.74.7 plus eine Reihe 7-Tage-Mittel um die Grenze -SWC_SD (strained gegen ready).
+_sweep749 = [build(overrides={day(-_k): {"hrv": _h} for _k in range(7)}) for _h in (46.0, 47.5, 49.0, 49.1, 49.2, 49.3, 49.4, 49.6, 50.0, 50.5)]
+_fp749_inputs = _fp747_inputs + _sweep749
+_fp749 = _fp746([[coach.state_series(_d), coach.state(_d)] for _d in _fp749_inputs])
+eq(_fp749, "711b17e243ca5fc7", "0.74.9 A5 Fingerabdruck: state/state_series weicht von v0.74.8 ab")
+# Trefferzusicherung (Regel 6): die Reihe trifft BEIDE Zweige der swc-Grenze, und das Fenster der Serie ist kuerzer
+# als der Bestand (sonst liefe window ins Leere)
+_st749 = [coach.state(_d)["state"] for _d in _sweep749]
+check("strained" in _st749 and "ready" in _st749, f"0.74.9 A5: die Reihe trifft die swc-Grenze nicht ({_st749})")
+# ...und liegt DICHT an ihr: je eine Eingabe im Zehntel darunter und darueber (sonst sieht der Fingerabdruck eine
+# verschobene Grenze nicht - Mutation swc x 1,2 blieb mit der ersten Reihe gruen)
+_wz749 = [coach.state(_d).get("week_z") for _d in _sweep749]
+check(any(-coach.SWC_SD - 0.1 < (_w or 0) < -coach.SWC_SD for _w in _wz749) and any(-coach.SWC_SD < (_w or 0) < -coach.SWC_SD + 0.1 for _w in _wz749),
+      f"0.74.9 A5: keine Eingabe im Zehntel an der Grenze ({[round(_w or 0, 2) for _w in _wz749]})")
+check(len(build()["wellness"]) > _bl746.WINDOW, "0.74.9 A5: der Bestand ist nicht laenger als das Fenster")
+
+# Quelltext-Waechter A5: die Zahl kommt aus der Konstante, nicht als Literal (auf v0.74.8 rot, obwohl bitgleich)
+import inspect as _i749  # noqa: E402
+_s749 = _i749.getsource(coach.state)
+check("swc = 0.5" not in _s749 and "swc = SWC_SD" in _s749, "0.74.9 A5: state() rechnet swc als Literal statt SWC_SD")
+check("window: int = baseline.WINDOW" in _i749.getsource(coach._z_series),
+      "0.74.9 A5: _z_series hat window=60 als Literal statt baseline.WINDOW")
+eq(_i749.signature(coach._z_series).parameters["window"].default, _bl746.WINDOW, "0.74.9 A5: _z_series-Fenster ist nicht WINDOW")
+
+# --- 0.74.9 A1: negative Entkopplung, der Satz an EINER Stelle (coach) - wörtlich nach Skizze -------------------
+_A1_749 = ("die zweite Hälfte lief mit weniger Puls je Watt als die erste. Das passiert, wenn in der ersten Hälfte "
+           "Minuten mit wenig Leistung liegen – Aufwärmen, Rollen, Ampeln – oder wenn die zweite Hälfte kühler oder "
+           "flacher war. Nach Friels Grenzen lässt sich das nicht einordnen.")
+eq(getattr(coach, "DECOUPLING_UNJUDGED_TEXT", None), _A1_749, "0.74.9 A1: der Satz zur negativen Entkopplung ist nicht wörtlich")
+check("meist vom Aufwärmen" not in _coach_src, "0.74.9 A1: der alte Satz (Aufwärmen als Ursache) steht noch in coach.py")
+for _v, _want in _UNJ[:5]:
+    _c749 = coach.session_context(_grp748(6, values=_vals, value=_v), "me")
+    eq(_c749.get("decoupling_unjudged_text"), _A1_749 if _want else None,
+       f"0.74.9 A1: session_context liefert den Satz bei {_v} falsch")
+# Regel 9: die Fixture traegt denselben Satz, nur im Fall "negativ" (sonst null wie der Erzeuger)
+eq(_jsconst748("CTX_UNJUDGED_TEXT") if "const CTX_UNJUDGED_TEXT = " in _fx748 else None, _A1_749,
+   "0.74.9 A1 Regel 9: Fixture CTX_UNJUDGED_TEXT weicht vom Erzeuger ab")
+_fxc749 = _fx748[_fx748.index("function context(kind)"):]
+_fxc749 = _fxc749[:_fxc749.index('if (kind === "duenn")')]
+check("decoupling_unjudged_text: null" in _fxc749 and "decoupling_unjudged_text: CTX_UNJUDGED_TEXT" in _fxc749,
+      "0.74.9 A1 Regel 9: Fixture context traegt decoupling_unjudged_text nicht wie der Erzeuger (null / Satz)")
+
+# --- 0.74.9 A2: die gelbe Linie im Diagramm, je Signal, an EINER Stelle (SIGNAL_WORDS) ----------------------------
+_A2_749 = {"hrv": "Einbruch unter", "rhr": "auffällig hoch über", "sleep": "ungewöhnlich kurz unter"}
+eq({_k: _w.get("line") for _k, _w in coach.SIGNAL_WORDS.items()}, _A2_749, "0.74.9 A2: SIGNAL_WORDS.line nicht wörtlich")
+# build() hat konstanten Schlaf (kein Band, keine Kachel) - hier mit Streuung, damit alle drei Kacheln stehen
+_b749s = build()
+for _i, _d in enumerate(sorted(_b749s["wellness"])):
+    _b749s["wellness"][_d]["sleepSecs"] = 7.5 * 3600 + ((_i * 3) % 5 - 2) * 600
+_t749 = coach.today(_b749s)
+eq({_s["key"]: _s.get("line") for _s in _t749.get("signals") or []}, _A2_749,
+   "0.74.9 A2: die Kacheln tragen ihr Linien-Wort nicht aus SIGNAL_WORDS")
+# Randfall Schlaf ohne Band (build(): konstanter Schlaf): zwei Kacheln, jede mit ihrem Wort, keine Schlaf-Kachel
+eq({_s["key"]: _s.get("line") for _s in coach.today(build()).get("signals") or []},
+   {"hrv": "Einbruch unter", "rhr": "auffällig hoch über"}, "0.74.9 A2 Randfall Schlaf ohne Band")
+for _k, _w in coach.SIGNAL_WORDS.items():
+    _blk749 = _fx747[_fx747.find(f"  {_k}: {{ system:"):]
+    _blk749 = _blk749[:_blk749.find("},")]
+    check(f'line: "{_w.get("line")}"' in _blk749, f"0.74.9 A2 Regel 9: Fixture SIGW.{_k}.line weicht von coach.SIGNAL_WORDS ab")
+
+# --- 0.74.9 A3: der Hinweis, wenn die Gewichtung noch nicht greift - wörtlich, Zahlen aus denselben Variablen ------
+_A3_749 = ("Deine markierten Tage zählen im Normalwert gerade voll mit – für die Gewichtung fehlen noch unmarkierte "
+           "Tage (25 von 30 nötigen, 35 Tage markiert).")
+eq(_fbt["bands"]["hrv"].get("note"), _A3_749, "0.74.9 A3: der Hinweis (Band) ist nicht wörtlich")
+eq(_fbs.get("baseline_note"), _A3_749, "0.74.9 A3: der Hinweis (Zustand) ist nicht wörtlich")
+eq(_fbt.get("context_note"), _A3_749, "0.74.9 A3: Heute (context_note) zeigt nicht den neuen Hinweis")
+# Einzahl und Komma: ein markierter Tag, Summe mit Nachkommastelle; die Zahl folgt MIN_WEIGHT_SUM
+import day_context as _dc749  # noqa: E402
+_b749 = _bl746.Band(1.0, 0.1, False, 29.5, 1)
+eq(_bl746.fallback_note(_b749), "Deine markierten Tage zählen im Normalwert gerade voll mit – für die Gewichtung "
+   "fehlen noch unmarkierte Tage (29,5 von 30 nötigen, 1 Tag markiert).", "0.74.9 A3: Einzahl/Komma falsch")
+_old749 = _dc749.MIN_WEIGHT_SUM
+try:
+    _dc749.MIN_WEIGHT_SUM = 45.0
+    check("von 45 nötigen" in (_bl746.fallback_note(_b749) or ""), "0.74.9 A3: die Zahl ist ein Literal statt MIN_WEIGHT_SUM")
+finally:
+    _dc749.MIN_WEIGHT_SUM = _old749
+eq((_bl746.fallback_note(None), _bl746.fallback_note(_bl746.Band(1.0, 0.1, True, 40.0, 3)),
+    _bl746.fallback_note(_bl746.Band(1.0, 0.1, False, 60.0, 0))), (None, None, None),
+   "0.74.9 A3: Hinweis ohne Anlass (kein Band / gewichtet / nichts markiert)")
+check("zurückgefallen" not in _i749.getsource(_bl746), "0.74.9 A3: der alte Text steht noch in baseline.py")
 
 print(f"test_coach: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:

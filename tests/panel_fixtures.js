@@ -760,14 +760,18 @@ function week(kind) {
 }
 
 /* 0.74.7 (SKIZZE_0.74.7 §2.2/§2.4): die Kachel-Texte und der Schluss des Hinweises, wie coach sie schreibt -
+   0.74.9 A2: dazu `line` - das Wort an der gelben Linie im Diagramm.
    test_coach vergleicht SIGW mit coach.SIGNAL_WORDS, SIGM mit coach.SIGNAL_MEANING, TENSION_TAIL mit coach.today (Regel 9) */
 const SIGW = {
   hrv: { system: "Nervensystem", about: "wie erholt dein Nervensystem ist",
-         limit: "Die Uhr misst nachts – das schwankt mehr als eine Messung morgens im Liegen." },
+         limit: "Die Uhr misst nachts – das schwankt mehr als eine Messung morgens im Liegen.",
+         line: "Einbruch unter" },
   rhr: { system: "Nervensystem", about: "wie erholt dein Nervensystem ist",
-         limit: "Reagiert langsamer als die HRV, schwankt dafür weniger." },
+         limit: "Reagiert langsamer als die HRV, schwankt dafür weniger.",
+         line: "auffällig hoch über" },
   sleep: { system: "Verhalten", about: "wie viel du geschlafen hast",
-           limit: "Von der Uhr geschätzt – sagt nichts darüber, wie gut du geschlafen hast." },
+           limit: "Von der Uhr geschätzt – sagt nichts darüber, wie gut du geschlafen hast.",
+           line: "ungewöhnlich kurz unter" },
 };
 const SIGM = { "günstig": "spricht für Erholung", "ungünstig": "spricht gegen Erholung" };
 const TENSION_TAIL = " – das spricht eher gegen Erholung, reicht aber nicht für einen Einbruch. Einbruch heißt: HRV und Ruhepuls liegen am selben Tag stark daneben (mehr als 2,0), oder einer von beiden an zwei Tagen hintereinander. Ein einzelner Wert an einem Tag ist Rauschen.";
@@ -1119,6 +1123,11 @@ const CTX_STEADY_TEXT = {
 };
 /* 0.74.8 A: welche Gruende hinter den Fixture-Arten stehen (derive.steady_endurance_reasons, feste Reihenfolge) */
 const CTX_REASONS = { vo2max: ["short", "indoor", "intense"] };
+/* 0.74.9 A1 (SKIZZE_0.74.9): der Satz zur negativen Entkopplung, wie coach.DECOUPLING_UNJUDGED_TEXT ihn schreibt
+   (test_coach bindet ihn an den Erzeuger, Regel 9) - im Payload nur, wenn decoupling_unjudged gilt, sonst null */
+const CTX_UNJUDGED_TEXT = "die zweite Hälfte lief mit weniger Puls je Watt als die erste. Das passiert, wenn in der ersten " +
+  "Hälfte Minuten mit wenig Leistung liegen – Aufwärmen, Rollen, Ampeln – oder wenn die zweite Hälfte kühler oder " +
+  "flacher war. Nach Friels Grenzen lässt sich das nicht einordnen.";
 const CTX_WHY = "Entkopplung und Watt pro Herzschlag messen, wie gut dein Puls mit der Leistung Schritt hält. " +
   "Das funktioniert nur, wenn die Leistung gleichmäßig und ruhig ist. Bei Intervallen wechseln Belastung und Pause, " +
   "der Puls läuft jedes Mal hinterher – die Zahl misst dann den Wechsel, nicht deine Ausdauer. Deshalb vergleicht " +
@@ -1141,6 +1150,7 @@ function context(kind) {
     sd_log_duration: 0.511, sd_intensity: 14.0, population: 137,
     window: { intensity: 61, minutes: 208 },
     steady: { ok: true, reason: null, reasons: [], text: null }, steady_why: CTX_WHY, decoupling_unjudged: false,
+    decoupling_unjudged_text: null,
     metrics: {
       decoupling: { label: "Entkopplung", unit: "%", dec: 1, value: 10.6, median: 2.1,
         best: -0.6, worst: 16.9, p25: 0.9, p75: 5.4, n: 17, enough: true,
@@ -1167,7 +1177,8 @@ function context(kind) {
     /* Entscheidung 27.09. (15:12): negativ gezeigte Entkopplung - die Zeile ohne Urteil, grau */
     const dec = { ...full.metrics.decoupling, value: -12.01, judged: false, verdict: null,
       tendency: "niedriger als sonst", count: "niedriger als bei allen 17", rank: 0 };
-    return { ...full, decoupling_unjudged: true, metrics: { ...full.metrics, decoupling: dec } };
+    return { ...full, decoupling_unjudged: true, decoupling_unjudged_text: CTX_UNJUDGED_TEXT,
+      metrics: { ...full.metrics, decoupling: dec } };
   }
   if (kind === "duenn") {
     /* Zwei Dünn-Gründe, zwei Sätze - der erste heilt mit der Zeit, der zweite
@@ -1791,4 +1802,4 @@ function dayContext(extra) {
   };
 }
 
-module.exports = { TENSION_TAIL, NEU_FEW_19, NEU_FLAT, NEU_CARD_10, NEU_SECOND_11, STAGE_WORDS, stageOf, TODAY, days, load, loadView, LV_KEYS, readiness, activities, streams, thresholds, fatigue, fatigueV2Block, blocks, calendar, pmc, laps, lapsWithBounds, steadyStream, night, NIGHT_RULE, NIGHT_CAVEAT, context, CTX_STEADY_TEXT, CTX_WHY, CTX_NOTE, goal, today, week, coach, signals, workouts, dayContext };
+module.exports = { TENSION_TAIL, NEU_FEW_19, NEU_FLAT, NEU_CARD_10, NEU_SECOND_11, STAGE_WORDS, stageOf, TODAY, days, load, loadView, LV_KEYS, readiness, activities, streams, thresholds, fatigue, fatigueV2Block, blocks, calendar, pmc, laps, lapsWithBounds, steadyStream, night, NIGHT_RULE, NIGHT_CAVEAT, context, CTX_STEADY_TEXT, CTX_UNJUDGED_TEXT, CTX_WHY, CTX_NOTE, goal, today, week, coach, signals, workouts, dayContext };

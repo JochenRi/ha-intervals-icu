@@ -120,14 +120,16 @@ def z_at(value: float | None, band: Band | None, *,
 
 
 def fallback_note(band: Band | None) -> str | None:
-    """Says WHAT is missing when the weighted baseline is not usable yet."""
+    """Says WHAT is missing when the weighted baseline is not usable yet.
+
+    0.74.9 A3 (SKIZZE_0.74.9, Wortlaut woertlich): in Klartext, dieselben Zahlen wie bisher - {have} = die
+    Gewichtssumme (weight_sum), die Grenze aus day_context.MIN_WEIGHT_SUM, {labeled} = markierte Werte im Fenster."""
     if band is None or band.weighted or band.labeled == 0:
         return None
     have = f"{band.weight_sum:.1f}".replace(".", ",").removesuffix(",0")
-    days = "Tag ist" if band.labeled == 1 else "Tage sind"
-    return (f"Basislinie auf ungewichtet zurückgefallen — nur {have} belastbare "
-            f"Tage von {int(day_context.MIN_WEIGHT_SUM)} nötigen, "
-            f"{band.labeled} {days} etikettiert")
+    days = "Tag" if band.labeled == 1 else "Tage"
+    return ("Deine markierten Tage zählen im Normalwert gerade voll mit – für die Gewichtung fehlen noch "
+            f"unmarkierte Tage ({have} von {int(day_context.MIN_WEIGHT_SUM)} nötigen, {band.labeled} {days} markiert).")
 
 
 def band_before(data: dict[str, Any], values: dict[str, float], day: str, *,

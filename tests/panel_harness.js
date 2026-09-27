@@ -62,6 +62,7 @@ function load() {
       WINDOWS, WIN_DEFAULT, winDef, winRange, winApply, winChips, isoMinus,
       tickVals, movAvg, rollMedian, median, meanOf, fmt, sign, dur, hhmm, hmn,
       dShort, dMed, dLong, groupKey, sportOf, esc, dfaSpan,
+      localDay: typeof localDay === "undefined" ? undefined : localDay,
     });`);
   return { Panel: defined["intervals-icu-panel"], ...exported };
 }

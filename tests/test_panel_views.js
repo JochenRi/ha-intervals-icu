@@ -60,7 +60,7 @@ const EMPTY_LOAD = { weeks: [], weeks_by_group: [], window_history: [], window_p
   ok((html.match(/class="tdate"/g) || []).length === 7, "heute: Datumszeile unvollständig");
   ok((html.match(/class="tload/g) || []).length === 7, "heute: Lastzeile unvollständig");
   contains(html, "frei", "heute: Ruhetage nicht als solche benannt");
-  ok(/class="tday now"/.test(html) || !/2026-09-11/.test(new Date().toISOString()),
+  ok(/class="tday now"/.test(html) || (M.localDay ? M.localDay() : "") !== "2026-09-11",
      "heute: heutiger Tag nicht hervorgehoben");
   // bar heights are percentages of the box, never pixels - a pixel height in a
   // flex row is what let them drift off the baseline
@@ -698,9 +698,11 @@ const EMPTY_LOAD = { weeks: [], weeks_by_group: [], window_history: [], window_p
     for (const v of [-4.2, -12.01, -0.05]) {
       const ng = p.rAkt(acts, withDec(v)); clean(ng, "grundlage negativ " + v);
       const nb = box(ng).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+      // 0.74.9 A1 umgestellt: der Satz nach „als die erste.“ kommt wörtlich aus coach (Payload, F.CTX_UNJUDGED_TEXT)
       contains(nb, `Entkopplung: ${kachel(ng)} (erste gegen zweite Hälfte) – die zweite Hälfte lief mit weniger Puls je Watt als die erste. `
-        + "Das kommt meist vom Aufwärmen in der ersten Hälfte; nach Friels Grenzen lässt sich das nicht einordnen.",
-        `0.74.8 negativ ${v}: Satz`);
+        + "Das passiert, wenn in der ersten Hälfte Minuten mit wenig Leistung liegen – Aufwärmen, Rollen, Ampeln – oder wenn "
+        + "die zweite Hälfte kühler oder flacher war. Nach Friels Grenzen lässt sich das nicht einordnen.",
+        `0.74.8/0.74.9 negativ ${v}: Satz`);
       ok(!/unter 3 %|unter 5 %|zwischen 5|über 10 %|Friels Richtwert/.test(nb), `0.74.8 negativ ${v}: trotzdem eingeordnet`);
       ok(/class="cmpverdict held/.test(box(ng)) && !/#fbbf24|#34d399/.test(box(ng).slice(0, box(ng).indexOf("</svg>") + 6)),
          `0.74.8 negativ ${v}: Ton nicht neutral`);
@@ -1829,9 +1831,10 @@ const EMPTY_LOAD = { weeks: [], weeks_by_group: [], window_history: [], window_p
      "beschriftung: beschrifteter Tag ohne Marker");
 
   // Rückfall-Hinweis: nur wenn das Backend ihn liefert, und dann mit Zahlen
-  const note = "Basislinie auf ungewichtet zurückgefallen — nur 25 belastbare Tage von 30 nötigen, 6 Tage sind etikettiert";
+  // 0.74.9 A3: der Wortlaut, wie baseline.fallback_note ihn schreibt (test_coach prüft den Erzeuger)
+  const note = "Deine markierten Tage zählen im Normalwert gerade voll mit – für die Gewichtung fehlen noch unmarkierte Tage (25 von 30 nötigen, 6 Tage markiert).";
   const withNote = q.rHeute({ ...F.today(), context_note: note });
-  contains(withNote, "25 belastbare", "beschriftung: Hinweis ohne Zahlen");
+  contains(withNote, "(25 von 30 nötigen, 6 Tage markiert).", "beschriftung: Hinweis ohne Zahlen");
   ok(/class="ctxnote"/.test(withNote), "beschriftung: Hinweiszeile fehlt");
   ok(!/class="ctxnote"/.test(page), "beschriftung: Hinweis ohne Anlass");
 
@@ -4776,7 +4779,7 @@ const SEITE734 = (async () => {
       "Alles aus deinen letzten 60 Nächten gerechnet.";
     for (const [key, what, about, line] of [["hrv", "Abfall", "wie erholt dein Nervensystem ist", "Einbruch unter 35"],
                                             ["rhr", "Anstieg", "wie erholt dein Nervensystem ist", "auffällig hoch über 62"],
-                                            ["sleep", "Abfall", "wie viel du geschlafen hast", "Einbruch unter 5,6"]]) {
+                                            ["sleep", "Abfall", "wie viel du geschlafen hast", "ungewöhnlich kurz unter 5,6"]]) {
       P._sigOpen = key;
       const o = P.rHeute(live), oT = txt(o);
       clean(o, `0.74.7 Heute ${key} offen`);
@@ -4856,6 +4859,144 @@ const SEITE734 = (async () => {
      "0.74.7 §2.2: der Kachel-Fuß kommt nicht aus nightSaid(s.word) (oder rechnet selbst)");
   ok(!/±|0,5|\(2 SD\)|±1 SD|60 Tagen|60 Nächten|Standardabweichung/.test(rh), "0.74.7 §2.3: eine Grenze oder ein Fenster steht als Literal im Heute-Reiter");
   ok(/t\.band_scale/.test(rh) && /nightSaid\(/.test(rh), "0.74.7: rHeute liest band_scale nicht");
+}
+
+
+/* ── 0.74.9 · Sammel-Release A (SKIZZE_0.74.9): A1 Satz, A2 gelbe Linie, A5 Uhr - mit Seitenproben ─────────────
+   Die Uhr wird festgestellt (Date) und die Zeitzone gesetzt; _nowIso bleibt LEER, damit die echte Uhr-Stelle läuft. */
+{
+  const RealDate = Date, hadTZ = Object.prototype.hasOwnProperty.call(process.env, "TZ"), oldTZ = process.env.TZ;
+  const pinAt = (isoZ) => {
+    global.Date = class extends RealDate {
+      constructor(...a) { if (a.length) super(...a); else super(isoZ); }
+      static now() { return new RealDate(isoZ).getTime(); }
+    };
+  };
+  const z = (h) => String(h).replace(/\s+/g, " ");
+  const txt = (h) => z(String(h).replace(/<[^>]*>/g, " ")).replace(/&amp;/g, "&").replace(/&quot;/g, '"')
+    .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#39;/g, "'").replace(/\s+/g, " ");
+  const src = H.source();
+  const body = (name) => { const i = src.indexOf(name); return i < 0 ? "" : src.slice(i, src.indexOf("\n}\n", i)); };
+  const P = new M.Panel();
+  P._status = { ...p._status };
+  const A1 = "die zweite Hälfte lief mit weniger Puls je Watt als die erste. Das passiert, wenn in der ersten Hälfte Minuten " +
+    "mit wenig Leistung liegen – Aufwärmen, Rollen, Ampeln – oder wenn die zweite Hälfte kühler oder flacher war. " +
+    "Nach Friels Grenzen lässt sich das nicht einordnen.";
+  try {
+    process.env.TZ = "Europe/Berlin";
+
+    /* A5 · die Hilfsfunktion: lokales Jahr-Monat-Tag, Tage als KALENDERtage (nicht 24 h) - auch über die Zeitumstellung */
+    ok(typeof M.localDay === "function", "0.74.9 A5: keine Hilfsfunktion localDay im Panel");
+    const ld = typeof M.localDay === "function" ? M.localDay : () => "fehlt";
+    for (const [d, plus, want, what] of [
+      [new RealDate(2026, 8, 27, 0, 30), 0, "2026-09-27", "00:30 lokal"],
+      [new RealDate(2026, 8, 27, 23, 59), 0, "2026-09-27", "23:59 lokal"],
+      [new RealDate(2026, 9, 25, 0, 30), 1, "2026-10-26", "+1 über das Ende der Sommerzeit (25-Stunden-Tag)"],
+      [new RealDate(2026, 2, 29, 0, 30), 1, "2026-03-30", "+1 über den Beginn der Sommerzeit (23-Stunden-Tag)"],
+      [new RealDate(2026, 11, 31, 23, 30), 1, "2027-01-01", "+1 über den Jahreswechsel"],
+      [new RealDate(2026, 2, 1, 12, 0), -1, "2026-02-28", "-1 zurück in den Februar"]]) {
+      ok(ld(d, plus) === want, `0.74.9 A5 localDay ${what}: ${ld(d, plus)} statt ${want}`);
+    }
+    // die Stellen: toISOString().slice(0, 10) steht nur noch in isoMinus (Datumsrechnung in UTC, liest keine Uhr)
+    const isoSites = (src.match(/toISOString\(\)\.slice\(0, 10\)/g) || []).length;
+    ok(isoSites === 1 && /toISOString\(\)\.slice\(0, 10\)/.test(body("function isoMinus(")),
+       `0.74.9 A5: toISOString().slice(0, 10) steht an ${isoSites} Stellen (Soll: 1, in isoMinus)`);
+    const lds = body("function localDay(");
+    ok(/getFullYear\(\)/.test(lds) && /getMonth\(\)/.test(lds) && /getDate\(\)/.test(lds) && !/toISOString|getUTC/.test(lds),
+       "0.74.9 A5: localDay rechnet nicht aus getFullYear/getMonth/getDate");
+    ok(/_now\(\) \{\s*return this\._nowIso \|\| localDay\(\);/.test(src), "0.74.9 A5: _now() liest die Hilfsfunktion nicht");
+
+    /* SEITENPROBE Heute, festgestellte Uhr 00:30 Ortszeit am 27.09. (= 26.09. 22:30 UTC) */
+    pinAt("2026-09-26T22:30:00Z");
+    ok(new RealDate("2026-09-26T22:30:00Z").toISOString().slice(0, 10) === "2026-09-26" && new Date().getHours() === 0,
+       "0.74.9 A5 Trefferzusicherung: um 00:30 Ortszeit ist der UTC-Tag nicht der Vortag - der Test prüft nichts");
+    ok(P._now() === "2026-09-27", `0.74.9 A5: _now() um 00:30 Ortszeit = ${P._now()}`);
+    const live = F.today("live0927");
+    const h = P.rHeute(live), hT = txt(h);
+    clean(h, "0.74.9 Heute 00:30");
+    ok(hT.includes("Deine letzte Nacht — Nacht zum So 27.09., jeder Wert verglichen mit deinen letzten 60 Nächten")
+       && !hT.includes("die Nacht zu heute fehlt noch") && !/class="staleflag"/.test(h)
+       && hT.includes("Zweite Nacht: fehlt noch"),   // die zweite Nacht nach volumen (28.09.) fehlt zu Recht
+       "0.74.9 A5 Heute 00:30: die Nacht zu heute ist da, die Seite sagt „fehlt noch“ (stale aus der UTC-Uhr)");
+    const nowDays = z(h).match(/class="tday now" data-act="daylabel" data-id="[^"]+"/g) || [];
+    ok(nowDays.length === 1 && nowDays[0].includes("2026-09-27"), `0.74.9 A5 Heute 00:30: markiert ist ${nowDays} statt der 27.09.`);
+    ok((h.match(/class="tsig /g) || []).length === 3 && hT.includes("Was dein Körper"),
+       "0.74.9 Seitenprobe Heute 00:30: die Seite ist nicht ganz (drei Kacheln, Kopf)");
+    // Trainer: die Knöpfe „heute in den Kalender“ / „morgen“ tragen den lokalen Tag, nicht den UTC-Tag
+    const whenOf = (html) => [...z(html).matchAll(/data-act="plan"[^>]*data-when="([^"]+)"/g)].map((m) => m[1]);
+    const wo = whenOf(P.rWorkouts(F.workouts("voll")));
+    ok(wo.length >= 2 && wo.every((w, i) => w === (i % 2 ? "2026-09-28" : "2026-09-27")),
+       `0.74.9 A5 Trainer 00:30: Kalenderknöpfe tragen ${[...new Set(wo)]} statt 27.09./28.09.`);
+    P._workouts = F.workouts("voll");
+    const rtw = whenOf(P.rRampTest({ tests: [], sources: [], latest: null }));
+    ok(rtw.length === 2 && rtw[0] === "2026-09-27" && rtw[1] === "2026-09-28",
+       `0.74.9 A5 Stufentest 00:30: Kalenderknöpfe tragen ${rtw} statt 27.09./28.09.`);
+    // Gegenprobe: 00:30 Ortszeit am 28.09. - dieselben Werte (Nacht zum 27.) sind jetzt wirklich von gestern
+    pinAt("2026-09-27T22:30:00Z");
+    const st = P.rHeute(live), stT = txt(st);
+    ok(stT.includes("Die letzte gemessene Nacht — Nacht zum So 27.09.; die Nacht zu heute fehlt noch") && /class="staleflag"/.test(st),
+       "0.74.9 A5 Gegenprobe 28.09. 00:30: die fehlende Nacht wird nicht mehr gemeldet");
+    ok(P._now() === "2026-09-28", "0.74.9 A5 Gegenprobe: _now() folgt der Uhr nicht");
+    // Gegenprobe mittags (UTC und Ortszeit derselbe Tag): unverändert
+    pinAt("2026-09-27T10:00:00Z");
+    ok(!/class="staleflag"/.test(P.rHeute(live)), "0.74.9 A5 Gegenprobe mittags: veraltet gemeldet");
+
+    /* A2 · die gelbe Linie je Signal aus der Payload (s.line) - Seite Heute normal, jede Kachel aufgeklappt */
+    pinAt("2026-09-26T22:30:00Z");
+    for (const [key, line] of [["hrv", "Einbruch unter 35"], ["rhr", "auffällig hoch über 62"], ["sleep", "ungewöhnlich kurz unter 5,6"]]) {
+      P._sigOpen = key;
+      const o = z(P.rHeute(live)), big = o.slice(o.indexOf("tsigbig"));
+      clean(o, `0.74.9 A2 ${key} offen`);
+      ok(big.includes(line), `0.74.9 A2 ${key}: die gelbe Linie heißt nicht „${line}“`);
+      if (key !== "hrv") ok(!big.includes("Einbruch unter"), `0.74.9 A2 ${key}: „Einbruch unter“ an einer Linie, die kein Einbruch ist`);
+    }
+    // die Linie liest s.line (Payload); ein anderes Wort im Backend steht ohne Panel-Änderung an der Linie
+    P._sigOpen = "sleep";
+    const alt = { ...live, signals: live.signals.map((s) => (s.key === "sleep" ? { ...s, line: "WORT AUS DEM BACKEND" } : s)) };
+    ok(z(P.rHeute(alt)).includes("WORT AUS DEM BACKEND 5,6"), "0.74.9 A2: die Linie liest nicht s.line aus der Payload");
+    P._sigOpen = null;
+    const rh = body("  rHeute(t) {");
+    ok(!/Einbruch unter|auffällig hoch über|ungewöhnlich kurz/.test(rh) && /s\.line/.test(rh),
+       "0.74.9 A2: das Linien-Wort steht im Panel (verzweigt) statt aus coach.SIGNAL_WORDS");
+
+    /* SEITENPROBE Heute, 00:30, Schlaf OHNE Band: zwei Kacheln, keine Schlaf-Linie, sonst unverändert */
+    const nosleep = { ...live, signals: live.signals.filter((s) => s.key !== "sleep"),
+      bands: Object.fromEntries(Object.entries(live.bands || {}).filter(([k]) => k !== "sleep")) };
+    const ns = P.rHeute(nosleep), nsT = txt(ns);
+    clean(ns, "0.74.9 Heute Schlaf ohne Band");
+    ok((ns.match(/class="tsig /g) || []).length === 2 && !nsT.includes("ungewöhnlich kurz") && !nsT.includes("die Nacht zu heute fehlt noch")
+       && nsT.includes("Deine letzte Nacht — Nacht zum So 27.09."),
+       "0.74.9 Seitenprobe Schlaf ohne Band: nicht zwei Kacheln, oder eine Schlaf-Linie, oder „fehlt noch“");
+
+    /* A1 · SEITENPROBE Aktivitäten volumen 26.09. (Entkopplung −12,1 %, gleichmäßig) - der Satz aus der Payload */
+    const A = F.activities();
+    const vol = { ...A[0], name: "volumen", decoupling: -12.1 };
+    P._laps[vol.id] = { laps: [], source: "none" }; P._streams[vol.id] = F.steadyStream();
+    // die Vergleichszeile trägt im Betrieb den Wert derselben Fahrt (session_context liest activity.decoupling);
+    // die 0.74.8-Fixture führt −12,01 - für die Seitenprobe auf die Zahl der Fahrt gestellt, damit Kachel und Zeile eine sind
+    const ctxN = F.context("negativ");
+    P._night[vol.id] = F.night("live27");
+    P._ctx[vol.id] = { ...ctxN, metrics: { ...ctxN.metrics, decoupling: { ...ctxN.metrics.decoupling, value: -12.1 } } };
+    const pg = z(P.rAkt([vol, ...A.slice(1)], vol)), pgT = txt(pg);
+    ok((pgT.match(/-12,\d %/g) || []).every((x) => x === "-12,1 %") && (pgT.match(/-12,1 %/g) || []).length >= 3,
+       `0.74.9 Seitenprobe volumen: Kachel, Viertel-Kasten und Vergleichszeile zeigen nicht dieselbe Entkopplung (${pgT.match(/-12,\d %/g)})`);
+    clean(pg, "0.74.9 Aktivitäten volumen 26.09.");
+    ok(pgT.includes(`Entkopplung: ${M.fmt(-12.1, 1)} % (erste gegen zweite Hälfte) – ${A1}`),
+       `0.74.9 A1 volumen: der Satz steht nicht wörtlich (${(pgT.match(/Entkopplung: .{0,260}/) || [""])[0]})`);
+    ok(pgT.split(A1).length === 2 && !pgT.includes("meist vom Aufwärmen"), "0.74.9 A1 volumen: der Satz fehlt, steht doppelt, oder der alte steht noch");
+    ok(!/unter 3 %|Friels Richtwert|zwischen 5|über 10 %/.test(pgT), "0.74.9 A1 volumen: die negative Entkopplung wird trotzdem eingeordnet");
+    ok(pgT.includes("ohne Urteil"), "0.74.9 A1 volumen: die Vergleichszeile trägt kein „ohne Urteil“ mehr");
+    // eine Stelle: das Panel schreibt den Satz nicht, es liest ihn aus der Payload
+    ok(!src.includes("Das passiert, wenn") && !src.includes("meist vom Aufwärmen") && /decoupling_unjudged_text/.test(src),
+       "0.74.9 A1: der Satz steht im Panel (zweite Stelle) statt in coach");
+    P._ctx[vol.id] = { ...F.context("negativ"), decoupling_unjudged_text: "SATZ AUS DEM BACKEND." };
+    ok(txt(P.rAkt([vol], vol)).includes("(erste gegen zweite Hälfte) – SATZ AUS DEM BACKEND."),
+       "0.74.9 A1: der Kasten liest den Satz nicht aus der Payload");
+    P._night = {}; P._laps = {}; P._streams = {}; P._ctx = {};
+  } finally {
+    global.Date = RealDate;
+    if (hadTZ) process.env.TZ = oldTZ; else delete process.env.TZ;
+  }
 }
 
 SEITE734.then(() => report("test_panel_views"));

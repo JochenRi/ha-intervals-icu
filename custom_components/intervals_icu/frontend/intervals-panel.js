@@ -608,6 +608,17 @@ const WINDOWS = [
 function winDef(id) {
   return WINDOWS.find((w) => w.id === id) || WINDOWS.find((w) => w.id === WIN_DEFAULT);
 }
+/* 0.74.9 A5 (SKIZZE_0.74.9): DER LOKALE KALENDERTAG - die eine Stelle fuer "heute" im Panel. Jahr-Monat-Tag aus
+   getFullYear/getMonth/getDate, also die Uhr des Browsers in SEINER Zeitzone. toISOString() ist UTC: zwischen 0 und
+   2 Uhr (Sommerzeit) war das der Vortag - "die Nacht zu heute fehlt noch", obwohl sie da war. `plus` zaehlt
+   Kalendertage (new Date(J, M, T + plus)), nicht 24 Stunden - richtig auch an den Tagen der Zeitumstellung. */
+function localDay(date = new Date(), plus = 0) {
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate() + plus);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+/* Bleibt bewusst UTC (0.74.9 A5 geprueft): rechnet auf einem DATUM, liest keine Uhr - "T00:00:00Z" rein, ganze Tage
+   in Millisekunden abziehen, UTC-Tag heraus ist exakt Kalenderrechnung. Lokal gerechnet waere ein Tag an der
+   Zeitumstellung 23 oder 25 Stunden lang und die Rechnung falsch. */
 function isoMinus(iso, days) {
   const t = Date.parse(String(iso).slice(0, 10) + "T00:00:00Z");
   if (Number.isNaN(t)) return null;
@@ -922,7 +933,7 @@ class IntervalsIcuPanel extends HTMLElement {
      asks the wall clock makes the suite go red on its own some months from
      now - and a test that fails for calendar reasons teaches nothing. */
   _now() {
-    return this._nowIso || new Date().toISOString().slice(0, 10);
+    return this._nowIso || localDay();
   }
 
   set hass(h) {
@@ -3457,7 +3468,7 @@ class IntervalsIcuPanel extends HTMLElement {
     const list = w.workouts || [];
     if (!list.length) return "";
     const today = new Date();
-    const iso = (d) => new Date(today.getTime() + d * 86400000).toISOString().slice(0, 10);
+    const iso = (d) => localDay(today, d);   // 0.74.9 A5: lokaler Kalendertag (Knopf "heute"/"morgen")
 
     // One logic, not two. The list IS the recommendation: the first card that
     // fits today carries the mark, instead of a second block above computing
@@ -4146,7 +4157,7 @@ class IntervalsIcuPanel extends HTMLElement {
     const w = this._workouts || {};
     const e = (w.workouts || []).find((x) => x.key === "ramp_test");
     const now = new Date();
-    const iso = (d) => new Date(now.getTime() + d * 86400000).toISOString().slice(0, 10);
+    const iso = (d) => localDay(now, d);     // 0.74.9 A5: lokaler Kalendertag (Knopf "heute"/"morgen")
     const karte = e ? `<div class="wogrid">${this._sessionCard(e, {
       open: this._woOpen === e.key, budget: w.budget, ftp: w.ftp, compact: true,
       tomorrow: !!((this._coach || {}).trained_today), planDates: [iso(0), iso(1)], toggleAct: "wodetail",
@@ -4553,7 +4564,7 @@ class IntervalsIcuPanel extends HTMLElement {
 
   rHeute(t) {
     if (!t) return this._dataGap("today", "Der Tag");
-    const stale = !!(t.available && t.date && t.date !== new Date().toISOString().slice(0, 10));
+    const stale = !!(t.available && t.date && t.date !== localDay());   // 0.74.9 A5: lokaler Tag, nicht UTC
     if (!t.available) return `<div class="card pad">Noch keine Wellness-Daten.</div>`;
 
     const TONE = { slump: "red", recovering: "amber", rebound: "blue",
@@ -4649,10 +4660,10 @@ class IntervalsIcuPanel extends HTMLElement {
               { a: band.usual[0], b: band.usual[1], c: C.tx3, op: 0.08 },
               { a: band.noise[0], b: band.noise[1], c: C.tx3, op: 0.14 },
             ] : [];
-            // 0.74.7 (§2.3): "Normalwert", "Einbruch unter", beim Ruhepuls "auffällig hoch über"
+            // 0.74.7 (§2.3): "Normalwert"; 0.74.9 A2: das Wort der gelben Linie je Signal aus coach.SIGNAL_WORDS (s.line)
             const lines = band ? [
               { y: band.baseline, c: C.tx3, d: 1, t: `Normalwert ${fmt(band.baseline, dec)}` },
-              { y: band.slump, c: C.amber, d: 1, t: `${s.key === "rhr" ? "auffällig hoch über" : "Einbruch unter"} ${fmt(band.slump, dec)}` },
+              { y: band.slump, c: C.amber, d: 1, t: `${s.line || ""} ${fmt(band.slump, dec)}` },
             ] : [{ y: s.baseline, c: C.tx3, d: 1, t: "Normalwert" }];
             // Ebene 1 sichtbar gemacht: Tage mit Gewicht 0 zählen nicht in
             // den Normalwert, bleiben aber gezeichnet - als HOHLE Punkte.
@@ -4691,7 +4702,7 @@ class IntervalsIcuPanel extends HTMLElement {
       // height pushed the bars upwards, which is exactly what destroys a length
       // comparison on a common baseline.
       const names = (d.sessions || []).map((s) => s.name || s.type).filter(Boolean);
-      const isToday = d.date === new Date().toISOString().slice(0, 10);
+      const isToday = d.date === localDay();   // 0.74.9 A5
       const state = STATE_WORD[d.state] || "";
       const dctx = this._ctxOf(d.date);
       return `<div class="tday ${isToday ? "now" : ""}" data-act="daylabel" data-id="${esc(d.date)}"
@@ -6485,10 +6496,10 @@ class IntervalsIcuPanel extends HTMLElement {
         // Entscheidung 27.09.: negativ heisst, die zweite Haelfte lief mit weniger Puls je Watt - Friels Grenzen
         // (3 / Marke / 10) gelten dafuer nicht. Keine Einordnung, neutraler Ton, Zahl wie die Kachel. Ob "negativ",
         // sagt coach.decoupling_unjudged (Payload) - dieselbe Stelle wie die Vergleichszeile darunter.
+        // 0.74.9 A1: der Satz kommt fertig aus coach (DECOUPLING_UNJUDGED_TEXT) - das Panel schreibt ihn nicht.
         tone = "info";
         head = `Entkopplung: ${fmt(a.decoupling, 1)} % (erste gegen zweite Hälfte)`;
-        body = "– die zweite Hälfte lief mit weniger Puls je Watt als die erste. Das kommt meist vom Aufwärmen " +
-          "in der ersten Hälfte; nach Friels Grenzen lässt sich das nicht einordnen." + (plain ? " " + plain : "");
+        body = `– ${cx.decoupling_unjudged_text || ""}` + (plain ? " " + plain : "");
       } else {
         const shown = shownOf(a.decoupling);   // eingeordnet wird der GEZEIGTE Wert - Zahl und Satz widersprechen sich nie
         const mark = this._decGood();

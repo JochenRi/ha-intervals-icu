@@ -197,7 +197,8 @@ const acts = F.activities(), thr = F.thresholds();
   // that is not from today is marked - a wellness record fills up over the day.
   // 0.74.7 umgestellt (SKIZZE_0.74.7 §2.1/§2.2): die Kacheln tragen keine eigene Zeile „Stand …“ mehr - die
   // Ueberschrift nennt die Nacht einmal fuer alle drei, und ist die Nacht zu heute noch nicht da, sagt sie das.
-  const todayIso = new Date().toISOString().slice(0, 10);
+  // 0.74.9 A5: „heute“ ist der LOKALE Kalendertag (wie das Panel), nicht der UTC-Tag
+  const nw = new Date(), todayIso = `${nw.getFullYear()}-${String(nw.getMonth() + 1).padStart(2, "0")}-${String(nw.getDate()).padStart(2, "0")}`;
   const fresh = p.rHeute({ ...F.today(), date: todayIso });
   clean(fresh, "9 datum");
   ok(fresh.includes(`— Nacht zum ${M.dShort(todayIso).split(" ")[0]} ${todayIso.slice(8, 10)}.${todayIso.slice(5, 7)}., jeder Wert verglichen`),

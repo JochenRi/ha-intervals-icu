@@ -723,6 +723,47 @@ for _indoor in (False, True):
         check("Z14: seine Dauer (3 h) in der Spanne, nicht 45 min",
               (_m14.get("dur_low_min") or 0) > 150 and (_m14.get("dur_high_min") or 0) > 180)
 
+
+print("\n=== Z15 (0.74.9). Sammel-Release A mit SEINEN Daten: A1 Satz, A2 Linien-Wort, A3 Hinweis ===")
+# A1: seine negative Entkopplung - der Satz kommt aus coach, ohne eine Zahl irgendeines Athleten
+_d15 = _z14(False); _d15["activities"]["neu"]["decoupling"] = -4.3
+_c15 = FakeCoordinator(_d15); ws._pick = lambda hass, athlete_id: _c15
+_b15 = FakeConn(); ws.websocket_context(None, _b15, {"id": 1, "activity_id": "neu"})
+_p15 = (_b15.results or [{}])[0]
+eq("Z15 A1: der Befehl laeuft", _b15.errors, [])
+check("Z15 A1 Trefferzusicherung: seine Fahrt ist gleichmaessig und negativ (sonst prueft der Satz nichts)",
+      (_p15.get("steady") or {}).get("ok") is True and _p15.get("decoupling_unjudged") is True)
+eq("Z15 A1: sein Satz ist der eine Satz aus coach", _p15.get("decoupling_unjudged_text"),
+   getattr(ws.coach_module, "DECOUPLING_UNJUDGED_TEXT", "fehlt"))
+check("Z15 A1: der Satz traegt keine Ziffer", not any(ch.isdigit() for ch in str(_p15.get("decoupling_unjudged_text"))))
+eq("Z15 A1: keine Zahl des ersten Athleten", leaks(_p15), [])
+# A2: seine Kacheln tragen das Linien-Wort je Signal, seine Linie liegt in SEINEM Band
+for _s15 in _h13.get("signals") or []:
+    eq(f"Z15 A2 {_s15['key']}: Linien-Wort aus SIGNAL_WORDS", _s15.get("line"),
+       ws.coach_module.SIGNAL_WORDS[_s15["key"]].get("line", "fehlt"))
+eq("Z15 A2: Schlaf heisst 'ungewöhnlich kurz unter', nicht 'Einbruch'",
+   {x["key"]: x.get("line") for x in _h13.get("signals") or []}.get("sleep"), "ungewöhnlich kurz unter")
+# A3: 40 seiner Tage markiert (Gewicht 0) - der Hinweis nennt SEINE Summe, SEINE Zahl markierter Tage
+_d15b = copy.deepcopy(_dn)
+_days15 = sorted(d for d in _d15b["wellness"] if d < _night10)[-40:]
+_d15b["day_context"] = {d: {"tag": "krank", "weight": 0.0, "note": "", "set_at": ""} for d in _days15}
+ws._pick = lambda hass, athlete_id: FakeCoordinator(_d15b)
+_t15 = FakeConn(); ws.websocket_today(None, _t15, {"id": 43})
+_h15 = (_t15.results or [{}])[0]
+_cn15 = str(_h15.get("context_note"))
+import re as _re15
+_m15 = _re15.search(r"fehlen noch unmarkierte Tage \(([\d,]+) von (\d+) nötigen, (\d+) Tage markiert\)\.$", _cn15)
+check(f"Z15 A3: sein Hinweis steht im neuen Wortlaut ({_cn15!r})",
+      _cn15.startswith("Deine markierten Tage zählen im Normalwert gerade voll mit – ") and _m15 is not None)
+if _m15:
+    # gezaehlt aus SEINEM Archiv: markierte Tage MIT HRV-Wert (an einem der 40 fehlt die HRV - Randfall)
+    _lab15 = sum(1 for d in _days15 if (_d15b["wellness"].get(d) or {}).get("hrv"))
+    check("Z15 A3 Randfall: ein markierter Tag ohne HRV zaehlt nicht mit", _lab15 == 39)
+    eq("Z15 A3: SEINE markierten Tage, die Grenze aus MIN_WEIGHT_SUM",
+       (_m15.group(3), _m15.group(2)), (str(_lab15), str(int(ws.coach_module.day_context.MIN_WEIGHT_SUM))))
+    check("Z15 A3: seine Summe liegt unter der Grenze", float(_m15.group(1).replace(",", ".")) < ws.coach_module.day_context.MIN_WEIGHT_SUM)
+eq("Z15 A3: keine Zahl des ersten Athleten", leaks({"note": _cn15}), [])
+
 print(f"\ntest_zweiter_athlet: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

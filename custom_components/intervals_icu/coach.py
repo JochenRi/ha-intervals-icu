@@ -264,7 +264,7 @@ def state(data: dict[str, Any]) -> dict[str, Any]:
     week = [math.log(hrv[d]) for d in hrv_days[-7:] if hrv[d] > 0]
     week_z = (((mean(week) - hrv_band.base) / hrv_band.spread)
               if (week and hrv_band is not None) else None)
-    swc = 0.5  # half a standard deviation, the usual smallest worthwhile change
+    swc = SWC_SD  # half a standard deviation, the usual smallest worthwhile change (0.74.9 A5: Konstante, bitgleich)
 
     if slump_day is not None:
         days_since = (date.fromisoformat(today) - date.fromisoformat(slump_day)).days
@@ -1247,7 +1247,7 @@ LOAD_SIGNALS = {
 }
 
 
-def _z_series(values: dict[str, float], days: list[str], window: int = 60,
+def _z_series(values: dict[str, float], days: list[str], window: int = baseline.WINDOW,
               log: bool = False, sign: int = 1,
               weights: dict[str, float] | None = None) -> dict[str, float]:
     """Distance from a trailing baseline - der eine Rechenweg (baseline.z_series)."""
@@ -1877,6 +1877,17 @@ def decoupling_unjudged(value: Any) -> bool:
     return number is not None and round(number, 1) < 0
 
 
+# 0.74.9 A1 (SKIZZE_0.74.9, Wortlaut woertlich): DER SATZ ZUR NEGATIVEN ENTKOPPLUNG - eine Stelle. Der Viertel-Kasten
+# der Aktivitaet zeigt ihn nach "Entkopplung: {Kachelwert} % (erste gegen zweite Hälfte) – " (Payload
+# `decoupling_unjudged_text`, nur wenn decoupling_unjudged gilt). Bis 0.74.8 stand im Panel "Das kommt meist vom
+# Aufwaermen ..." - falsch, wenn intervals.icu das Aufwaermen schon ausschliesst (volumen 26.09.).
+DECOUPLING_UNJUDGED_TEXT = (
+    "die zweite Hälfte lief mit weniger Puls je Watt als die erste. Das passiert, wenn in der ersten Hälfte "
+    "Minuten mit wenig Leistung liegen – Aufwärmen, Rollen, Ampeln – oder wenn die zweite Hälfte kühler oder "
+    "flacher war. Nach Friels Grenzen lässt sich das nicht einordnen."
+)
+
+
 _STEADY_WHY = (
     "Entkopplung und Watt pro Herzschlag messen, wie gut dein Puls mit der Leistung Schritt hält. "
     "Das funktioniert nur, wenn die Leistung gleichmäßig und ruhig ist. Bei Intervallen wechseln Belastung "
@@ -2081,6 +2092,8 @@ def session_context(data: dict[str, Any], activity_id: str) -> dict[str, Any]:
         "steady": steady,
         "steady_why": _STEADY_WHY,
         "decoupling_unjudged": decoupling_unjudged(activity.get("decoupling")),
+        "decoupling_unjudged_text": (DECOUPLING_UNJUDGED_TEXT if decoupling_unjudged(activity.get("decoupling"))
+                                     else None),
         "stages": list(PEER_CALIPER_STAGES),
         "widest_used": widest,
         "min_peers": MIN_PEERS_TO_RANK_METRIC,
@@ -2270,16 +2283,18 @@ def judged_day(data: dict[str, Any]) -> tuple[str | None, bool]:
 # 0.74.7 (SKIZZE_0.74.7 §2.2/§2.3, Wortlaut woertlich, freigegeben 27.09.): WAS JEDE KACHEL UEBER IHR SIGNAL SAGT -
 # eine Stelle. system = rechts oben, about = "Worüber dieser Wert etwas sagt", limit = Zeile 3 (klein, grau),
 # named = Artikel+Name im Hinweis `tension`. Das Panel schreibt keinen dieser Saetze selbst.
+# 0.74.9 A2 (SKIZZE_0.74.9, woertlich): line = das Wort an der gelben Linie im Diagramm ("{line} {Zahl}"). Nur HRV und
+# Ruhepuls kennt die Einbruch-Regel (state); der Schlaf heisst deshalb nicht "Einbruch".
 SIGNAL_WORDS: dict[str, dict[str, str]] = {
     "hrv": {"system": "Nervensystem", "about": "wie erholt dein Nervensystem ist",
             "limit": "Die Uhr misst nachts – das schwankt mehr als eine Messung morgens im Liegen.",
-            "named": "deine HRV"},
+            "named": "deine HRV", "line": "Einbruch unter"},
     "rhr": {"system": "Nervensystem", "about": "wie erholt dein Nervensystem ist",
             "limit": "Reagiert langsamer als die HRV, schwankt dafür weniger.",
-            "named": "dein Ruhepuls"},
+            "named": "dein Ruhepuls", "line": "auffällig hoch über"},
     "sleep": {"system": "Verhalten", "about": "wie viel du geschlafen hast",
               "limit": "Von der Uhr geschätzt – sagt nichts darüber, wie gut du geschlafen hast.",
-              "named": "deine Schlafdauer"},
+              "named": "deine Schlafdauer", "line": "ungewöhnlich kurz unter"},
 }
 # Zeile 2 der Kachel - nur bei "günstig"/"ungünstig" (direction), sonst keine
 SIGNAL_MEANING = {"günstig": "spricht für Erholung", "ungünstig": "spricht gegen Erholung"}
@@ -2334,6 +2349,8 @@ def today(data: dict[str, Any], events: Any = None, day: str | None = None) -> d
             "word": entry.get("word"),
             "meaning": SIGNAL_MEANING.get(direction),
             "system": words.get("system", ""), "about": words.get("about", ""), "limit": words.get("limit", ""),
+            # 0.74.9 A2: das Wort an der gelben Linie im Diagramm (SIGNAL_WORDS, eine Stelle)
+            "line": words.get("line", ""),
             # 0.74.5: "mehr als" SWC_SD, genau wie z_word - bei z = 0,50 "unauffällig" / "im Normalbereich"
             "moved": abs(z) > SWC_SD,
             "direction": direction,
