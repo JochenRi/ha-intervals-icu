@@ -4537,5 +4537,53 @@ const SEITE734 = (async () => {
   P._night = {}; P._laps = {}; P._streams = {};
 }
 
+/* ── 0.74.6 · Neuer Athlet: "noch kein Vergleich", wenn nur die Basislinie fehlt (SKIZZE_0.74.6 C) ─────── */
+{
+  const P = new M.Panel(); P._nowIso = F.TODAY;
+  const z = (h) => String(h).replace(/\s+/g, " ");
+  const txt = (h) => z(String(h).replace(/<[^>]*>/g, "")).replace(/&amp;/g, "&").replace(/&quot;/g, '"')
+    .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#39;/g, "'");
+  const A = F.activities();
+  const akt = (n) => {
+    P._laps[A[0].id] = { laps: [], source: "none" }; P._streams[A[0].id] = F.steadyStream();
+    P._night[A[0].id] = n; return P.rAkt(A, A[0]);
+  };
+  // Heute: few und flat woertlich, kein alter Satz daneben
+  const h19 = txt(P.rHeute(F.today("neuathlet"))); clean(P.rHeute(F.today("neuathlet")), "0.74.6 Heute neuer Athlet");
+  ok(h19.includes("Für die Nacht nach Do 10. (Neue Runde) gibt es noch keinen Vergleich – die App braucht dafür 20 Nächte mit Werten, bisher sind es 19."),
+     "0.74.6 C Heute few: der Satz steht nicht wörtlich");
+  ok(!h19.includes("hat deine Uhr keine Werte geliefert") && !h19.includes("fehlt noch"),
+     "0.74.6 C Heute few: daneben steht ein alter Satz (keine Werte / fehlt noch)");
+  ok(txt(P.rHeute(F.today("neuathlet_flach"))).includes("Für die Nacht nach Do 10. (Neue Runde) gibt es noch keinen Vergleich – deine bisherigen Nachtwerte sind alle gleich."),
+     "0.74.6 C Heute flat: der Satz steht nicht wörtlich");
+  // Aktivitaeten: few und flat woertlich
+  const a19 = txt(akt(F.night("neuathlet"))); clean(akt(F.night("neuathlet")), "0.74.6 Aktivitaeten neuer Athlet");
+  ok(a19.indexOf("Für diese Nacht gibt es noch keinen Vergleich – die App braucht dafür 20 Nächte mit Werten, bisher sind es 19.") > a19.indexOf("Die Nacht danach")
+     && a19.indexOf("Die Nacht danach") >= 0,
+     "0.74.6 C Aktivitaeten few: der Satz steht nicht wörtlich");
+  ok(!a19.includes("keine Wellness-Werte") && !a19.includes("nicht auswerten"), "0.74.6 C Aktivitaeten few: alter Satz daneben");
+  ok(txt(akt(F.night("neuathlet_flach"))).includes("Für diese Nacht gibt es noch keinen Vergleich – deine bisherigen Nachtwerte sind alle gleich."),
+     "0.74.6 C Aktivitaeten flat: der Satz steht nicht wörtlich");
+  // Karte und zweite Nacht: die Worte kommen aus dem Backend, das Panel zeigt sie
+  const k = txt(akt(F.night("nurhrv")));
+  ok(k.includes("Verglichen mit deinen normalen Nächten: noch keine Bewertung – bisher 10 von 20 Nächten mit HRV."),
+     "0.74.6 C Karte few: das Label steht nicht");
+  ok(k.includes("HRV in der Nacht danach: – · Zweite Nacht: noch kein Vergleich (11 von 20 Nächten)"),
+     "0.74.6 C zweite Nacht few: die Zeile steht nicht");
+  ok(!k.includes("die HRV der Nacht fehlt") && !k.includes("keine Werte geliefert"), "0.74.6 C Karte: alter Satz daneben");
+  // alte Saetze fuer ihre Faelle unveraendert
+  ok(txt(akt(F.night("keine"))).includes("Für die Nacht danach liegen keine Wellness-Werte vor."), "0.74.6 C: der alte Aktivitaeten-Satz fehlt fuer no_wellness");
+  ok(txt(P.rHeute(F.today("missing"))).includes("Für die Nacht nach Mi 09. (Rehburg-Loccum Gehen) hat deine Uhr keine Werte geliefert."),
+     "0.74.6 C: der alte Heute-Satz fehlt fuer missing");
+  ok(txt(P.rHeute(F.today("ohnenacht"))).includes("Die Nacht nach Fr 11. (volumen) fehlt noch – sie kommt, sobald deine Uhr sie überträgt."),
+     "0.74.6 C: der alte Heute-Satz fehlt fuer pending");
+  // eine Stelle: der Satzteil kommt aus dem Backend - das Panel traegt ihn nicht, und keine Zahl MIN_VALUES
+  const src = require("fs").readFileSync(require("path").join(__dirname, "..", "custom_components", "intervals_icu", "frontend", "intervals-panel.js"), "utf8");
+  ok(!src.includes("noch keinen Vergleich") && !src.includes("Nächte mit Werten") && !src.includes("noch kein Vergleich"),
+     "0.74.6 C: das Panel schreibt den Basislinien-Satz selbst (zweite Stelle neben coach)");
+  ok(/np\.reason === "baseline"/.test(src) && /n\.reason === "no_baseline"/.test(src),
+     "0.74.6 C: das Panel unterscheidet baseline / no_baseline nicht");
+}
+
 SEITE734.then(() => report("test_panel_views"));
 })();

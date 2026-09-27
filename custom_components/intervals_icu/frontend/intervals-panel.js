@@ -4703,8 +4703,11 @@ class IntervalsIcuPanel extends HTMLElement {
     const nname = (name) => `<span class="tnname" title="${esc(name)}">${esc(name)}</span>`;
     const np = t.night_pending;
     // 0.74.4 (SKIZZE_0.74.4 §3.1): Klartext, die Worte der Nacht kommen aus coach.night_after
+    // 0.74.6 (SKIZZE_0.74.6 C): "baseline" - Wert da, Basislinie fehlt; der Satzteil kommt fertig aus coach (np.text)
     const pendLine = np ? `<p class="hint tnpend">${ico("info", C.tx2, 14)}<span>${np.reason === "missing"
       ? `Für die Nacht nach ${esc(dShort(np.date))} (${nname(np.name)}) hat deine Uhr keine Werte geliefert.`
+      : np.reason === "baseline"
+      ? `Für die Nacht nach ${esc(dShort(np.date))} (${nname(np.name)}) ${esc(np.text || "")}`
       : `Die Nacht nach ${esc(dShort(np.date))} (${nname(np.name)}) fehlt noch – sie kommt, sobald deine Uhr sie überträgt.`}</span></p>` : "";
     const measured = t.night && t.night.available ? `
       <div class="tnq">Wie hast du die Einheit verkraftet?</div>
@@ -6577,8 +6580,11 @@ class IntervalsIcuPanel extends HTMLElement {
     const n = this._night[a.id];
     if (!n) return "";
     if (!n.available) {
+      // 0.74.6 (SKIZZE_0.74.6 C): "no_baseline" - Wert da, Basislinie fehlt; der Satzteil kommt fertig aus coach (n.text)
       const why = n.reason === "no_wellness"
         ? "Für die Nacht danach liegen keine Wellness-Werte vor."
+        : n.reason === "no_baseline"
+        ? `Für diese Nacht ${n.text || ""}`
         : "Die Nacht danach lässt sich für diese Einheit nicht auswerten.";
       return `<h3 class="secname">Die Nacht danach</h3><p class="hint pad">${esc(why)}</p>`;
     }

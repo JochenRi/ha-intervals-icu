@@ -47,6 +47,19 @@ def _plain(values: list[float]) -> tuple[float, float]:
     return (mean(values), pstdev(values) if len(values) > 1 else 0.0)
 
 
+def _pairs(raw: list[float], *, log: bool,
+           weights: list[float] | None = None) -> list[tuple[float, float]]:
+    """Die Werte, die ein Band zaehlt - EINE Stelle fuer norm_band und no_band_reason (0.74.6 C).
+
+    Im log-Fall zaehlen nur Werte > 0 (ln), sonst jeder Wert."""
+    if weights is None:
+        weights = [1.0] * len(raw)
+    pairs = list(zip(raw, weights))
+    if log:
+        pairs = [(math.log(v), w) for v, w in pairs if v > 0]
+    return pairs
+
+
 def norm_band(raw: list[float], *, log: bool,
               weights: list[float] | None = None) -> Band | None:
     """THE baseline of a wellness signal - the only place it is computed.
@@ -61,11 +74,7 @@ def norm_band(raw: list[float], *, log: bool,
     Returns the Band on the (possibly log) scale, or None when the history
     is too thin to mean anything.
     """
-    if weights is None:
-        weights = [1.0] * len(raw)
-    pairs = list(zip(raw, weights))
-    if log:
-        pairs = [(math.log(v), w) for v, w in pairs if v > 0]
+    pairs = _pairs(raw, log=log, weights=weights)
     if len(pairs) < MIN_VALUES:
         return None
     values = [v for v, _w in pairs]
@@ -81,6 +90,21 @@ def norm_band(raw: list[float], *, log: bool,
     if spread <= 0:
         return None
     return Band(base, spread, is_weighted, round(weight_sum, 2), labeled)
+
+
+def no_band_reason(raw: list[float], *, log: bool,
+                   weights: list[float] | None = None) -> tuple[str, int] | None:
+    """WARUM ES KEIN BAND GIBT - die Stelle neben norm_band (0.74.6, SKIZZE_0.74.6 C).
+
+    ("few", n): weniger als MIN_VALUES Werte; ("flat", n): genug Werte, aber keine Streuung;
+    None: es gibt ein Band. n zaehlt genau wie norm_band (dieselbe Stelle _pairs, log-Fall nur v > 0),
+    und "flat" heisst genau: norm_band sagt None, obwohl genug Werte da sind."""
+    n = len(_pairs(raw, log=log, weights=weights))
+    if n < MIN_VALUES:
+        return ("few", n)
+    if norm_band(raw, log=log, weights=weights) is None:
+        return ("flat", n)
+    return None
 
 
 def z_at(value: float | None, band: Band | None, *,

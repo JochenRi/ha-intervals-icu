@@ -1009,15 +1009,41 @@ def _window_days(current: str) -> list[str]:
     return [(end - timedelta(days=NIGHT_WINDOW_DAYS - 1 - i)).isoformat() for i in range(NIGHT_WINDOW_DAYS)]
 
 
-def _night_absence(data: dict[str, Any], night_day: str) -> str:
+def _night_absence(data: dict[str, Any], night_day: str, fields: tuple[str, ...] | None = None) -> str:
     """Warum eine Nacht keine Werte hat - EINE Stelle (0.74.3 night_pending, Nachtrag §8.4 zweite Nacht).
 
     "pending": die Nacht liegt nach dem letzten Wellness-Tag (die Uhr hat noch nicht uebertragen);
+    "baseline" (0.74.6 C): ein Wert ist da, aber es gibt noch kein Band (_night_gap sagt few/flat und n);
     "missing": der Tag ist erreicht, die Werte fehlen. Letzter Wellness-Tag = sorted(wellness)[-1],
-    derselbe Tag, den today() als `current` fuehrt."""
+    derselbe Tag, den today() als `current` fuehrt. `fields`: welche NIGHT_FIELDS zaehlen (None = alle:
+    Heute-Zeile und Aktivitaeten; ("hrv",) fuer Karte und zweite Nacht)."""
     wellness = data.get("wellness") or {}
     last = max(wellness) if wellness else ""
-    return "pending" if night_day > last else "missing"
+    if night_day > last:
+        return "pending"
+    return "baseline" if _night_gap(data, night_day, fields) else "missing"
+
+
+def _night_gap(data: dict[str, Any], night_day: str,
+               fields: tuple[str, ...] | None = None) -> dict[str, Any] | None:
+    """Ein Wert ist da, aber kein Band - mit Grund (0.74.6 C): {"gap": "few"|"flat", "n": n} oder None.
+
+    Gezaehlt wird je Feld mit Wert > 0 ueber baseline.no_band_reason, auf denselben Eingaben wie
+    _night_z (_night_inputs). Mehrere Felder: fehlen einem Feld Naechte, gilt "few" mit dem groessten
+    n dieser Felder (der Satz nennt dann eine Zahl unter MIN_VALUES); sonst "flat" mit dem groessten n."""
+    gaps = []
+    for key, _field, use_log, _dir, _label, _unit, raw, wts, current in _night_inputs(data, night_day):
+        if (fields is not None and key not in fields) or not (current and current > 0):
+            continue
+        reason = baseline.no_band_reason(raw, log=use_log, weights=wts)
+        if reason is not None:
+            gaps.append(reason)
+    if not gaps:
+        return None
+    few = [n for why, n in gaps if why == "few"]
+    if few:
+        return {"gap": "few", "n": max(few)}
+    return {"gap": "flat", "n": max(n for _why, n in gaps)}
 
 
 def _last_measured_night(data: dict[str, Any], current: str) -> dict[str, Any]:
@@ -1057,6 +1083,10 @@ def _last_measured_night(data: dict[str, Any], current: str) -> dict[str, Any]:
         night_date = (date.fromisoformat(newest_stamp[:10]) + timedelta(days=1)).isoformat()
         pending = {"date": newest_stamp[:10], "name": _name(newest), "night_date": night_date,
                    "reason": _night_absence(data, night_date)}
+        if pending["reason"] == "baseline":
+            # 0.74.6 C: Wert da, Basislinie fehlt - Grund, n und der Satzteil aus der einen Stelle
+            gap = _night_gap(data, night_date) or {}
+            pending.update(gap=gap.get("gap"), n=gap.get("n"), text=night_baseline_words("", gap))
     return {"night": night, "night_pending": pending, "night_none": False}
 
 
@@ -1457,11 +1487,15 @@ def _reference_words(reference: dict[str, Any]) -> dict[str, Any]:
             for key, ref in reference.items()}
 
 
-def _night_z(data: dict[str, Any], day: str) -> dict[str, Any]:
-    """Each wellness field of one night, as a z-score against the 60 days before."""
+def _night_inputs(data: dict[str, Any], day: str) -> list[tuple[Any, ...]]:
+    """Was eine Nacht fuers Band braucht, je NIGHT_FIELDS-Feld - EINE Stelle (0.74.6 C).
+
+    (key, field, use_log, direction, label, unit, raw, wts, current): raw/wts sind die Werte > 0
+    der 60 Wellness-Tage vor `day` mit ihren Gewichten, current der Rohwert der Nacht. Es lesen
+    _night_z (das Band) und _night_gap (warum es keins gibt) - dieselben Eingaben."""
     wellness = data.get("wellness") or {}
     days = sorted(d for d in wellness if d < day)[-60:]
-    out: dict[str, Any] = {}
+    rows: list[tuple[Any, ...]] = []
     for key, field, use_log, direction, label, unit in NIGHT_FIELDS:
         raw = []
         wts = []
@@ -1472,6 +1506,14 @@ def _night_z(data: dict[str, Any], day: str) -> dict[str, Any]:
             raw.append(value)
             wts.append(day_context.weight_for(data, d))
         current = _f((wellness.get(day) or {}).get(field))
+        rows.append((key, field, use_log, direction, label, unit, raw, wts, current))
+    return rows
+
+
+def _night_z(data: dict[str, Any], day: str) -> dict[str, Any]:
+    """Each wellness field of one night, as a z-score against the 60 days before."""
+    out: dict[str, Any] = {}
+    for key, field, use_log, direction, label, unit, raw, wts, current in _night_inputs(data, day):
         band = _norm_band(raw, log=use_log, weights=wts)
         z = _z_at(current if current and current > 0 else None, band,
                   log=use_log, sign=direction)
@@ -1519,6 +1561,26 @@ NIGHT_VERDICT_WORDS = {
     "second_pending": "Zweite Nacht: fehlt noch",
     "second_missing": "Zweite Nacht: keine Werte geliefert",
 }
+# 0.74.6 (SKIZZE_0.74.6 C, Wortlaut woertlich): Wert da, aber noch keine Basislinie. {min} ist beim
+# Aufruf baseline.MIN_VALUES - nie ein Literal. "" ist der Satzteil fuer Heute-Zeile und Aktivitaeten
+# (das Panel setzt "Für die Nacht nach … (…)" bzw. "Für diese Nacht" davor).
+NIGHT_BASELINE_WORDS = {
+    "few": "gibt es noch keinen Vergleich – die App braucht dafür {min} Nächte mit Werten, bisher sind es {n}.",
+    "flat": "gibt es noch keinen Vergleich – deine bisherigen Nachtwerte sind alle gleich.",
+    "card_few": "Verglichen mit deinen normalen Nächten: noch keine Bewertung – bisher {n} von {min} Nächten mit HRV.",
+    "card_flat": "Verglichen mit deinen normalen Nächten: noch keine Bewertung – deine bisherigen HRV-Werte sind alle gleich.",
+    "second_few": "Zweite Nacht: noch kein Vergleich ({n} von {min} Nächten)",
+    "second_flat": "Zweite Nacht: noch kein Vergleich",
+}
+
+
+def night_baseline_words(kind: str, gap: dict[str, Any]) -> str | None:
+    """Der Satz zu "Wert da, Basislinie fehlt" - die eine Stelle (0.74.6 C). kind: "" / "card_" / "second_"."""
+    if not gap or gap.get("gap") not in ("few", "flat"):
+        return None
+    return NIGHT_BASELINE_WORDS[kind + gap["gap"]].format(min=baseline.MIN_VALUES, n=gap.get("n"))
+
+
 NIGHT_UNRATED_HEADLINE = "Diese Nacht zählt nicht."
 _PEER_BASIS = "Verglichen mit früheren Einheiten dieser Art:"
 
@@ -1562,13 +1624,20 @@ def _night_label(data: dict[str, Any], day: str) -> dict[str, str] | None:
 
 
 def night_verdict(z_first: float | None, z_second: float | None,
-                  second_absence: str = "pending") -> dict[str, Any]:
+                  second_absence: str = "pending", first_gap: dict[str, Any] | None = None,
+                  second_gap: dict[str, Any] | None = None) -> dict[str, Any]:
     """Die eine Regel der Nacht-Bewertung (L2) - total ueber ihre Eingaben.
 
-    `second_absence` ("pending"/"missing", aus _night_absence) waehlt nur den Satz zur fehlenden
-    zweiten Nacht (Nachtrag §8.4); die Regel liest es nicht."""
-    note = None if z_second is not None else NIGHT_VERDICT_WORDS[
-        "second_missing" if second_absence == "missing" else "second_pending"]
+    `second_absence` ("pending"/"baseline"/"missing", aus _night_absence) waehlt nur den Satz zur fehlenden
+    zweiten Nacht (Nachtrag §8.4); die Regel liest es nicht. 0.74.6 C: `first_gap`/`second_gap`
+    (_night_gap, nur HRV) waehlen nur den Satz, wenn der HRV-Wert da ist, aber das Band fehlt -
+    Schluessel und Schwellen bleiben."""
+    if z_second is not None:
+        note = None
+    elif second_absence == "baseline" and night_baseline_words("second_", second_gap or {}):
+        note = night_baseline_words("second_", second_gap or {})
+    else:
+        note = NIGHT_VERDICT_WORDS["second_missing" if second_absence in ("missing", "baseline") else "second_pending"]
     out: dict[str, Any] = {"z_hrv": z_first, "z_hrv_next": z_second, "setting": True,
                            "rule": night_rule_text(), "delayed": False, "note": note}
     second_low = z_second is not None and z_second < NIGHT_SECOND_Z
@@ -1585,6 +1654,8 @@ def night_verdict(z_first: float | None, z_second: float | None,
         key = "verdaut"
     out["key"] = key
     out["label"] = NIGHT_VERDICT_WORDS["gekostet_delayed" if out["delayed"] else key]
+    if key == "unbekannt" and night_baseline_words("card_", first_gap or {}):
+        out["label"] = night_baseline_words("card_", first_gap or {})
     return out
 
 
@@ -1604,6 +1675,11 @@ def night_after(data: dict[str, Any], activity_id: str) -> dict[str, Any]:
     night_day = (date.fromisoformat(day) + timedelta(days=1)).isoformat()
     night = _night_z(data, night_day)
     if not night:
+        # 0.74.6 C: Wert da, aber keine Basislinie -> "no_baseline" mit Grund und n statt no_wellness
+        if _night_absence(data, night_day) == "baseline":
+            gap = _night_gap(data, night_day) or {}
+            return {"available": False, "reason": "no_baseline", "night_date": night_day,
+                    "gap": gap.get("gap"), "n": gap.get("n"), "text": night_baseline_words("", gap)}
         return {"available": False, "reason": "no_wellness", "night_date": night_day}
 
     load = _f(activity.get("icu_training_load")) or 0.0
@@ -1677,8 +1753,14 @@ def night_after(data: dict[str, Any], activity_id: str) -> dict[str, Any]:
     # der zweiten Nacht gegen das eine Band.
     second_day = (date.fromisoformat(night_day) + timedelta(days=1)).isoformat()
     second = _night_z(data, second_day)
+    # 0.74.6 C: fuer Karte und zweite Nacht zaehlt nur die HRV
+    hrv_only = ("hrv",)
+    first_gap = (_night_gap(data, night_day, hrv_only)
+                 if (night.get("hrv") or {}).get("z") is None else None)
+    second_absence = _night_absence(data, second_day, hrv_only)
+    second_gap = _night_gap(data, second_day, hrv_only) if second_absence == "baseline" else None
     verdict = night_verdict((night.get("hrv") or {}).get("z"), (second.get("hrv") or {}).get("z"),
-                            _night_absence(data, second_day))
+                            second_absence, first_gap, second_gap)
     # 0.74.4: die Worte der Karte sind die Worte der Werte-Zeilen (dieselbe Messung, z_word)
     verdict["z_hrv_word"] = (night.get("hrv") or {}).get("word")
     verdict["z_hrv_next_word"] = (second.get("hrv") or {}).get("word")

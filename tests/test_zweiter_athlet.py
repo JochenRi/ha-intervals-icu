@@ -580,6 +580,68 @@ for _s745 in _sg745:
        "günstig" if _s745["z"] > 0.5 else "ungünstig" if _s745["z"] < -0.5 else "unauffällig")
 eq("Z11 0.74.5: keine Zahl des ersten Athleten in B's Kacheln", leaks({"signals": _sg745}), [])
 
+print("\n=== Z12. 0.74.6: der zweite Athlet ist NEU - noch kein Vergleich, eigener Kalender, eigene Woche ===")
+# Eigene Lage: HRV um 75 ms, Ruhepuls um 45, Schlaf 7,8 h; Kalender im Mai, fern vom Stichtag des ersten.
+# 19 Naechte mit Werten vor der Nacht nach seiner Einheit; die Nacht selbst ist gemessen.
+_bl12 = ws.coach_module.baseline  # dieselbe Basislinie, die der echte Handler liest
+_s12 = _dtz.date(2026, 5, 4)
+
+
+def _z12(nights, *, flat=False, hole=None):
+    d = importer.empty_data("i2")
+    for i in range(nights + 1):
+        day12 = (_s12 + _dtz.timedelta(days=i)).isoformat()
+        w = 0 if flat else (i % 5) - 2
+        d["wellness"][day12] = {"hrv": 75 + w, "restingHR": 45 - w * 0.4, "sleepSecs": 28080 + w * 300}
+    act = (_s12 + _dtz.timedelta(days=nights - 1)).isoformat()
+    d["activities"]["z12"] = {"start_date_local": act + "T06:30:00", "type": "Ride", "name": "Frührunde",
+                              "icu_training_load": 44, "icu_intensity": 71, "moving_time": 3000}
+    d["activities"]["z12a"] = {"start_date_local": (_s12 + _dtz.timedelta(days=nights - 4)).isoformat() + "T06:30:00",
+                               "type": "Ride", "name": "Kurz", "icu_training_load": 31, "icu_intensity": 60, "moving_time": 2400}
+    if hole is not None:
+        d["wellness"].pop((_s12 + _dtz.timedelta(days=hole)).isoformat())
+    return d
+
+
+def _run12(d):
+    c = FakeCoordinator(d); c.data = {"events": []}
+    ws._pick = lambda hass, athlete_id: c
+    t = FakeConn(); ws.websocket_today(None, t, {"id": 31})
+    n = FakeConn(); ws.websocket_night(None, n, {"id": 32, "activity_id": "z12"})
+    return t, n
+
+
+_t12, _n12 = _run12(_z12(19))
+_tp12, _np12 = (_t12.results or [{}])[0], (_n12.results or [{}])[0]
+eq("Z12: today und night laufen ohne Fehler", (_t12.errors, _n12.errors), ([], []))
+_few12 = (f"gibt es noch keinen Vergleich – die App braucht dafür {_bl12.MIN_VALUES} Nächte mit Werten, bisher sind es 19.")
+eq("Z12 C Heute: seine Nacht steht als 'noch kein Vergleich' mit seinem n",
+   {k: (_tp12.get("night_pending") or {}).get(k) for k in ("reason", "gap", "n", "text", "name")},
+   {"reason": "baseline", "gap": "few", "n": 19, "text": _few12, "name": "Frührunde"})
+eq("Z12 C Aktivitaeten: no_baseline mit seinem n",
+   {k: _np12.get(k) for k in ("available", "reason", "gap", "n", "text")},
+   {"available": False, "reason": "no_baseline", "gap": "few", "n": 19, "text": _few12})
+eq("Z12: keine Zahl des ersten Athleten", leaks({"t": _tp12.get("night_pending"), "n": _np12}), [])
+# 20 Naechte -> seine normale Bewertung aus SEINER Basislinie
+_t20, _n20 = _run12(_z12(20))
+_np20 = (_n20.results or [{}])[0]
+check("Z12 C 20 Naechte: normale Bewertung", _np20.get("available") is True
+      and (_np20.get("verdict") or {}).get("key") in ("verdaut", "gekostet", "zu_viel"))
+eq("Z12 C 20 Naechte: Heute meldet keine fehlende Nacht", ((_t20.results or [{}])[0]).get("night_pending"), None)
+# flach: 25 gleiche Werte
+_tf, _nf = _run12(_z12(25, flat=True))
+eq("Z12 C flach", (((_tf.results or [{}])[0].get("night_pending") or {}).get("text"), ((_nf.results or [{}])[0]).get("gap")),
+   ("gibt es noch keinen Vergleich – deine bisherigen Nachtwerte sind alle gleich.", "flat"))
+# B: seine Woche mit Luecke (die Zeile vier Tage vor seinem letzten Tag fehlt) -> sieben Kalendertage
+_th, _ = _run12(_z12(19, hole=15))  # die Zeile am Tag seiner kurzen Einheit fehlt
+_rec12 = ((_th.results or [{}])[0]).get("recent") or []
+_last12 = (_s12 + _dtz.timedelta(days=19)).isoformat()
+eq("Z12 B: sein Streifen sind die sieben Kalendertage bis zu seinem letzten Tag",
+   [r["date"] for r in _rec12], [(_s12 + _dtz.timedelta(days=13 + i)).isoformat() for i in range(7)])
+eq("Z12 B: seine Wochenlast aus SEINEN Einheiten (44 + 31), der Tag ohne Zeile mit seiner Last",
+   (((_th.results or [{}])[0]).get("week_load"), {r["date"]: r["load"] for r in _rec12}.get((_s12 + _dtz.timedelta(days=15)).isoformat())), (75, 31))
+check("Z12 B: sein letzter Tag ist der Endpunkt", bool(_rec12) and _rec12[-1]["date"] == _last12)
+
 print(f"\ntest_zweiter_athlet: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

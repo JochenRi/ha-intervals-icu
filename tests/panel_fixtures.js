@@ -843,6 +843,14 @@ function today(kind) {
   }
   // 0.74.3: ohne gemessene Nacht im Fenster, aber mit einer Einheit, deren Nacht noch fehlt
   if (kind === "ohnenacht") return { ...base, night: { available: false } };
+  // 0.74.6 (SKIZZE_0.74.6 C): neuer Athlet, 19 Naechte mit Werten - die Nacht ist gemessen, die Basislinie fehlt.
+  // Form wie coach.today (night_pending mit gap/n/text; keine Kachel, kein Band); test_coach bindet den Text (Regel 9).
+  if (kind === "neuathlet" || kind === "neuathlet_flach") {
+    const flat = kind === "neuathlet_flach";
+    return { ...base, signals: [], bands: {}, night: { available: false },
+      night_pending: { date: "2026-09-10", name: "Neue Runde", night_date: "2026-09-11", reason: "baseline",
+                       gap: flat ? "flat" : "few", n: flat ? 25 : 19, text: flat ? NEU_FLAT : NEU_FEW_19 } };
+  }
   if (kind === "missing") {
     return { ...base, night: { available: false },
       night_pending: { date: "2026-09-09", name: "Rehburg-Loccum Gehen", night_date: "2026-09-10", reason: "missing" } };
@@ -1128,8 +1136,18 @@ const NIGHT_CAVEAT = "Die Nacht direkt nach einer Einheit ist die sauberste Mess
   "hinterlassen können – aus entgegengesetzten Gründen. Gemessen hat die Uhr in der Nacht; genauer wäre eine Messung " +
   "morgens im Liegen. " + NIGHT_NUMBER;
 
+/* 0.74.6 (SKIZZE_0.74.6 C): die Saetze zu "Wert da, Basislinie fehlt", wie coach.night_baseline_words sie
+ * schreibt (MIN_VALUES = 20 ist der Stand des Erzeugers; test_coach prueft jeden gegen ihn, Regel 9). */
+const NEU_FEW_19 = "gibt es noch keinen Vergleich – die App braucht dafür 20 Nächte mit Werten, bisher sind es 19.";
+const NEU_FLAT = "gibt es noch keinen Vergleich – deine bisherigen Nachtwerte sind alle gleich.";
+const NEU_CARD_10 = "Verglichen mit deinen normalen Nächten: noch keine Bewertung – bisher 10 von 20 Nächten mit HRV.";
+const NEU_SECOND_11 = "Zweite Nacht: noch kein Vergleich (11 von 20 Nächten)";
+
 function night(kind) {
   if (kind === "keine") return { available: false, reason: "no_wellness", night_date: "2026-09-02" };
+  // 0.74.6 C: gemessene Nacht ohne Basislinie (Aktivitaeten) - wie coach.night_after sie schreibt
+  if (kind === "neuathlet") return { available: false, reason: "no_baseline", night_date: "2026-09-11", gap: "few", n: 19, text: NEU_FEW_19 };
+  if (kind === "neuathlet_flach") return { available: false, reason: "no_baseline", night_date: "2026-09-11", gap: "flat", n: 25, text: NEU_FLAT };
   if (kind === "unbekannt") return { available: false, reason: "unknown_activity" };
   // 0.74.4: jedes z traegt seine Wortstufe aus coach.z_word samt der gezeigten Zahl `shown` (Nachtrag §8.1:
   // vom Nullpunkt weg auf eine Stelle) - test_coach prueft jedes Wort gegen den Erzeuger (Regel 9)
@@ -1183,6 +1201,15 @@ function night(kind) {
       verdict: { ...base.verdict, key: "nicht_bewertbar", label: "Diese Nacht zählt nicht.", reason: why,
                  delayed: false, z_hrv: -1.3, z_hrv_word: hrvWord, z_hrv_next: null, z_hrv_next_word: null,
                  note: "Zweite Nacht: fehlt noch", rule: NIGHT_RULE } };
+  }
+  // 0.74.6 C: nur die HRV-Geschichte ist zu kurz (10 Naechte; zweite Nacht 11) - Ruhepuls und Schlaf haben ein Band.
+  // Urteil "unbekannt" unveraendert, nur der Satz; ohne HRV-Zeile, wie _night_z sie dann schreibt.
+  if (kind === "nurhrv") {
+    const { hrv: _h, ...rest } = base.night;
+    const { hrv: _r, ...restRef } = base.reference;
+    return { ...base, night: rest, reference: restRef,
+      verdict: { ...base.verdict, key: "unbekannt", label: NEU_CARD_10, z_hrv: null, z_hrv_word: null,
+                 z_hrv_next: null, z_hrv_next_word: null, delayed: false, note: NEU_SECOND_11 } };
   }
   // Nachtrag §8.6: dieselbe VO2max-Nacht nach dem Abgleich vom 27.09. - die zweite Nacht ist gemessen
   if (kind === "etikett27") {
@@ -1695,4 +1722,4 @@ function dayContext(extra) {
   };
 }
 
-module.exports = { STAGE_WORDS, stageOf, TODAY, days, load, loadView, LV_KEYS, readiness, activities, streams, thresholds, fatigue, fatigueV2Block, blocks, calendar, pmc, laps, lapsWithBounds, steadyStream, night, NIGHT_RULE, NIGHT_CAVEAT, context, goal, today, week, coach, signals, workouts, dayContext };
+module.exports = { NEU_FEW_19, NEU_FLAT, NEU_CARD_10, NEU_SECOND_11, STAGE_WORDS, stageOf, TODAY, days, load, loadView, LV_KEYS, readiness, activities, streams, thresholds, fatigue, fatigueV2Block, blocks, calendar, pmc, laps, lapsWithBounds, steadyStream, night, NIGHT_RULE, NIGHT_CAVEAT, context, goal, today, week, coach, signals, workouts, dayContext };

@@ -2530,7 +2530,17 @@ check(any(r["week_load"] and 0 < r["rest_days"] < 7 for r in _strip746) and all(
 _wide746 = [coach.today(build()), coach.today(night_history())]
 _nh746 = night_history()
 _wide746 += [coach.night_after(_nh746, _k) for _k in sorted(_nh746["activities"])]
-eq(_fp746(_wide746), "72e1fe73d58bf586", "0.74.6 Fingerabdruck: Heute/Nacht im langen Bestand weicht von 0.74.5 ab")
+# Der Hash ueber alles war auf v0.74.5 "72e1fe73d58bf586". Er bewegt sich durch C genau an den frühesten Einheiten des
+# Bestands (weniger als MIN_VALUES Vornaechte): dort sagte 0.74.5 faelschlich "no_wellness". Darum getrennt:
+# die Heute-Seiten und jede Nacht mit Band bitgleich zu 0.74.5 (Hashes aus v0.74.5 gerechnet), die fruehen genau benannt.
+eq(_fp746(_wide746[:2]), "30d76268675ed7f8", "0.74.6 Fingerabdruck: die Heute-Seite im langen Bestand weicht von 0.74.5 ab")
+eq(_fp746([x for x in _wide746[2:] if x.get("reason") != "no_baseline"]), "8289ad4d39a6b7f5",
+   "0.74.6 Fingerabdruck: eine Nacht mit Band (oder ihre Zahl) weicht von 0.74.5 ab")
+_early746 = [x for x in _wide746[2:] if x.get("reason") == "no_baseline"]
+eq((len(_early746), all(x.get("gap") == "few" and x.get("n", 99) < _bl746.MIN_VALUES for x in _early746)), (9, True),
+   "0.74.6 C im langen Bestand: nicht genau die 9 fruehen Naechte (unter MIN_VALUES Vornaechten) als no_baseline")
+check(not any(x.get("reason") == "no_wellness" for x in _wide746[2:]),
+      "0.74.6 C im langen Bestand: eine gemessene Nacht steht noch als no_wellness")
 
 # C: norm_band bitgleich - Laengen um MIN_VALUES, log mit Nullen, flach, gewichtet
 _nb746 = []
@@ -2590,6 +2600,145 @@ check("timedelta" not in _insp746.getsource(coach._last_measured_night).split("c
 if callable(getattr(coach, "_window_days", None)):
     eq(coach._window_days(day(0)), [day(-6 + _i) for _i in range(7)], "0.74.6 B: _window_days liefert nicht [current-6, current]")
     eq(len(coach._window_days(day(0))), coach.NIGHT_WINDOW_DAYS, "0.74.6 B: die Tagesliste liest die eine Konstante nicht")
+
+# --- 0.74.6 C: neuer Athlet - "noch kein Vergleich", wenn nur die Basislinie fehlt ---
+# N Naechte = Naechte mit Werten VOR der bewerteten Nacht (das zaehlt das Band). Erfundener Athlet mit eigener Lage
+# (HRV 62 ms, Ruhepuls 52, Schlaf 7 h) - keine Zahl aus Johannes' Bestand.
+_MIN746 = _bl746.MIN_VALUES
+
+
+def _neu746(nights, *, flat=False, hrv_nights=None, flat_hrv=False, act_back=1, blank_night=False):
+    """Wellness bis day(0); die Einheit liegt act_back Tage vor day(0), ihre Nacht ist day(-act_back+1)."""
+    judged = -act_back + 1
+    wellness = {}
+    for i in range(nights + act_back):
+        off = judged - nights + i
+        wob = 0.0 if flat else ((i * 7) % 5 - 2) * 1.0
+        row = {"id": day(off), "restingHR": 52.0 - wob * 0.3, "sleepSecs": (7.0 + wob * 0.05) * 3600}
+        if hrv_nights is None or i >= nights - hrv_nights:
+            row["hrv"] = 62.0 if (flat or flat_hrv) else 62.0 + wob
+        wellness[day(off)] = row
+    if blank_night:
+        wellness[day(judged)] = {"id": day(judged)}
+    act = _a746("neu", day(-act_back), 3600)
+    act.update(name="Neue Runde", icu_training_load=60, icu_intensity=70)
+    return {"wellness": wellness, "activities": {"neu": act}, "dfa": {}}
+
+
+def _few746(n):
+    return f"gibt es noch keinen Vergleich – die App braucht dafür {_MIN746} Nächte mit Werten, bisher sind es {n}."
+
+
+_FLAT746 = "gibt es noch keinen Vergleich – deine bisherigen Nachtwerte sind alle gleich."
+
+# 1) baseline: die neue Stelle zaehlt genau wie norm_band - ueber das ganze Raster
+_gapfn746 = getattr(_bl746, "no_band_reason", None)
+check(callable(_gapfn746), "0.74.6 C: baseline.no_band_reason fehlt")
+if callable(_gapfn746):
+    _hit746 = {"few": 0, "flat": 0, None: 0}
+    for _n in (0, 1, 5, 18, 19, 20, 21, 25, 60):
+        for _log in (False, True):
+            for _shape in ("wellig", "flach", "nullen", "gewichtet", "flach_gewichtet"):
+                _raw = [50.0 + ((_i * 7) % 5 - 2) for _i in range(_n)]
+                _w = [0.5 if _i % 3 == 0 else 1.0 for _i in range(_n)] if _shape.endswith("gewichtet") else None
+                if _shape.startswith("flach"):
+                    _raw = [50.0] * _n
+                if _shape == "nullen":
+                    _raw = [0.0 if _i % 4 == 0 else _v for _i, _v in enumerate(_raw)]
+                _r = _gapfn746(_raw, log=_log, weights=_w)
+                _b = _bl746.norm_band(_raw, log=_log, weights=_w)
+                _cnt = sum(1 for _v in _raw if _v > 0) if _log else len(_raw)
+                _hit746[_r[0] if _r else None] += 1
+                check((_b is None) == (_r is not None), f"0.74.6 C: Grund und Band widersprechen sich ({_n}, {_log}, {_shape})")
+                if _r:
+                    eq(_r, ("few" if _cnt < _MIN746 else "flat", _cnt), f"0.74.6 C: Grund/Zaehlung ({_n}, log={_log}, {_shape})")
+    check(all(_hit746.values()), f"0.74.6 C Trefferzusicherung: few/flat/Band nicht alle getroffen ({_hit746})")
+    # log-Filter: 20 Werte, einer davon 0 -> 19 zaehlen (norm_band sagt: kein Band)
+    eq(_gapfn746([0.0] + [50.0 + (_i % 3) for _i in range(19)], log=True), ("few", 19), "0.74.6 C: log-Fall zaehlt die 0 mit")
+    eq(_gapfn746([0.0] + [50.0 + (_i % 3) for _i in range(19)], log=False), None, "0.74.6 C Gegenprobe: ohne log zaehlt die 0 (Band da)")
+
+# 2) Heute (night_pending) und Aktivitaeten (night_after) bei 5 / 19 / 20 Naechten
+for _n in (5, 19):
+    _d = _neu746(_n)
+    _na = coach.night_after(_d, "neu")
+    eq((_na.get("available"), _na.get("reason"), _na.get("gap"), _na.get("n"), _na.get("text")),
+       (False, "no_baseline", "few", _n, _few746(_n)), f"0.74.6 C {_n} Naechte: Aktivitaeten night_after")
+    _np = coach.today(_d).get("night_pending") or {}
+    eq((_np.get("reason"), _np.get("gap"), _np.get("n"), _np.get("text"), _np.get("name"), _np.get("date")),
+       ("baseline", "few", _n, _few746(_n), "Neue Runde", day(-1)), f"0.74.6 C {_n} Naechte: Heute night_pending")
+_na20 = coach.night_after(_neu746(20), "neu")
+check(_na20.get("available") is True and (_na20.get("verdict") or {}).get("key") in ("verdaut", "gekostet", "zu_viel"),
+      f"0.74.6 C 20 Naechte: keine normale Bewertung ({_na20.get('reason')}, {(_na20.get('verdict') or {}).get('key')})")
+eq(coach.today(_neu746(20)).get("night_pending"), None, "0.74.6 C 20 Naechte: Heute meldet trotz Band eine fehlende Nacht")
+
+# 3) flacher Verlauf, 25 gleiche Werte
+_fl746 = _neu746(25, flat=True)
+_na = coach.night_after(_fl746, "neu")
+eq((_na.get("reason"), _na.get("gap"), _na.get("n"), _na.get("text")), ("no_baseline", "flat", 25, _FLAT746),
+   "0.74.6 C flach: Aktivitaeten")
+eq(((coach.today(_fl746).get("night_pending") or {}).get("reason"), (coach.today(_fl746).get("night_pending") or {}).get("text")),
+   ("baseline", _FLAT746), "0.74.6 C flach: Heute")
+
+# 4) nur die HRV zu kurz (Ruhepuls und Schlaf lang genug) -> Karte "bisher n von MIN Naechten mit HRV"
+_hs746 = coach.night_after(_neu746(25, hrv_nights=19), "neu")
+_v = _hs746.get("verdict") or {}
+eq((_hs746.get("available"), _v.get("key"), _v.get("label")),
+   (True, "unbekannt", f"Verglichen mit deinen normalen Nächten: noch keine Bewertung – bisher 19 von {_MIN746} Nächten mit HRV."),
+   "0.74.6 C nur HRV zu kurz: Karte")
+_hf746 = coach.night_after(_neu746(25, flat_hrv=True), "neu").get("verdict") or {}
+eq((_hf746.get("key"), _hf746.get("label")),
+   ("unbekannt", "Verglichen mit deinen normalen Nächten: noch keine Bewertung – deine bisherigen HRV-Werte sind alle gleich."),
+   "0.74.6 C nur HRV flach: Karte")
+# zweite Nacht: HRV vorhanden, aber zu kurz / flach
+_s2 = coach.night_after(_neu746(25, hrv_nights=10, act_back=2), "neu").get("verdict") or {}
+eq((_s2.get("z_hrv_next"), _s2.get("note")), (None, f"Zweite Nacht: noch kein Vergleich (11 von {_MIN746} Nächten)"),
+   "0.74.6 C zweite Nacht zu kurz")
+_s2f = coach.night_after(_neu746(25, flat_hrv=True, act_back=2), "neu").get("verdict") or {}
+eq(_s2f.get("note"), "Zweite Nacht: noch kein Vergleich", "0.74.6 C zweite Nacht flach")
+
+# 5) echte fehlende Nacht (Zeile ohne Werte) -> die alten Saetze; HRV fehlt, Rest da -> "die HRV der Nacht fehlt"
+_mi746 = _neu746(19, blank_night=True)
+eq(coach.night_after(_mi746, "neu").get("reason"), "no_wellness", "0.74.6 C echte Luecke: Aktivitaeten")
+eq((coach.today(_mi746).get("night_pending") or {}).get("reason"), "missing", "0.74.6 C echte Luecke: Heute")
+check("text" not in (coach.today(_mi746).get("night_pending") or {}), "0.74.6 C echte Luecke: Heute traegt einen Basislinien-Satz")
+_nohrv = _neu746(25); _nohrv["wellness"][day(0)].pop("hrv")
+eq((coach.night_after(_nohrv, "neu").get("verdict") or {}).get("label"),
+   "Verglichen mit deinen normalen Nächten: keine Bewertung – die HRV der Nacht fehlt.", "0.74.6 C HRV fehlt wirklich: alter Satz")
+
+# 6) Nacht in der Zukunft (Einheit heute) -> "fehlt noch", unveraendert
+_fu746 = _neu746(19, act_back=0)
+eq((coach.today(_fu746).get("night_pending") or {}).get("reason"), "pending", "0.74.6 C Zukunft: Heute")
+eq(coach.night_after(_fu746, "neu").get("reason"), "no_wellness", "0.74.6 C Zukunft: Aktivitaeten unveraendert")
+
+# 7) {MIN} kommt aus baseline.MIN_VALUES, nie als Literal
+_old_min746 = _bl746.MIN_VALUES
+try:
+    _bl746.MIN_VALUES = 7
+    _t7 = coach.night_after(_neu746(5), "neu").get("text")
+    _c7 = (coach.night_after(_neu746(25, hrv_nights=5), "neu").get("verdict") or {}).get("label")
+finally:
+    _bl746.MIN_VALUES = _old_min746
+eq(_t7, "gibt es noch keinen Vergleich – die App braucht dafür 7 Nächte mit Werten, bisher sind es 5.",
+   "0.74.6 C {MIN}: der Satz liest baseline.MIN_VALUES nicht (Literal?)")
+eq(_c7, "Verglichen mit deinen normalen Nächten: noch keine Bewertung – bisher 5 von 7 Nächten mit HRV.",
+   "0.74.6 C {MIN}: die Karte liest baseline.MIN_VALUES nicht (Literal?)")
+
+# 8) eine Stelle: _night_absence kennt "baseline", und _night_z und der Grund lesen dieselben Eingaben
+check('"baseline"' in _insp746.getsource(coach._night_absence), "0.74.6 C: _night_absence kennt den Fall baseline nicht")
+check("no_band_reason" in _insp746.getsource(coach._night_gap) if hasattr(coach, "_night_gap") else False,
+      "0.74.6 C: _night_gap liest baseline.no_band_reason nicht")
+for _fn746 in ("_night_z", "_night_gap"):
+    check(_fn746 in dir(coach) and "_night_inputs" in _calls746(getattr(coach, _fn746)),
+          f"0.74.6 C: {_fn746} sammelt die Nachtwerte nicht ueber _night_inputs")
+
+# Regel 9: die Panel-Fixtures tragen die Basislinien-Saetze genau so, wie coach sie schreibt
+_fx746 = (Path(__file__).resolve().parent / "panel_fixtures.js").read_text(encoding="utf-8")
+for _name, _kind, _gap in (("NEU_FEW_19", "", {"gap": "few", "n": 19}), ("NEU_FLAT", "", {"gap": "flat", "n": 25}),
+                           ("NEU_CARD_10", "card_", {"gap": "few", "n": 10}), ("NEU_SECOND_11", "second_", {"gap": "few", "n": 11})):
+    check(f'const {_name} = "{coach.night_baseline_words(_kind, _gap)}";' in _fx746,
+          f"0.74.6 Regel 9: Fixture {_name} weicht vom Erzeuger ab")
+eq(len(_re745.findall(r"gibt es noch keinen Vergleich|noch keine Bewertung –|Zweite Nacht: noch kein Vergleich", _fx746)), 4,
+   "0.74.6 Regel 9: die Fixture traegt einen Basislinien-Satz ausserhalb der vier gebundenen Konstanten")
 
 print(f"test_coach: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
