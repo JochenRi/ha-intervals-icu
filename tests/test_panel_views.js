@@ -679,7 +679,7 @@ const EMPTY_LOAD = { weeks: [], weeks_by_group: [], window_history: [], window_p
     const grades = [
       [2.9, /unter 3 %/, "held"], [3.0, /unter 3 %/, "held"], [5.0, /unter 5 %/, "held"],
       [5.04, /unter 5 %/, "held"], [5.1, /zwischen 5 und 10 %/, "worse"], [10.0, /zwischen 5 und 10 %/, "worse"],
-      [10.1, /über 10 %/, "worse"], [-4.2, /unter 3 %/, "held"],
+      [10.1, /über 10 %/, "worse"], [0.0, /unter 3 %/, "held"], [-0.04, /unter 3 %/, "held"],
     ];
     for (const [v, pattern, tone] of grades) {
       const g = p.rAkt(acts, withDec(v));
@@ -693,6 +693,18 @@ const EMPTY_LOAD = { weeks: [], weeks_by_group: [], window_history: [], window_p
     p._streams[acts[0].id] = flat;
     ok(!/-0,0 %|[-]0 Schläge/.test(box(p.rAkt(acts, acts[0]))), "0.74.8: '-0,0' in der neutralen Zeile");
     p._streams[acts[0].id] = steadyRide;
+    // negative Entkopplung (Entscheidung 27.09.): keine Einordnung nach 3 / Marke / 10, neutral, eigener Satz
+    for (const v of [-4.2, -12.01, -0.05]) {
+      const ng = p.rAkt(acts, withDec(v)); clean(ng, "grundlage negativ " + v);
+      const nb = box(ng).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+      contains(nb, `Entkopplung: ${kachel(ng)} (erste gegen zweite Hälfte) – die zweite Hälfte lief mit weniger Puls je Watt als die erste. `
+        + "Das kommt meist vom Aufwärmen in der ersten Hälfte; nach Friels Grenzen lässt sich das nicht einordnen.",
+        `0.74.8 negativ ${v}: Satz`);
+      ok(!/unter 3 %|unter 5 %|zwischen 5|über 10 %|Friels Richtwert/.test(nb), `0.74.8 negativ ${v}: trotzdem eingeordnet`);
+      ok(/class="cmpverdict held/.test(box(ng)) && !/#fbbf24|#34d399/.test(box(ng).slice(0, box(ng).indexOf("</svg>") + 6)),
+         `0.74.8 negativ ${v}: Ton nicht neutral`);
+      contains(nb, "Watt pro Herzschlag vom 1. zum 4. Viertel:", `0.74.8 negativ ${v}: neutrale Zeile fehlt`);
+    }
     // fehlender Wert
     const none = p.rAkt(acts, withDec(null));
     clean(none, "grundlage ohne entkopplung");
@@ -796,11 +808,11 @@ const EMPTY_LOAD = { weeks: [], weeks_by_group: [], window_history: [], window_p
     const set = F.lapsWithBounds();
     p._laps[acts[0].id] = { laps: set.laps, seen_keys: set.seen_keys, source: set.source };
     p._streams[acts[0].id] = set.stream;
-    p._ctx[acts[0].id] = F.context("structured");
+    p._ctx[acts[0].id] = F.context("vo2max");
     const vo = p.rAkt(acts, acts[0]); clean(vo, "einordnung vo2max");
     contains(vo, "Blockvergleich", "0.74.8: VO2max ohne Blockvergleich");
     ok(!vo.includes("Wie sich die Fahrt entwickelt hat"), "0.74.8: VO2max geviertelt");
-    contains(sec(vo), "diese Fahrt hatte Intervalle oder Blöcke. Wie die Blöcke zueinander standen, zeigt der Blockvergleich weiter oben.",
+    contains(sec(vo), "diese Fahrt war dafür zu kurz (unter 45 min), eine Indoor-Fahrt und zu intensiv. Wie die Blöcke zueinander standen, zeigt der Blockvergleich weiter oben.",
              "0.74.8: VO2max Info-Zeile mit Blockvergleich-Satz");
     ok(!sec(vo).includes('class="ctxrow'), "0.74.8: VO2max mit Kennzahl-Zeilen");
     p._ctx = {}; p._laps = {}; p._streams = {};
@@ -814,6 +826,7 @@ const EMPTY_LOAD = { weeks: [], weeks_by_group: [], window_history: [], window_p
       ok(!src.includes(t), `0.74.8: Grund-Text im Panel geschrieben: ${t}`);
     }
     ok(!src.includes("Entkopplung über die Fahrt"), "0.74.8: altes Viertel-Urteil im Panel-Quelltext");
+    ok(!src.includes("war dafür") && !src.includes("hatte Intervalle oder Blöcke"), "0.74.8 A: Satzteil der Gründe im Panel geschrieben");
   }
 
   // --- Die Nacht danach ---------------------------------------------------

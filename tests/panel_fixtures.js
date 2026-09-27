@@ -1110,13 +1110,15 @@ function goal(kind) {
  * gegen den Erzeuger, Regel 9) - mit den Zahlen aus DURABILITY_MIN_MINUTES, DURABILITY_MAX_INTENSITY,
  * PEER_CALIPER_STAGES und MIN_PEERS_TO_RANK_METRIC. */
 const CTX_STEADY_TEXT = {
-  structured: "hatte Intervalle oder Blöcke",
+  short: "war dafür zu kurz (unter 45 min)",
   intense: "war dafür zu intensiv",
   variable: "war dafür zu ungleichmäßig",
-  short: "war dafür zu kurz (unter 45 min)",
-  indoor: "war eine Indoor-Fahrt – Wärme und fester Widerstand verschieben den Puls",
-  no_power: "hatte keine Leistungsmessung",
+  indoor: "war dafür eine Indoor-Fahrt",
+  no_power: "war dafür ohne Leistungsmessung",
+  vo2max: "war dafür zu kurz (unter 45 min), eine Indoor-Fahrt und zu intensiv",
 };
+/* 0.74.8 A: welche Gruende hinter den Fixture-Arten stehen (derive.steady_endurance_reasons, feste Reihenfolge) */
+const CTX_REASONS = { vo2max: ["short", "indoor", "intense"] };
 const CTX_WHY = "Entkopplung und Watt pro Herzschlag messen, wie gut dein Puls mit der Leistung Schritt hält. " +
   "Das funktioniert nur, wenn die Leistung gleichmäßig und ruhig ist. Bei Intervallen wechseln Belastung und Pause, " +
   "der Puls läuft jedes Mal hinterher – die Zahl misst dann den Wechsel, nicht deine Ausdauer. Deshalb vergleicht " +
@@ -1138,7 +1140,7 @@ function context(kind) {
     stages: [0.2, 0.4, 0.6, 0.8, 1.0], widest_used: 0.4,
     sd_log_duration: 0.511, sd_intensity: 14.0, population: 137,
     window: { intensity: 61, minutes: 208 },
-    steady: { ok: true, reason: null, text: null }, steady_why: CTX_WHY,
+    steady: { ok: true, reason: null, reasons: [], text: null }, steady_why: CTX_WHY,
     metrics: {
       decoupling: { label: "Entkopplung", unit: "%", dec: 1, value: 10.6, median: 2.1,
         best: -0.6, worst: 16.9, p25: 0.9, p75: 5.4, n: 17, enough: true,
@@ -1174,7 +1176,8 @@ function context(kind) {
     } };
   }
   if (kind && CTX_STEADY_TEXT[kind]) {
-    return { ...full, steady: { ok: false, reason: kind, text: CTX_STEADY_TEXT[kind] }, metrics: {} };
+    const reasons = CTX_REASONS[kind] || [kind];
+    return { ...full, steady: { ok: false, reason: reasons[0], reasons, text: CTX_STEADY_TEXT[kind] }, metrics: {} };
   }
   return full;
 }

@@ -1175,61 +1175,51 @@ def fatigue_curve_reason(
     return None
 
 
-def steady_endurance_reason(
+def steady_endurance_reasons(
     activity: dict[str, Any], min_minutes: float = DURABILITY_MIN_MINUTES
-) -> str | None:
-    """Return None when the session qualifies, else why it does not.
+) -> list[str]:
+    """Return EVERY reason why the session does not qualify, in a fixed order.
 
-    Reasons are returned rather than a bare False so the panel can say what was
-    left out instead of showing a number whose population is invisible.
+    0.74.8 (Entscheidung Johannes 27.09., Vorschlag A): the one place for
+    "gleichmaessige Fahrt". The decoupling curve, the durability tile and the
+    comparison in the activity view all ask this same test - no second test
+    beside it. Order: short, indoor, intense, no_power, variable (no_power and
+    variable exclude each other: without power there is no VI). An empty list
+    means the session qualifies. Zone shares are deliberately NOT a reason: a
+    steady ride with tempo minutes (Z3 is aerobic) is still a steady ride.
     """
     if not isinstance(activity, dict):
-        return "no_activity"
+        return ["no_activity"]
+    reasons: list[str] = []
     if (activity.get("moving_time") or 0) / 60 < min_minutes:
-        return "short"
+        reasons.append("short")
     if str(activity.get("type") or "") in DURABILITY_EXCLUDED_TYPES:
-        return "indoor"
+        reasons.append("indoor")
     if (_number(activity.get("icu_intensity")) or 0) >= DURABILITY_MAX_INTENSITY:
-        return "intense"
+        reasons.append("intense")
     index = variability_index(activity)
     if index is None:
         # NOT "variable" - nobody knows whether it was. Until 0.39.0 both cases
         # were counted together and the tile said "64 too wavy" over 53 rides
         # with no power meter at all (PROJEKTSTAND section 7).
-        return "no_power"
-    if index > DURABILITY_VI_NONE:
-        return "variable"
-    return None
+        reasons.append("no_power")
+    elif index > DURABILITY_VI_NONE:
+        reasons.append("variable")
+    return reasons
 
 
-def steady_ride_reason(activity: dict[str, Any]) -> str | None:
-    """Return None when a ride is steady enough to compare, else why not.
+def steady_endurance_reason(
+    activity: dict[str, Any], min_minutes: float = DURABILITY_MIN_MINUTES
+) -> str | None:
+    """Return None when the session qualifies, else the FIRST reason why not.
 
-    0.74.8 (SKIZZE_0.74.8 §2.1 + NACHTRAG N1): THE one place for "gleichmaessige
-    Fahrt" in the activity view. Decoupling and watts per heartbeat only mean
-    something on a steady, aerobic ride; intervals make them measure the change
-    of load, not endurance.
-
-    It is steady_endurance_reason() plus the structure question that
-    fatigue_curve_reason() already asks - the VI lets structured blocks through
-    (see there). Order: "short" and "indoor" win over everything, then the
-    structure, then whatever steady_endurance_reason said ("intense",
-    "no_power", "variable" or None). The SET of steady rides is the same as
-    asking both in any order; only the NAME of the reason differs for rides that
-    fail several tests - a 4x4 at intensity 85 is named for its intervals.
-
-    A ride WITHOUT zone times stays admitted (share None): the structure cannot
-    be seen, and dropping it would silently shrink the comparison group of every
-    rider whose archive lacks the field. steady_endurance_reason() itself stays
-    unchanged, so the decoupling curve and the durability tile do not move.
+    Reasons are returned rather than a bare False so the panel can say what was
+    left out instead of showing a number whose population is invisible. Since
+    0.74.8 this is the first entry of steady_endurance_reasons() - the same
+    order the checks always ran in, so the curve and the tile do not move.
     """
-    reason = steady_endurance_reason(activity)
-    if reason in ("no_activity", "short", "indoor"):
-        return reason
-    share = above_endurance_share(activity)
-    if share is not None and share > FATIGUE_MAX_ABOVE_Z2:
-        return "structured"
-    return reason
+    reasons = steady_endurance_reasons(activity, min_minutes)
+    return reasons[0] if reasons else None
 
 
 def steady_weight(activity: dict[str, Any]) -> float:

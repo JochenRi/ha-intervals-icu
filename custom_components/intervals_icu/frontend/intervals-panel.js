@@ -6467,6 +6467,8 @@ class IntervalsIcuPanel extends HTMLElement {
       // Schreibweise wie die Kachel "Entkopplung" oben. Ob die Fahrt gleichmaessig war, sagt das Backend
       // (session_context.steady, eine Stelle); ohne diese Antwort steht kein Kasten da.
       const r1 = (v) => Math.round(v * 10) / 10 || 0;     // || 0: kein "-0,0" bei einer gerundeten Null
+      // der Wert, wie die Kachel ihn zeigt (fmt, eine Nachkommastelle) - daraus, nicht aus eigener Rundung
+      const shownOf = (v) => +String(fmt(v, 1)).replace(/\./g, "").replace(",", ".").replace("\u2212", "-");
       const bits = [];
       if (def != null) bits.push(`Watt pro Herzschlag vom ${base.q}. zum ${last.q}. Viertel: ${sign(r1(def), 1)} %`);
       if (dh != null) bits.push(`Puls ${sign(Math.round(dh) || 0)} Schläge${dw != null ? ` bei ${sign(r1(dw), 1)} % Leistung` : ""}`);
@@ -6479,8 +6481,15 @@ class IntervalsIcuPanel extends HTMLElement {
       } else if (a.decoupling == null) {
         tone = "info"; head = "Kein Urteil möglich – intervals.icu hat für diese Fahrt keine Entkopplung berechnet.";
         body = plain;
+      } else if (shownOf(a.decoupling) < 0) {
+        // Entscheidung 27.09.: negativ heisst, die zweite Haelfte lief mit weniger Puls je Watt - Friels Grenzen
+        // (3 / Marke / 10) gelten dafuer nicht. Keine Einordnung, neutraler Ton, Zahl wie die Kachel.
+        tone = "info";
+        head = `Entkopplung: ${fmt(a.decoupling, 1)} % (erste gegen zweite Hälfte)`;
+        body = "– die zweite Hälfte lief mit weniger Puls je Watt als die erste. Das kommt meist vom Aufwärmen " +
+          "in der ersten Hälfte; nach Friels Grenzen lässt sich das nicht einordnen." + (plain ? " " + plain : "");
       } else {
-        const shown = r1(a.decoupling);     // eingeordnet wird der GEZEIGTE Wert - Zahl und Satz widersprechen sich nie
+        const shown = shownOf(a.decoupling);   // eingeordnet wird der GEZEIGTE Wert - Zahl und Satz widersprechen sich nie
         const mark = this._decGood();
         tone = (mark != null && shown > mark) ? "worse" : "held";
         const grade = mark == null
@@ -6537,7 +6546,7 @@ class IntervalsIcuPanel extends HTMLElement {
   /* Where this session sits among the rider's own comparable ones.
 
      0.74.8 (SKIZZE_0.74.8 §2.2): nur eine gleichmaessige Fahrt wird verglichen, und nur mit frueheren
-     gleichmaessigen Fahrten (coach.session_context, derive.steady_ride_reason - eine Stelle). Ist sie es
+     gleichmaessigen Fahrten (coach.session_context, derive.steady_endurance_reasons - eine Stelle). Ist sie es
      nicht, steht statt der Zeilen EIN Satz mit dem Grund aus dem Backend; das Panel schreibt keinen Grund.
      Je Zeile: der Wert, "üblich" und die gezaehlte Zeile ("höher als bei k von n", Backend). Das Band ist die
      mittlere Haelfte, der Strich das Uebliche, der Punkt diese Einheit - rechts ist immer der hoehere Wert,

@@ -1846,16 +1846,27 @@ def _caliper_percent(width: float) -> tuple[float, float]:
     return (round((math.exp(-width) - 1) * 100, 1), round((math.exp(width) - 1) * 100, 1))
 
 
-# 0.74.8 (SKIZZE_0.74.8 §2.2): der Grund, warum eine Fahrt nicht verglichen wird - EINE Stelle fuer die
-# Saetze (das Panel schreibt keinen davon). Die Zahl in "short" kommt aus der Konstanten.
-_STEADY_TEXT = {
-    "structured": "hatte Intervalle oder Blöcke",
-    "intense": "war dafür zu intensiv",
-    "variable": "war dafür zu ungleichmäßig",
-    "short": f"war dafür zu kurz (unter {DURABILITY_MIN_MINUTES} min)",
-    "indoor": "war eine Indoor-Fahrt – Wärme und fester Widerstand verschieben den Puls",
-    "no_power": "hatte keine Leistungsmessung",
+# 0.74.8 (Entscheidung 27.09., Vorschlag A): die Gruende, warum eine Fahrt nicht verglichen wird - EINE
+# Stelle fuer die Satzteile (das Panel schreibt keinen davon). Alle zutreffenden Gruende stehen im Satz, in der
+# Reihenfolge von derive.steady_endurance_reasons. Die Zahl in "short" kommt aus der Konstanten.
+_STEADY_PART = {
+    "short": f"zu kurz (unter {DURABILITY_MIN_MINUTES} min)",
+    "indoor": "eine Indoor-Fahrt",
+    "intense": "zu intensiv",
+    "no_power": "ohne Leistungsmessung",
+    "variable": "zu ungleichmäßig",
 }
+
+
+def _steady_text(reasons: list[str]) -> str | None:
+    """'war dafür zu kurz (unter {min} min), eine Indoor-Fahrt und zu intensiv' - mit Komma und 'und'."""
+    parts = [_STEADY_PART[r] for r in reasons if r in _STEADY_PART]
+    if not parts:
+        return None
+    joined = parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " und " + parts[-1]
+    return f"war dafür {joined}"
+
+
 _STEADY_WHY = (
     "Entkopplung und Watt pro Herzschlag messen, wie gut dein Puls mit der Leistung Schritt hält. "
     "Das funktioniert nur, wenn die Leistung gleichmäßig und ruhig ist. Bei Intervallen wechseln Belastung "
@@ -1893,10 +1904,11 @@ def _count_text(values: list[float], value: float) -> str:
 def session_context(data: dict[str, Any], activity_id: str) -> dict[str, Any]:
     """Place this session's key numbers among the athlete's comparable sessions.
 
-    0.74.8 (SKIZZE_0.74.8 §2.2): ONLY a steady ride is compared, and only with
-    earlier steady rides (derive.steady_ride_reason - the one place). Decoupling
-    and watts per heartbeat mean nothing on an interval session; a ride that is
-    not steady gets `steady` with its reason and no metric rows at all.
+    0.74.8 (SKIZZE_0.74.8 §2.2, Entscheidung 27.09. Vorschlag A): ONLY a steady
+    ride is compared, and only with earlier steady rides - steady by exactly the
+    test the decoupling curve uses (derive.steady_endurance_reasons, the one
+    place). A ride that is not steady gets `steady` with ALL its reasons and no
+    metric rows at all.
 
     Comparable means: same sport group, and duration and intensity inside a
     CALIPER measured in the athlete's own standard deviations - on the log
@@ -1920,9 +1932,9 @@ def session_context(data: dict[str, Any], activity_id: str) -> dict[str, Any]:
     group = _sport_group(activity)
     intensity = _f(activity.get("icu_intensity")) or 0.0
     minutes = (activity.get("moving_time") or 0) / 60
-    reason = derive.steady_ride_reason(activity)
-    steady = {"ok": reason is None, "reason": reason,
-              "text": None if reason is None else _STEADY_TEXT.get(reason)}
+    reasons = derive.steady_endurance_reasons(activity)
+    steady = {"ok": not reasons, "reason": reasons[0] if reasons else None, "reasons": reasons,
+              "text": _steady_text(reasons)}
 
     # The spread is measured over the whole group, not only over the earlier
     # sessions - otherwise the caliper of an old session would be computed from
@@ -1945,7 +1957,7 @@ def session_context(data: dict[str, Any], activity_id: str) -> dict[str, Any]:
         if not other_day or other_day >= day:
             continue
         earlier.append(other)
-        if derive.steady_ride_reason(other) is None:
+        if not derive.steady_endurance_reasons(other):
             earlier_steady.append(other)
 
     log_minutes = math.log(minutes) if minutes > 0 else None

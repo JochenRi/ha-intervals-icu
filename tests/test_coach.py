@@ -3018,40 +3018,39 @@ def _r748(name, day_off, *, minutes=90, intensity=65.0, np_=150, avg=145, zones=
     return a
 
 
-# --- N1: die Reihenfolge der Gründe ------------------------------------------
-_str = _d748.steady_ride_reason if hasattr(_d748, "steady_ride_reason") else (lambda a: "fehlt")
-_z42 = (58, 0, 21, 21)          # 42 % über Z2
+# --- Entscheidung 27.09. (Vorschlag A): EINE Prüfung für Vergleich und Kurve, ALLE Gründe -----
+# derive.steady_endurance_reasons liefert jeden zutreffenden Grund in fester Reihenfolge
+# (short, indoor, intense, no_power, variable); steady_endurance_reason gibt den ersten, bitgleich.
+_all = getattr(_d748, "steady_endurance_reasons", lambda a, *x: ["fehlt"])
+_z42 = (58, 0, 21, 21)          # 42 % über Z2 - zählt NICHT mehr als Grund
 _z10 = (90, 0, 5, 5)            # 10 % über Z2
-eq(_str(_r748("n1a", 0, intensity=85, np_=165, avg=150, zones=_z42)), "structured",
-   "0.74.8 N1: IF 85 / VI 1,10 / 42 % über Z2 ist nicht 'structured'")
-eq(_str(_r748("n1b", 0, intensity=85, np_=165, avg=150, zones=_z10)), "intense",
-   "0.74.8 N1: IF 85 / 10 % über Z2 ist nicht 'intense'")
-eq(_str(_r748("n1c", 0, minutes=30, zones=_z42)), "short", "0.74.8 N1: 30 min / 42 % ist nicht 'short'")
-eq(_str(_r748("n1d", 0, kind="VirtualRide", zones=_z42)), "indoor", "0.74.8 N1: VirtualRide / 42 % ist nicht 'indoor'")
-eq(_str(_r748("n1e", 0, zones=None)), None, "0.74.8 N1: ohne Zonenzeiten (share None) bleibt die Fahrt gleichmäßig")
-eq(_str(_r748("n1f", 0, np_=200, avg=150, zones=_z10)), "variable", "0.74.8 N1: VI 1,33 / 10 % ist nicht 'variable'")
-eq(_str(_r748("n1g", 0, avg=None, zones=_z10)), "no_power", "0.74.8 N1: ohne Leistung nicht 'no_power'")
-eq(_str(_r748("n1h", 0, zones=_z10)), None, "0.74.8 N1: ruhige Fahrt nicht gleichmäßig")
-# Grenze strikt: genau FATIGUE_MAX_ABOVE_Z2 bleibt gleichmäßig, knapp darüber nicht (Konstante, kein Literal)
-_lim = const.FATIGUE_MAX_ABOVE_Z2
-eq(_str(_r748("n1i", 0, zones=(100 - _lim, 0, _lim))), None, "0.74.8 N1: genau an der Grenze schon 'structured'")
-eq(_str(_r748("n1j", 0, zones=(100 - _lim - 0.5, 0, _lim + 0.5))), "structured", "0.74.8 N1: knapp über der Grenze nicht 'structured'")
-# steady_endurance_reason bleibt unverändert (§3): dieselbe IF-85-Fahrt heißt dort weiter 'intense'
-eq(_d748.steady_endurance_reason(_r748("n1a", 0, intensity=85, np_=165, avg=150, zones=_z42)), "intense",
-   "0.74.8 §3: steady_endurance_reason wurde verändert")
-eq(_d748.steady_endurance_reason(_r748("n1k", 0, intensity=70, zones=_z42)), None,
-   "0.74.8 §3: steady_endurance_reason prüft jetzt die Struktur mit")
+eq(_all(_r748("a1", 0, minutes=44, kind="VirtualRide", intensity=101.5, np_=230, avg=188, zones=_z42)),
+   ["short", "indoor", "intense"], "0.74.8 A: 4x4 auf der Rolle, 44 min, IF 101 - nicht alle drei Gründe in fester Reihenfolge")
+eq(_all(_r748("a2", 0, intensity=85, np_=165, avg=150, zones=_z42)), ["intense"],
+   "0.74.8 A: IF 85 / 42 % über Z2 - der Z2-Anteil ist wieder ein Grund")
+eq(_all(_r748("a3", 0, minutes=30, avg=None)), ["short", "no_power"], "0.74.8 A: kurz ohne Leistung")
+eq(_all(_r748("a4", 0, minutes=30, intensity=90, np_=200, avg=150)), ["short", "intense", "variable"],
+   "0.74.8 A: kurz, intensiv, ungleichmäßig")
+eq(_all(_r748("a5", 0, zones=_z42)), [], "0.74.8 A: ruhige Fahrt mit 42 % über Z2 ist gleichmäßig (wie in der Kurve)")
+eq(_all(_r748("a6", 0, zones=None)), [], "0.74.8 A: ohne Zonenzeiten gleichmäßig")
+eq(_all("kein dict"), ["no_activity"], "0.74.8 A: keine Aktivität")
+check(not hasattr(_d748, "steady_ride_reason"), "0.74.8 A: steady_ride_reason (Struktur-Prüfung) steht noch in derive.py")
+# steady_endurance_reason == erster Grund, an allen Kombinationen der fünf Merkmale (32 Fahrten + min_minutes)
+import itertools as _it748
+_bad = []
+for _s, _i, _h, _p, _v in _it748.product((0, 1), repeat=5):
+    _a = _r748("k", 0, minutes=30 if _s else 90, kind="VirtualRide" if _i else "Ride", intensity=90 if _h else 60,
+               np_=(200 if _v else 150), avg=(None if _p else 150))
+    for _mm in (20, 45, 120):
+        _r = _all(_a, _mm)
+        if _d748.steady_endurance_reason(_a, _mm) != (_r[0] if _r else None):
+            _bad.append((_s, _i, _h, _p, _v, _mm))
+eq(_bad, [], "0.74.8 A: steady_endurance_reason ist nicht der erste der Gründe")
 
 # --- §2.2 session_context: steady, Texte aus den Konstanten -------------------
 _D = const.DURABILITY_MIN_MINUTES
-_TXT = {
-    "structured": "hatte Intervalle oder Blöcke",
-    "intense": "war dafür zu intensiv",
-    "variable": "war dafür zu ungleichmäßig",
-    "short": f"war dafür zu kurz (unter {_D} min)",
-    "indoor": "war eine Indoor-Fahrt – Wärme und fester Widerstand verschieben den Puls",
-    "no_power": "hatte keine Leistungsmessung",
-}
+_PART = {"short": f"zu kurz (unter {_D} min)", "indoor": "eine Indoor-Fahrt", "intense": "zu intensiv",
+         "no_power": "ohne Leistungsmessung", "variable": "zu ungleichmäßig"}
 _WHY = ("Entkopplung und Watt pro Herzschlag messen, wie gut dein Puls mit der Leistung Schritt hält. "
         "Das funktioniert nur, wenn die Leistung gleichmäßig und ruhig ist. Bei Intervallen wechseln Belastung "
         "und Pause, der Puls läuft jedes Mal hinterher – die Zahl misst dann den Wechsel, nicht deine Ausdauer. "
@@ -3065,23 +3064,56 @@ _NOTE = ("Verglichen wird nur mit deinen früheren gleichmäßigen Fahrten derse
          "diesen Wert haben. Bei der Dauer zählt das Verhältnis: 45 und 60 min liegen so weit auseinander wie 3 und "
          "4 h – deshalb ist die Spanne nach oben breiter. Ein einzelner Vergleich ist ein Hinweis, kein Befund: "
          "Hitze, Koffein, Schlaf und Strecke verschieben den Puls. Verlässlicher ist der Verlauf über Wochen.")
-
-_cases = {"structured": dict(intensity=85, np_=165, avg=150, zones=_z42),
-          "intense": dict(intensity=85, np_=165, avg=150, zones=_z10),
-          "variable": dict(np_=200, avg=150, zones=_z10),
-          "short": dict(minutes=30, zones=_z42),
-          "indoor": dict(kind="VirtualRide", zones=_z42),
-          "no_power": dict(avg=None, zones=_z10)}
-for _why, _kw in _cases.items():
+# der ganze Satzteil, wie ihn die Info-Zeile und der Viertel-Kasten zeigen
+_TXT = {
+    "short": f"war dafür zu kurz (unter {_D} min)",
+    "intense": "war dafür zu intensiv",
+    "variable": "war dafür zu ungleichmäßig",
+    "indoor": "war dafür eine Indoor-Fahrt",
+    "no_power": "war dafür ohne Leistungsmessung",
+    "vo2max": f"war dafür zu kurz (unter {_D} min), eine Indoor-Fahrt und zu intensiv",
+    "zwei": f"war dafür zu kurz (unter {_D} min) und ohne Leistungsmessung",
+}
+_cases = {"intense": (dict(intensity=85, np_=165, avg=150, zones=_z10), ["intense"]),
+          "variable": (dict(np_=200, avg=150, zones=_z10), ["variable"]),
+          "short": (dict(minutes=30, zones=_z42), ["short"]),
+          "indoor": (dict(kind="VirtualRide", zones=_z42), ["indoor"]),
+          "no_power": (dict(avg=None, zones=_z10), ["no_power"]),
+          "vo2max": (dict(minutes=44, kind="VirtualRide", intensity=101.5, np_=230, avg=188, zones=_z42),
+                     ["short", "indoor", "intense"]),
+          "zwei": (dict(minutes=30, avg=None), ["short", "no_power"])}
+for _why, (_kw, _rs) in _cases.items():
     _data = {"wellness": {}, "dfa": {}, "activities": {f"p{i}": _r748(f"p{i}", -30 + i) for i in range(10)}}
     _data["activities"]["x"] = _r748("x", 0, **_kw)
     _c = coach.session_context(_data, "x")
-    eq(_c.get("steady"), {"ok": False, "reason": _why, "text": _TXT[_why]},
+    eq(_c.get("steady"), {"ok": False, "reason": _rs[0], "reasons": _rs, "text": _TXT[_why]},
        f"0.74.8 §2.2: steady für '{_why}' falsch")
     eq(_c.get("metrics"), {}, f"0.74.8 §2.2: nicht gleichmäßig ('{_why}') und trotzdem Kennzahl-Zeilen")
     check(_c.get("available") is True, f"0.74.8 §2.2: nicht gleichmäßig ('{_why}') -> Block verschwindet (available)")
     eq(_c.get("steady_why"), _WHY, f"0.74.8 §2.2: 'Warum hier kein Vergleich steht' ('{_why}') weicht vom Wortlaut ab")
+_calm = {"wellness": {}, "dfa": {}, "activities": {"x": _r748("x", 0, zones=_z42)}}
+eq(coach.session_context(_calm, "x").get("steady"), {"ok": True, "reason": None, "reasons": [], "text": None},
+   "0.74.8 A: ruhige Fahrt mit 42 % über Z2 im Vergleich nicht gleichmäßig")
 check("dieselbe Prüfung gilt für deine Entkopplungs-Kurve" in _WHY, "0.74.8 Fixture-Beweis: Satz vollständig")
+
+# Gegenprobe (Entscheidung A): die Menge "gleichmäßig" im Vergleich == die Menge der Entkopplungs-Kurve
+import analytics as _an748
+import random as _rnd748
+_g748 = _rnd748.Random(748)
+_mix = {}
+for _k in range(200):
+    _mix[f"m{_k}"] = _r748(f"m{_k}", -200 + _k, minutes=_g748.choice([25, 40, 44, 45, 50, 90, 180]),
+                           kind=_g748.choice(["Ride", "Ride", "VirtualRide", "GravelRide"]),
+                           intensity=_g748.choice([55.0, 70.0, 79.9, 80.0, 95.0]),
+                           np_=_g748.choice([150, 180, 190]), avg=_g748.choice([150, None]),
+                           zones=_g748.choice([_z10, _z42, None]), dec=round(_g748.uniform(-3, 12), 2))
+_mixd = {"wellness": {}, "dfa": {}, "activities": _mix}
+_cmp = {k for k in _mix if (coach.session_context(_mixd, k).get("steady") or {}).get("ok")}
+_crv_days = sorted(x["date"] for x in _an748.decoupling_series(_mixd))
+_cmp_days = sorted(str(_mix[k]["start_date_local"])[:10] for k in _cmp)
+eq(_cmp_days, _crv_days, "0.74.8 A: Vergleich und Entkopplungs-Kurve lesen nicht dieselbe Menge 'gleichmäßig'")
+check(0 < len(_cmp) < len(_mix) and any((_d748.above_endurance_share(_mix[k]) or 0) > 20 for k in _cmp),
+      "0.74.8 Fixture-Beweis: die Gegenprobe enthält gleichmäßige UND andere Fahrten, auch welche mit viel Z3+")
 
 # --- Gleichmäßig: Vergleichsgruppe nur aus gleichmäßigen Fahrten ------------------
 def _grp748(n_steady, extra_structured=True, values=None, value=4.0, hrv=None):
@@ -3090,8 +3122,8 @@ def _grp748(n_steady, extra_structured=True, values=None, value=4.0, hrv=None):
     for i, v in enumerate(vals):
         acts[f"s{i}"] = _r748(f"s{i}", -60 + i, minutes=80 + 4 * i, dec=v, hr=130.0 + i)
     if extra_structured:
-        # passende Dauer und Intensität, aber Intervalle: darf NICHT mitzählen
-        acts["iv"] = _r748("iv", -5, zones=_z42, dec=30.0, hr=170.0)
+        # passende Dauer und Intensität, aber auf der Rolle (nicht gleichmäßig): darf NICHT mitzählen
+        acts["iv"] = _r748("iv", -5, kind="VirtualRide", dec=30.0, hr=170.0)
     acts["me"] = _r748("me", 0, dec=value, hr=hrv if hrv is not None else 133.0)
     # zwei SPAETERE Fahrten weiten die Streuung (Grundgesamtheit), zaehlen aber nie als Vergleich
     acts["f1"] = _r748("f1", 5, minutes=15, intensity=40.0)
@@ -3102,11 +3134,11 @@ def _grp748(n_steady, extra_structured=True, values=None, value=4.0, hrv=None):
 _g = coach.session_context(_grp748(_MIN), "me")
 eq((_g.get("steady") or {}).get("ok"), True, "0.74.8 §2.2: ruhige Fahrt nicht als gleichmäßig gemeldet")
 _gd = (_g.get("metrics") or {}).get("decoupling") or {}
-eq(_gd.get("n"), _MIN, "0.74.8 §2.2: die Intervallfahrt zählt in der Vergleichsgruppe mit")
-check(30.0 not in [(_gd.get("best")), (_gd.get("worst"))], "0.74.8 §2.2: der Intervallwert 30 steht in der Gruppe")
+eq(_gd.get("n"), _MIN, "0.74.8 §2.2: die Rollenfahrt zählt in der Vergleichsgruppe mit")
+check(30.0 not in [(_gd.get("best")), (_gd.get("worst"))], "0.74.8 §2.2: der Rollenwert 30 steht in der Gruppe")
 # Gegenprobe: ohne Filter wären es MIN+1 - die Fixture trifft den Zweig wirklich (Regel 6)
-check(_d748.steady_endurance_reason(_grp748(_MIN)["activities"]["iv"]) is None,
-      "0.74.8 Fixture-Beweis: die Intervallfahrt wäre nach altem Maß gleichmäßig (sonst prüft die Gegenprobe nichts)")
+check(_d748.steady_endurance_reason(_grp748(_MIN)["activities"]["iv"]) == "indoor",
+      "0.74.8 Fixture-Beweis: die ausgeschlossene Fahrt ist nicht gleichmäßig (sonst prüft die Gegenprobe nichts)")
 eq(_g.get("note"), _NOTE, "0.74.8 §2.2: 'Wie die Vergleichsgruppe gebildet wird' weicht vom Wortlaut ab")
 
 # Zählung k und Richtung
@@ -3186,10 +3218,10 @@ for _payload in (_g, _hi and coach.session_context(_grp748(6, values=_vals, valu
         for _bad in ("SD", "Median", "Stufe", "% deiner Vergleichseinheiten"):
             check(_bad not in _t, f"0.74.8: '{_bad}' steht in einem Text der Einordnung: {_t[:60]!r}")
 
-# eine Stelle: session_context fragt derive.steady_ride_reason, nicht selbst
+# eine Stelle: session_context fragt derive.steady_endurance_reasons (dieselbe Prüfung wie die Kurve), nicht selbst
 import inspect as _i748
 _sc_src = _i748.getsource(coach.session_context)
-check("steady_ride_reason(" in _sc_src, "0.74.8: session_context fragt nicht derive.steady_ride_reason")
+check("steady_endurance_reasons(" in _sc_src, "0.74.8: session_context fragt nicht derive.steady_endurance_reasons")
 check("above_endurance_share" not in _sc_src and "FATIGUE_MAX_ABOVE_Z2" not in _sc_src,
       "0.74.8: session_context prüft 'gleichmäßig' selbst (zweite Stelle)")
 # Zahlen in Texten aus den Konstanten: keine Literale 45/80 im Text-Erzeuger
@@ -3208,7 +3240,7 @@ def _jsconst748(name):
 eq(_jsconst748("CTX_WHY"), _WHY, "0.74.8 Regel 9: Fixture CTX_WHY weicht vom Erzeuger ab")
 eq(_jsconst748("CTX_NOTE"), _NOTE, "0.74.8 Regel 9: Fixture CTX_NOTE weicht vom Erzeuger ab")
 _fxt = dict(_re748.findall(r'\n  (\w+): "([^"]*)",', _fx748[_fx748.index("const CTX_STEADY_TEXT = "):_fx748.index("const CTX_WHY = ")]))
-eq(_fxt, _TXT, "0.74.8 Regel 9: Fixture CTX_STEADY_TEXT weicht vom Erzeuger ab")
+eq(_fxt, {k: v for k, v in _TXT.items() if k != "zwei"}, "0.74.8 Regel 9: Fixture CTX_STEADY_TEXT weicht vom Erzeuger ab")
 _prod_keys = set(((_hic.get("metrics") or {}).get("decoupling") or {}).keys())
 _fx_dec = _fx748[_fx748.index("function context(kind)"):]
 _fx_dec = _fx_dec[_fx_dec.index("decoupling: {"):_fx_dec.index("ef: {")]

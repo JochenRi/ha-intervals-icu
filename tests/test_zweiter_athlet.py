@@ -692,9 +692,9 @@ def _z14(indoor=False):
             "type": "Ride", "moving_time": 25 * 60, "icu_intensity": 48.0 + i * 7,
             "icu_weighted_avg_watts": 150, "icu_average_watts": 140, "decoupling": 0.5,
             "average_heartrate": 115.0, "icu_training_load": 15}
-    # eine Intervallfahrt passender Länge und Intensität - darf nicht mitzählen
+    # eine harte Fahrt passender Länge (Intensität ueber der Grenze) - darf nicht mitzählen
     d["activities"]["iv"] = {"start_date_local": "2026-08-20T07:00:00", "name": "4x8", "type": "Ride",
-        "moving_time": 3 * 3600, "icu_intensity": 71.0, "icu_weighted_avg_watts": 230, "icu_average_watts": 214,
+        "moving_time": 3 * 3600, "icu_intensity": 82.0, "icu_weighted_avg_watts": 230, "icu_average_watts": 214,
         "decoupling": 25.0, "average_heartrate": 150.0, "icu_training_load": 160,
         "icu_zone_times": [{"id": "Z1", "secs": 5000}, {"id": "Z2", "secs": 1000}, {"id": "Z4", "secs": 4800}]}
     d["activities"]["neu"] = {"start_date_local": "2026-08-25T07:00:00", "name": "lang", "type": d["activities"]["g0"]["type"],
@@ -717,9 +717,9 @@ for _indoor in (False, True):
     else:
         eq("Z14: gleichmäßig", _st14.get("ok"), True)
         _m14 = (_p14.get("metrics") or {}).get("decoupling") or {}
-        eq("Z14: frühere gleichmäßige Fahrten = seine 10 langen (Wege und Intervallfahrt nicht)", _p14.get("earlier_steady"), 10)
+        eq("Z14: frühere gleichmäßige Fahrten = seine 10 langen (Wege und harte Fahrt nicht)", _p14.get("earlier_steady"), 10)
         check("Z14: verglichen mit mindestens min_peers seiner Fahrten", (_m14.get("n") or 0) >= _p14.get("min_peers", 99))
-        check("Z14: der Intervallwert 25 steht nicht in der Gruppe", 25.0 not in (_m14.get("best"), _m14.get("worst")))
+        check("Z14: der Wert 25 der harten Fahrt steht nicht in der Gruppe", 25.0 not in (_m14.get("best"), _m14.get("worst")))
         check("Z14: seine Dauer (3 h) in der Spanne, nicht 45 min",
               (_m14.get("dur_low_min") or 0) > 150 and (_m14.get("dur_high_min") or 0) > 180)
 
