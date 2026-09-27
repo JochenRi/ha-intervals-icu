@@ -1420,7 +1420,7 @@ eq(W.STAGES["yellow"]["detail"], "Der Zustand trägt nur bedingt. Die Einheit is
 
 # C7 (V1): die Etikettregel endet nicht bei "4". Block 5 einer 5x4 ist Arbeit -
 # in allen drei Zweigen, die Arbeitsbloecke waehlen (Steuerung, Blockmessung, Stufentest-HRVT2).
-_st_v = {"vo2max": {"watts": 250, "anchor_w": 250, "anchor_date": "2026-09-17", "moves": 0}}
+_st_v = {"vo2max": {"watts": 250, "units": ["2026-09-01"], "unit_watts": [250]}}
 _v5s = W.scaled(W.BY_KEY["vo2_5x4"], 200, 146, steering=_st_v)
 eq([b[1] for b in _v5s["blocks_w"] if str(b[2]) == "5"], [250], "C7 Steuerung: Block 5 der 5x4 bekommt die Vorgabe")
 check("5" not in str((_v5s.get("steering_source") or {}).get("note_blocks") or ""),
@@ -1501,7 +1501,7 @@ if "threshold_4x16" in W.BY_KEY:
     _e = W.BY_KEY["threshold_4x16"]
     eq([b[0] for b in _e["blocks"] if W._is_work_block(b)], [16, 16, 16, 16], "2: 4x16 hat nicht vier 16-min-Bloecke")
     eq([b[0] for b in _e["blocks"] if str(b[2]) == "Pause"], [2, 2, 2], "2: 4x16 ohne 2-min-Pausen")
-    _s416 = W.scaled(_e, 200, 146, steering={"sweetspot": {"watts": 190, "anchor_w": 190, "anchor_date": "2026-09-17", "moves": 0}})
+    _s416 = W.scaled(_e, 200, 146, steering={"sweetspot": {"watts": 190, "units": ["2026-09-01"], "unit_watts": [190]}})
     eq((_s416["watt_source"], [b[1] for b in _s416["blocks_w"] if W._is_work_block(b)]), ("steering", [190] * 4),
        "2: 4x16 nimmt nicht die SweetSpot-Vorgabe")
     eq(W.scaled(_e, 200, 146)["watt_source"], "ftp", "2 Gegenprobe: 4x16 ohne Vorgabe auf der FTP")

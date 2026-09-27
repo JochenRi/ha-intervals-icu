@@ -232,11 +232,14 @@ eq("Z1: der Befehl laeuft ohne Fehler", _b.errors, [])
 eq("Z1: SweetSpot-Median ist seiner", ((_p.get("families") or {}).get("sweetspot") or {}).get("latest", {}).get("median_watts"), 154)
 eq("Z1: keine Zahl des ersten Athleten in der Payload", leaks(_p), [])
 _st = _p.get("steering") or {}
-check("Z1: ohne Startwert keine Vorgabe (SweetSpot)", (_st.get("sweetspot") or {}).get("watts") is None)
-check("Z1: ... und die Kachel sagt, dass der Startwert noch entsteht",
-      (_st.get("sweetspot") or {}).get("anchor_pending") is True)
-eq("Z1: compare stuerzt nicht (F2.1) und traegt kein Delta ohne Vorgabe",
-   ((_p.get("compare") or {}).get("sweetspot") or {}).get("delta"), None)
+# W2 (0.75.0): die Vorgabe braucht keinen Startwert mehr - sie ist der Median
+# seiner letzten Einheiten ab Block 2 (150), auch bei ausgeschaltetem Schalter
+# als Vorschau (compare).
+eq("Z1: ohne Startwert steht die Vorgabe trotzdem - seine (SweetSpot 150)", (_st.get("sweetspot") or {}).get("watts"), 150)
+check("Z1: ... und die Kachel sagt NICHT, dass etwas noch entsteht",
+      not (_st.get("sweetspot") or {}).get("anchor_pending"))
+eq("Z1: compare stuerzt nicht (F2.1) und traegt das Delta Vorgabe minus letzte Einheit (150 - 154)",
+   ((_p.get("compare") or {}).get("sweetspot") or {}).get("delta"), -4)
 
 print("\n=== Z2. EINSCHALTEN: der Startwert entsteht aus seinen Einheiten, am Einschalttag ===")
 _dt_saved = ws.dt_util
@@ -258,7 +261,8 @@ _p2 = (_b2.results or [{}])[0]
 _st2 = _p2.get("steering") or {}
 eq("Z3: Kachelkopf SweetSpot = sein Startwert", (_st2.get("sweetspot") or {}).get("watts"), 150)
 eq("Z3: Kachelkopf VO2max = sein Startwert", (_st2.get("vo2max") or {}).get("watts"), 210)
-eq("Z3: keine Einheit nach SEINEM Stichtag (alle liegen davor)", (_st2.get("sweetspot") or {}).get("n_since"), 0)
+eq("Z3 (W2): die Vorgabe nennt seine letzten Einheiten, keinen Stichtag",
+   len((_st2.get("sweetspot") or {}).get("units") or []) > 0 and "n_since" not in (_st2.get("sweetspot") or {}), True)
 eq("Z3: keine Zahl des ersten Athleten in der Blockpayload", leaks(_p2), [])
 _inputs = ws._session_inputs(_c.archive.data)
 eq("Z3: die Einheit liest seinen Startwert", ((_inputs.get("steering") or {}).get("sweetspot") or {}).get("watts"), 150)

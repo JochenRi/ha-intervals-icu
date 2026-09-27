@@ -1170,7 +1170,8 @@ const EMPTY_LOAD = { weeks: [], weeks_by_group: [], window_history: [], window_p
      "M: die Verlaufsgroesse steht wieder als Leitzahl da");
   // GEGENPROBE: mit Schalter zeigt dieselbe Kachel die VORGABE.
   const mitStg = String(q.rBlocks(F.blocks({ steering_on: true })));
-  ok(/250<\/b>\s*<span class="unit">W<\/span>/.test(mitStg),
+  // W2 (0.75.0): die Vorgabe der Fixture ist der Median der letzten vier (248).
+  ok(/248<\/b>\s*<span class="unit">W<\/span>/.test(mitStg),
      "M: mit Schalter steht nicht die Vorgabe oben");
   ok(!/252<\/b>\s*<span class="unit">W<\/span>/.test(mitStg),
      "M: mit Schalter steht weiter die alte Zahl oben");
@@ -1249,7 +1250,7 @@ const EMPTY_LOAD = { weeks: [], weeks_by_group: [], window_history: [], window_p
     // Die Toleranzzeile: Spanne, von-bis - und DANACH nicht mehr die Quote.
     // Bis 0.65.2 stand dort "8 von 10 Einheiten", ab drei Einheiten und ohne
     // Deckung. Jetzt sagt die Zeile, WIE das Band gebaut ist (0.66.0, C).
-    ok(/± 4,1 W · <b class="tn">186 – 194 W<\/b> · t-Band über 4 Einheiten/.test(an),
+    ok(/± 4,1 W · <b class="tn">189 – 197 W<\/b> · t-Band über 4 Einheiten/.test(an),
        "kachel: die Toleranzzeile steht nicht in der verlangten Form");
     ok(!/8 von 10 Einheiten/.test(an),
        "kachel: die Quote '8 von 10' steht wieder da, obwohl sie an 4 Einheiten nicht pruefbar ist");
@@ -1261,9 +1262,13 @@ const EMPTY_LOAD = { weeks: [], weeks_by_group: [], window_history: [], window_p
        "kachel: an der Achse stehen nicht genau vier Zahlen");
     ok(!/#fbbf24|#f87171|#34d399/.test(strip), "kachel: der Streifen benutzt Ampelfarben");
     // Die zwei Saetze - aus dem Modul, mit eingesetzten Zahlen
-    ok(/Fahr die 190 W\./.test(an), "kachel: der Fahr-Satz fehlt oder rechnet falsch");
-    ok(/zwischen 186 und 194 W/.test(an) && /2 von 3 Einheiten/.test(an) && /um 5 W/.test(an),
-       "kachel: der Satz, wann sich die Vorgabe bewegt, fehlt");
+    ok(/Fahr die 193 W\./.test(an), "kachel: der Fahr-Satz fehlt oder rechnet falsch");
+    // W2 (0.75.0): der Satz nennt die Spanne und dass die Vorgabe dem Gefahrenen
+    // folgt - keine Schrittzahlen mehr (Skizze 0.75.0 §3, woertlich).
+    ok(/zwischen 189 und 197 W, ist alles normal\. Die Vorgabe folgt dem, was du fährst: fährst du über mehrere Einheiten mehr, steigt sie mit – fährst du weniger, sinkt sie\./.test(an),
+       "kachel: der Satz, dass die Vorgabe dem Gefahrenen folgt, fehlt");
+    ok(!/2 von 3 Einheiten/.test(an) && !/um 5 W/.test(an) && !/Startwert/.test(an),
+       "kachel: Schrittzahlen oder Startwert stehen noch da");
     // ── DER AUFKLAPPTEIL (0.62.1): drei Teile statt Tabelle ──────────────
     ok(/<details class="more"> <summary>mehr anzeigen|<details class="more"><summary>mehr anzeigen/.test(an),
        "kachel: der Rechenweg ist nicht zugeklappt");
@@ -1272,26 +1277,20 @@ const EMPTY_LOAD = { weeks: [], weeks_by_group: [], window_history: [], window_p
     ok(!/<table/.test(aufklapp), "aufklapp: die Tabelle steht wieder da");
     ok(!/Einheiten seither<\/td>|Messfenster<\/td>|Streuung s<\/td>/.test(an),
        "aufklapp: Reste der alten Tabellenzeilen");
-    // TEIL 1: EIN Satz, Zahlen fett im Fliesstext
-    ok(/class="rsatz">Die Vorgabe ist der Startwert <b class="tn">190<\/b> W vom/.test(an),
-       "aufklapp: der Herkunftssatz fehlt oder trägt die Zahl nicht fett");
-    ok(/Seither sind <b class="tn">0<\/b> Einheiten dazugekommen/.test(an),
-       "aufklapp: Zahl und Wortform der Einheiten stimmen nicht");
-    ok(/daraus wurden <b class="tn">0<\/b> Bewegungen à 5 W/.test(an),
-       "aufklapp: die Bewegungen fehlen im Satz");
-    ok(/steht heute auf <b class="tn">190<\/b> W/.test(an),
-       "aufklapp: der Satz endet nicht auf der geltenden Vorgabe");
-    // SINGULAR und PLURAL - beide Formen, an derselben Kachel geprüft
-    const eins = F.blocks({ steering_on: true });
-    eins.steering.sweetspot = { ...eins.steering.sweetspot, n_since: 1, moves: 1 };
-    const eHtml2 = String(q.rBlocks(eins)).replace(/\s+/g, " ");
-    ok(/Seither ist <b class="tn">1<\/b> Einheit dazugekommen/.test(eHtml2),
-       "aufklapp: bei einer Einheit steht der Plural");
-    ok(/daraus wurde <b class="tn">1<\/b> Bewegung à/.test(eHtml2),
-       "aufklapp: bei einer Bewegung steht der Plural");
-    ok(!/1 Einheiten|1 Bewegungen/.test(eHtml2), "aufklapp: „1 Einheiten“ im Text");
+    // TEIL 1: EIN Satz - fertig aus dem Modul (st.origin), W2 (0.75.0)
+    ok(/class="rsatz">Die Vorgabe ist der mittlere Wert deiner letzten 4 Einheiten \(05\.08\., 14\.08\., 20\.08\., 24\.08\.\), jeweils ab Block 2: 193 W\.<\/p>/.test(an),
+       "aufklapp: der Herkunftssatz fehlt oder lautet anders als Skizze §3");
+    ok(!/Startwert|dazugekommen|Bewegung/.test(aufklapp),
+       "aufklapp: Reste des alten Startwert-Satzes");
+    // OHNE Herkunftssatz (origin null) faellt der Absatz weg, nicht der Rest
+    const ohne = F.blocks({ steering_on: true });
+    ohne.steering.sweetspot = { ...ohne.steering.sweetspot, origin: null };
+    const oHtml = String(q.rBlocks(ohne)).replace(/\s+/g, " ");
+    const oSS = oHtml.slice(oHtml.indexOf('data-grp="blk_sweetspot"'));
+    ok(!/class="rsatz">Die Vorgabe ist/.test(oSS) && /class="formel">Spanne = 193 W/.test(oSS),
+       "aufklapp: ohne Herkunftssatz fehlt mehr als der Satz");
     // TEIL 2: die Formelzeile - eine Kette, abgesetzt, nicht umbrechend
-    ok(/class="formel">Spanne = 190 W ± <b>1,83<\/b> · <b>2,22 W<\/b> = <b>± 4,1 W<\/b>/.test(an),
+    ok(/class="formel">Spanne = 193 W ± <b>1,83<\/b> · <b>2,22 W<\/b> = <b>± 4,1 W<\/b>/.test(an),
        "aufklapp: die Formelzeile steht nicht als durchgehende Kette da");
     ok(/class="fcap">1,83 = t\(0,90; n−1\) · √\(1\+1\/n\) · Streuung 2,22 W aus den letzten 4 Einheiten/.test(an),
        "aufklapp: die Erklärzeile unter der Formel fehlt");
@@ -1352,7 +1351,7 @@ const EMPTY_LOAD = { weeks: [], weeks_by_group: [], window_history: [], window_p
     ok(/Das System schlägt vor/.test(aus) && !/Das System schlägt vor/.test(an),
        "kachel: der alte Vorschlag steht auch mit Schalter noch da");
     // Der Verlauf traegt Band und Vorgabe nur, wenn sie gelten.
-    ok(/gestrichelt = Vorgabe 250 W/.test(an), "kachel: der Verlauf nennt die Vorgabe nicht");
+    ok(/gestrichelt = Vorgabe 248 W/.test(an), "kachel: der Verlauf nennt die Vorgabe nicht");
     ok(!/gestrichelt/.test(aus), "kachel aus: der Verlauf zeigt eine Vorgabe, die nicht gilt");
 
     // RANDFALL: zu wenige Einheiten -> „noch keine Toleranz“, kein Streifen
@@ -1371,7 +1370,8 @@ const EMPTY_LOAD = { weeks: [], weeks_by_group: [], window_history: [], window_p
     const einer = F.blocks({ steering_on: true });
     einer.steering.sweetspot = { ...einer.steering.sweetspot, watts: 190, rows: [],
       n_units: 0, single_block: ["2026-08-24"], band: null, band_note: "noch keine Toleranz" };
-    einer.compare.sweetspot = { ...einer.compare.sweetspot, new_band: null };
+    // (die Kachel liest die Zahl aus compare.new_watts - dieselbe Groesse, eine Stelle)
+    einer.compare.sweetspot = { ...einer.compare.sweetspot, new_band: null, new_watts: 190 };
     const eHtml = String(q.rBlocks(einer)).replace(/\s+/g, " ");
     const ssTeil3 = eHtml.slice(eHtml.indexOf("SweetSpot"));
     ok(!/Verlauf — Watt ab Block 2[\s\S]{0,400}SweetSpot/.test(ssTeil3 + "SweetSpot")
@@ -1539,11 +1539,16 @@ const EMPTY_LOAD = { weeks: [], weeks_by_group: [], window_history: [], window_p
   contains(satz30Html, "250 W", "F1 30/30: die Vorgabe wird nicht genannt");
   // und die gesteuerte Einheit hat ihren eigenen Herkunftsabsatz (bis 0.69.1: keinen)
   const gesteuert = { ...base, watt_source: "steering", family: "sweetspot", blocks_w: [[20, 190, "Block 1"]],
-    steering_source: { watts: 190, n_units: 6, anchor_w: 190, anchor_date: "2026-09-17", moves: 0,
+    steering_source: { watts: 190, n_units: 6, units: ["2026-09-01", "2026-09-08", "2026-09-15", "2026-09-22"],
+                       origin: "Die Vorgabe ist der mittlere Wert deiner letzten 4 Einheiten (01.09., 08.09., 15.09., 22.09.), jeweils ab Block 2: 190 W.",
                        band: { low: 186, high: 194, n: 4 }, hr_band: { low: 159, high: 174 }, note_blocks: null } };
   const gesteuertTxt = String(q._sourceText(gesteuert)).replace(/\s+/g, " ");
   ok(gesteuertTxt.length > 0 && /Vorgabe/.test(gesteuertTxt) && /190 W/.test(gesteuertTxt) && !/Rückfall/.test(gesteuertTxt),
      "F1 Steuerung: die gesteuerte Einheit hat keinen Herkunftsabsatz oder einen falschen");
+  // W2 (0.75.0): die Trainer-Karte traegt denselben Herkunftssatz wie die Kachel
+  ok(/Watt und Puls kommen aus deiner Vorgabe\.<\/b> Die Vorgabe ist der mittlere Wert deiner letzten 4 Einheiten \(01\.09\., 08\.09\., 15\.09\., 22\.09\.\), jeweils ab Block 2: 190 W\. Toleranz 186–194 W; Pulsfenster 159–174 bpm aus denselben Einheiten\./.test(gesteuertTxt),
+     "F1 Steuerung (W2): die Trainer-Karte traegt nicht den Herkunftssatz aus Skizze §3");
+  ok(!/Startwert|Schritte/.test(gesteuertTxt), "F1 Steuerung (W2): Startwert oder Schritte stehen noch in der Trainer-Karte");
   // Und die gemessene Einheit nennt beide Quellen samt Rolle-Grenze.
   const gemessen = { ...base, watt_source: "blocks", family: "vo2max",
     blocks_w: [[4, 250, "1"]],
@@ -3412,8 +3417,8 @@ const EMPTY_LOAD = { weeks: [], weeks_by_group: [], window_history: [], window_p
      "C1: die Stufentest-Karte nennt Start und Ende mit ihrer Herkunft nicht");
   // Gegenprobe: eine echte Steuerungskarte behaelt ihren Text
   const echt = { ...F.workouts().workouts[4], watt_source: "steering",
-                 steering_source: { watts: 250, anchor_w: 250, anchor_date: "2026-09-17", moves: 0, n_units: 6 } };
-  ok(/Startwert 250 W/.test(z(T._sourceText(echt))), "C1 Gegenprobe: die Steuerungskarte verliert ihren Text");
+                 steering_source: { watts: 250, n_units: 6, origin: "Die Vorgabe ist der mittlere Wert deiner letzten 4 Einheiten (01.09., 08.09., 15.09., 22.09.), jeweils ab Block 2: 250 W." } };
+  ok(/jeweils ab Block 2: 250 W\./.test(z(T._sourceText(echt))), "C1 Gegenprobe: die Steuerungskarte verliert ihren Text");
 
   // C2 · Blockkachel: die Steuerung zaehlt ab Block 2
   // der Livefall 25.09.: Block 1 bei 0,85, gezaehlt ab Block 2 (Median 0,347)
@@ -3567,7 +3572,7 @@ const EMPTY_LOAD = { weeks: [], weeks_by_group: [], window_history: [], window_p
     leer._blocks = bl; leer._fatigue = null;
     const lh = z(leer.rHintergrund(F.coach("ready")));
     const ls = lh.slice(0, lh.indexOf("</summary>"));
-    ok(/Grundlage noch keine Kachel/.test(ls) && /VO2max noch keine Kachel/.test(ls) && /SweetSpot <b class="tn">190 W<\/b>/.test(ls),
+    ok(/Grundlage noch keine Kachel/.test(ls) && /VO2max noch keine Kachel/.test(ls) && /SweetSpot <b class="tn">193 W<\/b>/.test(ls),
        "2 Gegenprobe: ohne Kachel steht eine Zahl oder der Hinweis fehlt");
     // Trefferzusicherung fuer den Familien-Check allein: die Kachel fehlt (keine
     // Familie, oder ausgeblendet), die Vergleichszahl steht aber noch in der Payload
@@ -3580,7 +3585,7 @@ const EMPTY_LOAD = { weeks: [], weeks_by_group: [], window_history: [], window_p
     ok(/SweetSpot noch keine Kachel/.test(z(nurVgl.rHintergrund(F.coach("ready")))), "2 Gegenprobe: eine ausgeblendete Kachel bekommt einen Kopf");
     // die Zeile in der aufgeklappten Familie bleibt
     const W = new M.Panel(); W._blocks = F.blocks({ steering_on: true }); W._workouts = F.workouts("voll");
-    ok(/Kachel VO2max: <b class="tn">250 W<\/b> \(Vorgabe\)/.test(z(W.rWorkouts(W._workouts, false))), "2: die Kachelzeile in der Familie fehlt");
+    ok(/Kachel VO2max: <b class="tn">248 W<\/b> \(Vorgabe\)/.test(z(W.rWorkouts(W._workouts, false))), "2: die Kachelzeile in der Familie fehlt");
   }
 
   // 3 · _gaText: der Herkunftsabsatz der Grundlage hat EIN umschliessendes Element

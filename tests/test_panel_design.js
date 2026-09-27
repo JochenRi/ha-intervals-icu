@@ -613,7 +613,11 @@ const CHART_FROZEN = {
   // 0.74.7 neu gesetzt (heute, morgen): gewollte Aenderung NUR im Abschnitt der Kacheln (Ueberschrift „Die letzte gemessene
   // Nacht …“, Kachel-Texte, SKIZZE_0.74.7 §2). Gegen v0.74.6 (5f94ae6, alte Fixture) gerechnet: alles vor und nach diesem
   // Abschnitt bytegleich. Alt: heute 17f4431d9ad8ca41, morgen 1f0bc2dd6f25d768.
-  const want = { heute: "49b9988252ffbb4a", morgen: "7af6d0f4aec93450", fatigue: "47bfaad6a9fe54e0", fam: "5b827b517a726ee0" };
+  // 0.75.0 neu gesetzt (fam): gewollte Aenderung (W2, SKIZZE_0.75.0 §2-§3) - die Fixture traegt die
+  // W2-Vorgabe (SweetSpot 193, VO2max 248 statt 190/250), der Kachelsatz TILE_INSIDE und der
+  // Herkunftssatz im Aufklappteil lauten nach §3; Streifen, Formelzeile und Chips unveraendert.
+  // Alt: fam 5b827b517a726ee0.
+  const want = { heute: "49b9988252ffbb4a", morgen: "7af6d0f4aec93450", fatigue: "47bfaad6a9fe54e0", fam: "1d82c2e81e4004f5" };
   for (const [k, v] of Object.entries(snap)) {
     ok(crypto.createHash("sha256").update(String(v)).digest("hex").slice(0, 16) === want[k],
        `0.73.3: ${k} rendert anders als in 0.73.2 (Momentaufnahme; bei gewollter Aenderung neu setzen)`);

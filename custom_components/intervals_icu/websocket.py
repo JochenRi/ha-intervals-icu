@@ -24,10 +24,6 @@ from .const import (
     BLOCK_MIN_FOR_SOURCE,
     STEERING_BAND_MIN_N,
     STEERING_BAND_WINDOW,
-    STEERING_MIN_UNITS,
-    STEERING_NEED,
-    STEERING_STEP_W,
-    STEERING_WINDOW,
     BLOCK_MIN_SECONDS,
     BLOCK_WARMUP_DISCARD_S,
     DECOUPLING_GOOD,
@@ -342,12 +338,11 @@ def websocket_blocks(hass, connection, msg) -> None:
     # AUCH bei ausgeschaltetem Schalter mit, denn sonst koennte die Karte den
     # Vergleich nicht zeigen, ohne dass er schon wirkt.
     result["steering_on"] = steering_lib.steering_on(data)
-    # DER STARTWERT JE ATHLET aus dem Archiv (0.66.3, Michael-Befund) - nicht
-    # aus dem Code. Fehlt er, sagt `state` je Familie, dass er noch entsteht.
-    anchors = steering_lib.anchors(data)
-    result["steering"] = steering_lib.state(result, anchors)
-    result["compare"] = steering_lib.compare(result, anchors)
-    result["steering_anchors"] = anchors
+    # W2 (0.75.0): die Vorgabe kommt allein aus der Blockreihe. Der Startwert
+    # (settings.steering_anchor) reist weiter mit, traegt sie aber nicht mehr.
+    result["steering"] = steering_lib.state(result)
+    result["compare"] = steering_lib.compare(result)
+    result["steering_anchors"] = steering_lib.anchors(data)
     # Familien ohne Kachel (0.67.0): das Panel liest die Liste, statt sie zu kennen.
     result["hidden_families"] = list(blocks_lib.HIDDEN_FAMILIES)
     result["hidden_note"] = blocks_lib.HIDDEN_NOTE
@@ -369,14 +364,13 @@ def websocket_blocks(hass, connection, msg) -> None:
         "no_target_note": steering_lib.NO_TARGET_NOTE,
         "band_share": steering_lib.TILE_BAND_SHARE,
         "band_no_quote": steering_lib.TILE_BAND_NO_QUOTE,
-        "more_origin": steering_lib.MORE_ORIGIN, "more_words": steering_lib.MORE_WORDS,
+        "more_origin": steering_lib.MORE_ORIGIN,
         "more_formula_label": steering_lib.MORE_FORMULA_LABEL,
         "more_formula_cap": steering_lib.MORE_FORMULA_CAP,
         "more_measured": steering_lib.MORE_MEASURED,
         "chip_alpha": steering_lib.CHIP_ALPHA, "chip_hr": steering_lib.CHIP_HR,
         "chip_first_block": steering_lib.CHIP_FIRST_BLOCK,
-        "step_w": STEERING_STEP_W, "need": STEERING_NEED, "window": STEERING_WINDOW,
-        "min_units": STEERING_MIN_UNITS, "band_min_n": STEERING_BAND_MIN_N,
+        "band_min_n": STEERING_BAND_MIN_N,
         "band_window": STEERING_BAND_WINDOW,
     }
     stats = importer.archive_stats(data)
@@ -1357,7 +1351,7 @@ def _session_inputs(data: dict[str, Any], options: Any = None) -> dict[str, Any]
         # Wert None - und `scaled()` betritt den neuen Zweig gar nicht erst,
         # statt ihn zu betreten und dort dasselbe zu tun wie vorher. Ein
         # Schalter, der die alte Rechnung nachbaut, ist kein Rueckweg.
-        "steering": (steering_lib.state(series, steering_lib.anchors(data))
+        "steering": (steering_lib.state(series)
                      if steering_lib.steering_on(data) else None),
     }
 

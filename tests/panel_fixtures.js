@@ -516,7 +516,6 @@ function blocks(over) {
     // unbedingt, in beiden Schalterstellungen). Die Kachel liest ihre Zahlen
     // von hier - die Fixture bildet deshalb dieselben Schluessel ab.
     steering_on: false,
-    steering_anchor_date: "2026-09-17",
     steering_words: {
       on_note: "Deine Wattzahl ist eine Vorgabe.",
       off_note: "Wert deiner letzten Einheit.",
@@ -524,8 +523,8 @@ function blocks(over) {
       go_label: "auf die Vorgabe umstellen", back_label: "zurück auf die letzte Einheit",
       tile_ride: "Fahr die {watts} W.",
       tile_inside: "Landet deine nächste Einheit zwischen {low} und {high} W, ist alles "
-        + "normal — die Vorgabe bleibt stehen. Erst wenn {need} von {window} Einheiten "
-        + "daneben liegen, bewegt sie sich um {step} W.",
+        + "normal. Die Vorgabe folgt dem, was du fährst: fährst du über mehrere Einheiten "
+        + "mehr, steigt sie mit – fährst du weniger, sinkt sie.",
       tile_no_band: "Für eine Spanne braucht es {min_n} gemessene Einheiten; solange "
         + "steht die Vorgabe allein.",
       tile_band_means: "Die Spanne ist keine Grenze, sondern das Messrauschen: {share} "
@@ -539,14 +538,9 @@ function blocks(over) {
         + "weitere Einheiten nichts.",
       no_target_note: "keine Vorgabe, keine Spanne",
       band_share: 8, band_no_quote: "t-Band über {n} Einheiten",
-      step_w: 5, need: 2, window: 3, min_units: 3,
       band_min_n: 3, band_window: 4,
-      more_origin: "Die Vorgabe ist der Startwert {anchor} W vom {date}. Seither {verb} "
-        + "{n} {units} dazugekommen, daraus {verb2} {moves} {moveword} à {step} W — die "
-        + "Vorgabe steht heute auf {watts} W.",
-      more_words: { unit_one: "Einheit", unit_many: "Einheiten", move_one: "Bewegung",
-        move_many: "Bewegungen", verb_one: "ist", verb_many: "sind",
-        verb2_one: "wurde", verb2_many: "wurden" },
+      more_origin: "Die Vorgabe ist der mittlere Wert deiner letzten {n} Einheiten ({dates}), "
+        + "jeweils ab Block 2: {watts} W.",
       more_formula_label: "Spanne",
       more_formula_cap: "{factor} = t(0,90; n−1) · √(1+1/n) · Streuung {sd} W aus den "
         + "letzten {n} Einheiten, jeweils ab Block 2",
@@ -556,24 +550,34 @@ function blocks(over) {
       chip_first_block: "Block 1 zählt nicht mit",
     },
     steering: {
-      vo2max: { watts: 250, anchor_w: 250, anchor_date: "2026-09-17", n_since: 0, moves: 0,
-                n_units: vo.length, min_units: 3, note: null, band_note: null,
+      // W2 (0.75.0): die Vorgabe ist der Median der letzten vier Zeilen (244|246|250|252 -> 248).
+      vo2max: { watts: 248, units: vo.slice(-4).map((x) => x.date),
+                unit_watts: vo.slice(-4).map((x) => x.median_watts), window: 4, min_units: 3,
+                sides: [0, 0, 0, 0],
+                origin: "Die Vorgabe ist der mittlere Wert deiner letzten 4 Einheiten "
+                  + "(11.08., 19.08., 01.09., 08.09.), jeweils ab Block 2: 248 W.",
+                n_units: vo.length, note: null, band_note: null,
                 hr_band_note: null, first_block_counts: false, single_block: [],
                 corridor: [0.2, 0.5], measured_minutes: 4,
-                band: { low: 235, high: 265, median: 250, half: 14.6, sd: 7.97, t: 1.638,
-                        n: 4, window: 4, min_n: 3, centered_on: "target", unit_median: 243.8 },
+                band: { low: 233, high: 263, median: 248, half: 14.6, sd: 7.97, t: 1.638,
+                        n: 4, window: 4, min_n: 3, centered_on: "target", unit_median: 248 },
                 hr_band: { low: 178, high: 189, median: 183.5, half: 5.4, sd: 2.89,
                            t: 1.638, n: 4, window: 4, min_n: 3, centered_on: "median",
                            unit_median: 183.5 },
                 rows: vo.map((x, i) => ({ date: x.date, name: x.name, usable: true,
                   n_blocks: x.n_blocks, alpha: x.block_alphas[1], watts: x.median_watts,
                   watts_raw: x.median_watts, hr: 180 + i, minutes: 4, side: 0 })) },
-      sweetspot: { watts: 190, anchor_w: 190, anchor_date: "2026-09-17", n_since: 0, moves: 0,
-                   n_units: ss.length, min_units: 3, note: null, band_note: null,
+      // W2: 192|192|194|196 -> 193.
+      sweetspot: { watts: 193, units: ss.map((x) => x.date),
+                   unit_watts: ss.map((x) => x.median_watts), window: 4, min_units: 3,
+                   sides: [0, 0, 0, 0],
+                   origin: "Die Vorgabe ist der mittlere Wert deiner letzten 4 Einheiten "
+                     + "(05.08., 14.08., 20.08., 24.08.), jeweils ab Block 2: 193 W.",
+                   n_units: ss.length, note: null, band_note: null,
                    hr_band_note: null, first_block_counts: false, single_block: [],
                    corridor: [0.5, 0.75], measured_minutes: 20,
-                   band: { low: 186, high: 194, median: 190, half: 4.06, sd: 2.22, t: 1.638,
-                           n: 4, window: 4, min_n: 3, centered_on: "target", unit_median: 191 },
+                   band: { low: 189, high: 197, median: 193, half: 4.06, sd: 2.22, t: 1.638,
+                           n: 4, window: 4, min_n: 3, centered_on: "target", unit_median: 193 },
                    hr_band: { low: 159, high: 174, median: 166.5, half: 7.4, sd: 4.27,
                               t: 1.638, n: 4, window: 4, min_n: 3, centered_on: "median",
                               unit_median: 166.5 },
@@ -582,14 +586,14 @@ function blocks(over) {
                      watts_raw: x.median_watts, hr: 160 + i, minutes: 20, side: 0 })) },
     },
     compare: {
-      vo2max: { old_watts: vo[vo.length - 1].median_watts, new_watts: 250, delta: -2,
+      vo2max: { old_watts: vo[vo.length - 1].median_watts, new_watts: 248, delta: -4,
                 old_hr_low: 174, old_hr_high: 186, old_source: "blocks", steered: true,
-                new_band: { low: 235, high: 265, median: 250, half: 14.6, sd: 7.97,
+                new_band: { low: 233, high: 263, median: 248, half: 14.6, sd: 7.97,
                             t: 1.638, n: 4, window: 4, min_n: 3 },
                 new_hr_band: { low: 178, high: 189 }, new_note: null },
-      sweetspot: { old_watts: ss[ss.length - 1].median_watts, new_watts: 190, delta: -6,
+      sweetspot: { old_watts: ss[ss.length - 1].median_watts, new_watts: 193, delta: -3,
                    old_hr_low: 161, old_hr_high: 173, old_source: "blocks", steered: true,
-                   new_band: { low: 186, high: 194, median: 190, half: 4.06, sd: 2.22,
+                   new_band: { low: 189, high: 197, median: 193, half: 4.06, sd: 2.22,
                                t: 1.638, n: 4, window: 4, min_n: 3 },
                    new_hr_band: { low: 159, high: 174 }, new_note: null },
     },

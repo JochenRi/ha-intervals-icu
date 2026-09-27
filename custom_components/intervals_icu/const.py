@@ -39,7 +39,7 @@ PANEL_COMPONENT = "intervals-icu-panel"
 PANEL_FILE = "intervals-panel.js"
 PANEL_TITLE = "Intervals"
 PANEL_ICON = "mdi:chart-timeline-variant"
-PANEL_VERSION = "0.74.9"
+PANEL_VERSION = "0.75.0"
 
 # --- thresholds shared by backend and panel -----------------------------------
 # One definition per number, here, because the panel has to show several of them
@@ -214,26 +214,17 @@ LEGACY_STEERING_ANCHOR = {"w": {"sweetspot": 190, "vo2max": 250}, "date": "2026-
 # liegt 21 % daneben und bekommt keine fremde Zahl - unabhaengig davon, wie
 # sein Schalter beim Update steht.
 LEGACY_ANCHOR_TOLERANCE = 0.10
-# Wie viele der letzten eigenen Einheiten den Startwert bilden, und ab wie
-# vielen er ueberhaupt entsteht. Vier, weil 0.62.0 ihn fuer den ersten
-# Athleten so gebildet hat (Block 2 der letzten vier Einheiten); drei als
+# DIE VORGABE (W2, 0.75.0): der mittlere Wert der gefahrenen Watt (ab Block 2)
+# der letzten STEERING_ANCHOR_UNITS nutzbaren Einheiten, ab
+# STEERING_ANCHOR_MIN_UNITS Einheiten. Dieselben Zahlen bildeten seit 0.62.0
+# den Startwert; seit 0.75.0 sind sie die Vorgabe selbst (steering.rolling_target).
+# Vier als Fenster (Setzung, wie der Startwert seit 0.62.0), drei als
 # Mindestzahl, dieselbe Schranke wie BLOCK_MIN_FOR_SOURCE.
+# Die alpha-Schritte (5 W je Schritt, zwei von drei Einheiten neben dem
+# Korridor, Fenster leeren) sind mit 0.75.0 samt ihren Konstanten entfallen:
+# die Vorgabe folgte der Form nicht (PROJEKTSTAND §10).
 STEERING_ANCHOR_UNITS = 4
 STEERING_ANCHOR_MIN_UNITS = 3
-# C6: ein Schritt von 5 W, und nur dann, wenn MINDESTENS ZWEI der letzten DREI
-# Einheiten derselben Familie auf DERSELBEN Seite ausserhalb des Korridors
-# liegen. Bezug ist die VORGABE, nicht die gefahrenen Watt.
-STEERING_STEP_W = 5
-STEERING_WINDOW = 3
-STEERING_NEED = 2
-# Und unter DREI Einheiten seit dem Startwert bewegt sich gar nichts, auch
-# wenn die ersten beiden beide dieselbe Seite zeigen: zwei Einheiten sind
-# kein Belegungsstand, sondern zwei Tage. Die Karte sagt es statt zu schweigen.
-STEERING_MIN_UNITS = 3
-# Nach einem Schritt faengt das Fenster neu an. Ohne das schieben dieselben
-# zwei Einheiten mehrfach: simuliert 6,0 statt 2,6 Bewegungen, die Vorgabe
-# wandert bis 210 statt 230 W. Eine Ratsche, kein Regelkreis.
-STEERING_CLEAR_AFTER_STEP = True
 # Das t-Band: Median +/- t(0,90; n-1) * s * sqrt(1 + 1/n), ab n = 3, ueber die
 # letzten vier Einheiten. Das ist das VORHERSAGEband fuer die naechste Einheit,
 # nicht das Band des Mittelwerts. MAD und Bootstrap NICHT: unter n = 10 decken

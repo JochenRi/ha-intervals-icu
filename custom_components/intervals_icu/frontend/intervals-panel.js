@@ -1864,17 +1864,17 @@ class IntervalsIcuPanel extends HTMLElement {
     // "Fuer eine Spanne braucht es 3 Einheiten" UND "keine Vorgabe" - der erste
     // ist fuer eine Familie ohne Startwert falsch (sie bekommt nie eine Spanne),
     // und er verwies auf eine Vorgabe, die daneben als "-" stand.
-    // EIN STARTWERT, DER NOCH ENTSTEHT (0.66.3, Michael-Befund), ist keine
-    // Familie ohne Vorgabe: der Satz kommt aus dem Zustand ("noch kein
-    // Startwert - n von 3"), keine Vorgabe, kein "daran aendert sich nichts".
+    // EINE VORGABE, DIE NOCH ENTSTEHT (zu wenige Einheiten), ist keine
+    // Familie ohne Vorgabe: der Satz kommt aus dem Zustand ("noch keine
+    // Vorgabe - n von 3"), keine Vorgabe, kein "daran aendert sich nichts".
+    // W2 (0.75.0): TILE_INSIDE traegt nur noch die Spanne - keine Schrittzahlen.
     const saetze = an
       ? (st.anchor_pending
           ? esc(st.note || "")
           : st.no_target
           ? esc(w.tile_no_target || "")
           : `${esc(satz(w.tile_ride, { watts }))} ${band
-              ? esc(satz(w.tile_inside, { low: band.low, high: band.high, need: w.need,
-                                          window: w.window, step: w.step_w }))
+              ? esc(satz(w.tile_inside, { low: band.low, high: band.high }))
               : esc(satz(w.tile_no_band, { min_n: w.band_min_n }))}
              ${st.note ? esc(st.note) + "." : ""}`)
       : esc(w.tile_off || "");
@@ -1954,24 +1954,13 @@ class IntervalsIcuPanel extends HTMLElement {
     if (!an || !Object.keys(st).length) return "";
     const band = c.new_band;
     const watts = c.new_watts;
-    const mw = w.more_words || {};
     const satz = (vorlage, werte) => String(vorlage || "").replace(
       /\{(\w+)\}/g, (_, k) => (werte[k] == null ? "" : String(werte[k])));
     const alphas = (st.rows || []).filter((r) => r.alpha != null).map((r) => r.alpha);
-    // Singular und Plural entscheidet die ZAHL, die Woerter kommen aus dem
-    // Modul - „0 Einheiten" gegen „1 Einheit" ist Sprache, nicht Darstellung.
-    const form = (n, eins, viele) => (n === 1 ? mw[eins] : mw[viele]) || "";
-    const herkunft = st.anchor_w == null ? "" : satz(w.more_origin, {
-      anchor: `<b class="tn">${fmt(st.anchor_w)}</b>`,
-      date: `<b class="tn">${dMed(st.anchor_date)}</b>`,
-      verb: form(st.n_since, "verb_one", "verb_many"),
-      n: `<b class="tn">${fmt(st.n_since)}</b>`,
-      units: form(st.n_since, "unit_one", "unit_many"),
-      verb2: form(st.moves, "verb2_one", "verb2_many"),
-      moves: `<b class="tn">${fmt(st.moves)}</b>`,
-      moveword: form(st.moves, "move_one", "move_many"),
-      step: fmt(w.step_w), watts: `<b class="tn">${fmt(watts)}</b>`,
-    });
+    // W2 (0.75.0): der Herkunftssatz kommt FERTIG aus dem Modul
+    // (steering.origin_sentence, `st.origin`) - Kachel, Trainer-Karte,
+    // Rechenweg und Quellen-Reiter lesen denselben Satz.
+    const herkunft = st.origin ? esc(st.origin) : "";
 
     // Die Formelzeile: Operanden und Rechenschritt in EINER Kette, so wie ein
     // Pruefwerkzeug sie zeigt - nachrechenbar, ohne die Zahlen zu suchen.
@@ -2288,12 +2277,11 @@ class IntervalsIcuPanel extends HTMLElement {
     }
     return entry.watt_source === "steering"
         ? `<p class="fitwhy">${ico("info", C.blue, 14)} <b>Watt und Puls kommen aus deiner
-            Vorgabe</b> — ${fmt(ss.watts)} W: Startwert ${fmt(ss.anchor_w)} W vom
-            ${dMed(ss.anchor_date)} plus ${fmt(ss.moves || 0)} gerechnete Schritte, aus
-            ${fmt(ss.n_units || 0)} Einheiten${ss.band && ss.band.low != null
-              ? `; Toleranz ${fmt(ss.band.low)}–${fmt(ss.band.high)} W` : ""}${
-            ss.hr_band && ss.hr_band.low != null
-              ? `; Pulsfenster ${fmt(ss.hr_band.low)}–${fmt(ss.hr_band.high)} bpm aus denselben Einheiten` : ""}.
+            Vorgabe.</b> ${esc(ss.origin || "")} ${[
+              ss.band && ss.band.low != null ? `Toleranz ${fmt(ss.band.low)}–${fmt(ss.band.high)} W` : "",
+              ss.hr_band && ss.hr_band.low != null
+                ? `Pulsfenster ${fmt(ss.hr_band.low)}–${fmt(ss.hr_band.high)} bpm aus denselben Einheiten` : "",
+            ].filter(Boolean).join("; ")}${(ss.band && ss.band.low != null) || (ss.hr_band && ss.hr_band.low != null) ? "." : ""}
             ${ss.note_blocks ? esc(ss.note_blocks) : ""} Ein- und Ausrollen bleiben Prozent der FTP.</p>`
         : entry.watt_source === "blocks"
         ? `<p class="fitwhy">${ico("info", C.blue, 14)} <b>Watt und Puls kommen aus deiner
@@ -5369,11 +5357,9 @@ class IntervalsIcuPanel extends HTMLElement {
     const seit = fams.map((fam) => {
       const x = st[fam] || {};
       const l = (FAM[fam] || {}).l || fam;
-      if (x.anchor_pending) return `${l}: ${x.note || "noch kein Startwert"}`;
-      return `${l}: Startwert ${fmt(x.anchor_w)} W vom ${dMed(x.anchor_date)}`
-        + `${x.anchor_source ? ` (${esc(x.anchor_source)})` : ""}, `
-        + `${fmt(x.n_since)} ${x.n_since === 1 ? "Einheit" : "Einheiten"} seither, `
-        + `${fmt(x.moves)} ${x.moves === 1 ? "Bewegung" : "Bewegungen"}`;
+      if (x.anchor_pending) return `${l}: ${x.note || "noch keine Vorgabe"}`;
+      // W2 (0.75.0): derselbe fertige Satz wie in der Kachel (st.origin).
+      return `${l}: ${x.origin || ""}`;
     }).join(" · ");
     return this._switchRow({
       title: "Wattvorgabe", act: "swsteering", on: an,

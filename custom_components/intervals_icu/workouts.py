@@ -48,8 +48,8 @@ try:  # inside the package (Home Assistant)
         RAMP_FALLBACK_START_PCT,
         RAMP_STEP_W_PER_MIN,
         RAMP_WARMUP_MIN,
+        STEERING_ANCHOR_UNITS,
         CURVE_TARGET_SHARE,
-        STEERING_STEP_W,
     )
 except ImportError:  # standalone (test suite loads this file directly)
     from const import (  # type: ignore[no-redef]
@@ -62,8 +62,8 @@ except ImportError:  # standalone (test suite loads this file directly)
         RAMP_FALLBACK_START_PCT,
         RAMP_STEP_W_PER_MIN,
         RAMP_WARMUP_MIN,
+        STEERING_ANCHOR_UNITS,
         CURVE_TARGET_SHARE,
-        STEERING_STEP_W,
     )
 
 # 0.72.0 (Skizze 2): der ehrliche Zusatz fuer die Schwellen-Formen, EIN Satz.
@@ -759,10 +759,10 @@ SOURCE_CHAIN: dict[str, tuple[str, ...]] = {
 # deshalb traegt AUCH der Rueckfall eine Beschriftung.
 SOURCE_LABEL: dict[str, str] = {
     "blocks": "gemessen an deinen Arbeitsblöcken",
-    # Dieselbe Messung, aber als VORGABE gefuehrt: die Zahl folgt nicht mehr
-    # der letzten Einheit, sondern dem Startwert plus den Schritten, die C6
-    # seither gerechnet hat.
-    "steering": "deine Vorgabe — Startwert plus gerechnete Schritte",
+    # Dieselbe Messung, aber als VORGABE gefuehrt (W2, 0.75.0): der mittlere
+    # Wert der letzten Einheiten, nicht die letzte Einheit allein.
+    "steering": (f"deine Vorgabe — der mittlere Wert deiner letzten {STEERING_ANCHOR_UNITS} "
+                 "Einheiten, ab Block 2"),
     "curve": "gemessen an deiner Ermüdungskurve",
     "ga": "Setzung: Ziel und Grenze der Ermüdungskachel für diese Dauer",
     "ramp_hrvt2": "gemessen im Stufentest, zweite Schwelle",
@@ -856,8 +856,11 @@ def ramp_protocol(ftp: float | None, curve: dict[str, Any] | None = None,
             # 300 W (Vorgabe 250 W), Dauer 38 gegen 37 min.
             node = (steering or {}).get("vo2max") or {}
             if node.get("watts"):
+                # `date`: die juengste der Einheiten, aus denen die Vorgabe
+                # gerechnet ist (W2) - bis 0.74.9 der Stichtag des Startwerts.
+                units = node.get("units") or []
                 lead = {"watts": node["watts"], "alpha": None,
-                        "date": node.get("anchor_date"), "source": "steering"}
+                        "date": units[-1] if units else None, "source": "steering"}
                 end, end_from = round(float(node["watts"]) + reserve), "steering"
                 break
         elif stage_name == "blocks":
@@ -1086,9 +1089,8 @@ def scaled(entry: dict[str, Any], ftp: float | None, aerobic_hr: int | None,
         out["watt_source"] = "steering" if got else "ftp"
         out["watt_sources"] = sources
         out["steering_source"] = {
-            "watts": steered["watts"], "anchor_w": steered.get("anchor_w"),
-            "anchor_date": steered.get("anchor_date"),
-            "moves": steered.get("moves"), "n_since": steered.get("n_since"),
+            "watts": steered["watts"], "units": steered.get("units"),
+            "unit_watts": steered.get("unit_watts"), "origin": steered.get("origin"),
             "band": steered.get("band"), "hr_band": steered.get("hr_band"),
             "note": steered.get("note"), "band_note": steered.get("band_note"),
             "measured_minutes": steered.get("measured_minutes"),
@@ -2097,17 +2099,17 @@ def explain(entry: dict[str, Any], ftp: float | None, curve: dict[str, Any] | No
         sel = (blocks or {}).get("selection") or {}
         stage = "marks" if sel.get("from_marks") else "alpha"
         watts = ss.get("watts")
-        origin = (f"deine Vorgabe — Startwert {ss.get('anchor_w')} W vom {ss.get('anchor_date')} "
-                  f"plus {ss.get('moves') or 0} gerechnete Schritte"
-                  + (f", {sel.get('label')}" if sel.get("label") else ""))
+        # W2 (0.75.0): der Herkunftssatz kommt fertig aus steering.origin_sentence -
+        # derselbe Satz wie in Kachel, Trainer-Karte und Quellen-Reiter.
+        origin = (str(ss.get("origin") or "")
+                  + (f" ({sel.get('label')})" if sel.get("label") else ""))
         units = [{"activity_id": p.get("activity_id"), "date": p.get("date"),
                   "name": p.get("name"),
                   "detail": f"{p.get('median_watts')} W bei alpha {p.get('median_alpha')}"}
                  for p in reversed(box.get("points") or [])]
         units_count = ss.get("n_units") if ss.get("n_units") is not None else (box.get("sessions") or len(units))
-        steps.append(f"Vorgabe {watts} W = Startwert {ss.get('anchor_w')} W ({ss.get('anchor_date')}) "
-                     f"{'+' if (ss.get('moves') or 0) else '±'} {ss.get('moves') or 0} Schritte × {STEERING_STEP_W} W "
-                     f"(ein Schritt, wenn genug Einheiten auf derselben Seite des alpha-Korridors liegen).")
+        if ss.get("origin"):
+            steps.append(str(ss["origin"]))
         band = ss.get("band") or {}
         if band.get("low") is not None and band.get("high") is not None:
             steps.append(f"Toleranz {band.get('low')}–{band.get('high')} W aus den letzten "

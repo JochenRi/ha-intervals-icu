@@ -2646,7 +2646,7 @@ const acts = F.activities(), thr = F.thresholds();
     tile_no_band: "Fuer eine Spanne braucht es {min_n} gemessene Einheiten; solange steht die Vorgabe allein.",
     tile_no_target: "Fuer diese Familie wird keine Vorgabe gefuehrt — ihre Zahl kommt aus der FTP. "
                     + "Ohne Vorgabe gibt es auch keine Spanne, und daran aendern weitere Einheiten nichts.",
-    band_share: 8, band_min_n: 3, need: 2, window: 3, step_w: 5,
+    band_share: 8, band_min_n: 3,
   };
   const laden = (steering, compare) => ({
     steering_on: true, steering_words: W, steering, compare,
@@ -2677,12 +2677,15 @@ const acts = F.activities(), thr = F.thresholds();
   ok(!/Fahr die/.test(pend), "startwert-kachel: 'Fahr die - W' steht da, obwohl es keine Vorgabe gibt");
   ok(!/weitere Einheiten daran nichts/.test(pend),
      "startwert-kachel: behauptet, weitere Einheiten aenderten nichts - sie bilden den Startwert");
-  // Und die Basis-Zeile im Quellen-Reiter nennt Herkunft und Datum des Startwerts.
-  q._blocks = laden({ sweetspot: { watts: 150, anchor_w: 150, anchor_date: "2026-09-23",
-                                   anchor_source: "AUS DEINEN LETZTEN 4 EINHEITEN", n_since: 0, moves: 0 } },
+  // Und die Basis-Zeile im Quellen-Reiter traegt den Herkunftssatz der Vorgabe
+  // (W2, 0.75.0: fertig aus dem Modul, derselbe wie in der Kachel).
+  q._blocks = laden({ sweetspot: { watts: 150, units: ["2026-09-05", "2026-09-19", "2026-09-21"],
+                                   origin: "DIE VORGABE IST DER MITTLERE WERT DEINER LETZTEN 3 EINHEITEN" } },
                     { sweetspot: { steered: true, new_watts: 150 } });
   const basis = q._steeringSwitch(q._blocks);
-  ok(/AUS DEINEN LETZTEN 4 EINHEITEN/.test(basis), "quellen: die Herkunft des Startwerts fehlt in der Basis-Zeile");
+  ok(/SweetSpot: DIE VORGABE IST DER MITTLERE WERT DEINER LETZTEN 3 EINHEITEN/.test(basis),
+     "quellen: der Herkunftssatz fehlt in der Basis-Zeile");
+  ok(!/Startwert|seither|Bewegung/.test(basis), "quellen: Reste des Startwert-Satzes in der Basis-Zeile");
   ok(!tempo.includes("Fahr die"),
      "tempo-kachel: 'Fahr die - W' steht noch da, obwohl es keine Zahl gibt");
   ok(tempo.includes("keine Vorgabe, keine Spanne"),
