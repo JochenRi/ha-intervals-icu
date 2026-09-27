@@ -2561,6 +2561,36 @@ check("_is_session" in _calls746(coach.layoff), "0.74.6 A: layoff liest _is_sess
 check("moving_time" not in _insp746.getsource(coach.layoff) and "900" not in _insp746.getsource(coach.layoff),
       "0.74.6 A: layoff prueft die Bewegungszeit selbst (zweite Grenze neben _is_session)")
 
+# --- 0.74.6 B: der Streifen "Woher das kommt" = sieben KALENDERtage [current-6, current] ---
+# Luecke: die Wellness-Zeile von day(-2) fehlt (Uhr nicht getragen). Einheiten an day(-7) (der achte Tag),
+# day(-2) (der Tag ohne Zeile) und day(0).
+_gb746 = build(days=30, activities={})
+_gb746["activities"] = {"acht": _a746("acht", day(-7), 3600), "luecke": _a746("luecke", day(-2), 3600),
+                        "heute": _a746("heute", day(0), 3600)}
+_gb746["activities"]["acht"]["icu_training_load"] = 70
+_gb746["activities"]["luecke"]["icu_training_load"] = 50
+_gb746["activities"]["heute"]["icu_training_load"] = 30
+_gb746["wellness"].pop(day(-2))
+_tb746 = coach.today(_gb746)
+eq([r["date"] for r in _tb746["recent"]], [day(-6 + _i) for _i in range(7)],
+   "0.74.6 B Luecke: der Streifen sind nicht genau die sieben Kalendertage [current-6, current]")
+_lr746 = {r["date"]: r for r in _tb746["recent"]}
+eq((_lr746.get(day(-2), {}).get("load"), _lr746.get(day(-2), {}).get("state"),
+    [x["name"] for x in _lr746.get(day(-2), {}).get("sessions", [])]),
+   (50, "unknown", [None]),
+   "0.74.6 B Luecke: der Tag ohne Zeile steht nicht mit seiner Last aus den Aktivitaeten (state unknown)")
+eq((_tb746["week_load"], _tb746["rest_days"]), (80, 5),
+   "0.74.6 B Luecke: week_load/rest_days zaehlen den achten Tag mit (oder den Tag ohne Zeile nicht)")
+# eine Stelle: Streifen und Nachtfenster lesen dieselbe Tagesliste
+for _fn746 in (coach.today, coach._last_measured_night):
+    check("_window_days" in _calls746(_fn746), f"0.74.6 B: {_fn746.__name__} liest die Tagesliste nicht aus _window_days")
+check("[-7:]" not in _insp746.getsource(coach.today), "0.74.6 B: today() nimmt noch die letzten sieben Wellness-Zeilen")
+check("timedelta" not in _insp746.getsource(coach._last_measured_night).split("candidates = []")[0],
+      "0.74.6 B: _last_measured_night rechnet den Fensterbeginn selbst")
+if callable(getattr(coach, "_window_days", None)):
+    eq(coach._window_days(day(0)), [day(-6 + _i) for _i in range(7)], "0.74.6 B: _window_days liefert nicht [current-6, current]")
+    eq(len(coach._window_days(day(0))), coach.NIGHT_WINDOW_DAYS, "0.74.6 B: die Tagesliste liest die eine Konstante nicht")
+
 print(f"test_coach: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

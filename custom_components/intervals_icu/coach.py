@@ -996,7 +996,17 @@ def _trained_today(data: dict[str, Any]) -> bool:
 
 # 0.74.3 (SKIZZE §4, Setzung): die Nacht nach einer Einheit wird in einem Fenster aus
 # sieben KALENDERTAGEN gesucht, [letzter Wellness-Tag - 6, letzter Wellness-Tag].
+# 0.74.6 (SKIZZE_0.74.6 B): dieselben sieben Tage traegt der Streifen "Woher das kommt".
 NIGHT_WINDOW_DAYS = 7
+
+
+def _window_days(current: str) -> list[str]:
+    """DIE SIEBEN KALENDERTAGE [current-6, current], aeltester zuerst - EINE Stelle (0.74.6 B).
+
+    Es lesen: today() (der Streifen, week_load, rest_days) und _last_measured_night (das
+    Nachtfenster). Ein Tag ohne Wellness-Zeile gehoert dazu; er zaehlt nicht als achter Tag weiter vorn."""
+    end = date.fromisoformat(current)
+    return [(end - timedelta(days=NIGHT_WINDOW_DAYS - 1 - i)).isoformat() for i in range(NIGHT_WINDOW_DAYS)]
 
 
 def _night_absence(data: dict[str, Any], night_day: str) -> str:
@@ -1020,7 +1030,7 @@ def _last_measured_night(data: dict[str, Any], current: str) -> dict[str, Any]:
     Wellness-Tag liegt, sonst "missing"); `night_none`, wenn das Fenster leer ist.
     night_after selbst bleibt unberuehrt (Aktivitaeten-Reiter: dieselbe Karte).
     """
-    start = (date.fromisoformat(current) - timedelta(days=NIGHT_WINDOW_DAYS - 1)).isoformat()
+    start = _window_days(current)[0]
     candidates = []
     for key, activity in (data.get("activities") or {}).items():
         stamp = str(activity.get("start_date_local") or "")
@@ -2128,7 +2138,9 @@ def today(data: dict[str, Any], events: Any = None, day: str | None = None) -> d
         return _loads.get(day_key, 0.0)
 
     recent = []
-    for day_key in days[-7:]:
+    # 0.74.6 (SKIZZE_0.74.6 B): sieben KALENDERtage, dieselbe Tagesliste wie das Nachtfenster -
+    # nicht die letzten sieben Wellness-Zeilen (fehlt eine, reichte der Streifen einen Tag zu weit).
+    for day_key in _window_days(current):
         sessions = by_day.get(day_key, [])
         recent.append({
             "date": day_key,
