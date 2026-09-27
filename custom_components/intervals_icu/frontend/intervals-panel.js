@@ -178,6 +178,13 @@ function sign(v, dec) {
   if (v == null || Number.isNaN(+v)) return "–";
   return (v > 0 ? "+" : "") + fmt(v, dec);
 }
+/* 0.74.5 (SKIZZE_0.74.5 §2): DIE KLAMMER DER NACHT - die eine Stelle. Wort und Zahl kommen fertig aus
+   coach.z_word (`text`, `shown`); die Klammer zeigt den ABSTAND vom Normalwert, also den Betrag von shown ohne
+   Vorzeichen, eine Nachkommastelle, Komma: "etwas über deinem Normalwert (1,0)". Das Wort sagt die Richtung.
+   Die Kachel "Was sich bewegt hat" zeigt dieselbe Zahl gerichtet (sign(s.shown)) - der Betrag ist gleich. */
+function nightSaid(w) {
+  return w && w.text ? `${esc(w.text)} (${fmt(Math.abs(w.shown), 1)})` : "–";
+}
 function dur(secs) {
   if (!secs && secs !== 0) return "–";
   const s = Math.round(+secs), h = Math.floor(s / 3600), m = Math.round((s % 3600) / 60);
@@ -4583,7 +4590,7 @@ class IntervalsIcuPanel extends HTMLElement {
           stale ? " — nicht von heute; ein Wellness-Datensatz füllt sich über den Tag" : ""}</div>
         <div class="tsigbar"><i class="tsigband"></i>
           <i class="tsigfill" style="left:${left.toFixed(1)}%;width:${Math.max(1, width).toFixed(1)}%;background:${scol}"></i></div>
-        <div class="tsigfoot"><span style="color:${scol}">${sign(s.z, 1)} SD · ${esc(s.direction)}</span>
+        <div class="tsigfoot"><span style="color:${scol}">${sign(s.shown, 1)} SD · ${esc(s.direction)}</span>
           <em>${esc(s.limit)}</em></div>
         ${big ? `<div class="tsigbig">
           <div class="tsigbignum"><b class="tn" style="color:${scol}">${fmt(s.value, dec)}</b>
@@ -6550,12 +6557,10 @@ class IntervalsIcuPanel extends HTMLElement {
     const tone = TONE[v.key] || "held";
     const mark = tone === "unrated" ? ico("info", C.tx2, 18)
       : ico(tone === "worse" ? "warn" : "ok", tone === "worse" ? C.amber : C.green, 18);
-    // Nachtrag §8.1: Wort UND Zahl kommen fertig aus coach.z_word (`shown`, vom Nullpunkt weg gerundet) -
-    // das Panel rundet kein z selbst, sonst widerspricht die Klammer an den Grenzen dem Wort.
-    const said = (w) => (w && w.text ? `${esc(w.text)} (${sign(w.shown, 1)})` : "–");
-    const z1 = v.z_hrv != null ? said(v.z_hrv_word) : "–";
+    // Nachtrag §8.1 / 0.74.5: Wort und Zahl aus coach.z_word, Klammer ohne Vorzeichen - eine Stelle (nightSaid)
+    const z1 = v.z_hrv != null ? nightSaid(v.z_hrv_word) : "–";
     // 0.74.2 (B2): `note` beginnt selbst mit "Zweite Nacht" - dann steht sie allein.
-    const second = v.z_hrv_next != null ? `Zweite Nacht: ${said(v.z_hrv_next_word)}`
+    const second = v.z_hrv_next != null ? `Zweite Nacht: ${nightSaid(v.z_hrv_next_word)}`
       : (v.note ? esc(v.note) : "Zweite Nacht: –");
     // 0.74.2 (B1): bei "nicht bewertbar" sagt der Kopf darueber es schon - die
     // Karte traegt dann kein eigenes Label, nur die Zeile und die Regel.
@@ -6587,15 +6592,14 @@ class IntervalsIcuPanel extends HTMLElement {
       const dec = entry.unit === "h" ? 1 : 0;
       // 0.74.4 (SKIZZE_0.74.4 §3.4): Wortstufe (coach.z_word) und z; die Abweichung von der
       // ueblichen Antwort steht nicht mehr als Zahl hier - sie steckt im Satz darueber.
-      // Nachtrag §8.1: Wort und Zahl aus coach.z_word (`shown`), auch fuer ref.mean
-      const said = (w) => (w && w.text ? `${esc(w.text)} (${sign(w.shown, 1)})` : "–");
-      const usual = ref ? `nach solchen Einheiten sonst: ${said(ref.word)}`
+      // Nachtrag §8.1 / 0.74.5: Wort und Zahl aus coach.z_word, auch fuer ref.mean - eine Stelle (nightSaid)
+      const usual = ref ? `nach solchen Einheiten sonst: ${nightSaid(ref.word)}`
                         : "zu wenige Vergleichsnächte";
       return `<div class="nrow">
         <span class="nlab"><b>${esc(entry.label)}</b>
           <em>deine Basislinie ${fmt(entry.baseline, dec)} ${esc(entry.unit)}</em></span>
         <span class="nval tn">${fmt(entry.value, dec)}<small>${esc(entry.unit)}</small></span>
-        <span class="nref"><b class="nz" style="color:${col}">${said(entry.word)}</b> · ${usual}</span>
+        <span class="nref"><b class="nz" style="color:${col}">${nightSaid(entry.word)}</b> · ${usual}</span>
       </div>`;
     }).join("");
 

@@ -557,6 +557,29 @@ eq("Z10 §8.4: alte Einheit, zweite Nacht ohne HRV -> 'Zweite Nacht: keine Werte
 eq("Z10 §8.4: keine Zahl des ersten Athleten", leaks(_p10b), [])
 eq("Z10: keine Zahl des ersten Athleten in der Nacht", leaks(_p10), [])
 
+# 0.74.5 (SKIZZE_0.74.5 §2): B's Kachel traegt `shown` aus B's EIGENER Nacht (coach.z_word), Grenze "mehr als".
+# Sein letzter Wellness-Tag ist die Nacht nach "Abendrunde" - Kachel und Karte zeigen dieselbe Nacht, also denselben Betrag.
+ws._pick = lambda hass, athlete_id: FakeCoordinator(_dn)
+_t11 = FakeConn(); ws.websocket_today(None, _t11, {"id": 23})
+_h11 = (_t11.results or [{}])[0]
+_n11 = FakeConn(); ws.websocket_night(None, _n11, {"id": 24, "activity_id": "z10"})
+_p11 = (_n11.results or [{}])[0]
+_sg745 = _h11.get("signals") or []
+eq("Z11 0.74.5: Heute laeuft ohne Fehler", _t11.errors, [])
+check("Z11 0.74.5 Trefferzusicherung: B's Kachel und B's Nacht sind dieselbe Nacht, mit mindestens zwei Signalen",
+      _h11.get("date") == _night10 and len(_sg745) >= 2)
+check("Z11 0.74.5 Trefferzusicherung: eine Kachel ist ungünstig (HRV 60 gegen ~70)",
+      any(x.get("direction") == "ungünstig" for x in _sg745))
+for _s745 in _sg745:
+    _w745 = ((_p11.get("night") or {}).get(_s745["key"]) or {}).get("word") or {}
+    eq(f"Z11 0.74.5 {_s745.get('key')}: die Kachelzahl ist shown aus B's Nacht",
+       _s745.get("shown"), ws.coach_module.z_shown(_s745["z"]))
+    eq(f"Z11 0.74.5 {_s745.get('key')}: Kachel und Nacht zeigen denselben Betrag",
+       abs(_s745.get("shown") or 99), abs(_w745.get("shown") or -1))
+    eq(f"Z11 0.74.5 {_s745.get('key')}: Richtung mit 'mehr als' SWC_SD", _s745.get("direction"),
+       "günstig" if _s745["z"] > 0.5 else "ungünstig" if _s745["z"] < -0.5 else "unauffällig")
+eq("Z11 0.74.5: keine Zahl des ersten Athleten in B's Kacheln", leaks({"signals": _sg745}), [])
+
 print(f"\ntest_zweiter_athlet: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

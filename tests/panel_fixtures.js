@@ -762,10 +762,12 @@ function week(kind) {
 /* everything the Heute page needs, as intervals_icu/today returns it */
 function today(kind) {
   if (kind === "leer") return { available: false };
-  const sig = (key, label, unit, value, baseline, z, system, limit) =>
-    ({ key, label, unit, value, baseline, z, system, limit,
-       moved: Math.abs(z) >= 0.5,
-       direction: z >= 0.5 ? "günstig" : z <= -0.5 ? "ungünstig" : "unauffällig" });
+  // 0.74.5: wie coach.today es schreibt - `shown` aus coach.z_word, moved/direction mit "mehr als" SWC_SD.
+  // Ohne eigenes `shown` hat z schon eine Nachkommastelle (dann ist shown = z; test_coach prueft die Live-Zeilen).
+  const sig = (key, label, unit, value, baseline, z, system, limit, shown) =>
+    ({ key, label, unit, value, baseline, z, shown: shown === undefined ? z : shown, system, limit,
+       moved: Math.abs(z) > 0.5,
+       direction: z > 0.5 ? "günstig" : z < -0.5 ? "ungünstig" : "unauffällig" });
   const base = {
     available: true, date: "2026-09-11",
     capacity: "Alles möglich", capacity_text: "Nichts spricht gegen einen harten Reiz.",
@@ -859,6 +861,26 @@ function today(kind) {
   }
   if (kind === "livefall") return liveToday(base);
   if (kind === "livefall27") return liveToday27(base);
+  // 0.74.5 (SKIZZE_0.74.5 §4): Heute am 27.09. wie im Live-Screenshot - HRV 53 gegen 48 bei z 0,53, Schlaf z 0,83.
+  // Die Kacheln und die Nacht nach "volumen" sind DIESELBE Nacht (27.09.). Ruhepuls: Fixture-Wert, nicht live.
+  if (kind === "live0927") {
+    const lt = liveToday27(base);
+    return { ...lt,
+      signals: [
+        sig("hrv", "Herzratenvariabilität", "ms", 53, 48, 0.53, "Autonomes Nervensystem", "Nachtmessung der Uhr, nicht die validierte Morgenmessung im Liegen", 0.6),
+        sig("rhr", "Ruhepuls", "bpm", 55, 56.4, 0.3, "Autonomes Nervensystem", "reagiert träger als die HRV, dafür stabiler", 0.3),
+        sig("sleep", "Schlafdauer", "h", 7.9, 7.3, 0.83, "Verhalten", "Dauer aus der Uhr geschätzt; kein autonomer Messwert", 0.9),
+      ],
+      night: { ...night("live27"), activity_date: "2026-09-26", activity_name: "volumen", activity_id: "a-2026-09-26" } };
+  }
+  // 0.74.5: Grenzfall der Kachel - z genau 0,50 ist "unauffällig", 0,51 "günstig" (Erzeuger: "mehr als")
+  if (kind === "grenze05") {
+    return { ...base, signals: [
+      sig("hrv", "Herzratenvariabilität", "ms", 50.5, 48, 0.5, "Autonomes Nervensystem", "Nachtmessung der Uhr"),
+      sig("rhr", "Ruhepuls", "bpm", 55.1, 56.4, 0.51, "Autonomes Nervensystem", "reagiert träger", 0.6),
+      sig("sleep", "Schlafdauer", "h", 7.1, 7.4, -0.51, "Verhalten", "Dauer geschätzt", -0.6),
+    ] };
+  }
   return base;
 }
 
@@ -1183,6 +1205,35 @@ function night(kind) {
       verdict: { ...base.verdict, key: "gekostet", label: "Verglichen mit deinen normalen Nächten: hat Kraft gekostet.",
                  z_hrv: -0.53, z_hrv_word: w, z_hrv_next: null, z_hrv_next_word: null, delayed: false,
                  note: "Zweite Nacht: fehlt noch" } };
+  }
+  // 0.74.5 (SKIZZE_0.74.5 §4): die Nacht nach "volumen" (Sa 26.) am 27.09. - dieselben Werte wie die Kacheln
+  // (today("live0927")): HRV 53 gegen 48 bei z 0,53 -> "etwas über (0,6)", Schlaf z 0,83 -> "etwas über (0,9)".
+  if (kind === "live27") {
+    const w = { level: 1, text: "etwas über deinem Normalwert", shown: 0.6 };
+    return { ...base, night_date: "2026-09-27", activity_date: "2026-09-26", load: 38, intensity: 64,
+      night: {
+        hrv: { label: "Herzratenvariabilität", unit: "ms", value: 53, baseline: 48, z: 0.53,
+               word: { level: 1, text: "etwas über deinem Normalwert", shown: 0.6 } },
+        rhr: { label: "Ruhepuls", unit: "bpm", value: 55, baseline: 56.4, z: 0.3,
+               word: { level: 0, text: "im Normalbereich", shown: 0.3 } },
+        sleep: { label: "Schlafdauer", unit: "h", value: 7.9, baseline: 7.3, z: 0.83,
+                 word: { level: 1, text: "etwas über deinem Normalwert", shown: 0.9 } },
+      },
+      reference: {
+        hrv: { mean: -0.21, sd: 0.94, n: 9, word: { level: 0, text: "im Normalbereich", shown: -0.3 } },
+        rhr: { mean: 0.12, sd: 0.71, n: 9, word: { level: 0, text: "im Normalbereich", shown: 0.2 } },
+        sleep: { mean: 0.23, sd: 1.13, n: 9, word: { level: 0, text: "im Normalbereich", shown: 0.3 } },
+      },
+      verdict: { ...base.verdict, key: "verdaut", label: "Verglichen mit deinen normalen Nächten: gut verkraftet.",
+                 z_hrv: 0.53, z_hrv_word: w, z_hrv_next: null, z_hrv_next_word: null, delayed: false,
+                 note: "Zweite Nacht: fehlt noch" } };
+  }
+  // 0.74.5 (SKIZZE_0.74.5 §1/§4): VO2max 25.09. - Ruhepuls ÜBER der Basislinie hat ein negatives z (gedreht nach
+  // "günstig"); die Klammer zeigt den Abstand ohne Minus: "etwas über deinem Normalwert (1,0)".
+  if (kind === "live25") {
+    const e = night("etikett27");
+    return { ...e, night: { ...e.night, rhr: { label: "Ruhepuls", unit: "bpm", value: 59, baseline: 56.4, z: -0.96,
+                                               word: { level: 1, text: "etwas über deinem Normalwert", shown: -1.0 } } } };
   }
   if (kind === "ohnereferenz") {
     // Nachtrag §8.4: bei unknown kein detail - die headline nennt den Grund schon

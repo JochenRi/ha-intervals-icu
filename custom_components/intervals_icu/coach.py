@@ -2099,9 +2099,13 @@ def today(data: dict[str, Any], events: Any = None, day: str | None = None) -> d
         signals.append({
             "key": key, "label": entry["label"], "unit": entry["unit"],
             "value": entry["value"], "baseline": entry["baseline"], "z": z,
+            # 0.74.5 (SKIZZE_0.74.5 §2): die Kachelzahl ist `shown` aus coach.z_word - dieselbe Zahl
+            # wie die Klammer der Nacht (die Klammer zeigt ihren Betrag). Das Panel rundet nicht selbst.
+            "shown": (entry.get("word") or {}).get("shown"),
             "system": system, "limit": limit,
-            "moved": abs(z) >= SWC_SD,
-            "direction": "günstig" if z >= SWC_SD else "ungünstig" if z <= -SWC_SD else "unauffällig",
+            # 0.74.5: "mehr als" SWC_SD, genau wie z_word - bei z = 0,50 "unauffällig" / "im Normalbereich"
+            "moved": abs(z) > SWC_SD,
+            "direction": "günstig" if z > SWC_SD else "ungünstig" if z < -SWC_SD else "unauffällig",
         })
 
     # recent training - the other half of "how does this fit what you did"

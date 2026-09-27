@@ -2314,10 +2314,11 @@ for _val, _base, _zz, _lvl, _txt, _shw in _rows744:
        f"0.74.4 Regel 9: Fixture-Wort zu z {_zz} ({_val} gegen {_base}) ist nicht das des Erzeugers")
 _dir744 = {k: d for k, _f, _l, d, _lab, _u in coach.NIGHT_FIELDS}
 _refs744 = _re74.findall(r'(hrv|rhr|sleep): \{ mean: (-?[\d.]+), sd: [\d.]+, n: \d+, word: \{ level: (\d), text: "([^"]+)", shown: (-?[\d.]+) \}', _fxn)
-check(len(_refs744) == 3, f"0.74.4 Regel 9: die drei Referenz-Worte der Fixture nicht gefunden ({len(_refs744)})")
-_base_ref744 = {k: {"mean": float(m)} for k, m, _l, _t, _sh in _refs744}
-_made744 = coach._reference_words(_base_ref744) if hasattr(coach, "_reference_words") else {}
+# 0.74.5: zeilenweise (die Fixture traegt seit dem Live-Fall 27.09. mehr als eine Referenz je Signal)
+check(len(_refs744) >= 3 and {k for k, *_r in _refs744} == {"hrv", "rhr", "sleep"},
+      f"0.74.4 Regel 9: die drei Referenz-Worte der Fixture nicht gefunden ({len(_refs744)})")
 for _k, _m, _lvl, _txt, _shw in _refs744:
+    _made744 = coach._reference_words({_k: {"mean": float(_m)}}) if hasattr(coach, "_reference_words") else {}
     eq(((_made744.get(_k) or {}).get("word")), {"level": int(_lvl), "text": _txt, "shown": float(_shw)},
        f"0.74.4 Regel 9: Fixture-Referenzwort {_k} ist nicht das des Erzeugers")
 check(all(f'"{_t}"' in _fxn for _t in (_L744["zu_viel"], _L744["verdaut"])), "0.74.4 Regel 9: die Karten-Labels der Fixture sind nicht die des Erzeugers")
@@ -2391,6 +2392,88 @@ for _pl in list(_cases744.values()) + [_a, _b]:
 # Soll-Fingerabdruck gemessen an 4549bc3 (0.74.3) vor jeder Aenderung, ueber alle Faelle dieses Blocks
 _fp744 = hashlib.sha256(json.dumps([_nums744(p) for p in _all744], sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 eq(_fp744, "15e0850bfa1a6c77921156cafceae55ff9b3530a5d2fd1b9bad72f3d00d99767", "0.74.4: eine Zahl oder ein Urteil der Nacht hat sich gegen 0.74.3 bewegt")
+
+# --- 0.74.5 · Kachel und Nacht zeigen dieselbe Zahl; Grenze "mehr als" (SKIZZE_0.74.5 §2) --------------
+# Die Kachel "Was sich bewegt hat" traegt `shown` aus coach.z_word (dieselbe Zahl wie die Klammer der Nacht);
+# moved/direction mit "mehr als" SWC_SD wie z_word. Gelesen ueber coach.today() - der echte Weg, nicht eine
+# Hilfsfunktion: _night_z wird fuer die Grenzfaelle ersetzt, damit z GENAU auf der Grenze liegt.
+_nz745 = coach._night_z
+
+
+def _e745(z, raw, base, label="Herzratenvariabilität", unit="ms"):
+    return {"label": label, "unit": unit, "value": raw, "baseline": base, "z": z, "baseline_weighted": False,
+            "word": coach.z_word(z, raw, base)}
+
+
+def _tile745(entries):
+    coach._night_z = lambda data, day: dict(entries)
+    try:
+        return {s["key"]: s for s in coach.today(build())["signals"]}
+    finally:
+        coach._night_z = _nz745
+
+
+_grid745 = [0.0, 0.49, -0.49, 0.5, -0.5, 0.51, -0.51, 0.53, 0.83, -0.96, 1.0, -1.0, 1.01, -1.04, 2.0, -2.01]
+_seen745 = {"günstig": 0, "ungünstig": 0, "unauffällig": 0}
+for _z in _grid745:
+    _raw = 48.0 + _z * 5.0
+    _s = _tile745({"hrv": _e745(_z, _raw, 48.0)}).get("hrv") or {}
+    _w = coach.z_word(_z, _raw, 48.0)
+    _want = "günstig" if _z > 0.5 else "ungünstig" if _z < -0.5 else "unauffällig"
+    _seen745[_want] += 1
+    eq(_s.get("shown"), coach.z_shown(_z), f"0.74.5 §2 Kachel z {_z:+.2f}: die Zahl ist nicht shown aus z_word")
+    eq(_s.get("direction"), _want, f"0.74.5 §2 Kachel z {_z:+.2f}: Richtung nicht mit 'mehr als' SWC_SD")
+    eq(_s.get("moved"), abs(_z) > coach.SWC_SD, f"0.74.5 §2 Kachel z {_z:+.2f}: moved nicht mit 'mehr als' SWC_SD")
+    check((_s.get("direction") != "unauffällig") == (_w["level"] >= 1),
+          f"0.74.5 §2 z {_z:+.2f}: Kachel '{_s.get('direction')}' und Nacht '{_w['text']}' widersprechen sich")
+    check(abs(_s.get("shown") or 0) == abs(_w["shown"]),
+          f"0.74.5 §2 z {_z:+.2f}: Betrag Kachel {_s.get('shown')} gegen Klammer {_w['shown']}")
+check(all(v >= 3 for v in _seen745.values()), f"0.74.5 Trefferzusicherung: nicht jede Richtung getroffen ({_seen745})")
+# Grenze: +-0,50 unauffaellig / im Normalbereich, +-0,51 guenstig/unguenstig / etwas (Auftrag, wörtlich)
+for _z, _dir, _txt in ((0.5, "unauffällig", "im Normalbereich"), (-0.5, "unauffällig", "im Normalbereich"),
+                       (0.51, "günstig", "etwas über deinem Normalwert"), (-0.51, "ungünstig", "etwas unter deinem Normalwert")):
+    _s = _tile745({"hrv": _e745(_z, 48.0 + _z * 5.0, 48.0)})["hrv"]
+    eq((_s["direction"], coach.z_word(_z, 48.0 + _z * 5.0, 48.0)["text"]), (_dir, _txt), f"0.74.5 Grenze z {_z:+.2f}")
+# Live 27.09.: HRV 53 gegen 48 bei z 0,53 -> +0,6 guenstig; Schlaf z 0,83 -> +0,9; Ruhepuls ueber der Basislinie mit z < 0
+_live745 = _tile745({"hrv": _e745(0.53, 53.0, 48.0),
+                     "sleep": _e745(0.83, 7.9, 7.3, "Schlafdauer", "h"),
+                     "rhr": _e745(-0.96, 59.0, 56.4, "Ruhepuls", "bpm")})
+eq((_live745["hrv"].get("shown"), _live745["hrv"]["direction"]), (0.6, "günstig"), "0.74.5 Live HRV 0,53")
+eq((_live745["sleep"].get("shown"), _live745["sleep"]["direction"]), (0.9, "günstig"), "0.74.5 Live Schlaf 0,83")
+eq((_live745["rhr"].get("shown"), _live745["rhr"]["direction"], coach.z_word(-0.96, 59.0, 56.4)["text"]),
+   (-1.0, "ungünstig", "etwas über deinem Normalwert"), "0.74.5 Live Ruhepuls ueber Basislinie, z negativ")
+
+# Echter Weg ohne Ersatz: die Nacht nach einer Einheit gestern IST die Nacht der Kachel (night_date == date).
+# Dann traegt die Kachel denselben Betrag wie die Karte (verdict) und die Werte-Zeile (night) - je Signal.
+_hit745 = {"günstig": 0, "ungünstig": 0}
+for _h in (44.0, 47.5, 50.0, 52.5, 56.0, 59.0):
+    _d = build(overrides={day(0): {"hrv": _h, "restingHR": 56.0 - (_h - 50.0) * 0.3, "sleepSecs": (7.5 + (_h - 50.0) * 0.05) * 3600}})
+    _d["activities"]["gestern745"] = {"id": "gestern745", "start_date_local": day(-1) + "T17:00:00", "type": "Ride",
+                                      "moving_time": 3600, "icu_intensity": 70, "icu_training_load": 55}
+    _t = coach.today(_d)
+    _n = _t.get("night") or {}
+    if not (_n.get("available") and _n.get("activity_id") == "gestern745" and _t.get("date") == day(0)):
+        check(False, f"0.74.5 E2E HRV {_h}: die Nacht nach gestern ist nicht die Nacht der Kachel ({_n.get('activity_id')})")
+        continue
+    for _s in _t["signals"]:
+        _row = ((_n.get("night") or {}).get(_s["key"]) or {}).get("word") or {}
+        eq(_s.get("shown"), _row.get("shown"), f"0.74.5 E2E HRV {_h} {_s['key']}: Kachel und Werte-Zeile zeigen verschiedene Zahlen")
+        if _s["direction"] in _hit745:
+            _hit745[_s["direction"]] += 1
+    eq(_t["signals"][0].get("shown") if _t["signals"] and _t["signals"][0]["key"] == "hrv" else None,
+       ((_n.get("verdict") or {}).get("z_hrv_word") or {}).get("shown"), f"0.74.5 E2E HRV {_h}: Kachel und Karte zeigen verschiedene Zahlen")
+check(all(v >= 1 for v in _hit745.values()), f"0.74.5 E2E Trefferzusicherung: nicht beide Richtungen getroffen ({_hit745})")
+# Regel 9: die Kachel-Fixture (panel_fixtures.today) traegt `shown` und die Richtung, wie coach.today sie schreibt
+import re as _re745  # noqa: E402
+_fx745 = (Path(__file__).resolve().parent / "panel_fixtures.js").read_text(encoding="utf-8")
+_sigs745 = _re745.findall(r'sig\("(hrv|rhr|sleep)", "[^"]+", "[^"]+", [\d.]+, [\d.]+, (-?[\d.]+), "[^"]*", "[^"]*", (-?[\d.]+)\)', _fx745)
+check(len(_sigs745) >= 5, f"0.74.5 Regel 9 Trefferzusicherung: nur {len(_sigs745)} Kachelzeilen mit eigenem shown gelesen")
+for _k, _z, _shw in _sigs745:
+    eq(float(_shw), coach.z_shown(float(_z)), f"0.74.5 Regel 9: Fixture-Kachel {_k} z {_z} traegt shown {_shw}")
+check("moved: Math.abs(z) > 0.5" in _fx745 and 'direction: z > 0.5 ? "günstig" : z < -0.5 ? "ungünstig"' in _fx745,
+      "0.74.5 Regel 9: die Fixture-Kachel rechnet die Grenze anders als coach.today ('mehr als')")
+
+# Nicht angefasst (Skizze §3): Urteil und Wortstufe bleiben - der Fingerabdruck von 0.74.4 steht oben unveraendert.
 
 print(f"test_coach: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
