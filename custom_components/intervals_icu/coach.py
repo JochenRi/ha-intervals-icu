@@ -116,6 +116,10 @@ DFA_AEROBIC = 0.75         # ROGERS
 DFA_ANAEROBIC = 0.5        # ROGERS
 # DECOUPLING_GOOD lives in const.py - it is shown in the panel, so it may exist
 # exactly once in the whole house (docs/ausbau.md F4).
+# KOPPLUNG (SKIZZE_0.74.6 D, Waechter in test_coach): SWC_SD = -NIGHT_DIGESTED_Z und
+# DAY_SWING_SD = -NIGHT_TOO_MUCH_Z - die Wortstufen "etwas"/"deutlich" (z_word) beginnen dort,
+# wo das Urteil der Nacht "gekostet"/"zu viel" beginnt. Wer eine Zahl aendert, aendert
+# Regeltext (night_rule_text) und Wortstufen mit, sonst widerspricht das Wort dem Urteil.
 SWC_SD = 0.5               # PLEWS/ALTINI: smallest worthwhile change
 # 0.74.4 (Skizze §2): gewöhnliche Tagesschwankung, kein neuer Wert - eine Standardabweichung.
 # Grenze der Wortstufe "etwas" -> "deutlich" in z_word und die Zahl im Satz zur Klammer.
@@ -1546,6 +1550,10 @@ def _night_z(data: dict[str, Any], day: str) -> dict[str, Any]:
 # ist "gekostet, verzoegert" (Johannes, 25.09.). Die Schwellen sind gesetzt, nicht
 # gemessen (die Naechte nach Johannes' Einheiten trennen VO2max nicht von Grundlage -
 # Zeichnung 24.09., L2). Der Trainer liest diese Bewertung NICHT (test_coach 18b).
+# KOPPLUNG (SKIZZE_0.74.6 D, Waechter in test_coach, keine Werte geaendert): NIGHT_SECOND_Z = NIGHT_DIGESTED_Z
+# (der Regelsatz nennt fuer "beide Naechte etwas darunter" NIGHT_DIGESTED_Z, gerechnet wird NIGHT_SECOND_Z);
+# -NIGHT_DIGESTED_Z = SWC_SD und -NIGHT_TOO_MUCH_Z = DAY_SWING_SD (Wortstufen in z_word). Laufen sie
+# auseinander, muessen Regeltext und Wortstufen mitgeaendert werden.
 NIGHT_DIGESTED_Z = -0.5
 NIGHT_TOO_MUCH_Z = -1.0
 NIGHT_SECOND_Z = -0.5

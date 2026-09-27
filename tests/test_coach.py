@@ -2740,6 +2740,20 @@ for _name, _kind, _gap in (("NEU_FEW_19", "", {"gap": "few", "n": 19}), ("NEU_FL
 eq(len(_re745.findall(r"gibt es noch keinen Vergleich|noch keine Bewertung –|Zweite Nacht: noch kein Vergleich", _fx746)), 4,
    "0.74.6 Regel 9: die Fixture traegt einen Basislinien-Satz ausserhalb der vier gebundenen Konstanten")
 
+# --- 0.74.6 D: die Kopplungen der Nacht-Konstanten (Waechter, kein Umbau) ---
+# Regelsatz "beide Naechte etwas darunter (mehr als NIGHT_DIGESTED_Z)" rechnet mit NIGHT_SECOND_Z; die Wortstufe "etwas"
+# beginnt bei SWC_SD, das Urteil bei NIGHT_DIGESTED_Z; "deutlich" bei DAY_SWING_SD, "zu viel" bei NIGHT_TOO_MUCH_Z.
+_MSG746 = "Regeltext und Wortstufen müssen mitgeändert werden (SKIZZE_0.74.6 D)"
+check(coach.NIGHT_SECOND_Z == coach.NIGHT_DIGESTED_Z, f"{_MSG746}: NIGHT_SECOND_Z {coach.NIGHT_SECOND_Z} ≠ NIGHT_DIGESTED_Z {coach.NIGHT_DIGESTED_Z}")
+check(-coach.NIGHT_DIGESTED_Z == coach.SWC_SD, f"{_MSG746}: −NIGHT_DIGESTED_Z {-coach.NIGHT_DIGESTED_Z} ≠ SWC_SD {coach.SWC_SD}")
+check(-coach.NIGHT_TOO_MUCH_Z == coach.DAY_SWING_SD, f"{_MSG746}: −NIGHT_TOO_MUCH_Z {-coach.NIGHT_TOO_MUCH_Z} ≠ DAY_SWING_SD {coach.DAY_SWING_SD}")
+# der Kommentar steht an beiden Konstanten-Gruppen (wer eine Zahl aendert, liest ihn dort)
+_csrc746 = Path(coach.__file__).read_text(encoding="utf-8")
+for _const746 in ("SWC_SD = ", "DAY_SWING_SD = ", "NIGHT_DIGESTED_Z = ", "NIGHT_TOO_MUCH_Z = ", "NIGHT_SECOND_Z = "):
+    _at746 = _csrc746.find("\n" + _const746)
+    _win746 = _csrc746[max(0, _at746 - 700):_at746 + 200] if _at746 >= 0 else ""
+    check("SKIZZE_0.74.6 D" in _win746, f"0.74.6 D: kein Kopplungs-Kommentar an {_const746.strip(' =')}")
+
 print(f"test_coach: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)
