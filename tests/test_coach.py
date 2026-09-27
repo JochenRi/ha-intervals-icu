@@ -2755,8 +2755,9 @@ for _name, _kind, _gap in (("NEU_FEW_19", "", {"gap": "few", "n": 19}), ("NEU_FL
                            ("NEU_CARD_10", "card_", {"gap": "few", "n": 10}), ("NEU_SECOND_11", "second_", {"gap": "few", "n": 11})):
     check(f'const {_name} = "{coach.night_baseline_words(_kind, _gap)}";' in _fx746,
           f"0.74.6 Regel 9: Fixture {_name} weicht vom Erzeuger ab")
-eq(len(_re745.findall(r"gibt es noch keinen Vergleich|noch keine Bewertung –|Zweite Nacht: noch kein Vergleich", _fx746)), 4,
-   "0.74.6 Regel 9: die Fixture traegt einen Basislinien-Satz ausserhalb der vier gebundenen Konstanten")
+# 0.74.9 A4: fuenfte gebundene Konstante MISS_SLEEP_FEW12 (gebunden unten im A4-Block, gegen coach.today)
+eq(len(_re745.findall(r"gibt es noch keinen Vergleich|noch keine Bewertung –|Zweite Nacht: noch kein Vergleich", _fx746)), 5,
+   "0.74.6 Regel 9: die Fixture traegt einen Basislinien-Satz ausserhalb der fuenf gebundenen Konstanten")
 
 # --- 0.74.6 D: die Kopplungen der Nacht-Konstanten (Waechter, kein Umbau) ---
 # Regelsatz "beide Naechte etwas darunter (mehr als NIGHT_DIGESTED_Z)" rechnet mit NIGHT_SECOND_Z; die Wortstufe "etwas"
@@ -2983,7 +2984,8 @@ eq(_fp747, "441c88651cc56e86", "0.74.7 §3 Fingerabdruck: state_series/state wei
 
 def _proj747(t):
     t = _cp746.deepcopy(t)
-    for k in ("tension", "band_scale", "signals_gap"):
+    # 0.74.9 A4: signals_missing ist neu - alles andere bleibt bitgleich
+    for k in ("tension", "band_scale", "signals_gap", "signals_missing"):
         t.pop(k, None)
     for s in t.get("signals") or []:
         # 0.74.9 A2: `line` (Wort der gelben Linie) ist neu - alles andere bleibt bitgleich
@@ -3357,6 +3359,55 @@ eq((_bl746.fallback_note(None), _bl746.fallback_note(_bl746.Band(1.0, 0.1, True,
     _bl746.fallback_note(_bl746.Band(1.0, 0.1, False, 60.0, 0))), (None, None, None),
    "0.74.9 A3: Hinweis ohne Anlass (kein Band / gewichtet / nichts markiert)")
 check("zurückgefallen" not in _i749.getsource(_bl746), "0.74.9 A3: der alte Text steht noch in baseline.py")
+
+# --- 0.74.9 A4 (Entscheidung Vorarbeiter 27.09., Johannes frei): fehlt EINEM Signal der Vergleich, steht warum --------
+# named_acc = 4. Fall ("Für deinen Ruhepuls"), named (1. Fall, tension-Satz) bleibt. Saetze woertlich.
+eq({_k: _w.get("named_acc") for _k, _w in coach.SIGNAL_WORDS.items()},
+   {"hrv": "deine HRV", "rhr": "deinen Ruhepuls", "sleep": "deine Schlafdauer"}, "0.74.9 A4: SIGNAL_WORDS.named_acc nicht wörtlich")
+eq({_k: _w.get("named") for _k, _w in coach.SIGNAL_WORDS.items()},
+   {"hrv": "deine HRV", "rhr": "dein Ruhepuls", "sleep": "deine Schlafdauer"}, "0.74.9 A4: named (1. Fall) verändert")
+_A4_FEW12 = "Für deine Schlafdauer gibt es noch keinen Vergleich – die App braucht dafür 20 Nächte mit Werten, bisher sind es 12."
+_A4_FLAT = "Für deine Schlafdauer gibt es noch keinen Vergleich – deine bisherigen Nachtwerte sind alle gleich."
+_A4_RHR_NONE = "Für deinen Ruhepuls hat deine Uhr letzte Nacht keinen Wert geliefert."
+# (a) Schlaf flach (build(): konstant 7,5 h) - Wert da, Band fehlt
+_a4a = coach.today(build())
+eq([_s["key"] for _s in _a4a.get("signals") or []], ["hrv", "rhr"], "0.74.9 A4 Trefferzusicherung (a): Schlaf hat doch eine Kachel")
+eq(_a4a.get("signals_missing"), [{"key": "sleep", "text": _A4_FLAT}], "0.74.9 A4 (a): Schlaf flach - Zeile nicht wörtlich")
+# (b) Schlaf erst 12 Nächte vor heute - "bisher sind es 12" (MIN_VALUES aus baseline)
+_a4b = build()
+for _i, _d in enumerate(sorted(_a4b["wellness"])):
+    _a4b["wellness"][_d]["sleepSecs"] = (7.5 * 3600 + ((_i * 3) % 5 - 2) * 600) if _i >= len(_a4b["wellness"]) - 13 else None
+_a4bt = coach.today(_a4b)
+eq(_a4bt.get("signals_missing"), [{"key": "sleep", "text": _A4_FEW12}], "0.74.9 A4 (b): Schlaf 12 Nächte - Zeile nicht wörtlich")
+# (c) Ruhepuls: kein Wert letzte Nacht - 4. Fall
+_a4c = _cp746.deepcopy(_b749s)
+_a4c["wellness"][max(_a4c["wellness"])].pop("restingHR", None)
+_a4ct = coach.today(_a4c)
+eq([_s["key"] for _s in _a4ct.get("signals") or []], ["hrv", "sleep"], "0.74.9 A4 Trefferzusicherung (c): Ruhepuls hat doch eine Kachel")
+eq(_a4ct.get("signals_missing"), [{"key": "rhr", "text": _A4_RHR_NONE}], "0.74.9 A4 (c): Ruhepuls ohne Wert - Zeile nicht wörtlich")
+# (d) zwei fehlen: beide Zeilen, Reihenfolge wie NIGHT_FIELDS
+_a4d = _cp746.deepcopy(_a4b); _a4d["wellness"][max(_a4d["wellness"])].pop("restingHR", None)
+eq(_a4d and coach.today(_a4d).get("signals_missing"),
+   [{"key": "rhr", "text": _A4_RHR_NONE}, {"key": "sleep", "text": _A4_FEW12}], "0.74.9 A4 (d): zwei fehlende Signale")
+# (e) alle drei da: keine Zeile; (f) alle drei fehlen: keine Zeile (die 0.74.7-Zeile signals_gap bleibt, keine Doppelung)
+eq(coach.today(_b749s).get("signals_missing"), [], "0.74.9 A4 (e): Zeile, obwohl alle drei Kacheln stehen")
+_a4f = coach.today(build(days=20))
+check(not _a4f.get("signals") and bool((_a4f.get("signals_gap") or {}).get("text")),
+      "0.74.9 A4 Trefferzusicherung (f): der Bestand hat doch Kacheln oder keinen 0.74.7-Satz")
+eq(_a4f.get("signals_missing"), [], "0.74.9 A4 (f): Doppelung - Zeilen je Signal UND die 0.74.7-Zeile")
+# eine Stelle: der Satzteil kommt aus night_baseline_words ueber _night_gap je Feld, keine 20 als Literal
+_st749a4 = _i749.getsource(coach.today)
+check("_night_gap(data, current, (" in _st749a4 and "night_baseline_words(" in _st749a4 and "named_acc" in _st749a4,
+      "0.74.9 A4: today() baut die Zeile nicht aus _night_gap/night_baseline_words/named_acc")
+# Regel 9: die Fixture-Saetze sind die des Erzeugers
+eq(_jsconst748("MISS_SLEEP_FEW12") if "const MISS_SLEEP_FEW12 = " in _fx748 else None, _A4_FEW12, "0.74.9 A4 Regel 9: MISS_SLEEP_FEW12")
+eq(_jsconst748("MISS_RHR_NONE") if "const MISS_RHR_NONE = " in _fx748 else None, _A4_RHR_NONE, "0.74.9 A4 Regel 9: MISS_RHR_NONE")
+check("signals_missing: []," in _fx748, "0.74.9 A4 Regel 9: die Fixture-Grundseite traegt signals_missing nicht als [] wie der Erzeuger")
+
+# --- Befund 0.74.9: coach.signals() "swc" aus SWC_SD statt Literal, bitgleich -------------------------------------
+check('"swc": 0.5' not in _i749.getsource(coach.signals) and '"swc": SWC_SD' in _i749.getsource(coach.signals),
+      "0.74.9: signals() liefert swc als Literal statt SWC_SD")
+eq(coach.signals(build())["swc"], 0.5, "0.74.9: signals()['swc'] nicht bitgleich")
 
 print(f"test_coach: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:

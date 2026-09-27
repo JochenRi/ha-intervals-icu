@@ -1419,7 +1419,7 @@ def signals(data: dict[str, Any], days_back: int = 180) -> dict[str, Any]:
                         for key, meta in SIGNALS.items()},
             "load_signals": LOAD_SIGNALS,
             "bands": bands_out,
-            "swc": 0.5}
+            "swc": SWC_SD}   # 0.74.9: Konstante statt Literal, bitgleich
 
 
 # --- what the night after an activity showed ----------------------------------
@@ -2285,16 +2285,19 @@ def judged_day(data: dict[str, Any]) -> tuple[str | None, bool]:
 # named = Artikel+Name im Hinweis `tension`. Das Panel schreibt keinen dieser Saetze selbst.
 # 0.74.9 A2 (SKIZZE_0.74.9, woertlich): line = das Wort an der gelben Linie im Diagramm ("{line} {Zahl}"). Nur HRV und
 # Ruhepuls kennt die Einbruch-Regel (state); der Schlaf heisst deshalb nicht "Einbruch".
+# 0.74.9 A4 (Entscheidung Vorarbeiter 27.09.): named_acc = derselbe Name im 4. Fall fuer "Für {named_acc} …";
+# named (1. Fall) bleibt fuer den tension-Satz ("Heute liegt dein Ruhepuls …").
 SIGNAL_WORDS: dict[str, dict[str, str]] = {
     "hrv": {"system": "Nervensystem", "about": "wie erholt dein Nervensystem ist",
             "limit": "Die Uhr misst nachts – das schwankt mehr als eine Messung morgens im Liegen.",
-            "named": "deine HRV", "line": "Einbruch unter"},
+            "named": "deine HRV", "named_acc": "deine HRV", "line": "Einbruch unter"},
     "rhr": {"system": "Nervensystem", "about": "wie erholt dein Nervensystem ist",
             "limit": "Reagiert langsamer als die HRV, schwankt dafür weniger.",
-            "named": "dein Ruhepuls", "line": "auffällig hoch über"},
+            "named": "dein Ruhepuls", "named_acc": "deinen Ruhepuls", "line": "auffällig hoch über"},
     "sleep": {"system": "Verhalten", "about": "wie viel du geschlafen hast",
               "limit": "Von der Uhr geschätzt – sagt nichts darüber, wie gut du geschlafen hast.",
-              "named": "deine Schlafdauer", "line": "ungewöhnlich kurz unter"},
+              "named": "deine Schlafdauer", "named_acc": "deine Schlafdauer",
+              "line": "ungewöhnlich kurz unter"},
 }
 # Zeile 2 der Kachel - nur bei "günstig"/"ungünstig" (direction), sonst keine
 SIGNAL_MEANING = {"günstig": "spricht für Erholung", "ungünstig": "spricht gegen Erholung"}
@@ -2431,6 +2434,19 @@ def today(data: dict[str, Any], events: Any = None, day: str | None = None) -> d
         gap = _night_gap(data, current)
         if gap:
             signals_gap = {**gap, "text": night_baseline_words("", gap)}
+    # 0.74.9 A4: fehlt EINEM Signal die Kachel, steht warum - je Feld eine Zeile, Reihenfolge NIGHT_FIELDS. Wert da,
+    # Band fehlt: der Satzteil aus night_baseline_words (0.74.6, eine Stelle); kein Wert: eigener Satz. Fehlen ALLE drei,
+    # bleibt nur die Zeile oben (signals_gap / "keine Werte") - keine Doppelung.
+    signals_missing: list[dict[str, str]] = []
+    if signals:
+        shown = {s["key"] for s in signals}
+        for key, *_rest in NIGHT_FIELDS:
+            if key in shown:
+                continue
+            name = SIGNAL_WORDS.get(key, {}).get("named_acc", key)
+            why = night_baseline_words("", _night_gap(data, current, (key,)))
+            signals_missing.append({"key": key, "text": f"Für {name} {why}" if why
+                                    else f"Für {name} hat deine Uhr letzte Nacht keinen Wert geliefert."})
 
     return {
         "available": True,
@@ -2440,6 +2456,7 @@ def today(data: dict[str, Any], events: Any = None, day: str | None = None) -> d
         # das Panel traegt keine Grenze und kein Fenster als Literal
         "band_scale": {"swc": SWC_SD, "day": DAY_SWING_SD, "drop": HRV_DROP_SD, "window": baseline.WINDOW},
         "signals_gap": signals_gap,
+        "signals_missing": signals_missing,
         "capacity": capacity,
         "capacity_text": capacity_text,
         "ceiling": ceiling,

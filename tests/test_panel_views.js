@@ -4959,14 +4959,31 @@ const SEITE734 = (async () => {
     ok(!/Einbruch unter|auffällig hoch über|ungewöhnlich kurz/.test(rh) && /s\.line/.test(rh),
        "0.74.9 A2: das Linien-Wort steht im Panel (verzweigt) statt aus coach.SIGNAL_WORDS");
 
-    /* SEITENPROBE Heute, 00:30, Schlaf OHNE Band: zwei Kacheln, keine Schlaf-Linie, sonst unverändert */
-    const nosleep = { ...live, signals: live.signals.filter((s) => s.key !== "sleep"),
-      bands: Object.fromEntries(Object.entries(live.bands || {}).filter(([k]) => k !== "sleep")) };
-    const ns = P.rHeute(nosleep), nsT = txt(ns);
+    /* SEITENPROBE Heute, 00:30, Schlaf OHNE Band (12 Nächte): zwei Kacheln, darunter A4 die Zeile, warum der Schlaf fehlt */
+    const ns = P.rHeute(F.today("ohneschlaf")), nsT = txt(ns);
     clean(ns, "0.74.9 Heute Schlaf ohne Band");
     ok((ns.match(/class="tsig /g) || []).length === 2 && !nsT.includes("ungewöhnlich kurz") && !nsT.includes("die Nacht zu heute fehlt noch")
        && nsT.includes("Deine letzte Nacht — Nacht zum So 27.09."),
        "0.74.9 Seitenprobe Schlaf ohne Band: nicht zwei Kacheln, oder eine Schlaf-Linie, oder „fehlt noch“");
+    const nsS = z(ns), nsTiles = nsS.indexOf('class="tsigs"'), nsWoher = nsS.indexOf("Woher das kommt");
+    const nsLine = nsS.indexOf(F.MISS_SLEEP_FEW12);
+    ok(nsLine > nsTiles && nsLine < nsWoher && nsT.split(F.MISS_SLEEP_FEW12).length === 2,
+       "0.74.9 A4 Schlaf ohne Band: die Zeile „Für deine Schlafdauer gibt es noch keinen Vergleich …“ steht nicht genau einmal unter den Kacheln");
+    ok(!nsT.includes("Für deine letzte Nacht"), "0.74.9 A4 Schlaf ohne Band: die Zeile für ALLE Signale steht zusätzlich");
+    const nr = P.rHeute(F.today("ohneruhepuls")), nrT = txt(nr);
+    clean(nr, "0.74.9 Heute Ruhepuls ohne Wert");
+    ok(nrT.split(F.MISS_RHR_NONE).length === 2 && (nr.match(/class="tsig /g) || []).length === 2 && !nrT.includes("Für dein Ruhepuls"),
+       "0.74.9 A4 Ruhepuls ohne Wert: die Zeile im 4. Fall steht nicht genau einmal");
+    // die Zeile liest den Text aus der Payload (eine Stelle in coach); alle drei da -> keine Zeile
+    ok(txt(P.rHeute({ ...F.today("ohneschlaf"), signals_missing: [{ key: "sleep", text: "ZEILE AUS DEM BACKEND." }] })).includes("ZEILE AUS DEM BACKEND."),
+       "0.74.9 A4: die Zeile kommt nicht aus signals_missing");
+    ok(!/Für deine[n]? (HRV|Ruhepuls|Schlafdauer)/.test(txt(P.rHeute(live))), "0.74.9 A4: Zeile, obwohl alle drei Kacheln stehen");
+    // fehlen alle drei: nur die 0.74.7-Zeile, nie zusätzlich Zeilen je Signal (auch wenn die Payload welche trüge)
+    const alle = txt(P.rHeute({ ...F.today("neuathlet"), signals_missing: [{ key: "hrv", text: "DOPPELT." }] }));
+    ok(alle.includes("Für deine letzte Nacht gibt es noch keinen Vergleich") && !alle.includes("DOPPELT."),
+       "0.74.9 A4: fehlen alle drei, steht die Zeile doppelt (je Signal UND für alle)");
+    ok(!src.includes("hat deine Uhr letzte Nacht keinen Wert") && !src.includes("deinen Ruhepuls"),
+       "0.74.9 A4: das Panel schreibt die Zeile selbst (zweite Stelle neben coach)");
 
     /* A1 · SEITENPROBE Aktivitäten volumen 26.09. (Entkopplung −12,1 %, gleichmäßig) - der Satz aus der Payload */
     const A = F.activities();

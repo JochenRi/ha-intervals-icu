@@ -764,6 +764,22 @@ if _m15:
     check("Z15 A3: seine Summe liegt unter der Grenze", float(_m15.group(1).replace(",", ".")) < ws.coach_module.day_context.MIN_WEIGHT_SUM)
 eq("Z15 A3: keine Zahl des ersten Athleten", leaks({"note": _cn15}), [])
 
+# A4: SEIN Schlaf erst seit 12 Naechten, SEIN Ruhepuls fehlt letzte Nacht - die Zeilen mit SEINEM n, 4. Fall
+_d15c = copy.deepcopy(_dn)
+_order15 = sorted(_d15c["wellness"])
+_last15 = _order15[-1]
+for _d in _order15[:-13]:
+    _d15c["wellness"][_d].pop("sleepSecs", None)
+_d15c["wellness"][_last15].pop("restingHR", None)
+ws._pick = lambda hass, athlete_id: FakeCoordinator(_d15c)
+_t15c = FakeConn(); ws.websocket_today(None, _t15c, {"id": 44})
+_h15c = (_t15c.results or [{}])[0]
+eq("Z15 A4: seine Kacheln (nur HRV)", [x["key"] for x in _h15c.get("signals") or []], ["hrv"])
+eq("Z15 A4: seine Zeilen, 4. Fall, sein n = 12", _h15c.get("signals_missing"),
+   [{"key": "rhr", "text": "Für deinen Ruhepuls hat deine Uhr letzte Nacht keinen Wert geliefert."},
+    {"key": "sleep", "text": "Für deine Schlafdauer gibt es noch keinen Vergleich – die App braucht dafür 20 Nächte mit Werten, bisher sind es 12."}])
+eq("Z15 A4: keine Zahl des ersten Athleten", leaks({"m": _h15c.get("signals_missing")}), [])
+
 print(f"\ntest_zweiter_athlet: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

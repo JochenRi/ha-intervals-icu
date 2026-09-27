@@ -774,6 +774,9 @@ const SIGW = {
            line: "ungewöhnlich kurz unter" },
 };
 const SIGM = { "günstig": "spricht für Erholung", "ungünstig": "spricht gegen Erholung" };
+/* 0.74.9 A4: die Zeile je fehlendem Signal, wie coach.today sie schreibt (test_coach bindet sie, Regel 9) */
+const MISS_SLEEP_FEW12 = "Für deine Schlafdauer gibt es noch keinen Vergleich – die App braucht dafür 20 Nächte mit Werten, bisher sind es 12.";
+const MISS_RHR_NONE = "Für deinen Ruhepuls hat deine Uhr letzte Nacht keinen Wert geliefert.";
 const TENSION_TAIL = " – das spricht eher gegen Erholung, reicht aber nicht für einen Einbruch. Einbruch heißt: HRV und Ruhepuls liegen am selben Tag stark daneben (mehr als 2,0), oder einer von beiden an zwei Tagen hintereinander. Ein einzelner Wert an einem Tag ist Rauschen.";
 
 /* everything the Heute page needs, as intervals_icu/today returns it */
@@ -807,6 +810,8 @@ function today(kind) {
     // und der Satz, wenn keine Kachel ein Band hat (sonst null)
     band_scale: { swc: 0.5, day: 1.0, drop: 2.0, window: 60 },
     signals_gap: null,
+    // 0.74.9 A4: je fehlendem Signal eine Zeile (coach.today); alle drei da -> []
+    signals_missing: [],
     recent: [
       { date: "2026-09-05", load: 0, state: "slump" },
       { date: "2026-09-06", load: 0, state: "slump" },
@@ -910,6 +915,13 @@ function today(kind) {
         sig("sleep", "Schlafdauer", "h", 7.9, 7.3, 0.83, "etwas über deinem Normalwert", 0.9),
       ],
       night: { ...night("live27"), activity_date: "2026-09-26", activity_name: "volumen", activity_id: "a-2026-09-26" } };
+  }
+  // 0.74.9 A4: live 27.09., aber der Schlaf hat erst 12 Naechte (kein Band) bzw. der Ruhepuls keinen Wert letzte Nacht
+  if (kind === "ohneschlaf" || kind === "ohneruhepuls") {
+    const lv = today("live0927"), key = kind === "ohneschlaf" ? "sleep" : "rhr";
+    return { ...lv, signals: lv.signals.filter((x) => x.key !== key),
+      bands: Object.fromEntries(Object.entries(lv.bands || {}).filter(([k]) => k !== key)),
+      signals_missing: [{ key, text: key === "sleep" ? MISS_SLEEP_FEW12 : MISS_RHR_NONE }] };
   }
   // 0.74.5: Grenzfall der Kachel - z genau 0,50 ist "unauffällig", 0,51 "günstig" (Erzeuger: "mehr als")
   if (kind === "grenze05") {
@@ -1802,4 +1814,4 @@ function dayContext(extra) {
   };
 }
 
-module.exports = { TENSION_TAIL, NEU_FEW_19, NEU_FLAT, NEU_CARD_10, NEU_SECOND_11, STAGE_WORDS, stageOf, TODAY, days, load, loadView, LV_KEYS, readiness, activities, streams, thresholds, fatigue, fatigueV2Block, blocks, calendar, pmc, laps, lapsWithBounds, steadyStream, night, NIGHT_RULE, NIGHT_CAVEAT, context, CTX_STEADY_TEXT, CTX_UNJUDGED_TEXT, CTX_WHY, CTX_NOTE, goal, today, week, coach, signals, workouts, dayContext };
+module.exports = { TENSION_TAIL, NEU_FEW_19, NEU_FLAT, NEU_CARD_10, NEU_SECOND_11, STAGE_WORDS, stageOf, TODAY, days, load, loadView, LV_KEYS, readiness, activities, streams, thresholds, fatigue, fatigueV2Block, blocks, calendar, pmc, laps, lapsWithBounds, steadyStream, night, NIGHT_RULE, NIGHT_CAVEAT, context, CTX_STEADY_TEXT, CTX_UNJUDGED_TEXT, MISS_SLEEP_FEW12, MISS_RHR_NONE, CTX_WHY, CTX_NOTE, goal, today, week, coach, signals, workouts, dayContext };

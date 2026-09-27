@@ -4749,7 +4749,9 @@ class IntervalsIcuPanel extends HTMLElement {
       ? `<h3 class="secname">${stale ? "Die letzte gemessene Nacht" : "Deine letzte Nacht"}
         <span class="hint">— Nacht zum ${nightDay}${stale ? "; die Nacht zu heute fehlt noch"
           : `, jeder Wert verglichen mit deinen letzten ${fmt(sc.window)} Nächten`}</span></h3>
-      <div class="tsigs">${signals}</div>`
+      <div class="tsigs">${signals}</div>${
+        // 0.74.9 A4: je fehlendem Signal eine Zeile, der Satz fertig aus coach.today (signals_missing)
+        (t.signals_missing || []).map((m) => `<p class="hint tsigmiss">${esc(m.text)}</p>`).join("")}`
       : `<h3 class="secname">Deine letzte Nacht</h3>
       <p class="hint">${t.signals_gap && t.signals_gap.text
           ? `Für deine letzte Nacht ${esc(t.signals_gap.text)}`
