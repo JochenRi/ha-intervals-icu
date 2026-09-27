@@ -854,7 +854,12 @@ eq(dec["verdict"], "schlechter als sonst", "20 einordnung: hohe Entkopplung fals
 check(dec["median"] < 4, f"20 einordnung: Median unplausibel ({dec['median']})")
 
 # the same number at the good end must read as good - direction matters
+# 0.74.8 (Entscheidung 27.09., 15:12): eine NEGATIV gezeigte Entkopplung bekommt kein Urteil mehr -
+# das gute Ende wird deshalb mit 0,0 geprüft (gezeigt "0,0", nicht negativ), -0,9 gesondert
 rides["activities"]["r39"]["decoupling"] = -0.9
+_neg20 = coach.session_context(rides, "r39")["metrics"]["decoupling"]
+eq((_neg20.get("judged"), _neg20.get("verdict")), (False, None), "20 einordnung: negative Entkopplung trägt ein Urteil")
+rides["activities"]["r39"]["decoupling"] = 0.0
 good = coach.session_context(rides, "r39")["metrics"]["decoupling"]
 eq(good["verdict"], "besser als sonst", "20 einordnung: niedrige Entkopplung nicht als gut gewertet")
 check(good["rank"] <= 15, f"20 einordnung: Rang der guten Fahrt zu hoch ({good['rank']})")
@@ -3065,14 +3070,14 @@ _NOTE = ("Verglichen wird nur mit deinen früheren gleichmäßigen Fahrten derse
          "4 h – deshalb ist die Spanne nach oben breiter. Ein einzelner Vergleich ist ein Hinweis, kein Befund: "
          "Hitze, Koffein, Schlaf und Strecke verschieben den Puls. Verlässlicher ist der Verlauf über Wochen.")
 # der ganze Satzteil, wie ihn die Info-Zeile und der Viertel-Kasten zeigen
-_TXT = {
-    "short": f"war dafür zu kurz (unter {_D} min)",
-    "intense": "war dafür zu intensiv",
-    "variable": "war dafür zu ungleichmäßig",
-    "indoor": "war dafür eine Indoor-Fahrt",
-    "no_power": "war dafür ohne Leistungsmessung",
-    "vo2max": f"war dafür zu kurz (unter {_D} min), eine Indoor-Fahrt und zu intensiv",
-    "zwei": f"war dafür zu kurz (unter {_D} min) und ohne Leistungsmessung",
+_TXT = {   # Entscheidung 27.09. (15:12): Teile ohne "war dafür", mit ", " verbunden
+    "short": f"zu kurz (unter {_D} min)",
+    "intense": "zu intensiv",
+    "variable": "zu ungleichmäßig",
+    "indoor": "Indoor-Fahrt",
+    "no_power": "ohne Leistungsmessung",
+    "vo2max": f"zu kurz (unter {_D} min), Indoor-Fahrt, zu intensiv",
+    "zwei": f"zu kurz (unter {_D} min), ohne Leistungsmessung",
 }
 _cases = {"intense": (dict(intensity=85, np_=165, avg=150, zones=_z10), ["intense"]),
           "variable": (dict(np_=200, avg=150, zones=_z10), ["variable"]),
@@ -3170,6 +3175,27 @@ eq(coach.session_context(_grp748(6, value=4.0, hrv=100.0), "me").get("metrics", 
 eq(coach.session_context(_grp748(6, value=4.0, hrv=132.5), "me").get("metrics", {}).get("hr", {}).get("tendency"), "wie sonst",
    "0.74.8 §2.2: HF in der Mitte nicht 'wie sonst'")
 eq(_hi.get("decoupling", {}).get("judged"), True, "0.74.8: Entkopplung nicht als beurteilt markiert")
+
+# --- Entscheidung 27.09. (15:12): negativ GEZEIGTE Entkopplung = kein Urteil, EINE Stelle ---------------
+# coach.decoupling_unjudged(v): der Wert, wie ihn die Kachel zeigt (eine Nachkommastelle), liegt unter 0.
+# Dieselbe Tabelle prüft test_panel_views gegen fmt(v, 1) - beide Seiten müssen ihr folgen.
+_UNJ = [(-12.01, True), (-0.1, True), (-0.05, True), (-0.04, False), (0.0, False), (0.04, False), (2.0, False), (None, False)]
+_uj = getattr(coach, "decoupling_unjudged", lambda v: "fehlt")
+eq([(_v, _uj(_v)) for _v, _ in _UNJ], _UNJ, "0.74.8 neg: decoupling_unjudged folgt nicht dem gezeigten Wert")
+for _v, _want in _UNJ[:5]:
+    _cn = coach.session_context(_grp748(6, values=_vals, value=_v), "me")
+    eq(_cn.get("decoupling_unjudged"), _want, f"0.74.8 neg: session_context meldet {_v} falsch (decoupling_unjudged)")
+    _dn = (_cn.get("metrics") or {}).get("decoupling") or {}
+    if _want:
+        eq((_dn.get("judged"), _dn.get("verdict")), (False, None), f"0.74.8 neg: Vergleichszeile {_v} trägt ein Urteil")
+        check(_dn.get("tendency") in ("höher als sonst", "wie sonst", "niedriger als sonst"),
+              f"0.74.8 neg: Vergleichszeile {_v} ohne Tendenz ({_dn.get('tendency')!r})")
+        check(bool(_dn.get("count")), f"0.74.8 neg: Vergleichszeile {_v} ohne gezählte Zeile")
+    else:
+        eq(_dn.get("judged"), True, f"0.74.8 neg: Vergleichszeile {_v} verliert ohne Grund das Urteil")
+import inspect as _i748n
+check("decoupling_unjudged(" in _i748n.getsource(coach.session_context),
+      "0.74.8 neg: session_context fragt nicht decoupling_unjudged")
 
 # Dauer der erreichten Stufe in echten Minuten
 _dd = _hi.get("decoupling", {})

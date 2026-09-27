@@ -694,6 +694,7 @@ const EMPTY_LOAD = { weeks: [], weeks_by_group: [], window_history: [], window_p
     ok(!/-0,0 %|[-]0 Schläge/.test(box(p.rAkt(acts, acts[0]))), "0.74.8: '-0,0' in der neutralen Zeile");
     p._streams[acts[0].id] = steadyRide;
     // negative Entkopplung (Entscheidung 27.09.): keine Einordnung nach 3 / Marke / 10, neutral, eigener Satz
+    p._ctx[acts[0].id] = F.context("negativ");
     for (const v of [-4.2, -12.01, -0.05]) {
       const ng = p.rAkt(acts, withDec(v)); clean(ng, "grundlage negativ " + v);
       const nb = box(ng).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
@@ -705,6 +706,15 @@ const EMPTY_LOAD = { weeks: [], weeks_by_group: [], window_history: [], window_p
          `0.74.8 negativ ${v}: Ton nicht neutral`);
       contains(nb, "Watt pro Herzschlag vom 1. zum 4. Viertel:", `0.74.8 negativ ${v}: neutrale Zeile fehlt`);
     }
+    // EINE Stelle (15:12): der Viertel-Kasten liest den Merker aus dem Backend, rechnet "negativ" nicht selbst.
+    // Beweis mit einem absichtlich widersprüchlichen Eingang: Merker aus, Wert negativ -> der Kasten folgt dem Merker.
+    p._ctx[acts[0].id] = F.context();
+    ok(/unter 3 %/.test(box(p.rAkt(acts, withDec(-4.2)))), "0.74.8 neg: Viertel-Kasten entscheidet 'negativ' selbst statt über den Merker");
+    // dieselbe Tabelle wie test_coach (coach.decoupling_unjudged): der gezeigte Wert fmt(v, 1) liegt unter 0
+    for (const [v, want] of [[-12.01, true], [-0.1, true], [-0.05, true], [-0.04, false], [0.0, false], [0.04, false], [2.0, false]]) {
+      const shown = +M.fmt(v, 1).replace(/\./g, "").replace(",", ".");
+      ok((shown < 0) === want, `0.74.8 neg: Kachel zeigt ${M.fmt(v, 1)} - Grenze weicht von coach.decoupling_unjudged ab`);
+    }
     // fehlender Wert
     const none = p.rAkt(acts, withDec(null));
     clean(none, "grundlage ohne entkopplung");
@@ -715,7 +725,7 @@ const EMPTY_LOAD = { weeks: [], weeks_by_group: [], window_history: [], window_p
     p._ctx[acts[0].id] = F.context("variable");
     const nv = p.rAkt(acts, acts[0]);
     clean(nv, "grundlage nicht gleichmäßig");
-    contains(box(nv), "Keine Entkopplung – diese Fahrt war dafür zu ungleichmäßig.", "0.74.8 §2.3: nicht gleichmäßig");
+    contains(box(nv), "Keine Entkopplung – zu ungleichmäßig.", "0.74.8 §2.3: nicht gleichmäßig");
     ok(/class="cmpverdict held/.test(box(nv)), "0.74.8 §2.3: nicht gleichmäßig nicht im Ton held");
     ok(!box(nv).includes("Entkopplung: ") && !/unter 3 %|unter 5 %|zwischen 5|über 10 %/.test(box(nv)),
        "0.74.8 §2.3: nicht gleichmäßig und trotzdem Kopf/Einordnung");
@@ -778,6 +788,16 @@ const EMPTY_LOAD = { weeks: [], weeks_by_group: [], window_history: [], window_p
     contains(s, "Wie die Vergleichsgruppe gebildet wird", "0.74.8: Aufklapper");
     contains(s, F.CTX_NOTE.slice(0, 60), "0.74.8: Aufklapper-Text aus dem Backend");
 
+    // negativ gezeigte Entkopplung (15:12): die Zeile ohne Urteil, grau, Tendenz + gezählt + " · ohne Urteil"
+    p._ctx[acts[0].id] = F.context("negativ");
+    const neg = sec(p.rAkt(acts, { ...acts[0], decoupling: -12.01 })); clean(neg, "einordnung negativ");
+    const negRow = neg.slice(neg.indexOf("Entkopplung"), neg.indexOf("Watt pro Herzschlag"));
+    contains(negRow, "niedriger als sonst", "0.74.8 neg: Tendenz fehlt");
+    contains(negRow, "niedriger als bei allen 17 · ohne Urteil", "0.74.8 neg: gezählt ohne Urteil fehlt");
+    ok(!/besser als sonst|schlechter als sonst|im üblichen Bereich/.test(negRow), "0.74.8 neg: Vergleichszeile trägt ein Urteil");
+    ok(!/#fbbf24|#34d399/.test(negRow), "0.74.8 neg: Vergleichszeile farbig statt grau");
+    contains(negRow, ">-12,0<", "0.74.8 neg: Wert nicht wie die Kachel");
+
     p._ctx[acts[0].id] = F.context("duenn");
     const thin = sec(p.rAkt(acts, acts[0]));
     clean(thin, "einordnung dünn");
@@ -794,8 +814,9 @@ const EMPTY_LOAD = { weeks: [], weeks_by_group: [], window_history: [], window_p
       const h = p.rAkt(acts, acts[0]); clean(h, "einordnung " + why);
       const g = sec(h);
       ok(!g.includes('class="ctxrow'), `0.74.8: '${why}' mit Kennzahl-Zeilen`);
-      contains(g, "Entkopplung und Watt pro Herzschlag sagen nur bei gleichmäßigen, ruhigen Fahrten etwas aus – diese Fahrt "
-        + F.CTX_STEADY_TEXT[why] + ".", `0.74.8: Info-Zeile '${why}'`);
+      contains(g, "Entkopplung und Watt pro Herzschlag sagen nur bei gleichmäßigen, ruhigen Fahrten etwas aus. "
+        + "Bei dieser Fahrt passt das nicht: " + F.CTX_STEADY_TEXT[why] + ".", `0.74.8: Info-Zeile '${why}'`);
+      ok(!g.includes("war dafür"), `0.74.8: 'war dafür' in der Info-Zeile '${why}'`);
       contains(g, "Warum hier kein Vergleich steht", `0.74.8: Aufklapper '${why}'`);
       contains(g, F.CTX_WHY.slice(-60), `0.74.8: Aufklapper-Text '${why}'`);
       ok(!g.includes("zeigt der Blockvergleich"), `0.74.8: Blockvergleich-Satz ohne Blockvergleich ('${why}')`);
@@ -812,7 +833,7 @@ const EMPTY_LOAD = { weeks: [], weeks_by_group: [], window_history: [], window_p
     const vo = p.rAkt(acts, acts[0]); clean(vo, "einordnung vo2max");
     contains(vo, "Blockvergleich", "0.74.8: VO2max ohne Blockvergleich");
     ok(!vo.includes("Wie sich die Fahrt entwickelt hat"), "0.74.8: VO2max geviertelt");
-    contains(sec(vo), "diese Fahrt war dafür zu kurz (unter 45 min), eine Indoor-Fahrt und zu intensiv. Wie die Blöcke zueinander standen, zeigt der Blockvergleich weiter oben.",
+    contains(sec(vo), "Bei dieser Fahrt passt das nicht: zu kurz (unter 45 min), Indoor-Fahrt, zu intensiv. Wie die Blöcke zueinander standen, zeigt der Blockvergleich weiter oben.",
              "0.74.8: VO2max Info-Zeile mit Blockvergleich-Satz");
     ok(!sec(vo).includes('class="ctxrow'), "0.74.8: VO2max mit Kennzahl-Zeilen");
     p._ctx = {}; p._laps = {}; p._streams = {};
@@ -822,11 +843,15 @@ const EMPTY_LOAD = { weeks: [], weeks_by_group: [], window_history: [], window_p
   {
     const src = require("fs").readFileSync(require("path").join(__dirname, "..", "custom_components", "intervals_icu",
       "frontend", "intervals-panel.js"), "utf8");
-    for (const t of Object.values(F.CTX_STEADY_TEXT)) {
+    // einzelne Wörter wie "zu intensiv" stehen im Panel auch an anderen Stellen (Durability-Liste) - geprüft
+    // wird der zusammengesetzte Satzteil und der Rahmen "(unter …)" unten
+    for (const t of Object.values(F.CTX_STEADY_TEXT).filter((x) => x.includes(", "))) {
       ok(!src.includes(t), `0.74.8: Grund-Text im Panel geschrieben: ${t}`);
     }
     ok(!src.includes("Entkopplung über die Fahrt"), "0.74.8: altes Viertel-Urteil im Panel-Quelltext");
-    ok(!src.includes("war dafür") && !src.includes("hatte Intervalle oder Blöcke"), "0.74.8 A: Satzteil der Gründe im Panel geschrieben");
+    ok(!src.includes("war dafür") && !src.includes("hatte Intervalle oder Blöcke") && !src.includes("zu kurz (unter")
+       && !src.includes("Indoor-Fahrt,"), "0.74.8 A: Satzteil der Gründe im Panel geschrieben");
+    ok(!/decoupling\s*<\s*0|shownOf\([^)]*\)\s*<\s*0/.test(src), "0.74.8 neg: das Panel rechnet 'negativ' selbst");
   }
 
   // --- Die Nacht danach ---------------------------------------------------

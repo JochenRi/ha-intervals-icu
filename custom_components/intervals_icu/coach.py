@@ -1846,12 +1846,12 @@ def _caliper_percent(width: float) -> tuple[float, float]:
     return (round((math.exp(-width) - 1) * 100, 1), round((math.exp(width) - 1) * 100, 1))
 
 
-# 0.74.8 (Entscheidung 27.09., Vorschlag A): die Gruende, warum eine Fahrt nicht verglichen wird - EINE
-# Stelle fuer die Satzteile (das Panel schreibt keinen davon). Alle zutreffenden Gruende stehen im Satz, in der
-# Reihenfolge von derive.steady_endurance_reasons. Die Zahl in "short" kommt aus der Konstanten.
+# 0.74.8 (Entscheidung 27.09., Vorschlag A; Satzbau 15:12): die Gruende, warum eine Fahrt nicht verglichen
+# wird - EINE Stelle fuer die Satzteile (das Panel schreibt keinen davon). Alle zutreffenden Gruende, in der
+# Reihenfolge von derive.steady_endurance_reasons, mit ", " verbunden. Die Zahl in "short" aus der Konstanten.
 _STEADY_PART = {
     "short": f"zu kurz (unter {DURABILITY_MIN_MINUTES} min)",
-    "indoor": "eine Indoor-Fahrt",
+    "indoor": "Indoor-Fahrt",
     "intense": "zu intensiv",
     "no_power": "ohne Leistungsmessung",
     "variable": "zu ungleichmäßig",
@@ -1859,12 +1859,22 @@ _STEADY_PART = {
 
 
 def _steady_text(reasons: list[str]) -> str | None:
-    """'war dafür zu kurz (unter {min} min), eine Indoor-Fahrt und zu intensiv' - mit Komma und 'und'."""
+    """'zu kurz (unter {min} min), Indoor-Fahrt, zu intensiv' - die Teile mit ', ' verbunden."""
     parts = [_STEADY_PART[r] for r in reasons if r in _STEADY_PART]
-    if not parts:
-        return None
-    joined = parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " und " + parts[-1]
-    return f"war dafür {joined}"
+    return ", ".join(parts) if parts else None
+
+
+def decoupling_unjudged(value: Any) -> bool:
+    """True, wenn die GEZEIGTE Entkopplung negativ ist - dann gibt es kein Urteil (Entscheidung 27.09., 15:12).
+
+    EINE Stelle fuer beide Abschnitte der Aktivitaet: die Vergleichszeile (session_context) und der
+    Viertel-Kasten im Panel lesen dasselbe Ergebnis (`decoupling_unjudged` in der Payload). "Gezeigt" heisst:
+    eine Nachkommastelle, wie die Kachel "Entkopplung" (fmt(a.decoupling, 1)). -0,04 zeigt die Kachel als
+    "-0,0" - das ist null, nicht negativ, und wird eingeordnet. Negativ heisst: die zweite Haelfte lief mit
+    weniger Puls je Watt; Friels Grenzen (3 / DECOUPLING_GOOD / 10) sind dafuer nicht gemacht.
+    """
+    number = _f(value)
+    return number is not None and round(number, 1) < 0
 
 
 _STEADY_WHY = (
@@ -2030,7 +2040,8 @@ def session_context(data: dict[str, Any], activity_id: str) -> dict[str, Any]:
         # words and the picture cannot disagree.
         low, high = ordered[max(0, len(ordered) // 4 - 1)], ordered[min(len(ordered) - 1, (3 * len(ordered)) // 4)]
         above, below = value > high, value < low
-        judged = good is not None
+        # Entkopplung: negativ gezeigt -> eingeordnet, aber nicht beurteilt (wie Ø HF), eine Stelle
+        judged = good is not None and not (key == "decoupling" and decoupling_unjudged(value))
         if judged:
             favourable = above if good == "up" else below
             unfavourable = below if good == "up" else above
@@ -2069,6 +2080,7 @@ def session_context(data: dict[str, Any], activity_id: str) -> dict[str, Any]:
         "earlier_steady": len(earlier_steady),
         "steady": steady,
         "steady_why": _STEADY_WHY,
+        "decoupling_unjudged": decoupling_unjudged(activity.get("decoupling")),
         "stages": list(PEER_CALIPER_STAGES),
         "widest_used": widest,
         "min_peers": MIN_PEERS_TO_RANK_METRIC,

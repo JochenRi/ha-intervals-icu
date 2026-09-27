@@ -1110,12 +1110,12 @@ function goal(kind) {
  * gegen den Erzeuger, Regel 9) - mit den Zahlen aus DURABILITY_MIN_MINUTES, DURABILITY_MAX_INTENSITY,
  * PEER_CALIPER_STAGES und MIN_PEERS_TO_RANK_METRIC. */
 const CTX_STEADY_TEXT = {
-  short: "war dafür zu kurz (unter 45 min)",
-  intense: "war dafür zu intensiv",
-  variable: "war dafür zu ungleichmäßig",
-  indoor: "war dafür eine Indoor-Fahrt",
-  no_power: "war dafür ohne Leistungsmessung",
-  vo2max: "war dafür zu kurz (unter 45 min), eine Indoor-Fahrt und zu intensiv",
+  short: "zu kurz (unter 45 min)",
+  intense: "zu intensiv",
+  variable: "zu ungleichmäßig",
+  indoor: "Indoor-Fahrt",
+  no_power: "ohne Leistungsmessung",
+  vo2max: "zu kurz (unter 45 min), Indoor-Fahrt, zu intensiv",
 };
 /* 0.74.8 A: welche Gruende hinter den Fixture-Arten stehen (derive.steady_endurance_reasons, feste Reihenfolge) */
 const CTX_REASONS = { vo2max: ["short", "indoor", "intense"] };
@@ -1140,7 +1140,7 @@ function context(kind) {
     stages: [0.2, 0.4, 0.6, 0.8, 1.0], widest_used: 0.4,
     sd_log_duration: 0.511, sd_intensity: 14.0, population: 137,
     window: { intensity: 61, minutes: 208 },
-    steady: { ok: true, reason: null, reasons: [], text: null }, steady_why: CTX_WHY,
+    steady: { ok: true, reason: null, reasons: [], text: null }, steady_why: CTX_WHY, decoupling_unjudged: false,
     metrics: {
       decoupling: { label: "Entkopplung", unit: "%", dec: 1, value: 10.6, median: 2.1,
         best: -0.6, worst: 16.9, p25: 0.9, p75: 5.4, n: 17, enough: true,
@@ -1163,6 +1163,12 @@ function context(kind) {
     },
     note: CTX_NOTE,
   };
+  if (kind === "negativ") {
+    /* Entscheidung 27.09. (15:12): negativ gezeigte Entkopplung - die Zeile ohne Urteil, grau */
+    const dec = { ...full.metrics.decoupling, value: -12.01, judged: false, verdict: null,
+      tendency: "niedriger als sonst", count: "niedriger als bei allen 17", rank: 0 };
+    return { ...full, decoupling_unjudged: true, metrics: { ...full.metrics, decoupling: dec } };
+  }
   if (kind === "duenn") {
     /* Zwei Dünn-Gründe, zwei Sätze - der erste heilt mit der Zeit, der zweite
        nicht. Die Fixture führt beide, sonst prüft der Test nur einen davon. */

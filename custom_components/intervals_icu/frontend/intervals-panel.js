@@ -6473,17 +6473,18 @@ class IntervalsIcuPanel extends HTMLElement {
       if (def != null) bits.push(`Watt pro Herzschlag vom ${base.q}. zum ${last.q}. Viertel: ${sign(r1(def), 1)} %`);
       if (dh != null) bits.push(`Puls ${sign(Math.round(dh) || 0)} Schläge${dw != null ? ` bei ${sign(r1(dw), 1)} % Leistung` : ""}`);
       const plain = bits.length ? bits.join(" · ") + "." : "";
-      const steady = (this._ctx[a.id] || {}).steady;
+      const cx = this._ctx[a.id] || {}, steady = cx.steady;
       if (!steady) {
         tone = null;
       } else if (!steady.ok) {
-        tone = "info"; head = `Keine Entkopplung – diese Fahrt ${steady.text || ""}.`; body = plain;
+        tone = "info"; head = `Keine Entkopplung – ${steady.text || ""}.`; body = plain;
       } else if (a.decoupling == null) {
         tone = "info"; head = "Kein Urteil möglich – intervals.icu hat für diese Fahrt keine Entkopplung berechnet.";
         body = plain;
-      } else if (shownOf(a.decoupling) < 0) {
+      } else if (cx.decoupling_unjudged) {
         // Entscheidung 27.09.: negativ heisst, die zweite Haelfte lief mit weniger Puls je Watt - Friels Grenzen
-        // (3 / Marke / 10) gelten dafuer nicht. Keine Einordnung, neutraler Ton, Zahl wie die Kachel.
+        // (3 / Marke / 10) gelten dafuer nicht. Keine Einordnung, neutraler Ton, Zahl wie die Kachel. Ob "negativ",
+        // sagt coach.decoupling_unjudged (Payload) - dieselbe Stelle wie die Vergleichszeile darunter.
         tone = "info";
         head = `Entkopplung: ${fmt(a.decoupling, 1)} % (erste gegen zweite Hälfte)`;
         body = "– die zweite Hälfte lief mit weniger Puls je Watt als die erste. Das kommt meist vom Aufwärmen " +
@@ -6561,8 +6562,8 @@ class IntervalsIcuPanel extends HTMLElement {
       return `<h3 class="secname">Wie diese Einheit dasteht</h3>
       <div class="ctxbox">
         <p class="ctxinfo">${ico("info", C.tx2, 15)} <span>${esc(
-          "Entkopplung und Watt pro Herzschlag sagen nur bei gleichmäßigen, ruhigen Fahrten etwas aus – diese Fahrt "
-          + (st.text || "") + "." + blocks)}</span></p>
+          "Entkopplung und Watt pro Herzschlag sagen nur bei gleichmäßigen, ruhigen Fahrten etwas aus. "
+          + "Bei dieser Fahrt passt das nicht: " + (st.text || "") + "." + blocks)}</span></p>
         <details class="more"><summary>Warum hier kein Vergleich steht</summary>
           <p class="src">${esc(c.steady_why || "")}</p></details>
       </div>`;
