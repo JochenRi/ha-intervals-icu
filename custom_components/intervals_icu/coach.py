@@ -1166,6 +1166,16 @@ def assessment(data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def band_scale() -> dict[str, Any]:
+    """Die Zahlen der Skala im Klartext - EINE Stelle fuer Heute- und Trainer-Reiter (0.75.1, Z1).
+
+    Rauschen bis SWC_SD, gewoehnliche Schwankung bis DAY_SWING_SD, "stark daneben" ab
+    HRV_DROP_SD, gerechnet ueber baseline.WINDOW Naechte. Das Panel traegt keine dieser
+    Zahlen als Literal.
+    """
+    return {"swc": SWC_SD, "day": DAY_SWING_SD, "drop": HRV_DROP_SD, "window": baseline.WINDOW}
+
+
 def coach(data: dict[str, Any]) -> dict[str, Any]:
     """Everything the trainer view needs, in one payload - and only one voice.
 
@@ -1173,6 +1183,8 @@ def coach(data: dict[str, Any]) -> dict[str, Any]:
     deliberately carries no second recommendation next to it.
     """
     out = assessment(data)
+    # 0.75.1 (Z1): die Skala des Zustands im Trainer liest ihre Zahlen von hier.
+    out["band_scale"] = band_scale()
     out["evidence"] = {
         "rule": "Javaloyes 2019/2020, Vesterinen 2016 — HRV-gesteuerte Steuerung: "
                 "harte Einheit nur, wenn das 7-Tage-Mittel im oder über dem Normalband liegt.",
@@ -2454,7 +2466,7 @@ def today(data: dict[str, Any], events: Any = None, day: str | None = None) -> d
         "tension": tension,
         # 0.74.7 (SKIZZE_0.74.7 §2.1/§2.3): die Zahlen der Heute-Texte, beim Aufruf aus den Konstanten gelesen -
         # das Panel traegt keine Grenze und kein Fenster als Literal
-        "band_scale": {"swc": SWC_SD, "day": DAY_SWING_SD, "drop": HRV_DROP_SD, "window": baseline.WINDOW},
+        "band_scale": band_scale(),
         "signals_gap": signals_gap,
         "signals_missing": signals_missing,
         "capacity": capacity,

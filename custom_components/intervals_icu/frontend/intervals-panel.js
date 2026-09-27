@@ -743,7 +743,8 @@ const GROUP_TONE = { grundlage: "endurance", schwelle: "sweetspot", vo2max: "vo2
 // Woher die Watt einer Einheit kommen, in einem Wort (Familienzeile A4). Die
 // ausfuehrliche Herkunft bleibt an der Karte ("Wie diese Zahl entsteht").
 const WATT_ORIGIN_SHORT = {
-  ga: "Umkehrung", steering: "deine Vorgabe", blocks: "Blockmessung",
+  // 0.75.1 (Teil 3): EIN Name fuer die Kurve im Hintergrund - "Grundlagenkurve".
+  ga: "Grundlagenkurve", steering: "deine Vorgabe", blocks: "Blockmessung",
   ramp_hrvt1: "Stufentest", ramp_hrvt2: "Stufentest", curve: "Kurve", ftp: "FTP",
 };
 // 0.70.0 (B): der Satz stand bis 0.69.2 als Absatz unter der Liste. Er gehoert
@@ -1473,7 +1474,7 @@ class IntervalsIcuPanel extends HTMLElement {
     const br = rv.bridges || {};
     const ew = v2.estimate_words || {};
     if (!plan.length) {
-      return `<div class="card pad"><h3 class="secname">Leistung über der Fahrtdauer</h3>
+      return `<div class="card pad"><h3 class="secname">Grundlagenkurve — Leistung über der Fahrtdauer</h3>
         ${this._fatigueIncomplete(f)}
         <p>Für diese Kachel braucht es eine Ablesestelle: mindestens
         ${fmt(v2.load_band_w, 0)} W um die Leistung, die du gehalten hast, mit genug
@@ -1490,7 +1491,7 @@ class IntervalsIcuPanel extends HTMLElement {
           <td>${fmt(r.hours)} h</td><td class="tn">alpha ${fmt(r.alpha, 2)}</td>
           <td class="tn">${fmt(r.load_w)} W gehalten</td>
           <td>${fmt(r.n)} ${r.n === 1 ? "Fahrt" : "Fahrten"}</td></tr>`).join("");
-      return `<div class="card pad" data-grp="fatv2"><h3 class="secname">Leistung über der Fahrtdauer</h3>
+      return `<div class="card pad" data-grp="fatv2"><h3 class="secname">Grundlagenkurve — Leistung über der Fahrtdauer</h3>
         ${this._fatigueIncomplete(f)}
         <span class="state">${esc(rw.state || "")}</span>
         <p class="warn">${esc(br.missing || "")}</p>
@@ -1639,7 +1640,7 @@ class IntervalsIcuPanel extends HTMLElement {
     const stuetzt = (rv.rides || []).filter((r) => !r.carries);
 
     return `<div class="card pad" data-grp="fatv2" data-lead="fatv2">
-      <h3 class="secname">Leistung über der Fahrtdauer</h3>
+      <h3 class="secname">Grundlagenkurve — Leistung über der Fahrtdauer</h3>
       ${this._fatigueIncomplete(f)}
       <div class="famval">
         <span class="state">${esc(rw.state || "")}</span>
@@ -1819,7 +1820,7 @@ class IntervalsIcuPanel extends HTMLElement {
       const rv = v2.reversal || {};
       const row = (rv.plan || [])[0];
       if (!row || (rv.bridges || {}).mid == null || row.watts == null) return null;
-      return { row, watts: row.watts, hours: row.hours, half: row.band ? row.band.half : null, origin: "Umkehrung" };
+      return { row, watts: row.watts, hours: row.hours, half: row.band ? row.band.half : null, origin: "Grundlagenkurve" };
     }
     const row = (f.plan || [])[0];
     if (!row || row.watts == null || !(f.measured || []).length) return null;
@@ -2019,12 +2020,12 @@ class IntervalsIcuPanel extends HTMLElement {
         return `<p class="hint">Die Steuerung ruht bei dieser Einheit auf <b>keinem Block</b>: gemessen
           ist nur Block 1 (alpha ${fmt(erster, 2)}), und der zählt nicht (Anlauf, Rogers).</p>`;
       }
-      const span = Math.max(...counted) - Math.min(...counted);
-      return `<p class="hint">Die Steuerung ruht auf <b>${fmt(counted.length)}
-          ${counted.length === 1 ? "Block" : "Blöcken"}</b>: ${counted.map((a) => fmt(a, 2)).join(" und ")},
-          Median ${fmt(row.alpha, 3)}${span >= 0.15
-            ? ` — die Spanne von ${fmt(span, 2)} ist groß, der Median mittelt hier zwischen
-                zwei weit auseinanderliegenden Werten.` : "."}
+      // 0.75.1 (R1): seit W2 steuert das Gefahrene, nicht alpha. Die Zahl ist die
+      // der Steuerungszeile (rows.watts) - dieselbe, die der Verlauf zeichnet;
+      // alpha bleibt als Ansicht stehen, ausdruecklich ohne Steuerwirkung.
+      return `<p class="hint">Die Steuerung ruht auf deiner gefahrenen Leistung ab Block 2:
+          <b>${fmt(row.watts)} W</b> (${fmt(counted.length)}
+          ${counted.length === 1 ? "Block" : "Blöcke"}, alpha ab Block 2: ${fmt(row.alpha, 3)} — nur zur Ansicht).
           Block 1 (alpha ${fmt(erster, 2)}): markiert, nicht gezählt (Anlauf, Rogers).</p>`;
     }
     return `<p class="hint">Die Steuerung ruht auf <b>${fmt(l.n_blocks)}
@@ -2075,14 +2076,29 @@ class IntervalsIcuPanel extends HTMLElement {
       // EINMAL rendern, zweimal gebraucht: das Bild selbst und der Satz
       // darunter, der sich auf das Bild bezieht.
       const verlauf = this._famTrend(b, key);
-      const zeilen = punkte.slice(-8).reverse().map((p) => `<tr>
+      // R2 (Skizze Trainer-Reiter glattziehen, 27.09.; der Korridor-Waechter liest diese
+      // Funktion, deshalb hier keine Versionsnummer): bei Vorgabe entfaellt die Spalte
+      // "Schritt" (alte alpha-Kette,
+      // blocks.suggest_step); stattdessen die Watt ab Block 2 (Steuerungszeile,
+      // dieselbe Zahl wie der Verlauf) und ob die Einheit in der Vorgabe steckt.
+      const stRows = ((b.steering || {})[key] || {}).rows || [];
+      const stUnits = ((b.steering || {})[key] || {}).units || [];
+      const vorgabe = !!b.steering_on;
+      const zeilen = punkte.slice(-8).reverse().map((p) => {
+        const r = stRows.find((x) => x.date === p.date) || {};
+        const letzte = vorgabe
+          ? `<td class="tn">${r.usable && r.watts != null ? `${fmt(r.watts)} W` : "–"}</td>
+        <td>${stUnits.includes(p.date) ? "✓ zählt" : "–"}</td>`
+          : `<td>${p.step_pct === 0
+          ? badge("green", "im Korridor")
+          : badge("amber", (p.step_pct > 0 ? "+" : "") + fmt(p.step_pct) + " %")}</td>`;
+        return `<tr>
         <td>${dMed(p.date)}</td>
         <td class="tn">${fmt(p.first_watts)} W</td>
         <td class="tn">${fmt(p.median_alpha, 3)}</td>
         <td class="mut">${p.block_alphas.map((a) => fmt(a, 2)).join(" · ")}</td>
-        <td>${p.step_pct === 0
-          ? badge("green", "im Korridor")
-          : badge("amber", (p.step_pct > 0 ? "+" : "") + fmt(p.step_pct) + " %")}</td></tr>`).join("");
+        ${letzte}</tr>`;
+      }).join("");
       return `<div class="card pad" data-grp="${grp}">
         ${this._famValue(b, key)}
         <p class="mut">${fmt(f.sessions)} ${f.sessions === 1 ? "Einheit" : "Einheiten"} von
@@ -2125,7 +2141,8 @@ class IntervalsIcuPanel extends HTMLElement {
         ${this._steeringBasis(b, key, l)}
         <details class="more"><summary>Die letzten Einheiten</summary>
           <table class="dfatab"><thead><tr><th>Datum</th><th>erster Block</th>
-            <th>Median alpha</th><th>Blöcke</th><th>Schritt</th></tr></thead>
+            <th>Median alpha</th><th>Blöcke</th>${b.steering_on
+              ? "<th>Watt ab Block 2</th><th>in der Vorgabe</th>" : "<th>Schritt</th>"}</tr></thead>
             <tbody>${zeilen}</tbody></table></details>
       </div>`;
     }).join("");
@@ -2249,12 +2266,12 @@ class IntervalsIcuPanel extends HTMLElement {
     // 0.71.0 (Skizze 3): EIN umschliessendes Element - .fitwhy ist ein
     // Flex-Absatz, und ohne <span> zerfiel der Text in Spalten.
     return `<p class="fitwhy">${ico("info", C.blue, 14)} <span>${satz}. Ziel und Grenze kommen aus
-        der Ermüdungskachel für diese Dauer: abgelesen in Stunde ${fmt(g.hour)}
+        der Grundlagenkurve für diese Dauer: abgelesen in Stunde ${fmt(g.hour)}
         (${fmt(g.n)} ${g.n === 1 ? "Fahrt" : "Fahrten"}), gehaltene Last ${fmt(g.load_w)} W
         bei alpha ${fmt(g.alpha, 2)}, umgerechnet mit ${fmt(g.mid, 1)} W je alpha aus deinem
         Stufentest — eine <b>Setzung</b>, keine Messung dieser Einheit.
         ${g.unverified ? `${ico("warn", C.amber, 13)} <b>ab 3 h ungeprüft — Abnahmefahrt offen.</b>` : ""}
-        Abschnitte ohne Kennzeichnung sind Ein- und Ausrollen und bleiben Prozent der FTP.</span></p>`;
+        Abschnitte ohne Kennzeichnung (Ein- und Ausrollen, Endblöcke) bleiben Prozent der FTP.</span></p>`;
   }
 
   /* Die Herkunft der Watt als Absatz — bis B2c stand er immer offen in der Karte.
@@ -2328,7 +2345,7 @@ class IntervalsIcuPanel extends HTMLElement {
               // 0.69.2 (F1): es GIBT eine Vorgabe - sie gilt fuer Arbeitsbloecke, diese
               // Form (Saetze) bekommt sie nicht. Der Satz kommt aus dem Backend.
               ? `<p class="fitwhy">${ico("warn", C.amber, 14)} <b>Rückfall auf die FTP:</b> deine Vorgabe
-                  (${fmt(ss.watts)} W aus ${fmt(ss.n_units || 0)} Einheiten) gilt für Arbeitsblöcke (Block 1, 2, 3 …).
+                  (${fmt(ss.watts)} W aus deinen letzten ${fmt((ss.units || []).length)} Einheiten) gilt für Arbeitsblöcke (Block 1, 2, 3 …).
                   ${esc(ss.note_blocks || "")}</p>`
               : `<p class="fitwhy">${ico("warn", C.amber, 14)} <b>Rückfall auf die FTP — nicht gemessen:</b> noch zu
                 wenige gemessene Einheiten dieser Familie — bis dahin bleibt die alte Vorgabe
@@ -2355,7 +2372,7 @@ class IntervalsIcuPanel extends HTMLElement {
     return `<p class="fitwhy expl-zahl"><b class="tn">${zahl}</b></p>
       <p class="src expl-herkunft">${esc(x.origin || "")}</p>
       <details class="more expl-auf"><summary>Wie diese Zahl entsteht</summary>
-        <p class="src"><b>Der Kreislauf</b></p><ol class="expl-kreis">${kreis}</ol>
+        ${kreis ? `<p class="src"><b>Der Kreislauf</b></p><ol class="expl-kreis">${kreis}</ol>` : ""}
         <p class="src"><b>Gewertete Einheiten: ${fmt(x.units_count || 0)}</b>${
           x.units_note ? ` — ${esc(x.units_note)}` : ""}</p>
         ${einheiten ? `<ul class="droplist expl-einheiten">${einheiten}</ul>` : ""}
@@ -3350,12 +3367,17 @@ class IntervalsIcuPanel extends HTMLElement {
     // sections to the planned duration and one number is enough. Where it does
     // not, BOTH stand there - the template's minutes and the planned hours -
     // because hiding either would be the half-truth the load bug was made of.
+    // 0.75.1 (W1): eine UNBEWERTETE Woche traegt weder Vorlage noch Last noch
+    // Balken - nur Rolle und "geplant x h"; bis 0.75.0 stand dort "Vorlage null
+    // min · Last –" und ein leerer Balken (live 27.09., W2-W8).
+    const unrated = !!planned && entry.minutes == null;
     const dur = !planned ? `${entry.minutes} min`
-      : entry.stretched ? `${fmt(planned, 1)} h`
+      : (entry.stretched || unrated) ? `${unrated ? "geplant " : ""}${fmt(planned, 1)} h`
       : `geplant ${fmt(planned, 1)} h · Vorlage ${entry.template_minutes || entry.minutes} min`;
     // "Obergrenze", nicht "Budget" (0.67.3, S5): dieselbe Zahl wie im Heute-Reiter,
     // min(Budget, Zustandsdeckel).
-    const loadTxt = `Last ${fmt(entry.load)}${opts.budget != null ? ` · Obergrenze ${fmt(opts.budget)}` : ""}`;
+    const loadTxt = entry.load == null && unrated ? ""
+      : `Last ${fmt(entry.load)}${opts.budget != null ? ` · Obergrenze ${fmt(opts.budget)}` : ""}`;
     const openKey = opts.openKey || entry.key;
 
     // 0.70.0 (A4): in der Familie GEKUERZT - Titel, Dauer/Last, Balken, Watt/Puls,
@@ -3371,8 +3393,8 @@ class IntervalsIcuPanel extends HTMLElement {
         <div>
           ${compact ? "" : `<div class="wofam">${esc(entry.family_label || "")}</div>`}
           <div class="wotitle">${esc(entry.title)}</div>
-          <div class="wometa">${compact ? "" : `${esc(entry.purpose || "")} · `}${dur} · ${loadTxt}${
-            hrw ? ` · ${hrw[0]}–${hrw[1]} bpm` : ""}</div>
+          <div class="wometa">${[compact ? "" : esc(entry.purpose || ""), dur, loadTxt,
+            hrw ? `${hrw[0]}–${hrw[1]} bpm` : ""].filter(Boolean).join(" · ")}</div>
           ${entry.hr_note ? `<div class="wometa hint">${esc(entry.hr_note)}</div>` : ""}
           ${qty || ((entry.guard || {}).over && entry.guard.text)
             ? `<div class="wometa guard">${qty || ico("warn", C.amber, 13)}${
@@ -3380,15 +3402,15 @@ class IntervalsIcuPanel extends HTMLElement {
         </div>
         ${st.key ? badge(tone, word, st.detail) : ""}
       </div>
-      ${this._woBar(entry, opts.ftp)}
+      ${(entry.blocks || []).length ? this._woBar(entry, opts.ftp) : ""}
       <div class="wosteps">${(blocks || []).map(([min, val, label]) => {
         // Woher DIESE Zahl kommt, steht an DIESEM Abschnitt. Eine Vorgabe für
         // die vierte Stunde ist Studienform mit dem Namen des Athleten darauf -
         // das muss in der Einheit stehen, nicht nur in der Kachel.
         const cb = (entry.ga_blocks || []).find((c) => c.label === label);
         const mark = cb
-          ? `<i class="wsrc" title="Umkehrung: Stunde ${fmt(cb.hour)}, ${fmt(cb.n)} ${cb.n === 1 ? "Fahrt" : "Fahrten"}${
-              cb.unverified ? " — ungeprüft, Abnahmefahrt offen" : ""}">Umkehrung</i>`
+          ? `<i class="wsrc" title="Grundlagenkurve: Stunde ${fmt(cb.hour)}, ${fmt(cb.n)} ${cb.n === 1 ? "Fahrt" : "Fahrten"}${
+              cb.unverified ? " — ungeprüft, Abnahmefahrt offen" : ""}">Grundlagenkurve</i>`
           : "";
         // Bei der Rampe nennt die Beschriftung START UND ENDE. Ein einzelner
         // Wert waere dort ein Mittelwert, und ein Mittelwert ist keine Rampe.
@@ -3492,8 +3514,11 @@ class IntervalsIcuPanel extends HTMLElement {
       <div class="leadmeta">${esc(lead.family_label)} · ${fitH
           ? `Vorlage ${lead.minutes} min` : `${lead.minutes} min`} · Last ${fmt(lead.load)}${
         lead.hr_window ? ` · ${lead.hr_window[0]}–${lead.hr_window[1]} bpm` : ""}${
-        lead.blocks_w ? ` · ${Math.min(...lead.blocks_w.map((b) => b[1]))}–${
-          Math.max(...lead.blocks_w.map((b) => b[1]))} W` : ""}</div>
+        this._headWatts(lead) != null ? ` · ${fmt(this._headWatts(lead))} W` : ""}</div>
+      ${/* 0.75.1 (Teil 7, Entscheidung Johannes): ist die Menge ueber der Obergrenze,
+           sagt der Kopf es in einem Satz - die Empfehlung darunter bleibt die Art. */
+        (lead.stage || {}).quantity && w.budget != null
+          ? `<div class="leadmeta guard">${ico("warn", C.amber, 13)} Menge: diese Woche ist voll (Obergrenze ${fmt(w.budget)})</div>` : ""}
       <div class="leadstage">${(lead.stage || {}).key
         ? badge(STAGE_TONE[lead.stage.key] || "unknown", this._stageWord(lead.stage, forTomorrow), lead.stage.detail) : ""}
         ${this._qtyMark(lead.stage)}</div>
@@ -3570,7 +3595,7 @@ class IntervalsIcuPanel extends HTMLElement {
       const g = ((entries.find((e) => (e.ga_blocks || []).length) || {}).ga_blocks || [])[0];
       const zahl = g ? `${g.target != null ? `fahr ~${fmt(g.target)} W, ` : ""}nicht über ${fmt(g.limit)} W
           (abgelesen in Stunde ${fmt(g.hour)}, ${fmt(g.n)} ${g.n === 1 ? "Fahrt" : "Fahrten"})` : "";
-      return `<p class="hint fghint">${ico("info", C.blue, 13)} ${zahl ? `Aus der Kurve: <b class="tn">${zahl}</b> — ` : ""}Kurve im Hintergrund (ganz unten).</p>`;
+      return `<p class="hint fghint">${ico("info", C.blue, 13)} ${zahl ? `Aus der Grundlagenkurve: <b class="tn">${zahl}</b> — ` : ""}Grundlagenkurve im Hintergrund (ganz unten).</p>`;
     }
     const key = id === "vo2max" ? "vo2max" : "sweetspot";
     const b = this._blocks;
@@ -3723,10 +3748,12 @@ class IntervalsIcuPanel extends HTMLElement {
     const cap = plan.big_day_cap;
     const bigMax = Math.max(0, ...plan.weeks.filter((x) => x.big_day).map((x) => x.long_day_hours || 0));
     const capLine = !cap ? "" : `<p class="hint">${ico("clock", C.tx2, 13)} ${cap.applied
+      // 0.75.1 (W4): dieselbe Fahrt wie in der Progressionszeile darunter - ein Wortlaut
+      // ("längste gleichmäßige Fahrt", Minuten), nicht "längste Fahrt 3 h 28" gegen "208 min".
       ? `<b>Großer Tag ${fmt(bigMax, 1)} h — gedeckelt durch die Progression aus deiner längsten
-          Fahrt ${hmn(cap.from_minutes)}</b> (× ${fmt(cap.factor, 2)} = ${fmt(cap.hours, 1)} h). Er wächst
+          gleichmäßigen Fahrt (${fmt(cap.from_minutes, 0)} min)</b> (× ${fmt(cap.factor, 2)} = ${fmt(cap.hours, 1)} h). Er wächst
           mit, wenn deine lange Fahrt wächst.`
-      : `Die Progressionsgrenze (${fmt(cap.hours, 1)} h aus deiner längsten Fahrt ${hmn(cap.from_minutes)})
+      : `Die Progressionsgrenze (${fmt(cap.hours, 1)} h aus deiner längsten gleichmäßigen Fahrt (${fmt(cap.from_minutes, 0)} min))
           liegt über dem großen Tag (${fmt(bigMax, 1)} h) — er bleibt, wie er ist.`}</p>`;
     const rechenweg = `${capLine}${progLine}
       ${note ? `<div class="warnrow">${ico("info", C.amber, 16)} <span>${esc(note.text)}</span></div>` : ""}
@@ -3831,8 +3858,11 @@ class IntervalsIcuPanel extends HTMLElement {
         <span class="tn">${fmt(d.hours, 1)} h · Last ${fmt(d.load)}</span></div>
       <div class="pwdrow"><span class="pwdlab">vorgesehen</span>
         <b>${fmt(sessions)} ${sessions === 1 ? "Einheit" : "Einheiten"}</b>
-        <span class="tn">${fmt(hours, 1)} h${d.days_left != null
-          ? ` · noch ${d.days_left} ${d.days_left === 1 ? "Tag" : "Tage"} in der Woche` : ""}</span></div>
+        <span class="tn">${fmt(hours, 1)} h${d.days_left == null ? ""
+          // 0.75.1 (W2): die Zaehlweise steht im Text - days_left zaehlt die Tage NACH heute
+          // (analytics.week_done: last − heute); am Sonntag stand "noch 0 Tage in der Woche".
+          : d.days_left === 0 ? " · heute ist der letzte Tag der Woche"
+          : ` · noch ${d.days_left} ${d.days_left === 1 ? "Tag" : "Tage"} nach heute`}</span></div>
       <p class="src">${esc(d.note || "")}</p>
     </div>`;
   }
@@ -4109,17 +4139,19 @@ class IntervalsIcuPanel extends HTMLElement {
 
     const zahlen = !r ? "" : `
       <div class="statgrid">
-        ${zelle(r.hrvt1, "Erste Schwelle (HRVT1)", "")}
-        ${zelle(r.hrvt2, "Zweite Schwelle (HRVT2)",
+        ${zelle(r.hrvt1, `Erste Schwelle (HRVT1) · aus dem Stufentest vom ${dMed(letzter.date)}`, "")}
+        ${zelle(r.hrvt2, `Zweite Schwelle (HRVT2) · aus dem Stufentest vom ${dMed(letzter.date)}`,
                 r.reached_anaerobic
                   ? (r.contradiction ? "unter 0,5 gemessen, die Gerade trifft 0,5 nicht" : "")
                   : "nie stabil unter 0,5 — nicht erreicht")}
         ${zelle(r.hrvt1_pers, "Erste, personalisiert", "")}
       </div>
       ${r.contradiction ? `<p class="src">${esc(r.contradiction.reason || "")}</p>` : ""}
-      <p class="src"><b>Diese Messung steuert die Grundlage.</b> Aus beiden Schwellen kommt die
-        Umrechnung von alpha in Watt, mit der die Ermüdungskachel Ziel und Grenze deiner
-        Grundlageneinheiten rechnet (Umkehrung, seit 0.68.0) — eine Setzung, an der Einheit
+      ${/* 0.75.1 (S3): fatigue_v2.bridges_alpha rechnet aus HRVT1 (0,75) und der ersten,
+           personalisierten - nicht aus HRVT2; keine Versionsnummer im Klartext. */ ""}
+      <p class="src"><b>Diese Messung steuert die Grundlage.</b> Aus der ersten Schwelle (HRVT1) und der
+        ersten, personalisierten kommt die Umrechnung von alpha in Watt, mit der die Grundlagenkurve
+        Ziel und Grenze deiner Grundlageneinheiten rechnet — eine Setzung, an der Einheit
         beschriftet. Die harten Blöcke steuert sie nicht: die kommen aus deiner Vorgabe oder
         der FTP.</p>
       ${r.reached_anaerobic ? "" : `<p class="hint">${ico("info", C.amber, 13)}
@@ -4238,12 +4270,15 @@ class IntervalsIcuPanel extends HTMLElement {
     // One axis per row, three rows - position on a COMMON scale is the most
     // accurately read encoding there is. The band and zero line run behind
     // every row, so all three still read on one scale.
+    const sc = c.band_scale || {};
     const zplot = (() => {
       const pts = sig.filter(([, , v]) => v != null);
       if (!pts.length) return "";
       return `<div class="zplot">
         ${pts.map(([label, , z, col]) => this._zRow(label, z, col, "big")).join("")}
-        <div class="zscale"><span>−3 SD</span><span>±0,5 = Rauschen</span><span>+3 SD</span></div>
+        ${/* 0.75.1 (Z1): dieselben Woerter wie der Heute-Reiter (Normalwert, gewöhnliche
+             Schwankung, "mehr als … = stark daneben"), die Zahlen aus coach.band_scale. */ ""}
+        <div class="zscale"><span>unter dem Normalwert</span><span>Normalwert · bis ${fmt(sc.swc, 1)} gewöhnliche Schwankung · mehr als ${fmt(sc.drop, 1)} = stark daneben</span><span>über dem Normalwert</span></div>
       </div>`;
     })();
     /* 0.71.0 (Skizze 1): DIE DREI WERTE IMMER SICHTBAR - Mini-Streifen unter der
@@ -4302,7 +4337,7 @@ class IntervalsIcuPanel extends HTMLElement {
     const body = `
       <h3 class="secname">Deine gemessenen Anker <span class="hint">— keine Prozente einer Maximalherzfrequenz</span></h3>
       <div class="card ancgrid">
-        <div class="stat"><small>Aerobe Schwelle (DFA 0,75)</small>
+        <div class="stat"><small>Aerobe Schwelle (DFA 0,75) — aus deinen Fahrten</small>
           <b class="tn lead1" style="color:${ROLE.series}">${anc.aerobic_hr ? fmt(anc.aerobic_hr) : "–"} <span class="unit">bpm</span></b>
           <span class="mut">${esc(anc.source || "")}</span></div>
         <div class="sidestats">
@@ -4313,10 +4348,23 @@ class IntervalsIcuPanel extends HTMLElement {
             <span class="mut">${trend.power_before} → ${trend.power_now} W bei ${trend.hr_before} → ${trend.hr_now} bpm</span></div>` : ""}
         </div>
       </div>
-      ${trend ? `<p class="note">${trend.power_change_pct > 0
-        ? `Mehr Leistung bei praktisch gleicher Herzfrequenz an der aeroben Schwelle — das ist die Anpassung, auf die Grundlagentraining zielt.`
-        : `Die Leistung an der aeroben Schwelle hat sich nicht verbessert.`}</p>` : ""}
-      <h3 class="secname">Wie lange trägt die Grundlage?</h3>
+      ${/* 0.75.1 (S1): eine Feststellung, kein Urteil - "praktisch gleiche Herzfrequenz" hing
+           nur an power_change_pct > 0 und stand live neben +9 bpm. Beide Zahlenpaare, ein Wortlaut. */
+        trend ? `<p class="note">An der aeroben Schwelle: Leistung ${fmt(trend.power_before)} → ${fmt(trend.power_now)} W,
+          Puls dort ${fmt(trend.hr_before)} → ${fmt(trend.hr_now)} bpm.</p>` : ""}
+      ${/* 0.75.1 (S2): zwei "erste Schwellen" auf einer Seite (Anker 167 bpm bei 162 W, Stufentest
+           213 W) - beide alpha 0,75, verschiedene Bedingungen. Jede nennt ihre Quelle; welche die
+           Grundlage steuert, steht dabei. Keine Ursache behauptet. */
+        (() => {
+          const h1 = ((((this._rtests || {}).latest || {}).result || {}).hrvt1) || null;
+          const rd = ((this._rtests || {}).latest || {}).date;
+          return h1 && h1.watts != null && anc.aerobic_power
+            ? `<p class="note">Anker und Stufentest sind zwei Messungen derselben Marke (alpha 0,75) unter
+                verschiedenen Bedingungen: der Anker aus deinen Fahrten (Median der letzten fünf, ${fmt(anc.aerobic_power)} W),
+                die erste Schwelle aus dem Stufentest vom ${dMed(rd)} (${fmt(h1.watts)} W) — die Grundlage steuert der Stufentest.</p>`
+            : "";
+        })()}
+      <h3 class="secname">Wie lange trägt die Grundlage? — die Grundlagenkurve</h3>
       <div class="card pad" data-grp="fat">
         ${this.rFatigue(this._fatigue)}
         ${this.rBlocks(this._blocks)}
@@ -4325,8 +4373,15 @@ class IntervalsIcuPanel extends HTMLElement {
        Herkunft der jeweiligen Kachel, aus denselben Helfern wie die Kacheln
        (_fatHead, _famHeadFull). Nichts neu gerechnet; ohne Kachel ein Satz. */
     const g = this._fatHead(this._fatigue);
-    const kopfG = g ? `Grundlage <b class="tn">${fmt(g.watts)} W</b> (${fmt(g.hours)} h${
-      g.half != null ? `, ±${fmt(g.half)} W` : ""} · ${esc(g.origin)})` : "Grundlage noch keine Kachel";
+    // 0.75.1 (N2): die Zahl der Grundlagenkurve ist die GRENZE bei dieser Stunde
+    // (dieselbe wie "nicht über … W" auf der Karte) - und heisst so. Bei der alten
+    // Kurve (origin "Kurve") ist es die erste Stunde der Kurve, kein Grenzwert.
+    const kopfG = !g ? "Grundlage noch keine Kachel"
+      : g.origin === "Grundlagenkurve"
+        ? `Grundlage: Grenze <b class="tn">${fmt(g.watts)} W</b> bei ${fmt(g.hours)} h (${
+            g.half != null ? `±${fmt(g.half)} W · ` : ""}${esc(g.origin)})`
+        : `Grundlage <b class="tn">${fmt(g.watts)} W</b> (${fmt(g.hours)} h${
+            g.half != null ? `, ±${fmt(g.half)} W` : ""} · ${esc(g.origin)})`;
     const kopfB = (key, nm) => {
       const h = this._famHeadFull(this._blocks, key);
       if (!h) return `${nm} noch keine Kachel`;
@@ -4530,14 +4585,14 @@ class IntervalsIcuPanel extends HTMLElement {
   _weekList(w) {
     if (!w) return "";
     const list = w.sessions || [];
-    const SRC = { marks: "aus deinen Marken", plan: "aus deinem Plan — von intervals.icu mit einem Workout dieser App gepaart",
+    const SRC = { marks: "aus deinen Markierungen", plan: "aus deinem Plan — von intervals.icu mit einem Workout dieser App gepaart",
                   sport: "andere Sportart", rest: "Tageslast ohne einzelne Einheit" };
     const names = Object.fromEntries(TRAINER_FAMILIES.map(([id, name]) => [id, name]));
     const rows = list.map((x) => {
       const col = x.group === "other" ? C.cyan : GROUP_TONE[x.group] ? FAM[GROUP_TONE[x.group]].c : null;
       const word = x.group === "other" ? (x.sport || "andere Sportart") : names[x.group] || "nicht zugeordnet";
       const src = SRC[x.source] || (x.commute ? "Pendelfahrt — nie über den Plan zugeordnet"
-        : "keine Marke, kein gepaartes Workout dieser App");
+        : "keine Markierung, kein gepaartes Workout dieser App");
       const nm = x.rest ? "ohne Einheit" : (x.name || x.sport || "ohne Namen");
       return `<div class="hwli">
         <span class="hwchip${col ? "" : " hatch"}" style="${col ? `background:${col}` : ""}" title="${esc(src)}"></span>
@@ -5246,7 +5301,7 @@ class IntervalsIcuPanel extends HTMLElement {
         goLabel: "auf meine Markierungen umstellen",
         backLabel: "zurück auf Namenserkennung",
         what: kurveAn
-          ? "Die Kurve liest deine markierten Abschnitte. Fahrten ohne Marke kommen "
+          ? "Die Kurve liest deine markierten Abschnitte. Fahrten ohne Markierung kommen "
             + "nicht vor; markierte ohne Messung stehen namentlich in der Kachel."
           : "Die Kurve liest heute jede Fahrt, die lang genug ist und nicht als "
             + "strukturierte Einheit erkannt wurde — die Auswahl trifft die "
@@ -5264,9 +5319,9 @@ class IntervalsIcuPanel extends HTMLElement {
         backLabel: "zurück auf Namenserkennung",
         what: blockAn
           ? "VO2max, SweetSpot und Tempo lesen deine markierten und gemessenen Blöcke. "
-            + "Einheiten ohne Marke kommen nicht vor."
+            + "Einheiten ohne Markierung kommen nicht vor."
           : "VO2max, SweetSpot und Tempo messen über deine Arbeitsblöcke. Heute "
-            + "wählt die Namenserkennung die Blöcke, an deinen Marken vorbei.",
+            + "wählt die Namenserkennung die Blöcke, an deinen Markierungen vorbei.",
         numbers: blockZahlen, note: (b || {}).switch_note,
         basis: famStand,
         outside: draussen, outsideNote: sm.outside_note,
@@ -5726,7 +5781,7 @@ class IntervalsIcuPanel extends HTMLElement {
         ${esc(na.blocks || "")} ${esc(na.curve || "")}</p>` : "";
 
     const stand = !cur ? "" : `<p class="src">
-        <b>Im Archiv:</b> ${smTotal} Marke${smTotal === 1 ? "" : "n"} über
+        <b>Im Archiv:</b> ${smTotal} Markierung${smTotal === 1 ? "" : "en"} über
         ${smFams} Familie${smFams === 1 ? "" : "n"}${cur.set_at
           ? `, zuletzt gesetzt am ${esc(cur.set_at)}` : ""}.
         ${etwasGemessen
@@ -5760,7 +5815,7 @@ class IntervalsIcuPanel extends HTMLElement {
         ${cfErr ? `<br>${esc(cfErr)}` : ""}
         <br><button class="ctxremove" data-act="smconf" data-id="${esc(a.id)}"
           ${cfBusy || busy ? "disabled" : ""}>Zuordnung auf den neuen Stand
-          setzen — die Marken bleiben, die Messung fällt</button></div>`;
+          setzen — die Markierungen bleiben, die Messung fällt</button></div>`;
 
     // DER KNOPF MISST NUR, WAS MARKIERT IST. Er hakt nichts an, schlaegt
     // nichts vor, ergaenzt nichts. Ohne Marke gibt es nichts zu messen, und
@@ -5896,7 +5951,7 @@ class IntervalsIcuPanel extends HTMLElement {
           ? ` · <span class="warncol">${fmt(fehl)} fehlgeschlagen</span>` : ""}</p>
         <div class="bbar"><i class="brange" style="left:0;right:${(100 - i / (n || 1) * 100)
           .toFixed(1)}%"></i></div>
-        <p class="mut">Die Marken bleiben unberührt. Ein Abbruch lässt das schon
+        <p class="mut">Die Markierungen bleiben unberührt. Ein Abbruch lässt das schon
           Gemessene stehen.</p>
         <button class="btn small" data-act="bulkstop">${lauf.stopping
           ? "wird abgebrochen …" : "abbrechen"}</button></div>`;
@@ -6232,7 +6287,7 @@ class IntervalsIcuPanel extends HTMLElement {
            ${famSel ? `<button class="smbox ${on ? "on" : ""}" data-act="smark"
              data-id="${esc(a.id)}" data-fam="${famSel}" data-idx="${idx}"
              data-on="${on ? "1" : "0"}" style="--fc:${FAM[famSel].c}"
-             title="${on ? "Marke zurücknehmen" : "Als " + esc(FAM[famSel].l) + " markieren"}"
+             title="${on ? "Markierung zurücknehmen" : "Als " + esc(FAM[famSel].l) + " markieren"}"
              >${on ? ico(FAM[famSel].ic, FAM[famSel].c, 13) : ""}</button>` : ""}`;
       const bar = (v, max, col) => v == null ? `<span class="mut">–</span>`
         : `<i class="lbar"><s style="width:${Math.max(3, Math.min(100, v / max * 100))}%;background:${col}"></s></i><b class="tn">${fmt(v, 2)}</b>`;
@@ -6792,7 +6847,7 @@ class IntervalsIcuPanel extends HTMLElement {
       <svg class="lwchart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(head)}">${g}</svg>
       <div class="legend">${legend}</div>
       <p class="hint">${ico("warn", C.amber, 13)} Punkt über dem Balken = Monotonie ≥ 2 (Woche ohne echten Ruhetag).</p>
-      <p class="hint">Familie aus deinen Marken oder der Paarung in intervals.icu. Die Paarung liest die App nur für die letzten 30 Tage; ältere Fahrten ohne Marke bleiben „nicht zugeordnet“. Eine sichere Steigerung von Woche zu Woche ist nicht belegt (Buist 2008, Nielsen 2014) – die Prozentzahl ist nur eine Zahl.</p>`;
+      <p class="hint">Familie aus deinen Markierungen oder der Paarung in intervals.icu. Die Paarung liest die App nur für die letzten 30 Tage; ältere Fahrten ohne Markierung bleiben „nicht zugeordnet“. Eine sichere Steigerung von Woche zu Woche ist nicht belegt (Buist 2008, Nielsen 2014) – die Prozentzahl ist nur eine Zahl.</p>`;
   }
 
   /* 0.74.0 (Skizze §3.3): DIE LETZTEN 7 TAGE IM VERLAUF. Je Tag die Last der

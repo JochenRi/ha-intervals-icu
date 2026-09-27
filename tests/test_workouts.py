@@ -1268,7 +1268,7 @@ eq(((_rt_mix.get("ramp_protocol") or {}).get("start_source") or {}).get("selecti
    "B2b-2: der Start traegt keine Auswahl mehr (Umkehrung)")
 eq(((_rt_mix.get("ramp_protocol") or {}).get("end_source") or {}).get("selection"), _nm,
    "B2b-2: das Ende traegt die Auswahl der Bloecke")
-check("Start" in _herl and "Ermüdungskachel" in _herl.split("Ende")[0],
+check("Start" in _herl and "Grundlagenkurve" in _herl.split("Ende")[0],
       f"B2b-2: die Herleitung nennt beim Start nicht seine Quelle ({_herl[:120]})")
 check("AUS DEN NAMEN" in _herl.split("Ende", 1)[-1],
       "B2b-2: die Herleitung nennt beim Ende nicht seine Auswahl")
@@ -1306,9 +1306,10 @@ _soll_stufe = {("blocks", True): "marks", ("blocks", False): "alpha", ("ga", Tru
 for _k, (_e, _x) in sorted(_quellen_b2c.items(), key=lambda kv: str(kv[0])):
     _x = _x or {}
     eq(_x.get("stage"), _soll_stufe[_k], f"B2c: Stufe im Kreislauf fuer {_k}")
-    eq([c.get("key") for c in _x.get("cycle") or []], ["ftp", "alpha", "marks"],
+    # 0.75.1 (K5): die Grundlage ("ga") traegt keinen Kreislauf - er gehoert den Blockfamilien.
+    eq([c.get("key") for c in _x.get("cycle") or []], [] if _k[0] == "ga" else ["ftp", "alpha", "marks"],
        f"B2c: der Kreislauf steht nicht in seiner Reihenfolge ({_k})")
-    eq([c.get("key") for c in _x.get("cycle") or [] if c.get("here")], [_soll_stufe[_k]],
+    eq([c.get("key") for c in _x.get("cycle") or [] if c.get("here")], [] if _k[0] == "ga" else [_soll_stufe[_k]],
        f"B2c: genau EINE Stufe traegt hier ({_k})")
     check(bool(_x.get("origin")) and bool(_x.get("steps")), f"B2c: Herkunft oder Rechenweg fehlen ({_k})")
     check("%" not in " ".join(_x.get("steps") or []) or _k[0] == "ftp",
@@ -1554,7 +1555,7 @@ for _k, _alt in (("vo2_3015", "3 Sätze à 13×30 s"), ("z2_60", "Dreizonenmodel
 # --- 0.72.2 · Stufenwort immer, Menge als eigenes Zeichen (Skizze 0.72.2) --------
 # 1 · die Worte aus EINER Quelle (STAGES); der Tag steht als Platzhalter, das Panel setzt ihn ein
 eq({k: W.STAGES[k]["word"] for k in W.STAGES},
-   {"green": "passt {tag}", "yellow": "geht, kostet mehr", "stimulus": "gewollter Überreiz", "red": "{tag} nicht"},
+   {"green": "Art passt {tag}", "yellow": "geht, kostet mehr", "stimulus": "gewollter Überreiz", "red": "{tag} nicht"},
    "0.72.2 1: die Stufenworte sind nicht die der Entscheidung")
 # stage() ersetzt das Wort NIE - auch nicht ueber der Obergrenze; detail bleibt der Stufen-Satz
 for _fit, _key in (("ok", "green"), ("maybe", "yellow")):
@@ -1577,7 +1578,7 @@ check(_bl["key"] == "red" and _bl.get("quantity") is None and _bl["detail"] == W
 _rg = next(e for e in W.suggest("ready", ftp=215, budget=0, layoff_days=0) if e["family"] == "recovery")
 check(_rg["stage"].get("quantity") is None and _rg["stage"]["key"] == "green", "0.72.2 2 Gegenprobe: Regeneration bei Obergrenze 0 mit Zeichen")
 _gz = next(e for e in W.suggest("ready", ftp=215, budget=0, layoff_days=0) if e["family"] == "endurance")
-check(_gz["stage"]["word"] == "passt {tag}" and (_gz["stage"].get("quantity") or {}).get("label") == "Menge über Wochenlast",
+check(_gz["stage"]["word"] == "Art passt {tag}" and (_gz["stage"].get("quantity") or {}).get("label") == "Menge über Wochenlast",
       "0.72.2: Grundlage bei Obergrenze 0 zeigt nicht Stufenwort + Mengen-Zeichen")
 # die Rechnung bleibt: Stufe, Budget, guard unveraendert
 eq((_gz["stage"]["key"], _gz["stage"]["over_ceiling"], (_gz["guard"] or {}).get("over")), ("green", True, True),
@@ -1667,6 +1668,53 @@ for _k4, _en4 in sorted(W.BY_KEY.items()):
         eq(W.to_event(_src, "2026-10-01").get("external_id"), f"ha-intervals-icu:{_k4}:2026-10-01",
            f"0.73.4 §4: {_k4} traegt nicht die eigene Kennung")
 
+
+
+# --- 0.75.1 Teil 2 (K4, K5, K6) und Teil 7: Einheiten-Karten glattziehen -------------
+# Rot an 0.75.0: der GA-Rechenweg druckte "138.7 W bei alpha 1.14 … 90.6 W/alpha"
+# (Punkt, andere Rundung als der Satz darunter), die GA-Karte trug den Kreislauf
+# der Blockfamilien, der Herkunftssatz die Klammer hinter dem Punkt.
+_e751, _x751 = _quellen_b2c[("ga", True)]
+_w751 = " ".join((_x751 or {}).get("steps") or [])
+_g751 = (_e751.get("ga_blocks") or [{}])[0]
+check(f"gehaltene Last {W._de(_g751.get('load_w'), 0)} W bei alpha {W._de(_g751.get('alpha'), 2)}" in _w751,
+      "K4: die GA-Last steht nicht in ganzen Watt mit alpha auf zwei Stellen (Komma)")
+check(f"× {W._de(_g751.get('mid'), 1)} W/alpha" in _w751, "K4: die Umrechnung steht nicht mit einer Stelle und Komma")
+check(not re.search(r"\d\.\d", _w751), f"K4: Dezimalpunkt im GA-Rechenweg ({_w751[:120]})")
+eq(W._de(138.7, 0), "139", "K4 _de: ganze Watt"); eq(W._de(1.336, 2), "1,34", "K4 _de: alpha zwei Stellen")
+eq(W._de(90.6, 1), "90,6", "K4 _de: eine Stelle mit Komma"); eq(W._de(None), "–", "K4 _de: None wird Strich")
+eq((_x751 or {}).get("cycle"), [], "K5: die GA-Karte traegt noch den Kreislauf der Blockfamilien")
+_eb751, _xb751 = _quellen_b2c[("blocks", True)]
+check(len((_xb751 or {}).get("cycle") or []) == 3, "K5 Gegenprobe: die Blockkarte verliert ihren Kreislauf")
+check(all("." not in (u.get("detail") or "") for u in (_xb751 or {}).get("units") or []),
+      "K4: die Einheitenliste der Blockmessung traegt Dezimalpunkte")
+# K6: die Klammer der Auswahl steht VOR dem Punkt des Herkunftssatzes
+_ss751 = {"families": {"sweetspot": {"points": [
+    {"date": f"2026-08-{d:02d}", "name": "SS", "n_blocks": 2, "block_alphas": [0.8, 0.68],
+     "block_watts_each": [180.0, w], "block_hr": [160, 165], "block_minutes": [20, 20]} for d, w in ((5, 189.0), (14, 190.0), (20, 192.0), (24, 194.0))],
+    "source_ok": True, "sessions": 4, "hr_window": {"low": 160, "high": 172}}},
+    "selection": {"from_marks": True, "label": "aus deinen Markierungen"}}
+import steering as _stg751  # noqa: E402
+_st751 = _stg751.state(_ss751)
+_x6 = W.explain(W.scaled(W.BY_KEY["sweetspot_2x20"], 200, 146, blocks=_ss751, steering=_st751), 200, None, _ss751, None) or {}
+check(str(_x6.get("origin", "")).endswith("W (aus deinen Markierungen)."),
+      f"K6: die Klammer steht hinter dem Punkt ({_x6.get('origin')})")
+check(". (" not in str(_x6.get("origin", "")), "K6: '. (' steht noch im Herkunftssatz")
+# Teil 7: der Chip sagt "Art passt heute" - die Menge ist ein eigenes Zeichen
+eq(W.STAGES["green"]["word"], "Art passt {tag}", "Teil 7: das gruene Stufenwort heisst nicht 'Art passt {tag}'")
+
+
+# --- 0.75.1 Teil 5 (S4): die Rampe nennt ihr Ende als Plan und die Abbruchregel des Protokolls
+# ("aufhören, wenn du nicht mehr kannst" - willentliche Erschöpfung, RAMP_STANDARD), nicht mehr
+# "sie endet am alpha-Wert, nicht an der Uhr" neben "Ende 293 W … Die Dauer folgt aus beiden Enden".
+_rs4 = _rt_mix.get("ramp_segment") or {}
+_lab4 = str(_rs4.get("label") or "")
+check("endet am alpha-Wert" not in _lab4, "S4: der alte Halbsatz steht noch an der Rampe")
+check(f"geplant bis {_rs4.get('end_w')} W; aufhören, wenn du nicht mehr kannst" in _lab4,
+      f"S4: die Rampe nennt Plan-Ende und Abbruchregel nicht ({_lab4})")
+check(any("Abbrechen, wenn du nicht mehr kannst" in line for line in W.RAMP_TEST.get("standard") or []),
+      "S4 Beleg: die Abbruchregel steht nicht im Protokoll (standard)")
+check(_lab4 == (_rt_mix.get("blocks_w") or [[None, None, ""]])[1][2], "S4: Balken und Abschnitt tragen nicht dieselbe Beschriftung")
 
 print(f"test_workouts: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:

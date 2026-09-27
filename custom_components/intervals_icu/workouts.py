@@ -49,6 +49,7 @@ try:  # inside the package (Home Assistant)
         RAMP_STEP_W_PER_MIN,
         RAMP_WARMUP_MIN,
         STEERING_ANCHOR_UNITS,
+        STEERING_ANCHOR_MIN_UNITS,
         CURVE_TARGET_SHARE,
     )
 except ImportError:  # standalone (test suite loads this file directly)
@@ -63,6 +64,7 @@ except ImportError:  # standalone (test suite loads this file directly)
         RAMP_STEP_W_PER_MIN,
         RAMP_WARMUP_MIN,
         STEERING_ANCHOR_UNITS,
+        STEERING_ANCHOR_MIN_UNITS,
         CURVE_TARGET_SHARE,
     )
 
@@ -764,7 +766,7 @@ SOURCE_LABEL: dict[str, str] = {
     "steering": (f"deine Vorgabe — der mittlere Wert deiner letzten {STEERING_ANCHOR_UNITS} "
                  "Einheiten, ab Block 2"),
     "curve": "gemessen an deiner Ermüdungskurve",
-    "ga": "Setzung: Ziel und Grenze der Ermüdungskachel für diese Dauer",
+    "ga": "Setzung: Ziel und Grenze der Grundlagenkurve für diese Dauer",
     "ramp_hrvt2": "gemessen im Stufentest, zweite Schwelle",
     "ramp_hrvt1": "gemessen im Stufentest, erste Schwelle",
     "ftp": "Rückfall auf die FTP — nicht gemessen",
@@ -1016,8 +1018,12 @@ def scaled(entry: dict[str, Any], ftp: float | None, aerobic_hr: int | None,
             staged = [
                 (RAMP_WARMUP_MIN, proto["start_w"], "Einrollen, ruhig"),
                 (proto["minutes"], proto["end_w"],
+                 # 0.75.1 (S4): das Ende ist ein PLAN (Leitzahl + Reserve), die Abbruchregel
+                 # steht im Protokoll (RAMP_STANDARD: willentliche Erschoepfung) - die Karte
+                 # sagt beides, statt "endet am alpha-Wert" neben "Ende 293 W".
                  f"Rampe {proto['start_w']}\u2013{proto['end_w']} W "
-                 f"({RAMP_STEP_W_PER_MIN} W/min) — sie endet am alpha-Wert, nicht an der Uhr"),
+                 f"({RAMP_STEP_W_PER_MIN} W/min) — geplant bis {proto['end_w']} W; aufhören, "
+                 "wenn du nicht mehr kannst (willentliche Erschöpfung, wie im Protokoll)"),
                 (RAMP_COOLDOWN_MIN, proto["start_w"], "Ausrollen, konstant"),
             ]
             out["blocks_w"] = staged
@@ -1090,7 +1096,8 @@ def scaled(entry: dict[str, Any], ftp: float | None, aerobic_hr: int | None,
         out["watt_sources"] = sources
         out["steering_source"] = {
             "watts": steered["watts"], "units": steered.get("units"),
-            "unit_watts": steered.get("unit_watts"), "origin": steered.get("origin"),
+            "unit_watts": steered.get("unit_watts"),
+            "unit_watts_shown": steered.get("unit_watts_shown"), "origin": steered.get("origin"),
             "band": steered.get("band"), "hr_band": steered.get("hr_band"),
             "note": steered.get("note"), "band_note": steered.get("band_note"),
             "measured_minutes": steered.get("measured_minutes"),
@@ -1355,7 +1362,9 @@ STAGES: dict[str, dict[str, str]] = {
     # Die Menge ueber der Obergrenze ist ein eigenes Zeichen (`quantity`).
     "green": {
         "label": "grün",
-        "word": "passt {tag}",
+        # 0.75.1 (Teil 7, Entscheidung Johannes): "Art passt" - neben dem Zeichen
+        # "Menge über Wochenlast" sagte "passt heute" zu viel.
+        "word": "Art passt {tag}",
         # 0.70.0 (C4): auf L1 - der Zustand traegt die Art, die Obergrenze die Menge.
         "detail": "Der Zustand trägt diese Art. Liegt die Last über der Obergrenze, bleibt "
                   "die Art und die Menge wird gekürzt.",
@@ -2036,14 +2045,32 @@ def anchor_conflict(ftp: float | None, aerobic_power: float | None) -> dict[str,
 # Panel ordnet sie nur an. Drei Stufen, weil es drei Arten gibt, zu einer Zahl
 # zu kommen: eine Eintragung, eine Messung ueber erkannte Einheiten, eine
 # Messung ueber das, was der Athlet selbst zugeordnet hat.
+def _de(value: Any, digits: int = 0) -> str:
+    """Eine Zahl im Klartext der Karte: deutsches Komma, feste Stellen (0.75.1, K4).
+
+    Die Karte druckt darunter dieselbe Groesse mit fmt(); Rechenweg und Satz
+    tragen deshalb dieselbe Rundung - Last in ganzen Watt, alpha zwei Stellen,
+    Watt je alpha eine Stelle.
+    """
+    if value is None:
+        return "–"
+    try:
+        text = f"{float(value):.{digits}f}"
+    except (TypeError, ValueError):
+        return str(value)
+    return text.replace(".", ",")
+
+
 CYCLE = (
     ("ftp", "Die FTP bringt dich in Gang.",
      "Solange für eine Familie nichts gemessen ist, rechnen ihre Einheiten in Prozent "
      "deiner FTP. Die FTP ist eine Eintragung in Intervals, keine Messung."),
-    ("alpha", "Dein alpha korrigiert unterwegs.",
-     "Jede gemessene Einheit zeigt über den alpha-Wert, bei welcher Leistung du "
-     "wirklich an der Schwelle warst. Daraus rechnen die Vorgaben — zunächst über die "
-     "Einheiten, die das System an ihrem Namen erkennt."),
+    # 0.75.1 (R5): seit W2 (0.75.0) steuert nicht alpha, sondern das Gefahrene -
+    # die Stufe sagt das. Die Mindestzahl kommt aus der Konstante (Regel 10).
+    ("alpha", "Deine Einheiten übernehmen.",
+     f"Ab {STEERING_ANCHOR_MIN_UNITS} gemessenen Einheiten einer Familie kommt die Vorgabe "
+     "aus deiner gefahrenen Leistung ab Block 2 — zunächst über die Einheiten, die das "
+     "System an ihrem Namen erkennt."),
     ("marks", "Deine Markierung übernimmt.",
      "Sobald du umgestellt hast, kommen die Watt nur noch aus dem, was du selbst "
      "zugeordnet und gemessen hast. Was du nicht markierst, zählt nicht."),
@@ -2078,11 +2105,11 @@ def explain(entry: dict[str, Any], ftp: float | None, curve: dict[str, Any] | No
         origin = f"aus deiner Blockmessung, {sel.get('label') or ''}".rstrip(", ")
         units = [{"activity_id": p.get("activity_id"), "date": p.get("date"),
                   "name": p.get("name"),
-                  "detail": f"{p.get('median_watts')} W bei alpha {p.get('median_alpha')}"}
+                  "detail": f"{_de(p.get('median_watts'), 0)} W bei alpha {_de(p.get('median_alpha'), 3)}"}
                  for p in reversed(box.get("points") or [])]
         units_count = box.get("sessions") or len(units)
         steps.append(f"Vorgabe {watts} W = Median der Blockleistung in der letzten Einheit "
-                     f"({bs.get('date')}, {bs.get('n_blocks')} Blöcke, alpha {bs.get('alpha')}).")
+                     f"({bs.get('date')}, {bs.get('n_blocks')} Blöcke, alpha {_de(bs.get('alpha'), 3)}).")
         hs = entry.get("hr_source") or {}
         if hs.get("n"):
             steps.append(f"Pulsfenster {hs.get('low')}–{hs.get('high')} bpm = Median der "
@@ -2101,13 +2128,30 @@ def explain(entry: dict[str, Any], ftp: float | None, curve: dict[str, Any] | No
         watts = ss.get("watts")
         # W2 (0.75.0): der Herkunftssatz kommt fertig aus steering.origin_sentence -
         # derselbe Satz wie in Kachel, Trainer-Karte und Quellen-Reiter.
-        origin = (str(ss.get("origin") or "")
-                  + (f" ({sel.get('label')})" if sel.get("label") else ""))
-        units = [{"activity_id": p.get("activity_id"), "date": p.get("date"),
-                  "name": p.get("name"),
-                  "detail": f"{p.get('median_watts')} W bei alpha {p.get('median_alpha')}"}
-                 for p in reversed(box.get("points") or [])]
-        units_count = ss.get("n_units") if ss.get("n_units") is not None else (box.get("sessions") or len(units))
+        # 0.75.1 (K6): die Klammer der Auswahl VOR dem Punkt - "191 W (aus deinen
+        # Markierungen)." statt "191 W. (aus deinen Markierungen)".
+        _o = str(ss.get("origin") or "")
+        origin = ((_o[:-1] if _o.endswith(".") else _o) + f" ({sel.get('label')})."
+                  if sel.get("label") and _o else _o)
+        # 0.75.1 (R3): gezaehlt und gelistet werden die EINHEITEN DER VORGABE
+        # (`steering.units`), je Einheit die Watt ab Block 2 - dieselbe Zahl wie
+        # der Verlauf (`unit_watts_shown` = rows.watts). Bis 0.75.0 standen hier
+        # alle Punkte mit dem Median ALLER Bloecke (live 27.09.: "6 Einheiten",
+        # 193 W neben 182 W im Verlauf) - gegen den Herkunftssatz derselben Karte.
+        # `n_units` bleibt, was es ist (Kachel, websocket, Tests lesen es).
+        by_date = {p.get("date"): p for p in (box.get("points") or [])}
+        udates = list(ss.get("units") or [])
+        ushown = list(ss.get("unit_watts_shown") or [])
+        if len(ushown) != len(udates):
+            ushown = [round(float(w)) if w is not None else None for w in (ss.get("unit_watts") or [])]
+        units = [{"activity_id": (by_date.get(d) or {}).get("activity_id"), "date": d,
+                  "name": (by_date.get(d) or {}).get("name"),
+                  "detail": f"{_de(w, 0)} W ab Block 2"}
+                 for d, w in reversed(list(zip(udates, ushown)))]
+        units_count = len(units)
+        older = int(ss.get("n_units") or 0) - len(units)
+        if older > 0:
+            units_note = f"ältere Einheiten zählen nicht mehr ({older})"
         if ss.get("origin"):
             steps.append(str(ss["origin"]))
         band = ss.get("band") or {}
@@ -2124,16 +2168,18 @@ def explain(entry: dict[str, Any], ftp: float | None, curve: dict[str, Any] | No
         rows = entry.get("ga_blocks") or []
         g = rows[0] if rows else {}
         watts = g.get("watts")
-        origin = "aus der Ermüdungskachel: Ziel und Grenze für diese Dauer (Setzung, Umrechnung aus deinem Stufentest)"
+        origin = "aus der Grundlagenkurve: Ziel und Grenze für diese Dauer (Setzung, Umrechnung aus deinem Stufentest)"
         units = []
         units_count = g.get("n")
         for r in rows:
             a_t = r.get("target_alpha")
+            # 0.75.1 (K4): dieselbe Rundung und dasselbe Komma wie der Satz der Karte
+            # darunter (Last ganze Watt, alpha zwei Stellen, W je alpha eine Stelle).
             steps.append(
                 f"{r.get('label')}: Stunde {r.get('hour')} ({r.get('n')} Fahrten) — gehaltene Last "
-                f"{r.get('load_w')} W bei alpha {r.get('alpha')}; Grenze {r.get('limit')} W = Last + "
-                f"(alpha − {r.get('limit_alpha')}) × {r.get('mid')} W/alpha"
-                + (f"; Ziel {r.get('target')} W = Last + (alpha − {a_t}) × {r.get('mid')} W/alpha." if a_t is not None
+                f"{_de(r.get('load_w'), 0)} W bei alpha {_de(r.get('alpha'), 2)}; Grenze {r.get('limit')} W = Last + "
+                f"(alpha − {_de(r.get('limit_alpha'), 2)}) × {_de(r.get('mid'), 1)} W/alpha"
+                + (f"; Ziel {r.get('target')} W = Last + (alpha − {_de(a_t, 2)}) × {_de(r.get('mid'), 1)} W/alpha." if a_t is not None
                    else "; kein Ziel eingetragen — die Einheit trägt die Grenze.")
                 + (" Ab 3 h ungeprüft — Abnahmefahrt offen." if r.get("unverified") else ""))
     elif src == "curve":
@@ -2156,7 +2202,7 @@ def explain(entry: dict[str, Any], ftp: float | None, curve: dict[str, Any] | No
         watts = round((rs.get("watts") or 0) * (rs.get("share") or 0)) if rs.get("watts") else None
         origin = "aus deinem markierten Stufentest"
         units = [{"activity_id": (ramp or {}).get("activity_id"), "date": rs.get("date"),
-                  "name": "Stufentest", "detail": f"{rs.get('watts')} W bei alpha {rs.get('alpha')}"}]
+                  "name": "Stufentest", "detail": f"{rs.get('watts')} W bei alpha {_de(rs.get('alpha'), 2)}"}]
         units_count = 1
         steps.append(f"Vorgabe {watts} W = {rs.get('watts')} W an der Schwelle × Anteil {rs.get('share')}.")
     else:
@@ -2171,9 +2217,11 @@ def explain(entry: dict[str, Any], ftp: float | None, curve: dict[str, Any] | No
             # nicht (Entscheidung 0.61.0, "Etiketten ehrlich"). Die Karte sagt
             # das, statt "nicht gemessen" - die Kachel daneben sagt ja das
             # Gegenteil.
+            # 0.75.1 (R4): die Zahl der Einheiten ist die der Vorgabe (`units`),
+            # nicht n_units - sonst "aus 7 Einheiten" neben "letzten 4 Einheiten".
             origin = (f"Rückfall auf die FTP — deine Vorgabe ({ss['watts']} W aus "
-                      f"{ss.get('n_units') or 0} Einheiten) gilt für Arbeitsblöcke (Block 1, 2, 3 …); "
-                      f"diese Form bekommt sie nicht")
+                      f"deinen letzten {len(ss.get('units') or [])} Einheiten) gilt für "
+                      f"Arbeitsblöcke (Block 1, 2, 3 …); diese Form bekommt sie nicht")
             units_count = 0
             units_note = str(ss.get("note_blocks") or "")
         else:
@@ -2191,7 +2239,11 @@ def explain(entry: dict[str, Any], ftp: float | None, curve: dict[str, Any] | No
                      "hr_high": window[1] if window else None},
         "origin": origin,
         "stage": stage,
-        "cycle": [{"key": k, "title": t, "text": x, "here": k == stage} for k, t, x in CYCLE],
+        # 0.75.1 (K5): der Kreislauf gehoert den Blockfamilien. Die Grundlage rechnet
+        # aus Grundlagenkurve + Stufentest, nicht aus Markierungen - ihre Herkunft
+        # steht im eigenen Satz, ein Pfeil auf "Deine Markierung übernimmt" wäre falsch.
+        "cycle": ([] if src == "ga"
+                  else [{"key": k, "title": t, "text": x, "here": k == stage} for k, t, x in CYCLE]),
         "units": units,
         "units_count": units_count,
         "units_note": units_note,

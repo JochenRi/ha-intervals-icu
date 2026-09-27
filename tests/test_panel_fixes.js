@@ -1445,7 +1445,7 @@ const acts = F.activities(), thr = F.thresholds();
   const quittung = q._marksBlock(act);
   H.clean(quittung, "quittung");
   ok(/Im Archiv:/.test(quittung), "quittung: die Kachel sagt nicht, dass die Marke angekommen ist");
-  ok(/2 Marken/.test(quittung), `quittung: die Zahl der Marken fehlt oder stimmt nicht`);
+  ok(/2 Markierungen/.test(quittung), `quittung: die Zahl der Markierungen fehlt oder stimmt nicht (0.75.1 W5)`);
   ok(/2 Familien/.test(quittung), "quittung: über wie viele Familien fehlt");
   ok(quittung.includes("2026-09-12"), "quittung: wann gesetzt wurde, steht nicht da");
   ok(quittung.includes("noch nicht gemessen"),

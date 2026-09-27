@@ -362,6 +362,9 @@ def target(rows: list[dict[str, Any]], family: str) -> dict[str, Any]:
                 "n_units_total": len(usable)}
     last = usable[-STEERING_ANCHOR_UNITS:]
     return {**base, "watts": got["w"], "units": got["units"], "unit_watts": got["unit_watts"],
+            # ANZEIGE (0.75.1, R3): die Watt je Einheit, wie der Verlauf sie zeichnet
+            # (rows.watts, gerundet) - dieselbe Zahl in Liste und Bild.
+            "unit_watts_shown": [r["watts"] for r in last],
             # alpha-Seite je Einheit: ANZEIGE (Chip, Verlauf), sie bewegt nichts mehr.
             "sides": [r["side"] for r in last]}
 

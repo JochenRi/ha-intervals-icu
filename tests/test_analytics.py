@@ -716,7 +716,7 @@ if callable(_ws_fn):
 _wd = analytics.week_done(AMBIGUOUS, "2026-09-07", today="2026-09-11")
 check("0.73.3 §1: neuer Satz woertlich", _wd["note"],
       "Gefahren gegen vorgesehen — welche Fahrt welche geplante Einheit war, entscheidest du. "
-      "Die Familie einer Fahrt kommt aus deinen Marken oder aus der Paarung in intervals.icu; geraten wird nichts.")
+      "Die Familie einer Fahrt kommt aus deinen Markierungen oder aus der Paarung in intervals.icu; geraten wird nichts.")
 check("0.73.3 §1: der alte Satz ist fort", "niemand belegen kann" in _wd["note"] or "kein Etikett" in _wd["note"], False)
 check("0.73.3 §1: paired bleibt False", _wd["paired"], False)
 import inspect as _insp733

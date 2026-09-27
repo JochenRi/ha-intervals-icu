@@ -146,7 +146,7 @@ def window_matters(family: str) -> bool:
 RETIRED: tuple[str, ...] = ("threshold", "long")
 
 RETIRED_REASON = ("Die Familien „Schwelle“ und „lange Fahrt“ werden nicht mehr "
-                  "markiert — ihre Marken an dieser Fahrt sind gefallen. Die "
+                  "markiert — ihre Markierungen an dieser Fahrt sind gefallen. Die "
                   "Schwelle kommt aus dem Stufentest, die lange Fahrt rechnet "
                   "wie die Grundlage.")
 
@@ -196,7 +196,7 @@ REMEASURE = ("Die Auswahl hat sich seit der Messung geändert — neu zu messen 
 # Ein gemeinsamer Satz muesste beides verschweigen, um zu stimmen.
 NOT_ACTIVE_BLOCKS = ("VO2max, SweetSpot und Tempo messen über deine "
                      "Arbeitsblöcke — und diese Messung wählt ihre Blöcke bis "
-                     "heute selbst, an deinen Marken vorbei. Was du hier "
+                     "heute selbst, an deinen Markierungen vorbei. Was du hier "
                      "anhakst, ändert an ihren Wattvorgaben noch nichts.")
 
 NOT_ACTIVE_CURVE = ("Die Grundlage misst über die Ermüdungskurve. Der Knopf "

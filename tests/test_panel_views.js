@@ -260,7 +260,8 @@ const EMPTY_LOAD = { weeks: [], weeks_by_group: [], window_history: [], window_p
   ok((zgross.match(/class="zval/g) || []).length === 3 && (zklein.match(/class="zval/g) || []).length === 3,
      "trainer: Werte nicht beziffert");
   ok(!/class="zleg"/.test(html), "trainer: getrennte Legende wieder da");
-  contains(html, "±0,5 = Rauschen", "trainer: Normalband nicht erklärt");
+  // 0.75.1 (Z1): im Klartext des Heute-Reiters, Zahl aus band_scale
+  contains(html, "bis 0,5 gewöhnliche Schwankung", "trainer: Normalband nicht erklärt");
   contains(html, "7-Tage-Mittel HRV", "trainer: Signal nicht benannt");
 }
 
@@ -294,8 +295,9 @@ const EMPTY_LOAD = { weeks: [], weeks_by_group: [], window_history: [], window_p
     p._workouts = keep;
     const zeilen = (hq.match(/<summary>[\s\S]*?<\/summary>/g) || []).filter((x) => /fgname/.test(x)).join(" ");
     ok(!/Watt aus deiner\s+FTP/.test(hq), "einheiten-kopf: sagt noch pauschal 'Watt aus deiner FTP'");
-    ok(/Umkehrung/.test(zeilen) && /deine Vorgabe/.test(zeilen) && /FTP/.test(zeilen),
-       "einheiten-kopf: die Familienzeilen nennen nicht alle drei Wattquellen (Umkehrung, Vorgabe, FTP)");
+    // 0.75.1 (Teil 3): das Quellenwort der Grundlage heisst "Grundlagenkurve"
+    ok(/Grundlagenkurve/.test(zeilen) && /deine Vorgabe/.test(zeilen) && /FTP/.test(zeilen),
+       "einheiten-kopf: die Familienzeilen nennen nicht alle drei Wattquellen (Grundlagenkurve, Vorgabe, FTP)");
     contains(p.rHintergrund(F.coach("ready")), "Aerobe Schwelle", "einheiten-kopf: die Pulsquelle ist weg");
   }
   // exactly one card carries the recommendation, and it is a fitting one
@@ -1460,8 +1462,8 @@ const EMPTY_LOAD = { weeks: [], weeks_by_group: [], window_history: [], window_p
   contains(flach0(karte), "Setzung", "L4: die Umrechnung steht nicht als Setzung da");
   ok(!/Studienform/.test(karte) && !/gemessenen Schwelle/.test(karte),
      "L4 (0.68.0): die Karte spricht noch von der Ermüdungskurve");
-  ok(/class="wsrc"[^>]*>Umkehrung</.test(karte),
-     "L4: der Abschnitt aus der Umkehrung ist nicht als solcher gekennzeichnet");
+  ok(/class="wsrc"[^>]*>Grundlagenkurve</.test(karte),
+     "L4: der Abschnitt aus der Grundlagenkurve ist nicht als solcher gekennzeichnet (0.75.1: ein Name)");
   ok(!/ungeprüft/.test(karte), "L4: eine Stunde unter 3 h wird als ungeprüft ausgegeben");
   // Ab 3 h ist die Kette ungeprueft - die Abnahmefahrt (3 h bei ~122 W) steht
   // noch aus. Die Karte sagt es, aus dem Feld der Payload, nicht aus der Stunde
@@ -2431,7 +2433,7 @@ const EMPTY_LOAD = { weeks: [], weeks_by_group: [], window_history: [], window_p
   const head1 = open1.slice(open1.indexOf('class="wometa"'), open1.indexOf('class="wosteps"'));
   ok(!/Katalogeinheit/.test(head1),
      "wochenplan: die Hochrechnung steht in der Kopfzeile statt im Rechenweg");
-  q._psOpen = "1:Langer Tag — 3.5 h";
+  q._psOpen = "1:Langer Tag — 3,5 h";
   const deep = q.rPlanWeeks(g);
   contains(deep, "Rechenweg der Last", "wochenplan: der Rechenweg fehlt im aufgeklappten Teil");
   contains(deep, "Last 72", "wochenplan: die Kataloglast wird im Rechenweg nicht genannt");
@@ -3346,7 +3348,7 @@ const EMPTY_LOAD = { weeks: [], weeks_by_group: [], window_history: [], window_p
     ok(/class="fgvar"/.test(sum) && /class="fguse"/.test(sum), `A4: ${n}: empfohlene Variante oder Nutzen fehlt`);
     ok(!/class="wocard/.test(sum), `A4: ${n}: Karten in der zugeklappten Zeile`);
   }
-  ok(/Kurve im Hintergrund/.test(fg) && /Kachel im Hintergrund/.test(fv), "A4: der Verweis auf Kurve/Kachel im Hintergrund fehlt");
+  ok(/Grundlagenkurve im Hintergrund/.test(fg) && /Kachel im Hintergrund/.test(fv), "A4: der Verweis auf Grundlagenkurve/Kachel im Hintergrund fehlt");
   // gekuerzte Karte: kein Familienname, kein "Was das bringt" offen; die Aufklapper bleiben
   const karte = fs.slice(fs.indexOf('class="wocard'));
   ok(!/class="wofam"/.test(karte) && !/class="effect"/.test(karte.split("Aufbau, Beleg und Rechenweg")[0]),
@@ -3413,8 +3415,8 @@ const EMPTY_LOAD = { weeks: [], weeks_by_group: [], window_history: [], window_p
   // C1 · Stufentest-Karte: eigener Text, nicht der Steuerungszweig mit Strichen
   const rk = z(faltung(test, "trainer:test"));
   ok(!/Startwert\s+–\s+W/.test(rk) && !/aus\s+0\s+Einheiten/.test(rk), "C1: die Stufentest-Karte traegt den leeren Steuerungstext");
-  ok(/Start 142 W/.test(rk) && /Ende 300 W/.test(rk) && /Umkehrung/.test(rk) && /VO2max-Vorgabe/.test(rk),
-     "C1: die Stufentest-Karte nennt Start und Ende mit ihrer Herkunft nicht");
+  ok(/Start 142 W/.test(rk) && /Ende 300 W/.test(rk) && /Grundlagenkurve/.test(rk) && /VO2max-Vorgabe/.test(rk),
+     "C1: die Stufentest-Karte nennt Start und Ende mit ihrer Herkunft nicht (0.75.1: Grundlagenkurve)");
   // Gegenprobe: eine echte Steuerungskarte behaelt ihren Text
   const echt = { ...F.workouts().workouts[4], watt_source: "steering",
                  steering_source: { watts: 250, n_units: 6, origin: "Die Vorgabe ist der mittlere Wert deiner letzten 4 Einheiten (01.09., 08.09., 15.09., 22.09.), jeweils ab Block 2: 250 W." } };
@@ -3435,7 +3437,8 @@ const EMPTY_LOAD = { weeks: [], weeks_by_group: [], window_history: [], window_p
   const bk = z(T.rBlocks(live(true)));
   ok(!/ruht auf <b>4 Blöcken<\/b>/.test(bk) && !/Median 0,490/.test(bk), "C2: die Kachel zaehlt Block 1 zur Steuerung");
   ok(/markiert, nicht gezählt \(Anlauf, Rogers\)/.test(bk) && /0,85/.test(bk), "C2: Block 1 steht nicht als 'markiert, nicht gezählt' daneben");
-  ok(/ruht auf <b>3 Blöcken<\/b>/.test(bk) && /Median 0,347/.test(bk), "C2: die gezaehlten Bloecke und der Median der Steuerung fehlen");
+  // 0.75.1 (R1): die Zahl ist die Watt der Steuerungszeile, alpha nur zur Ansicht (kein "ruht auf … Median")
+  ok(/\(3 Blöcke, alpha ab Block 2: 0,347 — nur zur Ansicht\)/.test(bk), "C2/R1: die gezaehlten Bloecke und das alpha der Steuerungszeile fehlen");
   // Gegenprobe: Schalter aus - die alte Kette zaehlt alle Bloecke, der Satz bleibt
   const vo = { n_blocks: 4 };
   const bkAus = z(T.rBlocks(live(false)));
@@ -3443,7 +3446,7 @@ const EMPTY_LOAD = { weeks: [], weeks_by_group: [], window_history: [], window_p
 
   // C3 · "steuert noch keine Vorgabe" ist seit 0.68.0 falsch
   ok(!/steuert noch keine Vorgabe/.test(test), "C3: der Stufentest sagt noch, er steuere nichts");
-  ok(/steuert die Grundlage/.test(test) && /Umkehrung/.test(test), "C3: der Stufentest sagt nicht, dass er die Grundlage steuert");
+  ok(/steuert die Grundlage/.test(test) && /Grundlagenkurve/.test(test), "C3: der Stufentest sagt nicht, dass er die Grundlage steuert (0.75.1: Grundlagenkurve)");
 
   // Aufklapper ueberleben das Neuzeichnen: toggle merkt, _fold schreibt "open"
   const K = new M.Panel(); K._nowIso = F.TODAY; K._workouts = F.workouts("voll");
@@ -3544,8 +3547,10 @@ const EMPTY_LOAD = { weeks: [], weeks_by_group: [], window_history: [], window_p
     const sum = hg.slice(0, hg.indexOf("</summary>"));
     ok(/class="bgheads"/.test(sum), "2: die Koepfe stehen nicht in der zugeklappten Zeile");
     const r0 = (v2.reversal || v2).plan[0];
-    ok(new RegExp(`Grundlage <b class="tn">${M.fmt(r0.watts)} W</b> \\(${M.fmt(r0.hours)} h, ±${M.fmt(r0.band.half)} W · Umkehrung\\)`).test(sum),
-       `2: Grundlage-Kopf nicht aus der Kachel (${sum.slice(sum.indexOf("bgheads"), sum.indexOf("bgheads") + 260)})`);
+    // 0.75.1 (N2/Teil 3): die Zahl ist die GRENZE bei dieser Stunde und heisst so; das Quellenwort ist "Grundlagenkurve"
+    ok(new RegExp(`Grundlage: Grenze <b class="tn">${M.fmt(r0.watts)} W</b> bei ${M.fmt(r0.hours)} h \\(±${M.fmt(r0.band.half)} W · Grundlagenkurve\\)`).test(sum),
+       `2: Grundlage-Kopf nicht aus der Kachel oder falsch beschriftet (${sum.slice(sum.indexOf("bgheads"), sum.indexOf("bgheads") + 260)})`);
+    ok(!/Umkehrung/.test(sum), "N2: 'Umkehrung' steht noch in der Kopfzeile");
     const b = Q._blocks;
     for (const [key, nm] of [["sweetspot", "SweetSpot"], ["vo2max", "VO2max"]]) {
       const c = b.compare[key];
@@ -3657,7 +3662,9 @@ const EMPTY_LOAD = { weeks: [], weeks_by_group: [], window_history: [], window_p
   g.plan.big_day_cap = { hours: 3.8, from_minutes: 210, from_date: "2026-09-10", factor: 1.1, applied: true };
   const wp = z(P.rPlanWeeks(g, (F.coach("ready").durability || {}).progression));
   const rw = falte(wp, "trainer:weeksrw");
-  ok(/gedeckelt durch die Progression/.test(rw) && /3,8 h/.test(rw) && /3 h 30/.test(rw), "4: der Rechenweg nennt den Deckel mit beiden Zahlen nicht");
+  // 0.75.1 (W4): dieselbe Fahrt, ein Wortlaut wie in der Progressionszeile ("längste gleichmäßige Fahrt", Minuten)
+  ok(/gedeckelt durch die Progression/.test(rw) && /3,8 h/.test(rw) && /längsten gleichmäßigen Fahrt \(210 min\)/.test(rw), "4: der Rechenweg nennt den Deckel mit beiden Zahlen nicht");
+  ok(!/3 h 30/.test(rw) && !/längsten Fahrt 3 h/.test(rw), "W4: die Deckelzeile nennt dieselbe Fahrt mit anderem Wortlaut als die Progressionszeile");
   g.plan.big_day_cap = { ...g.plan.big_day_cap, hours: 10, applied: false };
   const wp2 = falte(z(P.rPlanWeeks(g)), "trainer:weeksrw");
   ok(!/gedeckelt durch/.test(wp2) && /über dem großen Tag/.test(wp2), "4 Gegenprobe: die Grenze ueber dem grossen Tag wird als Deckel gemeldet");
@@ -4417,7 +4424,7 @@ const SEITE734 = (async () => {
   ok(!z(P.rBelastung(lo)).includes("andere Sportarten"), "0.74.0 §3.2 andere Sportarten ohne Last trotzdem da");
   contains(b0, "Punkt über dem Balken = Monotonie ≥ 2 (Woche ohne echten Ruhetag).", "0.74.0 §3.2 Monotonie-Satz");
   ok((b0.match(/<circle [^>]*fill="#fbbf24"><title>Monotonie/g) || []).length === 1, "0.74.0 §3.2 genau ein Monotonie-Punkt");
-  contains(b0, "Familie aus deinen Marken oder der Paarung in intervals.icu. Die Paarung liest die App nur für die letzten 30 Tage; ältere Fahrten ohne Marke bleiben „nicht zugeordnet“. Eine sichere Steigerung von Woche zu Woche ist nicht belegt (Buist 2008, Nielsen 2014) – die Prozentzahl ist nur eine Zahl.",
+  contains(b0, "Familie aus deinen Markierungen oder der Paarung in intervals.icu. Die Paarung liest die App nur für die letzten 30 Tage; ältere Fahrten ohne Markierung bleiben „nicht zugeordnet“. Eine sichere Steigerung von Woche zu Woche ist nicht belegt (Buist 2008, Nielsen 2014) – die Prozentzahl ist nur eine Zahl.",
            "0.74.0 §3.2 Fußzeile wörtlich");
   ok((b0.match(/KW \d+</g) || []).length === 12, "0.74.0 §3.2 zwölf Kalenderwochen");
   // §3.3 Verlauf
@@ -5019,6 +5026,309 @@ const SEITE734 = (async () => {
     global.Date = RealDate;
     if (hadTZ) process.env.TZ = oldTZ; else delete process.env.TZ;
   }
+}
+
+/* ── 0.75.1 Teil 1 · Block-Kachel und Trainer-Karte ohne Reste der alpha-Steuerung ── */
+{
+  const q = new M.Panel();
+  q._nowIso = F.TODAY;
+  const an = String(q.rBlocks(F.blocks({ steering_on: true }))).replace(/\s+/g, " ");
+  const aus = String(q.rBlocks(F.blocks({ steering_on: false }))).replace(/\s+/g, " ");
+  const voAn = an.slice(an.indexOf('data-grp="blk_vo2max"'), an.indexOf('data-grp="blk_sweetspot"'));
+  // R1: bei Vorgabe nennt der Satz die Watt ab Block 2 (rows.watts der Steuerungszeile = Verlauf),
+  // alpha nur zur Ansicht; kein "ruht auf … Median".
+  ok(!/ruht auf <b>\d+ Bl[öo]/.test(voAn) && !/Median 0,\d{3}/.test(voAn),
+     "R1: bei Vorgabe steht noch 'Die Steuerung ruht auf … Median'");
+  ok(/Die Steuerung ruht auf deiner gefahrenen Leistung ab Block 2: <b>252 W<\/b>/.test(voAn),
+     "R1: der Satz nennt nicht die Watt ab Block 2 der Steuerungszeile");
+  ok(/alpha ab Block 2: 0,410 — nur zur Ansicht/.test(voAn), "R1: alpha steht nicht als reine Ansicht daneben");
+  ok(/Block 1 \(alpha 0,45\): markiert, nicht gezählt \(Anlauf/.test(voAn), "R1: Block 1 fehlt als 'markiert, nicht gezählt'");
+  // Gegenprobe: ohne Vorgabe bleibt die alte Kette samt Satz
+  ok(/Die Steuerung ruht auf <b>4 Blöcken<\/b>/.test(aus) && /Median 0,410/.test(aus),
+     "R1 Gegenprobe: ohne Vorgabe ist der alte Satz weg");
+  // R2: die Spalte "Schritt" entfaellt bei Vorgabe; stattdessen Watt ab Block 2 und ob die Einheit zaehlt
+  ok(!/<th>Schritt<\/th>/.test(an), "R2: die Spalte 'Schritt' steht bei Vorgabe noch da");
+  ok(/<th>Watt ab Block 2<\/th>/.test(voAn) && /<th>in der Vorgabe<\/th>/.test(voAn),
+     "R2: die Spalten 'Watt ab Block 2' und 'in der Vorgabe' fehlen");
+  const zeilenVo = voAn.slice(voAn.indexOf("<tbody>"), voAn.indexOf("</tbody>")).split("<tr>").slice(1);
+  ok(zeilenVo.length === 6 && (zeilenVo.filter((z) => /✓/.test(z)).length === 4),
+     `R2: nicht genau die 4 Einheiten der Vorgabe sind gekennzeichnet (${zeilenVo.filter((z) => /✓/.test(z)).length})`);
+  ok(/<td class="tn">252 W<\/td>/.test(zeilenVo[0]) && /<td class="tn">238 W<\/td>/.test(zeilenVo[5]),
+     "R2: die Watt ab Block 2 je Zeile sind nicht die der Steuerungszeile");
+  ok(!/✓/.test(zeilenVo[5]) && !/✓/.test(zeilenVo[4]), "R2: die beiden aeltesten Einheiten stehen als 'in der Vorgabe'");
+  ok(/<th>Schritt<\/th>/.test(aus) && /im Korridor|%<\/span>/.test(aus), "R2 Gegenprobe: ohne Vorgabe fehlt die Schritt-Spalte");
+  ok(!/im Korridor<\/span>/.test(voAn.slice(voAn.indexOf("<tbody>"))), "R2: das Schritt-Etikett steht noch in der Tabelle mit Vorgabe");
+  // R4: 30/30 in der Trainer-Karte nennt die Zahl der Einheiten der Vorgabe, nicht n_units
+  const opts = { budget: 60, ctl: 55, today: F.TODAY, watts_note: "" };
+  const satz30 = { key: "vo2_3030", family: "vo2max", watt_source: "ftp", fit: "ok", name: "30/30", minutes: 40, load: 50,
+    blocks: [[10, 60, "Ein"], [10, 120, "Satz 1"]], blocks_w: [[10, 120, "Ein"], [10, 210, "Satz 1"]],
+    steering_source: { watts: 243, n_units: 7, units: ["2026-08-11", "2026-08-19", "2026-09-01", "2026-09-25"],
+                       note_blocks: "Kein Abschnitt dieser Einheit bekommt die gemessene Vorgabe — die Zahlen stehen auf der FTP." } };
+  const t30 = String(q._sourceText(satz30)).replace(/\s+/g, " ");
+  ok(/\(243 W aus deinen letzten 4 Einheiten\)/.test(t30), `R4: die Karte sagt nicht 'aus deinen letzten 4 Einheiten' (${t30.slice(0, 160)})`);
+  ok(!/aus 7 Einheiten/.test(t30), "R4: 'aus 7 Einheiten' (n_units) steht noch da");
+}
+
+/* ── 0.75.1 Teil 2 (K2, K3, K5) und Teil 7 · Einheiten-Karten ── */
+{
+  const q = new M.Panel();
+  q._nowIso = F.TODAY;
+  q._workouts = F.workouts();
+  const html = q.rTrainer(F.coach("ready"), F.readiness()).replace(/\s+/g, " ");
+  const lead0 = q._workouts.workouts.find((e) => (e.stage || {}).key === "green") || q._workouts.workouts[0];
+  const leadBox = html.slice(html.indexOf('class="leadrec"'), html.indexOf('class="secname"'));
+  const meta = (leadBox.match(/class="leadmeta">[^<]*/) || [""])[0];
+  // K2: die Kopfzeile traegt die Arbeits-Watt der Karte (eine Zahl), keine Spanne min–max
+  ok(!/\d+–\d+ W/.test(meta), `K2: die Kopfzeile traegt noch eine Wattspanne (${meta})`);
+  ok(new RegExp(`· ${M.fmt(q._headWatts(lead0))} W`).test(meta), `K2: die Kopfzeile nennt nicht die Arbeits-Watt der Karte (${meta})`);
+  // Teil 7: unter der Obergrenze kein Mengen-Satz, "Art passt heute" als Stufenwort
+  ok(!/Menge: diese Woche ist voll/.test(leadBox), "Teil 7 Gegenprobe: der Mengen-Satz steht ohne Ueberschreitung da");
+  ok(/Art passt heute/.test(html), "Teil 7: das Stufenwort heisst nicht 'Art passt heute'");
+  const voll = F.workouts();
+  voll.workouts[0] = { ...voll.workouts[0], fits_budget: false, stage: F.stageOf("ok", false, false),
+                       guard: { over: true, load: 115, ceiling: 14, hours_fit: null,
+                                text: "Geländer: Last 115 über der Obergrenze 14 — die Art bleibt, die Menge nicht. Auch gekürzt passt sie nicht unter die Grenze — unter 0,5 h bleibt keine sinnvolle Fassung." } };
+  voll.budget = 14;
+  q._workouts = voll;
+  const hv = q.rTrainer(F.coach("ready"), F.readiness()).replace(/\s+/g, " ");
+  const leadV = hv.slice(hv.indexOf('class="leadrec"'), hv.indexOf('class="secname"'));
+  ok(/Menge: diese Woche ist voll \(Obergrenze 14\)/.test(leadV), "Teil 7: der Mengen-Satz fehlt im Kopf der Heute-Empfehlung");
+  ok(/Art passt heute/.test(leadV) && /Menge über Wochenlast/.test(leadV), "Teil 7: Chip oder Mengen-Zeichen fehlen in der Empfehlung");
+  ok(!/>passt heute</.test(hv), "Teil 7: irgendwo steht noch das nackte 'passt heute'");
+  q._workouts = F.workouts();
+  // K3: der GA-Satz nennt Endbloecke als Abschnitte ohne Kennzeichnung
+  const e = { watt_source: "ga", ga_blocks: [{ label: "gleichmäßig", watts: 142, target: 142, limit: 169, hour: 1, n: 6,
+              load_w: 139.6, alpha: 1.327, mid: 90.6 }] };
+  const g = String(q._gaText(e)).replace(/\s+/g, " ");
+  ok(/Abschnitte ohne Kennzeichnung \(Ein- und Ausrollen, Endblöcke\) bleiben Prozent der FTP\./.test(g),
+     "K3: der GA-Satz nennt die Endbloecke nicht");
+  ok(!/sind Ein- und Ausrollen und bleiben/.test(g), "K3: der alte Satz steht noch");
+  // K5: ohne Kreislauf in der Payload keine Ueberschrift "Der Kreislauf"
+  const xg = { watt_source: "ga", explain: { headline: { watts: 142 }, origin: "HERKUNFT", stage: "marks",
+    units_count: 6, units_note: "", cycle: [], units: [], steps: ["SCHRITT"] } };
+  const xh = String(q._explain(xg));
+  ok(!/Der Kreislauf/.test(xh) && !/expl-kreis/.test(xh), "K5: die GA-Karte zeichnet den Kreislauf trotz leerer Payload");
+  ok(/Gewertete Einheiten: 6/.test(xh) && /SCHRITT/.test(xh), "K5 Gegenprobe: Einheiten oder Rechenweg gingen verloren");
+}
+
+/* ── 0.75.1 Teil 3 · EIN Name: Grundlagenkurve ── */
+{
+  const q = new M.Panel(); q._nowIso = F.TODAY;
+  q._blocks = F.blocks({ steering_on: true });
+  q._fatigue = F.fatigue({ v2: F.fatigueV2Block() });
+  q._workouts = F.workouts("voll");
+  const z2 = q._workouts.workouts.find((e) => e.key === "z2_90");
+  z2.watt_source = "ga";
+  z2.ga_blocks = [{ label: "gleichmäßig", watts: 143, target: 143, limit: 170, hour: 1, n: 6, load_w: 139.6, alpha: 1.327, mid: 90.6 }];
+  // der GANZE Trainer-Reiter, wie render() ihn zusammensetzt
+  const html = (q.rGoal(F.goal ? F.goal() : null) + q.rTrainer(F.coach("ready"), F.readiness())
+    + q.rPlanWeeks(F.goal ? F.goal() : null, null) + q.rHintergrund(F.coach("ready"))).replace(/\s+/g, " ");
+  ok(/Wie lange trägt die Grundlage\? — die Grundlagenkurve<\/h3>/.test(html), "Teil 3: die Ueberschrift traegt den Namen nicht");
+  ok(!/Kurve im Hintergrund/.test(html) && /Grundlagenkurve im Hintergrund/.test(html), "Teil 3: 'Kurve im Hintergrund' steht noch");
+  ok(!/Ermüdungskachel/.test(html), "Teil 3: 'Ermüdungskachel' steht noch auf dem Trainer-Reiter");
+  ok(/· Grundlagenkurve<\/span>/.test(html), "Teil 3: das Quellenwort in der Familienzeile heisst nicht Grundlagenkurve");
+  ok(/class="wsrc"[^>]*>Grundlagenkurve</.test(html) && !/class="wsrc"[^>]*>Umkehrung</.test(html),
+     "Teil 3: die Marke am Abschnitt heisst noch Umkehrung");
+  // "Umkehrung" nur noch im Rechenweg (details) - ausserhalb aller <details> darf das Wort nicht stehen
+  const ohneDetails = html.replace(/<details[\s\S]*?<\/details>/g, "");
+  ok(!/Umkehrung/.test(ohneDetails), `Teil 3: 'Umkehrung' steht ausserhalb des Rechenwegs (${(ohneDetails.match(/.{60}Umkehrung.{30}/) || [""])[0]})`);
+  const e = { watt_source: "ga", ga_blocks: [{ label: "gleichmäßig", watts: 142, target: 142, limit: 169, hour: 1, n: 6,
+              load_w: 139.6, alpha: 1.327, mid: 90.6 }] };
+  ok(/aus der Grundlagenkurve für diese Dauer/.test(String(q._gaText(e)).replace(/\s+/g, " ")), "Teil 3: der GA-Satz nennt die Grundlagenkurve nicht");
+  ok(M.WATT_ORIGIN_SHORT ? M.WATT_ORIGIN_SHORT.ga === "Grundlagenkurve" : /ga: "Grundlagenkurve"/.test(H.source()),
+     "Teil 3: das Quellenwort WATT_ORIGIN_SHORT.ga heisst nicht Grundlagenkurve");
+}
+
+/* ── 0.75.1 Teil 4 · Wochenplan: W1 (unbewertete Woche), W2 (Resttage), W5 (Markierungen) ── */
+{
+  const q = new M.Panel(); q._nowIso = F.TODAY;
+  const g = F.goal();
+  // W1: eine UNBEWERTETE Woche aufgeklappt - Rolle + "geplant x h", kein "Vorlage null min", kein "Last –", kein leerer Balken
+  q._planOpen = "2";
+  const w2 = String(q.rPlanWeeks(g, null)).replace(/\s+/g, " ");
+  const teil = w2.slice(w2.indexOf('data-id="2"'), w2.indexOf('data-id="3"'));
+  ok(teil.length > 100, "W1 Fixture: Woche 2 ist nicht aufgeklappt");
+  ok(!/null|undefined|NaN/.test(teil), `W1: 'null'/'undefined'/'NaN' im Wochenplan (${(teil.match(/.{50}(null|undefined|NaN).{20}/) || [""])[0]})`);
+  ok(!/Vorlage \S+ min/.test(teil), "W1: 'Vorlage … min' steht bei einer unbewerteten Woche");
+  ok(!/Last –/.test(teil) && !/Last <\/|Last<\//.test(teil), "W1: 'Last –' steht bei einer unbewerteten Woche");
+  ok(!/class="wobar"><\/div>/.test(teil), "W1: ein leerer Balken steht bei einer unbewerteten Woche");
+  ok(/geplant 3,5 h/.test(teil) && /Lange Fahrt|Langer Tag/.test(teil), "W1 Gegenprobe: Rolle oder 'geplant … h' fehlen");
+  ok(/Bewertet wird erst in der Woche selbst/.test(teil), "W1 Gegenprobe: der Satz zur Bewertung fehlt");
+  // Gegenprobe: die bewertete Woche behaelt Vorlage, Last und Balken
+  q._planOpen = "1";
+  const w1 = String(q.rPlanWeeks(g, null)).replace(/\s+/g, " ");
+  const teil1 = w1.slice(w1.indexOf('data-id="1"'), w1.indexOf('data-id="2"'));
+  ok(/Vorlage 70 min/.test(teil1) && /Last 159/.test(teil1) && /class="wob"/.test(teil1), "W1 Gegenprobe: die bewertete Woche verlor Vorlage, Last oder Balken");
+  // W2: die Zaehlweise steht im Text - 0 = "heute ist der letzte Tag der Woche", 1 = "noch 1 Tag nach heute"
+  const done = (n) => q._weekDone({ ...g.plan.weeks[0], done: { ...g.plan.weeks[0].done, days_left: n } }).replace(/\s+/g, " ");
+  ok(/heute ist der letzte Tag der Woche/.test(done(0)) && !/noch 0 Tage/.test(done(0)), "W2: bei 0 steht noch 'noch 0 Tage in der Woche'");
+  ok(/noch 1 Tag nach heute/.test(done(1)), "W2: bei 1 fehlt 'noch 1 Tag nach heute'");
+  ok(/noch 2 Tage nach heute/.test(done(2)), "W2: bei 2 fehlt 'noch 2 Tage nach heute'");
+  ok(!/in der Woche/.test(done(null)) && !/nach heute/.test(done(null)), "W2 Gegenprobe: ohne days_left steht ein Resttage-Satz");
+  // W5: "Marken" heisst "Markierungen"
+  ok(!/\bMarken\b/.test(w1), "W5: 'Marken' steht noch im Wochenplan");
+  ok(/Markierungen/.test(String(q._weekDone({ ...g.plan.weeks[0], done: { ...g.plan.weeks[0].done, note: "aus deinen Markierungen" } }))), "W5 Gegenprobe: der Satz aus der Payload geht verloren");
+  const src = H.source();
+  ok(!/aus deinen Marken"|deinen Marken vorbei|die Marken bleiben|Die Marken bleiben|Familie aus deinen Marken|ohne Marke\b|keine Marke,/.test(src),
+     "W5: 'Marken'/'Marke' im Sinn der Markierung steht noch im Panel-Quelltext");
+}
+
+/* ── 0.75.1 Teil 5 (S1–S4) und Teil 6 (Z1) · Anker, Stufentest, Zustand ── */
+{
+  const q = new M.Panel(); q._nowIso = F.TODAY;
+  const rt = { tests: [{ activity_id: "1", date: "2026-09-16" }], sources: [],
+    latest: { date: "2026-09-16", result: {
+      hrvt1: { alpha: 0.75, watts: 213, hr: 178 }, hrvt2: { alpha: 0.5, watts: 233, hr: 185 },
+      hrvt1_pers: { alpha: 1.08, watts: 183, hr: 165 },
+      max_alpha_start: 1.4, pers_alpha: 1.08, reached_anaerobic: true, segment: { points: 1200, r2: 0.98 } } } };
+  q._rtests = rt;
+  const c = F.coach("ready");
+  c.anchors = { ...c.anchors, aerobic_hr: 167, aerobic_power: 162,
+    trend_power: { power_before: 154, power_now: 162, hr_before: 158, hr_now: 167, power_change_pct: 5.2, hr_change: 9 } };
+  const hg = String(q.rHintergrund(c)).replace(/\s+/g, " ");
+  // S1: Feststellung ohne Urteil - keine "praktisch gleiche Herzfrequenz" neben +9 bpm
+  ok(!/praktisch gleicher Herzfrequenz/.test(hg) && !/hat sich nicht verbessert/.test(hg), "S1: das Urteil steht noch neben den Zahlen");
+  ok(/An der aeroben Schwelle: Leistung 154 → 162 W, Puls dort 158 → 167 bpm\./.test(hg), "S1: die Feststellung mit beiden Zahlenpaaren fehlt");
+  const c2 = { ...c, anchors: { ...c.anchors, trend_power: { ...c.anchors.trend_power, power_change_pct: -1.3, power_now: 152, hr_now: 157 } } };
+  ok(/An der aeroben Schwelle: Leistung 154 → 152 W, Puls dort 158 → 157 bpm\./.test(String(q.rHintergrund(c2)).replace(/\s+/g, " ")),
+     "S1 Gegenprobe: bei fallender Leistung steht ein anderer Wortlaut");
+  // S2: beide "ersten Schwellen" nennen ihre Quelle, und ein Satz sagt, dass es zwei Messungen derselben Marke sind
+  ok(/Aerobe Schwelle \(DFA 0,75\) — aus deinen Fahrten/.test(hg), "S2: der Anker nennt seine Quelle nicht in der Kachel");
+  ok(/zwei Messungen derselben Marke/.test(hg) && /alpha 0,75/.test(hg) && /Stufentest vom 16\.09\./.test(hg) && /213 W/.test(hg)
+     && /die Grundlage steuert der Stufentest/.test(hg), "S2: der Satz zu Anker gegen Stufentest fehlt oder nennt nicht beide Quellen");
+  ok(!/weil|Ursache|liegt daran/.test(hg.slice(hg.indexOf("zwei Messungen derselben Marke"), hg.indexOf("zwei Messungen derselben Marke") + 400)),
+     "S2: der Satz behauptet eine Ursache");
+  q._rtests = null;
+  ok(!/zwei Messungen derselben Marke/.test(String(q.rHintergrund(c))), "S2 Gegenprobe: ohne Stufentest steht der Vergleichssatz");
+  q._rtests = rt;
+  const test = String(q.rRampTest(rt)).replace(/\s+/g, " ");
+  ok(/Erste Schwelle \(HRVT1\) · aus dem Stufentest vom 16\.09\./.test(test), "S2: die Stufentest-Kachel nennt ihre Quelle nicht");
+  // S3: die Umrechnung kommt aus HRVT1 und der ersten, personalisierten - nicht "aus beiden Schwellen"; kein "seit 0."
+  ok(!/Aus beiden Schwellen/.test(test) && !/seit 0\./.test(test), "S3: 'Aus beiden Schwellen' oder 'seit 0.68.0' steht noch");
+  ok(/Aus der ersten Schwelle \(HRVT1\) und der ersten, personalisierten kommt die Umrechnung von alpha in Watt/.test(test),
+     "S3: die beiden richtigen Kacheln werden nicht genannt");
+  ok(/Grundlagenkurve/.test(test) && !/Ermüdungskachel/.test(test), "S3/Teil 3: die Stufentest-Karte sagt noch Ermüdungskachel");
+  // Z1: die Skala im Klartext, Zahlen aus band_scale (coach), kein "−3 SD · ±0,5 = Rauschen"
+  const cz = { ...c, band_scale: { swc: 0.5, day: 1.0, drop: 2.0, window: 60 } };
+  const tr = String(q.rTrainer(cz, F.readiness())).replace(/\s+/g, " ");
+  ok(!/SD<\/span>/.test(tr) && !/±0,5 = Rauschen/.test(tr), "Z1: die Skala steht noch in Fachsprache (SD, Rauschen)");
+  ok(/class="zscale"><span>unter dem Normalwert<\/span><span>Normalwert · bis 0,5 gewöhnliche Schwankung · mehr als 2,0 = stark daneben<\/span><span>über dem Normalwert<\/span>/.test(tr),
+     `Z1: die Skala traegt nicht die Woerter des Heute-Reiters (${(tr.match(/class="zscale">.{0,200}/) || [""])[0]})`);
+  const cz2 = { ...c, band_scale: { swc: 0.7, day: 1.5, drop: 2.5, window: 60 } };
+  ok(/bis 0,7 gewöhnliche Schwankung · mehr als 2,5/.test(String(q.rTrainer(cz2, F.readiness())).replace(/\s+/g, " ")), "Z1: die Zahlen der Skala stehen fest im Panel statt aus der Payload");
+}
+
+/* ── 0.75.1 SEITENPROBE · der GANZE Trainer-Reiter (rGoal + rTrainer + rPlanWeeks + rHintergrund) mit der
+   Fixture der Skizze: Vorgabe an, 7 VO2max-Einheiten, 6 SweetSpot, GA-Karten, bewertete und unbewertete Woche,
+   Sonntag. Danach Regel 10: ein zweiter Athlet ohne Markierungen, ohne Stufentest. ── */
+{
+  const q = new M.Panel(); q._nowIso = "2026-09-27";   // Sonntag
+  // Bloecke: 7 VO2max, 6 SweetSpot - Zeilen der Steuerung aus denselben Punkten (dieselbe Zahl wie der Verlauf)
+  const b = F.blocks({ steering_on: true });
+  const mehr = (fam, extra) => {
+    const f = b.families[fam], st = b.steering[fam];
+    const pts = [...f.points, ...extra.map((x) => ({ ...f.points[f.points.length - 1], ...x }))];
+    const rows = [...st.rows, ...extra.map((x, i) => ({ ...st.rows[st.rows.length - 1], date: x.date, watts: x.median_watts,
+      watts_raw: x.median_watts, alpha: x.block_alphas[1] }))];
+    b.families[fam] = { ...f, points: pts, latest: pts[pts.length - 1], sessions: pts.length, to: pts[pts.length - 1].date };
+    const units = rows.slice(-4).map((r) => r.date);
+    b.steering[fam] = { ...st, rows, n_units: rows.length, units, unit_watts: rows.slice(-4).map((r) => r.watts),
+      unit_watts_shown: rows.slice(-4).map((r) => r.watts) };
+  };
+  mehr("vo2max", [{ date: "2026-09-25", median_watts: 243, block_alphas: [0.5, 0.42, 0.4, 0.38] }]);
+  mehr("sweetspot", [{ date: "2026-09-13", median_watts: 190, block_alphas: [0.8, 0.68] },
+                     { date: "2026-09-20", median_watts: 182, block_alphas: [0.82, 0.66] }]);
+  q._blocks = b;
+  q._fatigue = F.fatigue({ v2: F.fatigueV2Block() });
+  const w = F.workouts("voll");
+  const z2 = w.workouts.find((e) => e.key === "z2_90");
+  z2.watt_source = "ga";
+  z2.ga_blocks = [{ label: "gleichmäßig", watts: 143, target: 143, limit: 170, hour: 1, n: 6, load_w: 139.6, alpha: 1.33, mid: 90.6 }];
+  z2.explain = { headline: { watts: 143, hr_low: 138, hr_high: 152 },
+    origin: "aus der Grundlagenkurve: Ziel und Grenze für diese Dauer (Setzung, Umrechnung aus deinem Stufentest)",
+    stage: "marks", cycle: [], units: [], units_count: 6, units_note: "",
+    steps: ["gleichmäßig: Stunde 1 (6 Fahrten) — gehaltene Last 140 W bei alpha 1,33; Grenze 170 W = Last + (alpha − 1,00) × 90,6 W/alpha; Ziel 143 W = Last + (alpha − 1,30) × 90,6 W/alpha."] };
+  const vo = w.workouts.find((e) => e.key === "vo2_4x4");
+  const stv = b.steering.vo2max;
+  const origin = `Die Vorgabe ist der mittlere Wert deiner letzten 4 Einheiten (${stv.units.map(M.dMed).join(", ")}), jeweils ab Block 2: ${stv.watts} W.`;
+  vo.watt_source = "steering";
+  vo.blocks_w = vo.blocks.map(([m, pct, l]) => [m, /^\d$/.test(l) ? stv.watts : Math.round(215 * pct / 100), l]);
+  vo.steering_source = { watts: stv.watts, units: stv.units, unit_watts_shown: stv.unit_watts_shown, n_units: stv.n_units,
+    origin, band: stv.band, hr_band: stv.hr_band, note_blocks: null };
+  vo.explain = { headline: { watts: stv.watts, hr_low: 178, hr_high: 189 }, origin: origin.slice(0, -1) + " (aus deinen Markierungen).",
+    stage: "marks", cycle: [{ key: "ftp", title: "Die FTP bringt dich in Gang.", text: "t1", here: false },
+      { key: "alpha", title: "Deine Einheiten übernehmen.", text: "t2", here: false },
+      { key: "marks", title: "Deine Markierung übernimmt.", text: "t3", here: true }],
+    units: stv.units.slice().reverse().map((d, i) => ({ activity_id: "a" + i, date: d, name: "VO2 " + d,
+      detail: `${stv.unit_watts_shown[stv.units.length - 1 - i]} W ab Block 2` })),
+    units_count: 4, units_note: "ältere Einheiten zählen nicht mehr (3)", steps: [origin] };
+  const v30 = (vo.variants || []).find((e) => e.key === "vo2_3030");
+  if (v30) { v30.watt_source = "ftp"; v30.steering_source = { watts: stv.watts, units: stv.units, n_units: stv.n_units,
+    note_blocks: "Kein Abschnitt dieser Einheit bekommt die gemessene Vorgabe — die Zahlen stehen auf der FTP." }; }
+  q._workouts = w;
+  q._rtests = { tests: [{ activity_id: "1", date: "2026-09-16" }], sources: [],
+    latest: { date: "2026-09-16", result: { hrvt1: { alpha: 0.75, watts: 213, hr: 178 }, hrvt2: { alpha: 0.5, watts: 233, hr: 185 },
+      hrvt1_pers: { alpha: 1.08, watts: 183, hr: 165 }, max_alpha_start: 1.4, pers_alpha: 1.08, reached_anaerobic: true,
+      segment: { points: 1200, r2: 0.98 } } } };
+  const g = F.goal();
+  g.plan.weeks[0].done = { ...g.plan.weeks[0].done, days_left: 0 };
+  g.plan.big_day_cap = { hours: 3.8, from_minutes: 208, from_date: "2026-09-20", factor: 1.1, applied: true };
+  q._planOpen = "2";
+  const c = F.coach("ready");
+  c.anchors = { ...c.anchors, aerobic_hr: 167, aerobic_power: 162,
+    trend_power: { power_before: 154, power_now: 162, hr_before: 158, hr_now: 167, power_change_pct: 5.2, hr_change: 9 } };
+  q._keep = { "trainer:hintergrund": true, "trainer:zustand": true, "trainer:weeks": true, "trainer:weeksrw": true, "trainer:test": true,
+    "fam:grundlage": true, "fam:vo2max": true, "fam:schwelle": true };
+  const html = q.rGoal(g) + q.rTrainer(c, F.readiness()) + q.rPlanWeeks(g, (c.durability || {}).progression) + q.rHintergrund(c);
+  const flat = html.replace(/\s+/g, " ");
+  clean(html, "0.75.1 Seitenprobe Trainer-Reiter");
+  const text = flat.replace(/<style[\s\S]*?<\/style>/g, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+  ok(!/\b(null|undefined|NaN)\b/.test(text), `Seitenprobe: null/undefined/NaN im Text (${(text.match(/.{40}\b(null|undefined|NaN)\b.{20}/) || [""])[0]})`);
+  const punkt = text.match(/\d+\.\d+ ?(W|bpm|h|min|%|W\/alpha)\b/g) || [];
+  ok(!punkt.length, `Seitenprobe: Dezimalpunkt in Zahlen mit Einheit (${punkt.slice(0, 4).join(" | ")})`);
+  ok(!/<th>Schritt<\/th>/.test(flat), "Seitenprobe: 'Schritt' als Spalte bei Vorgabe an");
+  ok(!/ruht auf <b>\d+ Bl[öo]/.test(flat) && !/Median 0,\d{3}\b/.test(flat.slice(flat.indexOf("Leistung je Block"))), "Seitenprobe: 'ruht auf … Median' steht noch");
+  ok(!/\bMarken\b/.test(text), "Seitenprobe: 'Marken' steht noch");
+  ok(!/seit 0\./.test(text), "Seitenprobe: 'seit 0.' steht noch");
+  ok(!/Ermüdungskachel/.test(text), "Seitenprobe: 'Ermüdungskachel' steht noch");
+  const ohneDetails = flat.replace(/<details[\s\S]*?<\/details>/g, "");
+  ok(!/Umkehrung/.test(ohneDetails), `Seitenprobe: 'Umkehrung' ausserhalb des Rechenwegs (${(ohneDetails.match(/.{60}Umkehrung.{30}/) || [""])[0]})`);
+  ok(!/Vorlage \S+ min · Last –|Vorlage null/.test(text), "Seitenprobe: 'Vorlage null min' im Wochenplan");
+  ok(/heute ist der letzte Tag der Woche/.test(text) && !/noch 0 Tage/.test(text), "Seitenprobe: Sonntag zaehlt 'noch 0 Tage'");
+  // dieselbe Groesse = dieselbe Zahl: Watt je Einheit in der Liste == Verlauf (rows.watts der Steuerung)
+  const liste = (flat.match(/(\d+) W ab Block 2<\/li>/g) || []).map((x) => +x.match(/(\d+)/)[1]);
+  ok(liste.length === 4 && liste.every((wv) => stv.rows.some((r) => r.watts === wv)),
+     `Seitenprobe: Watt je Einheit in der Liste != Verlauf (${liste.join(",")})`);
+  ok(/Gewertete Einheiten: 4<\/b> — ältere Einheiten zählen nicht mehr \(3\)/.test(flat) && /deiner letzten 4 Einheiten/.test(flat),
+     "Seitenprobe: gewertete Einheiten != Zahl im Herkunftssatz");
+  ok(new RegExp(`\\(${stv.watts} W aus deinen letzten 4 Einheiten\\)`).test(flat), "Seitenprobe: 30/30 nennt nicht die 4 Einheiten der Vorgabe");
+  ok(/Die Steuerung ruht auf deiner gefahrenen Leistung ab Block 2: <b>243 W<\/b>/.test(flat), "Seitenprobe: Block-Kachel VO2max nennt nicht 243 W ab Block 2");
+  ok(/Die Steuerung ruht auf deiner gefahrenen Leistung ab Block 2: <b>182 W<\/b>/.test(flat), "Seitenprobe: Block-Kachel SweetSpot nennt nicht 182 W (20.09.)");
+  ok(/Art passt heute/.test(text), "Seitenprobe: 'Art passt heute' fehlt");
+  ok(/Grundlage: Grenze 169 W bei 1 h/.test(text) || /Grundlage: Grenze \d+ W bei 1 h/.test(text), "Seitenprobe: N2-Kopfzeile fehlt");
+  ok(/Wie lange trägt die Grundlage\? — die Grundlagenkurve/.test(text), "Seitenprobe: Ueberschrift der Grundlagenkurve fehlt");
+  ok(/An der aeroben Schwelle: Leistung 154 → 162 W, Puls dort 158 → 167 bpm\./.test(text), "Seitenprobe: S1 fehlt");
+  ok(/Aus der ersten Schwelle \(HRVT1\) und der ersten, personalisierten/.test(text), "Seitenprobe: S3 fehlt");
+  ok(!/Der Kreislauf/.test(flat.slice(flat.indexOf("Grundlage 90 min"), flat.indexOf("Grundlage 90 min") + 6000).split("wocard")[0] || ""), "Seitenprobe: Kreislauf auf der GA-Karte");
+  // dieselbe Beschriftung, zwei Fenster? Stufentest-Kacheln und Anker tragen je ihre Quelle
+  ok(/Erste Schwelle \(HRVT1\) · aus dem Stufentest vom 16\.09\./.test(text) && /Aerobe Schwelle \(DFA 0,75\) — aus deinen Fahrten/.test(text), "Seitenprobe: S2 Quellen fehlen");
+
+  // ── Regel 10: ein zweiter Athlet - ohne Markierungen, ohne Stufentest, Vorgabe aus, alte Kurve ──
+  const q2 = new M.Panel(); q2._nowIso = "2026-09-27";
+  q2._blocks = F.blocks({ steering_on: false });
+  q2._fatigue = F.fatigue();
+  q2._workouts = F.workouts();
+  q2._rtests = { tests: [], sources: [], latest: null };
+  q2._keep = q._keep;
+  const c2 = F.coach("ready");
+  c2.anchors = { aerobic_hr: null, aerobic_power: null, n: 1, trend_power: null, source: "zu wenige belastbare DFA-Messungen" };
+  const h2 = q2.rGoal(F.goal("neu")) + q2.rTrainer(c2, F.readiness()) + q2.rPlanWeeks(F.goal("neu"), null) + q2.rHintergrund(c2);
+  clean(h2, "0.75.1 zweiter Athlet");
+  const t2 = h2.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+  ok(!/\b(null|undefined|NaN)\b/.test(t2), "zweiter Athlet: null/undefined/NaN");
+  ok(!/zwei Messungen derselben Marke/.test(t2) && !/243|182|213/.test(t2.replace(/Grundlage 90 min|213 min/g, "")), "zweiter Athlet: Zahlen des ersten Athleten auf der Seite");
+  ok(/<th>Schritt<\/th>/.test(h2) && /Die Steuerung ruht auf <b>\d+ Blöcken<\/b>/.test(h2.replace(/\s+/g, " ")), "zweiter Athlet: ohne Vorgabe fehlt die alte Kette");
+  ok(/Du hast noch keinen Stufentest gefahren/.test(t2), "zweiter Athlet: der leere Stufentest sagt nichts");
 }
 
 SEITE734.then(() => report("test_panel_views"));

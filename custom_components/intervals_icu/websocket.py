@@ -679,7 +679,7 @@ async def websocket_fatigue_dry_run(hass, connection, msg) -> None:
             keep, missing = marks_lib.mask_ranges(
                 laps, marks_lib.marked(entry, "endurance"))
             if missing or not keep:
-                fehlt.append({"activity_id": key, "reason": "Marken ohne Grenzen"})
+                fehlt.append({"activity_id": key, "reason": "Markierungen ohne Grenzen"})
                 continue
         streams[key] = {"dfa_a1": by_name.get("dfa_a1"), "watts": by_name.get("watts"),
                         "heartrate": by_name.get("heartrate"), "keep": keep}

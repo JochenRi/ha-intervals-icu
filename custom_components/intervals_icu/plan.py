@@ -161,6 +161,16 @@ def _week_kind(index: int, pattern: int) -> str:
     return "recovery" if (index + 1) % (pattern + 1) == 0 else "load"
 
 
+
+def _pct(step: float) -> str:
+    """Wachstum je Schritt als ganze Prozentzahl aus dem Faktor (1,12 → "12")."""
+    return f"{round((float(step) - 1) * 100):d}"
+
+
+def _f(value: Any) -> str:
+    """Ein Faktor mit deutschem Komma und zwei Stellen (1,10)."""
+    return f"{float(value):.2f}".replace(".", ",")
+
 def _h(value: float) -> str:
     """A German decimal comma for user-facing hour figures."""
     return f"{value:.1f}".replace(".", ",")
@@ -380,15 +390,22 @@ def plan(profile: dict[str, Any], state: dict[str, Any] | None = None,
             "typical_hours": round(hours, 1),
             "cycle_weeks": cycle,
             "big_week_hours": big_week_hours,
+            # 0.75.1 (W3/W4): woher die Zielfahrt kommt, wann die grosse Woche so lang
+            # wird, und Wachstum je Schritt (BIG_DAY_STEP) samt Deckel (Progression aus
+            # dem Zustand, coach._progression) in EINEM Satz - keine feste Prozentzahl.
             "text": (
-                f"Die {_h(target_hours)}-Stunden-Fahrt passt nicht als fester Anteil in "
-                f"eine {_h(hours)}-Stunden-Woche — sie ist auch nicht so geplant. Sie ist "
-                f"der einzelne große Tag: alle {cycle} Wochen einer, der um rund 12 % "
-                f"wächst, während die Wochen dazwischen normal bleiben. Die Woche des "
-                f"großen Tages läuft dann auf bis zu {_h(big_week_hours)} Stunden — als "
-                "bewusste Ausnahme, danach kommt die Entlastungswoche. So bauen "
-                "Langstreckenfahrer lange Distanzen auch mit kleinen Wochenbudgets auf "
-                "(Audax-Praxis — eine Konvention, kein Studienergebnis)."
+                f"Deine Zielfahrt von {_h(target_hours)} h (aus deinem Ziel) passt nicht als "
+                f"fester Anteil in eine {_h(hours)}-Stunden-Woche — sie ist auch nicht so "
+                f"geplant. Sie ist der einzelne große Tag: alle {cycle} Wochen einer, der um "
+                f"rund {_pct(BIG_DAY_STEP)} % wächst"
+                + (f" (gedeckelt: nie über deine längste gleichmäßige Fahrt × {_f(prog.get('factor'))})"
+                   if cap_hours is not None and prog.get("factor") else "")
+                + ", während die Wochen dazwischen normal bleiben. Die Woche des großen "
+                f"Tages läuft dann, wenn der große Tag bei {_h(target_hours)} h angekommen "
+                f"ist, auf bis zu {_h(big_week_hours)} Stunden — als bewusste Ausnahme, "
+                "danach kommt die Entlastungswoche. So bauen Langstreckenfahrer lange "
+                "Distanzen auch mit kleinen Wochenbudgets auf (Audax-Praxis — eine "
+                "Konvention, kein Studienergebnis)."
             ),
         }
 
@@ -437,7 +454,7 @@ def plan(profile: dict[str, Any], state: dict[str, Any] | None = None,
             "applied": cap_applied,
         },
         "caveat": (
-            "Der große Tag alle paar Wochen mit rund 12 % Zuwachs je Schritt ist eine "
+            f"Der große Tag alle paar Wochen mit rund {_pct(BIG_DAY_STEP)} % Zuwachs je Schritt ist eine "
             "verbreitete Konvention aus der Langstreckenpraxis, kein Studienergebnis. "
             "Die Wochen sind ein Vorschlag auf Basis deiner Angaben — die "
             "Zustandserkennung aus HRV und Ruhepuls hat am Tag selbst Vorrang: ein "
@@ -472,7 +489,7 @@ def _sessions(goal: dict[str, Any], goal_key: str, days: int, week_hours: float,
             workout = "z2_210_late" if late_quality else "z2_150"
             detail = (
                 f"Der große Tag — die Ausnahme, die wächst: alle {cycle} Wochen rund "
-                "12 % länger, dazwischen bleibt der lange Tag gewöhnlich. Gleichmäßig "
+                f"{_pct(BIG_DAY_STEP)} % länger, dazwischen bleibt der lange Tag gewöhnlich. Gleichmäßig "
                 "knapp unter der aeroben Schwelle. "
                 + ("Die letzten 30–40 Minuten mit 2×10 min zügig — Qualität im "
                    "ermüdeten Zustand ist genau das, was das Ziel verlangt."

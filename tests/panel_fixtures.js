@@ -1007,13 +1007,14 @@ function goal(kind) {
     phase_note: "Umfang und aerobe Basis.", weeks_left: 30 - index,
     hours, long_day_hours: long, big_day: !!big,
     sessions: [
-      { role: "long", title: `Langer Tag — ${long} h`, workout: "z2_90",
+      // Rule 9: der Erzeuger (plan._h) schreibt das Komma - "3,5 h", nicht "3.5 h"
+      { role: "long", title: `Langer Tag — ${String(long).replace(".", ",")} h`, workout: "z2_90",
         detail: phase === "specific" ? "Die letzten 30–40 Minuten mit 2×10 min zügig." : "Noch ohne harte Anteile.",
         why: "Lange Einheiten nahe unter der aeroben Schwelle bauen Fettoxidation.",
         fuel: "Durchgehend essen und trinken.", hours: long },
       { role: "quality", title: "SweetSpot 2×20", workout: "sweetspot_2x20",
         detail: "Die harte Einheit der Woche.", why: "Hält die Schwelle oben.", hours: 1.2 },
-      { role: "endurance", title: "Grundlage — 1.4 h", workout: "z2_60",
+      { role: "endurance", title: "Grundlage — 1,4 h", workout: "z2_60",
         detail: "Gleichmäßig, DFA über 0,75.", why: "75–80 % der Einheiten.", hours: 1.4 },
     ],
   });
@@ -1049,7 +1050,7 @@ function goal(kind) {
               { date: "2026-09-08", name: "Feierabendrunde", sport: "Rad", group: "ride", hours: 1.2, load: 70, intensity: 68 },
               { date: "2026-09-10", name: "Runde zwei", sport: "Rad", group: "ride", hours: 1.2, load: 72, intensity: 69 },
             ],
-            note: "Gefahren gegen vorgesehen — welche Fahrt welche geplante Einheit war, entscheidest du. Die Familie einer Fahrt kommt aus deinen Marken oder aus der Paarung in intervals.icu; geraten wird nichts." },
+            note: "Gefahren gegen vorgesehen — welche Fahrt welche geplante Einheit war, entscheidest du. Die Familie einer Fahrt kommt aus deinen Markierungen oder aus der Paarung in intervals.icu; geraten wird nichts." },
     sessions: [
       { ...w.sessions[0], ...card("z2_90", "Grundlage", "Aerobe Basis", 210,
           [[10, 55, "Einrollen"], [195, 68, "gleichmäßig"], [5, 50, "Ausrollen"]], [138, 152],
@@ -1096,7 +1097,7 @@ function goal(kind) {
       // only the current week carries grades (docs/ausbau.md I3)
       no_verdict_note: "Bewertet wird erst in der Woche selbst. Das Lastbudget rechnet aus den letzten sechs Tagen, der Zustand aus den Werten von heute — Budget und Zustand von übernächstem Donnerstag kennt niemand, auch dieses Panel nicht.",
       stages: {
-        green: { label: "grün", word: "passt {tag}", detail: "Der Zustand trägt diese Art. Liegt die Last über der Obergrenze, bleibt die Art und die Menge wird gekürzt." },
+        green: { label: "grün", word: "Art passt {tag}", detail: "Der Zustand trägt diese Art. Liegt die Last über der Obergrenze, bleibt die Art und die Menge wird gekürzt." },
         yellow: { label: "gelb", word: "geht, kostet mehr", detail: "Der Zustand trägt nur bedingt." },
         stimulus: { label: "Reiz", word: "gewollter Überreiz", detail: "Über der Obergrenze, aber der Zustand trägt und die letzten Tage boten Erholung." },
         red: { label: "rot", word: "{tag} nicht", detail: "Der Zustand spricht dagegen. Nur ohne Zustand (keine HRV-Basislinie) entscheidet die Last." },
@@ -1395,6 +1396,8 @@ function laps(kind) {
  * Shape since 0.32.0: ONE voice - the assessment. No recommendation, no
  * plan ladder, no session menu; the session list comes from workouts(). */
 function coach(kind) {
+  // 0.75.1 (Z1): band_scale wie coach.band_scale() - dieselben Konstanten wie im Heute-Payload
+  const band_scale = { swc: 0.5, day: 1.0, drop: 2.0, window: 60 };
   const anchors = { aerobic_hr: 157, aerobic_power: 158, n: 30,
     trend_power: { power_before: 155, power_now: 158, hr_before: 157, hr_now: 157,
                    power_change_pct: 2.2, hr_change: -0.4 },
@@ -1528,13 +1531,13 @@ function coach(kind) {
                detail: "unter drei Wochen Wellness-Daten" },
   };
   if (kind === "slump") {
-    return { state: states.slump, layoff: { days: 0, phase: null, note: null },
+    return { band_scale, state: states.slump, layoff: { days: 0, phase: null, note: null },
       anchors, durability, habit: null, hard_days_last_7: 0, trained_today: false,
       reasons: [{ weil: "Einbruch", quelle: "Plews/Altini", text: "Werte außerhalb des Normalbereichs." }],
       warnings: [], evidence };
   }
   if (kind === "rebound") {
-    return { state: states.rebound,
+    return { band_scale, state: states.rebound,
       layoff: { days: 7, last: "2026-09-04", phase: "wiedereinstieg",
                 note: "Bis etwa zwei Wochen Pause kostet vor allem das Plasmavolumen Leistung." },
       anchors, durability, durabilityClear, habit: { n: 6, median_intensity: 85, hard_share: 83 },
@@ -1546,19 +1549,19 @@ function coach(kind) {
       evidence };
   }
   if (kind === "unknown") {
-    return { state: states.unknown, layoff: { days: null, phase: null, note: null },
+    return { band_scale, state: states.unknown, layoff: { days: null, phase: null, note: null },
       anchors: { aerobic_hr: null, aerobic_power: null, n: 1, trend_power: null,
                  source: "zu wenige belastbare DFA-Messungen" },
       durability: null, habit: null, hard_days_last_7: 0, trained_today: false,
       reasons: [], warnings: [], evidence };
   }
   if (kind === "trained") {
-    return { state: states.ready, layoff: { days: 0, phase: null, note: null },
+    return { band_scale, state: states.ready, layoff: { days: 0, phase: null, note: null },
       anchors, durability, habit: null, hard_days_last_7: 1, trained_today: true,
       reasons: [{ weil: "im Normalbereich", quelle: "Javaloyes", text: "Ein harter Reiz ist möglich." }],
       warnings: [], evidence };
   }
-  return { state: states.ready, layoff: { days: 1, phase: null, note: null },
+  return { band_scale, state: states.ready, layoff: { days: 1, phase: null, note: null },
     anchors, durability, habit: { n: 6, median_intensity: 85, hard_share: 83 },
     hard_days_last_7: 0, trained_today: false,
     reasons: [{ weil: "im Normalbereich", quelle: "Javaloyes", text: "Ein harter Reiz ist möglich." }],
@@ -1574,7 +1577,7 @@ function coach(kind) {
  * in workouts.py - a fixture that drifts from the backend tests nothing. */
 const STAGE_WORDS = {
   // 0.72.2: die Worte wie workouts.STAGES - der Tag als Platzhalter, das Panel setzt ihn ein
-  green:    { label: "grün", word: "passt {tag}" },
+  green:    { label: "grün", word: "Art passt {tag}" },
   yellow:   { label: "gelb", word: "geht, kostet mehr" },
   stimulus: { label: "Reiz", word: "gewollter Überreiz" },
   red:      { label: "rot",  word: "{tag} nicht" },
@@ -1639,9 +1642,10 @@ function workouts(kind) {
     ramp.watt_source = "steering";
     ramp.ramp_segment = { index: 1, label: "Rampe 142\u2013300 W (5 W/min)", start_w: 142, end_w: 300, start_pct: 66, end_pct: 140 };
     ramp.ramp_protocol = { start_w: 142, end_w: 300, minutes: 37,
-      start_source: { kind: "ga", label: "Umkehrung (Grundlage 1 h)", share: 0.9, selection: null },
+      // Rule 9: das Etikett ist SOURCE_LABEL["ga"] des Erzeugers (0.75.1: Grundlagenkurve)
+      start_source: { kind: "ga", label: "Setzung: Ziel und Grenze der Grundlagenkurve für diese Dauer", share: 0.9, selection: null },
       end_source: { kind: "steering", label: "deine VO2max-Vorgabe", lead: { watts: 250, alpha: null }, reserve_min: 10, reserve_w: 50, selection: null } };
-    ramp.derivation = ["Start 142 W — Umkehrung", "Ende 300 W — deine VO2max-Vorgabe: Leitzahl 250 W", "Reserve 50 W = 10 min × 5 W/min. SETZUNG", "Dauer 32 min"];
+    ramp.derivation = ["Start 142 W — Setzung: Ziel und Grenze der Grundlagenkurve für diese Dauer", "Ende 300 W — deine VO2max-Vorgabe: Leitzahl 250 W", "Reserve 50 W = 10 min × 5 W/min. SETZUNG", "Dauer 32 min"];
     const lng = mk("z2_210_late", "long", "Lange Fahrt", "Lange Fahrt 3,5 h mit Endblock", 210, 175, 66,
       [[10, 55, "Einrollen"], [180, 68, "gleichmäßig", true], [15, 85, "Endblock"], [5, 50, "Ausrollen"]],
       "- 10m 55%", [138, 152], "ok");

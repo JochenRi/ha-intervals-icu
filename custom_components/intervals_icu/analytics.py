@@ -1263,7 +1263,7 @@ def week_done(data: dict[str, Any], start: str, today: str | None = None) -> dic
         "paired": False,
         "note": (
             "Gefahren gegen vorgesehen — welche Fahrt welche geplante Einheit war, "
-            "entscheidest du. Die Familie einer Fahrt kommt aus deinen Marken oder aus "
+            "entscheidest du. Die Familie einer Fahrt kommt aus deinen Markierungen oder aus "
             "der Paarung in intervals.icu; geraten wird nichts."
         ),
     }

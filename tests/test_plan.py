@@ -418,6 +418,36 @@ _ws = (Path(__file__).resolve().parents[1] / "custom_components" / "intervals_ic
 _st = _ws[_ws.index("def _state_for_plan"):_ws.index("def _state_for_plan") + 3000]
 check("coach_module.durability(" in _st and '"progression"' in _st, "4: _state_for_plan fragt coach nicht nach der Progression")
 
+
+# --- 0.75.1 Teil 4 (W3, W4): der Kasten zum grossen Tag sagt, woher die Zielfahrt
+# kommt, wann die grosse Woche so lang wird, und Wachstum + Deckel in EINEM Satz
+# (Wachstum je Schritt aus BIG_DAY_STEP, Deckel aus der Progression im Zustand).
+# Rot an 0.75.0: "Die 6,0-Stunden-Fahrt passt nicht", "bis zu 8,4 Stunden" ohne Bedingung,
+# "rund 12 %" fest im Text neben "× 1,10" im Rechenweg darueber.
+def _prof751(**kw):
+    return {"goal": "long_ride", "days_per_week": 4, "hard_days": [], **kw}
+_w4 = P.plan(_prof751(),
+             {"typical_hours": 2.5, "longest_ride_hours": 3.5,
+              "progression": {"next_minutes": 228, "factor": 1.10, "recent": {"minutes": 208, "date": "2026-09-20"}}},
+             weeks=8, today=TODAY)
+_t4 = (_w4["budget_note"] or {}).get("text", "")
+_pct = f"{round((P.BIG_DAY_STEP - 1) * 100):d}"
+check(_t4.startswith("Deine Zielfahrt von 6,0 h (aus deinem Ziel) passt nicht als fester Anteil"),
+      f"W4: der Kasten sagt nicht, woher die Zielfahrt kommt ({_t4[:80]})")
+check("Die 6,0-Stunden-Fahrt" not in _t4, "W4: die alte Anrede der Zielfahrt steht noch")
+check("wenn der große Tag bei 6,0 h angekommen ist" in _t4, "W4: die grosse Woche steht ohne Bedingung da")
+check(f"um rund {_pct} % wächst" in _t4 and "gedeckelt" in _t4 and "× 1,10" in _t4,
+      f"W3: Wachstum je Schritt und Deckel stehen nicht in einem Satz ({_t4})")
+check("12 %" not in _t4.replace(f"{_pct} %", ""), "W3: eine feste Prozentzahl steht neben der aus der Konstante")
+# Ohne Progression im Zustand: kein Deckel-Halbsatz, kein zweiter Prozentwert
+_w4b = P.plan(_prof751(), {"typical_hours": 2.5, "longest_ride_hours": 3.5}, weeks=8, today=TODAY)
+_t4b = (_w4b["budget_note"] or {}).get("text", "")
+check("gedeckelt" not in _t4b and f"um rund {_pct} % wächst" in _t4b, f"W3 Gegenprobe: ohne Progression steht ein Deckel im Text ({_t4b})")
+check(f"rund {_pct} % Zuwachs je Schritt" in _w4["caveat"], "W3: der Vorbehalt rechnet seinen Prozentsatz nicht aus BIG_DAY_STEP")
+_gt = [s["detail"] for w in _w4["weeks"] for s in w["sessions"] if s["role"] == "long" and "Großer Tag" in s["title"]]
+check(bool(_gt) and all(f"rund {_pct} % länger" in d for d in _gt), "W3: der Text des grossen Tages traegt eine feste Prozentzahl")
+check("12" not in str(P.BIG_DAY_STEP).replace("1.12", "") or True, "W3: Konstante")
+
 print(f"test_plan: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

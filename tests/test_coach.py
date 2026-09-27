@@ -3409,6 +3409,19 @@ check('"swc": 0.5' not in _i749.getsource(coach.signals) and '"swc": SWC_SD' in 
       "0.74.9: signals() liefert swc als Literal statt SWC_SD")
 eq(coach.signals(build())["swc"], 0.5, "0.74.9: signals()['swc'] nicht bitgleich")
 
+
+# --- 0.75.1 (Z1): die Skala des Trainer-Zustands liest dieselben Zahlen wie der Heute-Reiter - EIN
+# Erzeuger coach.band_scale(), im Trainer-Payload (coach.coach) wie in coach.today. Rot an 0.75.0:
+# coach() trug kein band_scale, das Panel hatte "−3 SD · ±0,5 = Rauschen" als Literal.
+_z1 = coach.coach(build())
+eq(_z1.get("band_scale"), coach.band_scale(), "0.75.1 Z1: der Trainer-Payload traegt band_scale nicht aus band_scale()")
+eq(coach.today(build()).get("band_scale"), _z1.get("band_scale"), "0.75.1 Z1: Heute und Trainer lesen verschiedene Skalen")
+check(all(coach.band_scale().get(k) == v for k, v in {"swc": coach.SWC_SD, "day": coach.DAY_SWING_SD,
+      "drop": coach.HRV_DROP_SD, "window": _bl747.WINDOW}.items()), "0.75.1 Z1: band_scale() liest nicht die Konstanten")
+# Regel 9: die Panel-Fixture coach(kind) traegt band_scale wie coach.coach
+check("const band_scale = { swc: " + str(coach.SWC_SD) in _fx747 and "return { band_scale, state: states." in _fx747,
+      "0.75.1 Regel 9: Fixture coach() traegt band_scale nicht wie coach.coach")
+
 print(f"test_coach: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

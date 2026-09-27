@@ -84,7 +84,7 @@ BLOCK_SWITCH = "blocks_from_marks"
 # Quellen-Reiter (Zeile unter dem Blockschalter), Rechenweg der Ermuedungskachel,
 # PROJEKTSTAND §2. Die Liste steht HIER, das Panel liest sie aus der Payload.
 HIDDEN_FAMILIES: tuple[str, ...] = ("tempo",)
-HIDDEN_NOTE = ("Tempo wird weiter gemessen — Marken und Messung bleiben —, trägt aber "
+HIDDEN_NOTE = ("Tempo wird weiter gemessen — Markierungen und Messung bleiben —, trägt aber "
                "nichts mehr: keine Wattvorgabe, keine Kachel, keine Sprosse der "
                "Umrechnung (seit 0.67.0).")
 

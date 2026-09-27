@@ -617,7 +617,11 @@ const CHART_FROZEN = {
   // W2-Vorgabe (SweetSpot 193, VO2max 248 statt 190/250), der Kachelsatz TILE_INSIDE und der
   // Herkunftssatz im Aufklappteil lauten nach §3; Streifen, Formelzeile und Chips unveraendert.
   // Alt: fam 5b827b517a726ee0.
-  const want = { heute: "49b9988252ffbb4a", morgen: "7af6d0f4aec93450", fatigue: "47bfaad6a9fe54e0", fam: "1d82c2e81e4004f5" };
+  // 0.75.1 neu gesetzt (heute, morgen, fatigue): gewollte Aenderung NUR in den Chip-Titeln "aus deinen
+  // Markierungen"/"keine Markierung, …" (W5) und in der Kachel-Ueberschrift "Grundlagenkurve — Leistung über der
+  // Fahrtdauer" (Teil 3, SKIZZE_0.75.1). Gegen 81ddeed (0.75.0) gerechnet: sonst bytegleich; fam unveraendert.
+  // Alt: heute 49b9988252ffbb4a, morgen 7af6d0f4aec93450, fatigue 47bfaad6a9fe54e0.
+  const want = { heute: "18d93e0af78093f4", morgen: "1655dc1ca74ea133", fatigue: "96c644db9015af35", fam: "1d82c2e81e4004f5" };
   for (const [k, v] of Object.entries(snap)) {
     ok(crypto.createHash("sha256").update(String(v)).digest("hex").slice(0, 16) === want[k],
        `0.73.3: ${k} rendert anders als in 0.73.2 (Momentaufnahme; bei gewollter Aenderung neu setzen)`);

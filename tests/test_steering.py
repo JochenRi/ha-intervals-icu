@@ -369,14 +369,17 @@ ok("F1 SweetSpot: die Herkunft sagt 'Rueckfall auf die FTP'", "Rückfall" not in
 ok("F1 SweetSpot: die Herkunft nennt die Vorgabe nicht", "Vorgabe" in str(_ss_x.get("origin")))
 check("F1 SweetSpot: Stufe im Kreislauf = marks (Auswahl aus Markierungen)", _ss_x.get("stage"), "marks")
 check("F1 SweetSpot: Kopfzahl = Vorgabe", (_ss_x.get("headline") or {}).get("watts"), _st2["sweetspot"]["watts"])
-check("F1 SweetSpot: gewertete Einheiten = n_units der Steuerung", _ss_x.get("units_count"), _st2["sweetspot"]["n_units"])
+# 0.75.1 (R3): gezaehlt werden die Einheiten der VORGABE, nicht n_units (5 gegen 4 - der
+# Herkunftssatz derselben Karte sagt "letzten 4 Einheiten").
+check("F1 SweetSpot: gewertete Einheiten = Einheiten der Vorgabe", _ss_x.get("units_count"), len(_st2["sweetspot"]["units"]))
 ok("F1 SweetSpot: der Rechenweg nennt den Herkunftssatz (W2), nicht Startwert und Schritte",
    _st2["sweetspot"]["origin"] in (_ss_x.get("steps") or [])
    and "Startwert" not in " ".join(_ss_x.get("steps") or []))
-check("F1 SweetSpot: die Herkunft ist derselbe Satz", _ss_x.get("origin"), _st2["sweetspot"]["origin"] + " (SEL-M)")
+# 0.75.1 (K6): die Klammer der Auswahl steht vor dem Punkt
+check("F1 SweetSpot: die Herkunft ist derselbe Satz", _ss_x.get("origin"), _st2["sweetspot"]["origin"][:-1] + " (SEL-M).")
 ok("F1 SweetSpot: der Rechenweg rechnet in Prozent", "%" not in " ".join(_ss_x.get("steps") or []))
-ok("F1 SweetSpot: die Einheiten stehen da, neueste zuerst",
-   [u.get("date") for u in _ss_x.get("units") or []] == [p["date"] for p in reversed(SS_REAL)])
+ok("F1 SweetSpot: die Einheiten stehen da, neueste zuerst (0.75.1: die der Vorgabe)",
+   [u.get("date") for u in _ss_x.get("units") or []] == list(reversed(_st2["sweetspot"]["units"])))
 # 30/30: die Vorgabe gilt fuer ARBEITSBLOECKE (Block 1-4); Saetze bekommen sie nicht
 # (Entscheidung 0.61.0, "Etiketten ehrlich"). Die Karte muss DAS sagen - nicht "nicht gemessen".
 _v30 = WK.scaled(WK.BY_KEY["vo2_3030"], 200, 146, blocks=_series_ss, steering=_st2)
@@ -737,6 +740,67 @@ check("M7: die Vorschau traegt die eigene Vorgabe", _cmp["sweetspot"]["new_watts
 _cmp0 = steering.compare(_wenig_series)
 ok("M7: ohne genug Einheiten keine 'neue' Wattzahl und kein Delta",
    _cmp0["vo2max"]["new_watts"] is None and _cmp0["vo2max"]["delta"] is None)
+
+
+# --- 0.75.1 Teil 1 (R3/R4/R5): die Karte zaehlt und listet die EINHEITEN DER VORGABE ---
+# Live 27.09.: "Gewertete Einheiten: 6" mit ALLEN Punkten (median_watts, alle
+# Bloecke) - der Herkunftssatz auf derselben Karte sagte "letzten 4 Einheiten",
+# und die Liste zeigte andere Watt als der Verlauf (193 gegen 182 W). Rot an 0.75.0.
+print("\n=== 0.75.1 R3/R4/R5 ===")
+_st2 = steering.state(_series_ss)   # eigene Rechnung: der Name wurde weiter oben umbelegt
+_ss_x = WK.explain(WK.scaled(WK.BY_KEY["sweetspot_2x20"], 200, 146, blocks=_series_ss, steering=_st2),
+                   200, None, _series_ss, None) or {}
+_v30_x = WK.explain(WK.scaled(WK.BY_KEY["vo2_3030"], 200, 146, blocks=_series_ss, steering=_st2),
+                    200, None, _series_ss, None) or {}
+_r3 = _st2["sweetspot"]
+check("R3: gewertete Einheiten = Einheiten der Vorgabe (nicht n_units)",
+      _ss_x.get("units_count"), len(_r3["units"]))
+check("R3: die Liste traegt genau die Einheiten der Vorgabe, neueste zuerst",
+      [u.get("date") for u in _ss_x.get("units") or []], list(reversed(_r3["units"])))
+_rows_r3 = {r["date"]: r for r in _r3["rows"] if r.get("usable")}
+ok("R3: je Einheit die Watt ab Block 2 - dieselbe Zahl wie der Verlauf (rows.watts)",
+   all(u.get("detail") == f"{_rows_r3[u['date']]['watts']} W ab Block 2" for u in _ss_x.get("units") or []))
+ok("R3: aeltere Einheiten stehen als Zeile, nicht in der Liste",
+   _ss_x.get("units_note") == f"ältere Einheiten zählen nicht mehr ({_r3['n_units'] - len(_r3['units'])})"
+   and _r3["n_units"] - len(_r3["units"]) == 1)
+ok("R3: n_units selbst ist unangetastet (Leser: Kachel, websocket, Tests)",
+   _r3["n_units"] == len(_rows_r3) == 5)
+ok("R3: die Liste traegt activity_id und Namen aus der Blockreihe",
+   all(u.get("name") for u in _ss_x.get("units") or []))
+# Trefferzusicherung: die alte Liste (alle Punkte, median_watts) waere laenger und truege andere Watt
+ok("R3 Treffer: die alte Liste waere laenger als die Vorgabe", len(SS_REAL) > len(_r3["units"]))
+ok("R3 Treffer: die Blockwatt aller Bloecke sind nicht die Watt ab Block 2",
+   any(p.get("median_watts") != _rows_r3.get(p["date"], {}).get("watts") for p in SS_REAL if p["date"] in _rows_r3))
+# R4: 30/30 sagt "aus deinen letzten 4 Einheiten", nicht "aus 7 Einheiten" (n_units)
+ok("R4: 30/30 nennt die Zahl der Einheiten der Vorgabe",
+   f"({_st2['vo2max']['watts']} W aus deinen letzten {len(_st2['vo2max']['units'])} Einheiten)" in str(_v30_x.get("origin")))
+ok("R4: 30/30 nennt nicht mehr n_units",
+   f"aus {_st2['vo2max']['n_units']} Einheiten)" not in str(_v30_x.get("origin")))
+# R5: der Kreislauf, Stufe 2, sagt seit W2 nicht mehr "Dein alpha korrigiert unterwegs"
+_c2 = dict((k, (t, x)) for k, t, x in WK.CYCLE)["alpha"]
+ok("R5: Stufe 2 heisst nicht mehr 'Dein alpha korrigiert unterwegs'", "alpha korrigiert" not in _c2[0])
+ok("R5: Stufe 2 nennt die Mindestzahl aus der Konstante und 'ab Block 2'",
+   f"Ab {steering.STEERING_ANCHOR_MIN_UNITS} gemessenen Einheiten" in _c2[1] and "ab Block 2" in _c2[1]
+   and "Daraus rechnen die Vorgaben" not in _c2[1])
+
+
+# Randfall R3: die Liste rundet NICHT selbst aus unit_watts (watts_raw, 2 Stellen) - sie liest rows.watts
+# (unit_watts_shown). Bei 189,495 W stuende sonst 190 in der Liste und 189 im Verlauf.
+_pt_r = [point(f"2026-08-{d:02d}", [0.8, 0.68, 0.7], [180.0, w, w2], [160, 165, 166], [20, 20, 20])
+         for d, w, w2 in ((5, 199.0, 199.0), (14, 200.0, 200.0), (20, 201.0, 201.0), (24, 189.0, 189.99))]
+_rows_r = steering.unit_rows(_pt_r, "sweetspot")
+_tg_r = steering.target(_rows_r, "sweetspot")
+ok("R3 Randfall: die Fixture trifft die Rundungskante (rows.watts != round(watts_raw))",
+   any(r["watts"] != round(r["watts_raw"]) for r in _rows_r))
+check("R3 Randfall: unit_watts_shown ist rows.watts, nicht round(unit_watts)",
+      _tg_r.get("unit_watts_shown"), [r["watts"] for r in _rows_r])
+_ser_r = {"families": {"sweetspot": {"points": _pt_r, "source_ok": True, "latest": _pt_r[-1], "sessions": 4,
+                                     "from": _pt_r[0]["date"], "to": _pt_r[-1]["date"], "hr_window": {"low": 160, "high": 172}}},
+          "selection": {"from_marks": True, "label": "SEL-R"}}
+_st_r = steering.state(_ser_r)
+_x_r = WK.explain(WK.scaled(WK.BY_KEY["sweetspot_2x20"], 200, 146, blocks=_ser_r, steering=_st_r), 200, None, _ser_r, None) or {}
+ok("R3 Randfall: die Karte listet dieselbe Zahl wie der Verlauf (rows.watts)",
+   [u["detail"] for u in _x_r.get("units") or []] == [f"{r['watts']} W ab Block 2" for r in reversed(_rows_r)])
 
 print(f"\ntest_steering: {CHECKS} Prüfungen, {len(failures)} Fehler")
 print("FEHLER:", failures if failures else "keine")
