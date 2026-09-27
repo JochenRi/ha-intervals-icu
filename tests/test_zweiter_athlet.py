@@ -642,6 +642,40 @@ eq("Z12 B: seine Wochenlast aus SEINEN Einheiten (44 + 31), der Tag ohne Zeile m
    (((_th.results or [{}])[0]).get("week_load"), {r["date"]: r["load"] for r in _rec12}.get((_s12 + _dtz.timedelta(days=15)).isoformat())), (75, 31))
 check("Z12 B: sein letzter Tag ist der Endpunkt", bool(_rec12) and _rec12[-1]["date"] == _last12)
 
+print("\n=== Z13. 0.74.7: seine Kacheln in Klartext, aus SEINER Nacht; sein Satz ohne Band; seine Zahlen ===")
+# Die Kachel-Worte kommen aus B's eigener Nacht (dieselbe eine Stelle wie seine Karte), die Zeile 2 aus seiner Richtung.
+ws._pick = lambda hass, athlete_id: FakeCoordinator(_dn)
+_t13 = FakeConn(); ws.websocket_today(None, _t13, {"id": 41})
+_h13 = (_t13.results or [{}])[0]
+_n13 = FakeConn(); ws.websocket_night(None, _n13, {"id": 42, "activity_id": "z10"})
+_p13 = (_n13.results or [{}])[0]
+eq("Z13 0.74.7: Heute laeuft ohne Fehler", _t13.errors, [])
+_sg13 = _h13.get("signals") or []
+check("Z13 Trefferzusicherung: B's Kachel und B's Nacht sind dieselbe Nacht, eine Kachel ungünstig",
+      _h13.get("date") == _night10 and len(_sg13) >= 2 and any(x.get("direction") == "ungünstig" for x in _sg13))
+for _s13 in _sg13:
+    _row13 = ((_p13.get("night") or {}).get(_s13["key"]) or {}).get("word") or {}
+    eq(f"Z13 {_s13['key']}: das Kachel-Wort ist das Wort seiner Nacht (Text und Zahl)", _s13.get("word"), _row13)
+    eq(f"Z13 {_s13['key']}: Zeile 2 aus seiner Richtung", _s13.get("meaning"),
+       {"günstig": "spricht für Erholung", "ungünstig": "spricht gegen Erholung"}.get(_s13.get("direction")))
+# seine Zahlen im Text: die Konstanten, keine Grenze und kein Fenster des ersten Athleten
+eq("Z13: band_scale aus den Konstanten", _h13.get("band_scale"),
+   {"swc": ws.coach_module.SWC_SD, "day": ws.coach_module.DAY_SWING_SD, "drop": ws.coach_module.HRV_DROP_SD,
+    "window": ws.coach_module.baseline.WINDOW})
+# der Hinweis nennt SEINE Werte in Worten (HRV 60 gegen ~70) - wenn er steht
+_ten13 = _h13.get("tension")
+check("Z13: der Hinweis steht nur in Klartext (kein 'Standardabweichung', kein 'Basislinie')",
+      _ten13 is None or ("Standardabweichung" not in _ten13 and "Basislinie" not in _ten13 and _ten13.startswith("Heute liegt ")))
+eq("Z13: keine Zahl des ersten Athleten in B's Heute-Seite",
+   leaks({"signals": _sg13, "band_scale": _h13.get("band_scale"), "tension": _ten13, "gap": _h13.get("signals_gap")}), [])
+# neu mit 19 Naechten: keine Kachel, der Satz mit SEINEM n
+_t13n, _ = _run12(_z12(19))
+_h13n = (_t13n.results or [{}])[0]
+eq("Z13 ohne Band: keine Kachel, sein Satz mit n = 19",
+   (_h13n.get("signals"), (_h13n.get("signals_gap") or {}).get("text")),
+   ([], "gibt es noch keinen Vergleich – die App braucht dafür 20 Nächte mit Werten, bisher sind es 19."))
+eq("Z13 ohne Band: keine Zahl des ersten Athleten", leaks({"gap": _h13n.get("signals_gap")}), [])
+
 print(f"\ntest_zweiter_athlet: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:
     print("   ✗ " + failure)

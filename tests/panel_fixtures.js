@@ -759,15 +759,35 @@ function week(kind) {
     { start: "2026-09-05", end: "2026-09-11" });
 }
 
+/* 0.74.7 (SKIZZE_0.74.7 §2.2/§2.4): die Kachel-Texte und der Schluss des Hinweises, wie coach sie schreibt -
+   test_coach vergleicht SIGW mit coach.SIGNAL_WORDS, SIGM mit coach.SIGNAL_MEANING, TENSION_TAIL mit coach.today (Regel 9) */
+const SIGW = {
+  hrv: { system: "Nervensystem", about: "wie erholt dein Nervensystem ist",
+         limit: "Die Uhr misst nachts – das schwankt mehr als eine Messung morgens im Liegen." },
+  rhr: { system: "Nervensystem", about: "wie erholt dein Nervensystem ist",
+         limit: "Reagiert langsamer als die HRV, schwankt dafür weniger." },
+  sleep: { system: "Verhalten", about: "wie viel du geschlafen hast",
+           limit: "Von der Uhr geschätzt – sagt nichts darüber, wie gut du geschlafen hast." },
+};
+const SIGM = { "günstig": "spricht für Erholung", "ungünstig": "spricht gegen Erholung" };
+const TENSION_TAIL = " – das spricht eher gegen Erholung, reicht aber nicht für einen Einbruch. Einbruch heißt: HRV und Ruhepuls liegen am selben Tag stark daneben (mehr als 2,0), oder einer von beiden an zwei Tagen hintereinander. Ein einzelner Wert an einem Tag ist Rauschen.";
+
 /* everything the Heute page needs, as intervals_icu/today returns it */
 function today(kind) {
   if (kind === "leer") return { available: false };
   // 0.74.5: wie coach.today es schreibt - `shown` aus coach.z_word, moved/direction mit "mehr als" SWC_SD.
   // Ohne eigenes `shown` hat z schon eine Nachkommastelle (dann ist shown = z; test_coach prueft die Live-Zeilen).
-  const sig = (key, label, unit, value, baseline, z, system, limit, shown) =>
-    ({ key, label, unit, value, baseline, z, shown: shown === undefined ? z : shown, system, limit,
-       moved: Math.abs(z) > 0.5,
-       direction: z > 0.5 ? "günstig" : z < -0.5 ? "ungünstig" : "unauffällig" });
+  // 0.74.7 (SKIZZE_0.74.7 §2.2): dazu `word` (Text wie coach.z_word, test_coach bindet Text und shown an z), `meaning`
+  // aus der Richtung und system/about/limit je Signal (SIGW, gebunden an coach.SIGNAL_WORDS - Regel 9).
+  const sig = (key, label, unit, value, baseline, z, text, shown) => {
+    const sh = shown === undefined ? z : shown;
+    const direction = z > 0.5 ? "günstig" : z < -0.5 ? "ungünstig" : "unauffällig";
+    const level = text === "im Normalbereich" ? 0 : ["etwas", "deutlich", "stark"].indexOf(text.split(" ")[0]) + 1;
+    return { key, label, unit, value, baseline, z, shown: sh, ...SIGW[key],
+             word: { level, text, shown: sh }, meaning: SIGM[direction] || null,
+             moved: Math.abs(z) > 0.5,
+             direction };
+  };
   const base = {
     available: true, date: "2026-09-11",
     capacity: "Alles möglich", capacity_text: "Nichts spricht gegen einen harten Reiz.",
@@ -775,13 +795,14 @@ function today(kind) {
     state_text: "Die Werte liegen im gewohnten Band.",
     tension: null,
     signals: [
-      sig("hrv", "Herzratenvariabilität", "ms", 52, 49.2, 0.8, "Autonomes Nervensystem",
-          "Nachtmessung der Uhr, nicht die validierte Morgenmessung im Liegen"),
-      sig("rhr", "Ruhepuls", "bpm", 54, 56.4, 0.9, "Autonomes Nervensystem",
-          "reagiert träger als die HRV, dafür stabiler"),
-      sig("sleep", "Schlafdauer", "h", 7.6, 7.4, 0.2, "Verhalten",
-          "Dauer aus der Uhr geschätzt; kein autonomer Messwert"),
+      sig("hrv", "Herzratenvariabilität", "ms", 52, 49.2, 0.8, "etwas über deinem Normalwert"),
+      sig("rhr", "Ruhepuls", "bpm", 54, 56.4, 0.9, "etwas unter deinem Normalwert"),
+      sig("sleep", "Schlafdauer", "h", 7.6, 7.4, 0.2, "im Normalbereich"),
     ],
+    // 0.74.7 (SKIZZE_0.74.7 §2.1/§2.3): die Zahlen der Texte aus den Konstanten (coach.today, test_coach bindet sie)
+    // und der Satz, wenn keine Kachel ein Band hat (sonst null)
+    band_scale: { swc: 0.5, day: 1.0, drop: 2.0, window: 60 },
+    signals_gap: null,
     recent: [
       { date: "2026-09-05", load: 0, state: "slump" },
       { date: "2026-09-06", load: 0, state: "slump" },
@@ -827,18 +848,19 @@ function today(kind) {
     return { ...base, capacity: "Ruhetag", capacity_text: "Heute nichts. Der Einbruch ist akut.",
       ceiling: 0, state: "slump", state_label: "Einbruch",
       signals: [
-        sig("hrv", "Herzratenvariabilität", "ms", 30, 49.2, -2.7, "Autonomes Nervensystem", "Nachtmessung der Uhr"),
-        sig("rhr", "Ruhepuls", "bpm", 66, 56.4, -3.7, "Autonomes Nervensystem", "reagiert träger"),
-        sig("sleep", "Schlafdauer", "h", 6.1, 7.4, -1.4, "Verhalten", "Dauer geschätzt"),
+        sig("hrv", "Herzratenvariabilität", "ms", 30, 49.2, -2.7, "stark unter deinem Normalwert"),
+        sig("rhr", "Ruhepuls", "bpm", 66, 56.4, -3.7, "stark über deinem Normalwert"),
+        sig("sleep", "Schlafdauer", "h", 6.1, 7.4, -1.4, "deutlich unter deinem Normalwert"),
       ] };
   }
   if (kind === "spannung") {
     return { ...base,
-      tension: "Herzratenvariabilität weicht heute ungünstig von deiner Basislinie ab — aber weder weit genug noch lange genug für einen Einbruch. Die Regel entscheidet über das Mittel der letzten drei Tage.",
+      // 0.74.7 (SKIZZE_0.74.7 §2.4): wie coach.today den Hinweis schreibt - TENSION_TAIL ist an coach gebunden (Regel 9)
+      tension: "Heute liegt deine HRV deutlich unter deinem Normalwert" + TENSION_TAIL,
       signals: [
-        sig("hrv", "Herzratenvariabilität", "ms", 42, 49.2, -1.4, "Autonomes Nervensystem", "Nachtmessung der Uhr"),
-        sig("rhr", "Ruhepuls", "bpm", 56, 56.4, 0.1, "Autonomes Nervensystem", "reagiert träger"),
-        sig("sleep", "Schlafdauer", "h", 7.5, 7.4, 0.1, "Verhalten", "Dauer geschätzt"),
+        sig("hrv", "Herzratenvariabilität", "ms", 42, 49.2, -1.4, "deutlich unter deinem Normalwert"),
+        sig("rhr", "Ruhepuls", "bpm", 56, 56.4, 0.1, "im Normalbereich"),
+        sig("sleep", "Schlafdauer", "h", 7.5, 7.4, 0.1, "im Normalbereich"),
       ] };
   }
   // 0.74.3: ohne gemessene Nacht im Fenster, aber mit einer Einheit, deren Nacht noch fehlt
@@ -848,9 +870,13 @@ function today(kind) {
   if (kind === "neuathlet" || kind === "neuathlet_flach") {
     const flat = kind === "neuathlet_flach";
     return { ...base, signals: [], bands: {}, night: { available: false },
+      // 0.74.7 (§2.1): die Nacht der Kacheln (11.09.) ist dieselbe wie die Nacht nach der Einheit - derselbe Satzteil
+      signals_gap: { gap: flat ? "flat" : "few", n: flat ? 25 : 19, text: flat ? NEU_FLAT : NEU_FEW_19 },
       night_pending: { date: "2026-09-10", name: "Neue Runde", night_date: "2026-09-11", reason: "baseline",
                        gap: flat ? "flat" : "few", n: flat ? 25 : 19, text: flat ? NEU_FLAT : NEU_FEW_19 } };
   }
+  // 0.74.7 (§2.1): die Uhr hat fuer die letzte Nacht gar keine Werte geliefert - keine Kachel, kein Satzteil
+  if (kind === "ohnewerte") return { ...base, signals: [], bands: {}, signals_gap: null };
   if (kind === "missing") {
     return { ...base, night: { available: false },
       night_pending: { date: "2026-09-09", name: "Rehburg-Loccum Gehen", night_date: "2026-09-10", reason: "missing" } };
@@ -875,18 +901,18 @@ function today(kind) {
     const lt = liveToday27(base);
     return { ...lt,
       signals: [
-        sig("hrv", "Herzratenvariabilität", "ms", 53, 48, 0.53, "Autonomes Nervensystem", "Nachtmessung der Uhr, nicht die validierte Morgenmessung im Liegen", 0.6),
-        sig("rhr", "Ruhepuls", "bpm", 55, 56.4, 0.3, "Autonomes Nervensystem", "reagiert träger als die HRV, dafür stabiler", 0.3),
-        sig("sleep", "Schlafdauer", "h", 7.9, 7.3, 0.83, "Verhalten", "Dauer aus der Uhr geschätzt; kein autonomer Messwert", 0.9),
+        sig("hrv", "Herzratenvariabilität", "ms", 53, 48, 0.53, "etwas über deinem Normalwert", 0.6),
+        sig("rhr", "Ruhepuls", "bpm", 55, 56.4, 0.3, "im Normalbereich", 0.3),
+        sig("sleep", "Schlafdauer", "h", 7.9, 7.3, 0.83, "etwas über deinem Normalwert", 0.9),
       ],
       night: { ...night("live27"), activity_date: "2026-09-26", activity_name: "volumen", activity_id: "a-2026-09-26" } };
   }
   // 0.74.5: Grenzfall der Kachel - z genau 0,50 ist "unauffällig", 0,51 "günstig" (Erzeuger: "mehr als")
   if (kind === "grenze05") {
     return { ...base, signals: [
-      sig("hrv", "Herzratenvariabilität", "ms", 50.5, 48, 0.5, "Autonomes Nervensystem", "Nachtmessung der Uhr"),
-      sig("rhr", "Ruhepuls", "bpm", 55.1, 56.4, 0.51, "Autonomes Nervensystem", "reagiert träger", 0.6),
-      sig("sleep", "Schlafdauer", "h", 7.1, 7.4, -0.51, "Verhalten", "Dauer geschätzt", -0.6),
+      sig("hrv", "Herzratenvariabilität", "ms", 50.5, 48, 0.5, "im Normalbereich"),
+      sig("rhr", "Ruhepuls", "bpm", 55.1, 56.4, 0.51, "etwas unter deinem Normalwert", 0.6),
+      sig("sleep", "Schlafdauer", "h", 7.1, 7.4, -0.51, "etwas unter deinem Normalwert", -0.6),
     ] };
   }
   return base;
@@ -1722,4 +1748,4 @@ function dayContext(extra) {
   };
 }
 
-module.exports = { NEU_FEW_19, NEU_FLAT, NEU_CARD_10, NEU_SECOND_11, STAGE_WORDS, stageOf, TODAY, days, load, loadView, LV_KEYS, readiness, activities, streams, thresholds, fatigue, fatigueV2Block, blocks, calendar, pmc, laps, lapsWithBounds, steadyStream, night, NIGHT_RULE, NIGHT_CAVEAT, context, goal, today, week, coach, signals, workouts, dayContext };
+module.exports = { TENSION_TAIL, NEU_FEW_19, NEU_FLAT, NEU_CARD_10, NEU_SECOND_11, STAGE_WORDS, stageOf, TODAY, days, load, loadView, LV_KEYS, readiness, activities, streams, thresholds, fatigue, fatigueV2Block, blocks, calendar, pmc, laps, lapsWithBounds, steadyStream, night, NIGHT_RULE, NIGHT_CAVEAT, context, goal, today, week, coach, signals, workouts, dayContext };

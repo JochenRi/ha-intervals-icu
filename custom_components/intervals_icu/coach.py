@@ -180,10 +180,11 @@ def state(data: dict[str, Any]) -> dict[str, Any]:
     rhr = _series(wellness, "restingHR", days) or _series(wellness, "resting_hr", days)
 
     hrv_days = sorted(hrv)
-    base_days = [d for d in hrv_days if d < today][-60:]
+    # 0.74.7 (§2.6): das Fenster ist baseline.WINDOW - eine Stelle, kein Literal
+    base_days = [d for d in hrv_days if d < today][-baseline.WINDOW:]
     hrv_band = _norm_band([hrv[d] for d in base_days], log=True,
                           weights=[day_context.weight_for(data, d) for d in base_days])
-    rhr_base_days = [d for d in sorted(rhr) if d < today][-60:]
+    rhr_base_days = [d for d in sorted(rhr) if d < today][-baseline.WINDOW:]
     rhr_band = _norm_band([rhr[d] for d in rhr_base_days], log=False,
                           weights=[day_context.weight_for(data, d) for d in rhr_base_days])
 
@@ -237,14 +238,16 @@ def state(data: dict[str, Any]) -> dict[str, Any]:
     slump_day = None
     slump_cause = None
     infection = False
+    # 0.74.7 (SKIZZE_0.74.7 §3, Regel R, Setzung Johannes 27.09.): Einbruch ab "mehr als" HRV_DROP_SD /
+    # RHR_RISE_SD, je Tag und Vortag - wie die Wortstufe "stark" in z_word. Genau 2,00 ist "deutlich", kein Treffer.
     for day in recent:
         zh, zr = z_hrv(day), z_rhr(day)
-        hrv_hit = zh is not None and zh <= -HRV_DROP_SD
-        rhr_hit = zr is not None and zr >= RHR_RISE_SD
+        hrv_hit = zh is not None and zh < -HRV_DROP_SD
+        rhr_hit = zr is not None and zr > RHR_RISE_SD
         prev = _shift(day, -1)
         zh_p, zr_p = z_hrv(prev), z_rhr(prev)
-        persists = ((hrv_hit and zh_p is not None and zh_p <= -HRV_DROP_SD)
-                    or (rhr_hit and zr_p is not None and zr_p >= RHR_RISE_SD))
+        persists = ((hrv_hit and zh_p is not None and zh_p < -HRV_DROP_SD)
+                    or (rhr_hit and zr_p is not None and zr_p > RHR_RISE_SD))
         both = hrv_hit and rhr_hit
         if both or persists:
             slump_day = day
@@ -1289,11 +1292,12 @@ def state_series(data: dict[str, Any]) -> list[dict[str, str]]:
         if zh is None and zr is None:
             out.append(_row(day, "unknown"))
             continue
-        hrv_hit = zh is not None and zh <= -HRV_DROP_SD
-        rhr_hit = zr is not None and zr >= RHR_RISE_SD
+        # 0.74.7 (§3, Regel R): dieselbe Grenze "mehr als" wie state()
+        hrv_hit = zh is not None and zh < -HRV_DROP_SD
+        rhr_hit = zr is not None and zr > RHR_RISE_SD
         prev = _shift(day, -1)
-        persists = ((hrv_hit and z_hrv.get(prev) is not None and z_hrv[prev] <= -HRV_DROP_SD)
-                    or (rhr_hit and z_rhr.get(prev) is not None and z_rhr[prev] >= RHR_RISE_SD))
+        persists = ((hrv_hit and z_hrv.get(prev) is not None and z_hrv[prev] < -HRV_DROP_SD)
+                    or (rhr_hit and z_rhr.get(prev) is not None and z_rhr[prev] > RHR_RISE_SD))
         acute = (hrv_hit and rhr_hit) or persists
         if acute:
             slump_day = day
@@ -1495,10 +1499,10 @@ def _night_inputs(data: dict[str, Any], day: str) -> list[tuple[Any, ...]]:
     """Was eine Nacht fuers Band braucht, je NIGHT_FIELDS-Feld - EINE Stelle (0.74.6 C).
 
     (key, field, use_log, direction, label, unit, raw, wts, current): raw/wts sind die Werte > 0
-    der 60 Wellness-Tage vor `day` mit ihren Gewichten, current der Rohwert der Nacht. Es lesen
+    der baseline.WINDOW Wellness-Tage vor `day` mit ihren Gewichten, current der Rohwert der Nacht. Es lesen
     _night_z (das Band) und _night_gap (warum es keins gibt) - dieselben Eingaben."""
     wellness = data.get("wellness") or {}
-    days = sorted(d for d in wellness if d < day)[-60:]
+    days = sorted(d for d in wellness if d < day)[-baseline.WINDOW:]
     rows: list[tuple[Any, ...]] = []
     for key, field, use_log, direction, label, unit in NIGHT_FIELDS:
         raw = []
@@ -1515,7 +1519,7 @@ def _night_inputs(data: dict[str, Any], day: str) -> list[tuple[Any, ...]]:
 
 
 def _night_z(data: dict[str, Any], day: str) -> dict[str, Any]:
-    """Each wellness field of one night, as a z-score against the 60 days before."""
+    """Each wellness field of one night, as a z-score against the baseline.WINDOW days before."""
     out: dict[str, Any] = {}
     for key, field, use_log, direction, label, unit, raw, wts, current in _night_inputs(data, day):
         band = _norm_band(raw, log=use_log, weights=wts)
@@ -1608,7 +1612,7 @@ def night_rule_text() -> str:
     """Die Regel für "Wie wird das bewertet?" (Skizze §3.3), die Zahlen aus den Konstanten -
     beim Aufruf gelesen, damit Text und Regel nicht auseinanderlaufen können."""
     return ("Hier geht es darum, wie du die Einheit verkraftet hast – nicht darum, ob du heute trainieren kannst. "
-            "Verglichen wird deine HRV in den zwei Nächten nach der Einheit mit deinen letzten 60 Nächten. "
+            f"Verglichen wird deine HRV in den zwei Nächten nach der Einheit mit deinen letzten {baseline.WINDOW} Nächten. "
             f"Deutlich darunter (mehr als {_de1(NIGHT_TOO_MUCH_Z)}) oder beide Nächte etwas darunter "
             f"(mehr als {_de1(NIGHT_DIGESTED_Z)}): war zu viel. "
             f"Etwas darunter (mehr als {_de1(NIGHT_DIGESTED_Z)}): hat Kraft gekostet. Sonst: gut verkraftet. "
@@ -2028,7 +2032,7 @@ def _signal_bands(data: dict[str, Any], day: str) -> dict[str, Any]:
     eine andere Zahl als das Urteil daneben.
     """
     wellness = data.get("wellness") or {}
-    days = sorted(d for d in wellness if d < day)[-60:]
+    days = sorted(d for d in wellness if d < day)[-baseline.WINDOW:]
     out: dict[str, Any] = {}
     for key, field, use_log, direction, label, unit in NIGHT_FIELDS:
         raw = []
@@ -2052,7 +2056,8 @@ def _signal_bands(data: dict[str, Any], day: str) -> dict[str, Any]:
         entry = {
             "baseline": round(at(0), 2),
             "noise": [round(at(-SWC_SD), 2), round(at(SWC_SD), 2)],
-            "usual": [round(at(-1), 2), round(at(1), 2)],
+            # 0.74.7 (§2.3): die gewohnte Schwankung ist DAY_SWING_SD - dieselbe Zahl wie im Text (bitgleich zu 1)
+            "usual": [round(at(-DAY_SWING_SD), 2), round(at(DAY_SWING_SD), 2)],
             "slump": round(at(-HRV_DROP_SD if direction > 0 else HRV_DROP_SD), 2),
             "unit": unit,
             "weighted": band.weighted,
@@ -2174,6 +2179,43 @@ def judged_day(data: dict[str, Any]) -> tuple[str | None, bool]:
     return day, trained
 
 
+# 0.74.7 (SKIZZE_0.74.7 §2.2/§2.3, Wortlaut woertlich, freigegeben 27.09.): WAS JEDE KACHEL UEBER IHR SIGNAL SAGT -
+# eine Stelle. system = rechts oben, about = "Worüber dieser Wert etwas sagt", limit = Zeile 3 (klein, grau),
+# named = Artikel+Name im Hinweis `tension`. Das Panel schreibt keinen dieser Saetze selbst.
+SIGNAL_WORDS: dict[str, dict[str, str]] = {
+    "hrv": {"system": "Nervensystem", "about": "wie erholt dein Nervensystem ist",
+            "limit": "Die Uhr misst nachts – das schwankt mehr als eine Messung morgens im Liegen.",
+            "named": "deine HRV"},
+    "rhr": {"system": "Nervensystem", "about": "wie erholt dein Nervensystem ist",
+            "limit": "Reagiert langsamer als die HRV, schwankt dafür weniger.",
+            "named": "dein Ruhepuls"},
+    "sleep": {"system": "Verhalten", "about": "wie viel du geschlafen hast",
+              "limit": "Von der Uhr geschätzt – sagt nichts darüber, wie gut du geschlafen hast.",
+              "named": "deine Schlafdauer"},
+}
+# Zeile 2 der Kachel - nur bei "günstig"/"ungünstig" (direction), sonst keine
+SIGNAL_MEANING = {"günstig": "spricht für Erholung", "ungünstig": "spricht gegen Erholung"}
+
+
+def _tension_text(unfavourable: list[dict[str, Any]], favourable: list[dict[str, Any]], state_key: str) -> str | None:
+    """DER HINWEIS, WENN KACHEL UND ZUSTAND AUSEINANDERGEHEN (0.74.7, SKIZZE_0.74.7 §2.4, Wortlaut woertlich).
+
+    Beschreibt die Regel so, wie state() sie rechnet: Einbruch = beide Signale am selben Tag mehr als
+    HRV_DROP_SD daneben, oder eines an zwei Tagen hintereinander (§3, "mehr als"); die Erholung danach
+    zaehlt ueber den Schnitt der letzten drei Tage (rebound: HRV-z >= 0 und Ruhepuls-z <= 0). Eine Zahl -
+    HRV_DROP_SD == RHR_RISE_SD (Waechter in test_coach)."""
+    if unfavourable and state_key in ("ready", "elevated"):
+        listed = " und ".join(f"{SIGNAL_WORDS.get(s['key'], {}).get('named', s['label'])} {(s.get('word') or {}).get('text')}"
+                              for s in unfavourable)
+        return (f"Heute liegt {listed} – das spricht eher gegen Erholung, reicht aber nicht für einen Einbruch. "
+                f"Einbruch heißt: HRV und Ruhepuls liegen am selben Tag stark daneben (mehr als {_de1(HRV_DROP_SD)}), "
+                "oder einer von beiden an zwei Tagen hintereinander. Ein einzelner Wert an einem Tag ist Rauschen.")
+    if favourable and state_key in ("slump", "recovering"):
+        return ("Einzelne Werte sehen heute gut aus, der Zustand bleibt trotzdem gedämpft: nach einem Einbruch zählt, "
+                "ob der Schnitt der letzten drei Tage wieder mindestens bei deinem Normalwert liegt, nicht ein guter Morgen.")
+    return None
+
+
 def today(data: dict[str, Any], events: Any = None, day: str | None = None) -> dict[str, Any]:
     wellness = data.get("wellness") or {}
     if not wellness:
@@ -2188,25 +2230,25 @@ def today(data: dict[str, Any], events: Any = None, day: str | None = None) -> d
     # the signals, each kept separate and named by the system it reports on
     signals: list[dict[str, Any]] = []
     z_now = _night_z(data, current)
-    SYSTEM = {
-        "hrv": ("Autonomes Nervensystem", "Nachtmessung der Uhr, nicht die validierte "
-                                          "Morgenmessung im Liegen"),
-        "rhr": ("Autonomes Nervensystem", "reagiert träger als die HRV, dafür stabiler"),
-        "sleep": ("Verhalten", "Dauer aus der Uhr geschätzt; kein autonomer Messwert"),
-    }
     for key, entry in z_now.items():
-        system, limit = SYSTEM.get(key, ("", ""))
+        words = SIGNAL_WORDS.get(key, {})
         z = entry["z"]
+        direction = "günstig" if z > SWC_SD else "ungünstig" if z < -SWC_SD else "unauffällig"
         signals.append({
             "key": key, "label": entry["label"], "unit": entry["unit"],
             "value": entry["value"], "baseline": entry["baseline"], "z": z,
             # 0.74.5 (SKIZZE_0.74.5 §2): die Kachelzahl ist `shown` aus coach.z_word - dieselbe Zahl
             # wie die Klammer der Nacht (die Klammer zeigt ihren Betrag). Das Panel rundet nicht selbst.
             "shown": (entry.get("word") or {}).get("shown"),
-            "system": system, "limit": limit,
+            # 0.74.7 (SKIZZE_0.74.7 §2.2): Zeile 1 der Kachel ist `word` - DASSELBE Wort wie die Werte-Zeile der Nacht
+            # (_night_z, z_word); das Panel zeigt es ueber nightSaid. Zeile 2 `meaning`, Zeile 3 `limit`, `about` fuers
+            # Aufklappen, `system` rechts oben - alles aus SIGNAL_WORDS.
+            "word": entry.get("word"),
+            "meaning": SIGNAL_MEANING.get(direction),
+            "system": words.get("system", ""), "about": words.get("about", ""), "limit": words.get("limit", ""),
             # 0.74.5: "mehr als" SWC_SD, genau wie z_word - bei z = 0,50 "unauffällig" / "im Normalbereich"
             "moved": abs(z) > SWC_SD,
-            "direction": "günstig" if z > SWC_SD else "ungünstig" if z < -SWC_SD else "unauffällig",
+            "direction": direction,
         })
 
     # recent training - the other half of "how does this fit what you did"
@@ -2274,32 +2316,25 @@ def today(data: dict[str, Any], events: Any = None, day: str | None = None) -> d
         **wsessions,
     }
 
-    tension = None
-    unfavourable = [s for s in signals if s["direction"] == "ungünstig"]
-    favourable = [s for s in signals if s["direction"] == "günstig"]
-    if unfavourable and condition["state"] in ("ready", "elevated"):
-        # 0.73.0 (E6): "weicht/weichen ungünstig ab" statt "liegt unter" - ein
-        # ungünstiger Ruhepuls liegt ÜBER der Basislinie (59 gegen 56).
-        names = " und ".join(s["label"] for s in unfavourable)
-        verb = "weichen" if len(unfavourable) > 1 else "weicht"
-        tension = (
-            f"{names} {verb} heute ungünstig von deiner Basislinie ab — aber weder weit genug noch "
-            f"lange genug für einen Einbruch. Die Regel entscheidet über das Mittel der "
-            f"letzten drei Tage und ab {HRV_DROP_SD:.0f} Standardabweichungen; ein "
-            "einzelner Tag darunter ist Rauschen. Wenn es morgen wieder so aussieht, "
-            "ist es keins mehr."
-        )
-    elif favourable and condition["state"] in ("slump", "recovering"):
-        tension = (
-            "Einzelne Werte sehen heute gut aus, der Zustand bleibt trotzdem gedämpft: "
-            "nach einem Einbruch zählt, ob die letzten Tage zusammen wieder über der "
-            "Basislinie liegen, nicht ein guter Morgen."
-        )
+    # 0.74.7 (SKIZZE_0.74.7 §2.4): der Hinweis beschreibt die Regel, wie state() sie rechnet - Aufzaehlung aus word.text
+    tension = _tension_text([s for s in signals if s["direction"] == "ungünstig"],
+                            [s for s in signals if s["direction"] == "günstig"], condition["state"])
+    # 0.74.7 (§2.1): keine Kachel - Wert da, Band fehlt: der Satzteil aus night_baseline_words (0.74.6, eine Stelle);
+    # gar kein Wert: None (das Panel sagt dann "hat deine Uhr keine Werte geliefert")
+    signals_gap = None
+    if not signals:
+        gap = _night_gap(data, current)
+        if gap:
+            signals_gap = {**gap, "text": night_baseline_words("", gap)}
 
     return {
         "available": True,
         "date": current,
         "tension": tension,
+        # 0.74.7 (SKIZZE_0.74.7 §2.1/§2.3): die Zahlen der Heute-Texte, beim Aufruf aus den Konstanten gelesen -
+        # das Panel traegt keine Grenze und kein Fenster als Literal
+        "band_scale": {"swc": SWC_SD, "day": DAY_SWING_SD, "drop": HRV_DROP_SD, "window": baseline.WINDOW},
+        "signals_gap": signals_gap,
         "capacity": capacity,
         "capacity_text": capacity_text,
         "ceiling": ceiling,

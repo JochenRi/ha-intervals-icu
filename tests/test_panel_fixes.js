@@ -195,18 +195,22 @@ const acts = F.activities(), thr = F.thresholds();
   // 0.9.1: values could be a day old with nothing saying so. The rule survived
   // the redesign: the page dates itself, every signal dates itself, and a value
   // that is not from today is marked - a wellness record fills up over the day.
-  const fresh = p.rHeute({ ...F.today(), date: new Date().toISOString().slice(0, 10) });
+  // 0.74.7 umgestellt (SKIZZE_0.74.7 §2.1/§2.2): die Kacheln tragen keine eigene Zeile „Stand …“ mehr - die
+  // Ueberschrift nennt die Nacht einmal fuer alle drei, und ist die Nacht zu heute noch nicht da, sagt sie das.
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const fresh = p.rHeute({ ...F.today(), date: todayIso });
   clean(fresh, "9 datum");
-  ok((fresh.match(/class="tsigdate/g) || []).length === 3,
-     "9 datum: nicht jedes Signal trägt einen Stand");
+  ok(fresh.includes(`— Nacht zum ${M.dShort(todayIso).split(" ")[0]} ${todayIso.slice(8, 10)}.${todayIso.slice(5, 7)}., jeder Wert verglichen`),
+     "9 datum: die Überschrift nennt die Nacht der Kacheln nicht");
+  ok(!/class="tsigdate/.test(fresh), "9 datum: eine Kachel trägt noch eine eigene Zeile „Stand“");
   ok(!/staleflag/.test(fresh), "9 datum: heutige Werte als veraltet markiert");
 
   const old = p.rHeute({ ...F.today(), date: "2026-09-09" });
   clean(old, "9 datum alt");
   contains(old, "Werte von", "9 datum: veralteter Wert wird nicht als solcher ausgewiesen");
   ok(/class="staleflag"/.test(old), "9 datum: keine Hervorhebung für veraltete Werte");
-  ok(/tsigdate stale/.test(old), "9 datum: veralteter Stand an den Signalen nicht markiert");
-  contains(old, "füllt sich über den Tag", "9 datum: Grund nicht genannt");
+  contains(old, "Die letzte gemessene Nacht", "9 datum: veraltete Nacht nicht als solche überschrieben");
+  contains(old, "Nacht zum Mi 09.09.; die Nacht zu heute fehlt noch", "9 datum: Grund nicht genannt");
 }
 
 /* ── 10  artefacts must not set the DFA axis ───────────────────────────

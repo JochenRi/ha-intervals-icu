@@ -1672,26 +1672,28 @@ check(isinstance((_tn73.get("week") or {}).get("sessions"), list), "0.73.0 Budge
 # Events aus dem Koordinator werden durchgereicht
 check("events" in __import__("inspect").signature(coach.today).parameters, "0.73.0: coach.today nimmt die Events des Koordinators")
 
-# 6 · der Satz: "weicht/weichen ungünstig ab", nicht "liegt unter" (Ruhepuls 59 > Basis 56)
+# 6 · der Satz: ein ungünstiger Ruhepuls liegt ÜBER dem Normalwert (59 gegen 56), nicht "unter"
+# 0.74.7 umgestellt (SKIZZE_0.74.7 §2.4): der Hinweis zaehlt die Signale mit ihrem Wort aus z_word auf ("Heute liegt
+# dein Ruhepuls etwas über deinem Normalwert"); die Seite kommt aus Rohwert gegen Normalwert, wie in den Werte-Zeilen.
 _state_saved73, _nz_saved73 = coach.state, coach._night_z
 def _nz(labels):
-    return lambda data, day: {k: {"label": l, "unit": u, "value": 1, "baseline": 1, "z": -1.0}
-                              for k, l, u in labels}
+    return lambda data, day: {k: {"label": l, "unit": u, "value": v, "baseline": b, "z": -1.0,
+                                  "word": coach.z_word(-1.0, v, b)}
+                              for k, l, u, v, b in labels}
 try:
     coach.state = lambda data, **kw: {"state": "ready", "label": "", "text": ""}
-    coach._night_z = _nz([("hrv", "HRV", "ms"), ("rhr", "Ruhepuls", "bpm")])
+    coach._night_z = _nz([("hrv", "HRV", "ms", 45.0, 50.0), ("rhr", "Ruhepuls", "bpm", 59.0, 56.0)])
     _two = coach.today(_h73, day=_last73).get("tension") or ""
-    coach._night_z = _nz([("rhr", "Ruhepuls", "bpm")])
+    coach._night_z = _nz([("rhr", "Ruhepuls", "bpm", 59.0, 56.0)])
     _one = coach.today(_h73, day=_last73).get("tension") or ""
 finally:
     coach.state, coach._night_z = _state_saved73, _nz_saved73
-check(_two.startswith("HRV und Ruhepuls weichen heute ungünstig von deiner Basislinie ab — aber weder weit genug noch "),
-      f"0.73.0 6: zwei Signale -> Plural 'weichen ... ab': {_two[:90]!r}")
-check(_one.startswith("Ruhepuls weicht heute ungünstig von deiner Basislinie ab — aber weder weit genug noch "),
-      f"0.73.0 6: ein Signal -> 'weicht ... ab': {_one[:90]!r}")
-check("liegt heute unter" not in _two + _one, "0.73.0 6: 'liegt heute unter' steht noch")
-check(_one.endswith("Wenn es morgen wieder so aussieht, ist es keins mehr."), "0.73.0 6: der Rest des Satzes ist unveraendert")
-check("Die Regel entscheidet über das Mittel der letzten drei Tage" in _one, "0.73.0 6: der Rest des Satzes (Mitte) ist unveraendert")
+check(_two.startswith("Heute liegt deine HRV etwas unter deinem Normalwert und dein Ruhepuls etwas über deinem Normalwert – "),
+      f"0.73.0/0.74.7 6: zwei Signale nicht aufgezählt: {_two[:110]!r}")
+check(_one.startswith("Heute liegt dein Ruhepuls etwas über deinem Normalwert – "),
+      f"0.73.0/0.74.7 6: ein Signal -> Ruhepuls 'über': {_one[:90]!r}")
+check("Ruhepuls etwas unter" not in _two + _one, "0.73.0 6: der Ruhepuls über dem Normalwert heißt 'unter'")
+check(_one.endswith("Ein einzelner Wert an einem Tag ist Rauschen."), "0.74.7 6: der Schluss des Satzes fehlt")
 
 
 # --- 0.73.1 · 2.1 das Wochenziel folgt dem Zustand (BUDGET_LIGHT, ein Weg) ------
@@ -2466,11 +2468,17 @@ check(all(v >= 1 for v in _hit745.values()), f"0.74.5 E2E Trefferzusicherung: ni
 # Regel 9: die Kachel-Fixture (panel_fixtures.today) traegt `shown` und die Richtung, wie coach.today sie schreibt
 import re as _re745  # noqa: E402
 _fx745 = (Path(__file__).resolve().parent / "panel_fixtures.js").read_text(encoding="utf-8")
-_sigs745 = _re745.findall(r'sig\("(hrv|rhr|sleep)", "[^"]+", "[^"]+", [\d.]+, [\d.]+, (-?[\d.]+), "[^"]*", "[^"]*", (-?[\d.]+)\)', _fx745)
-check(len(_sigs745) >= 5, f"0.74.5 Regel 9 Trefferzusicherung: nur {len(_sigs745)} Kachelzeilen mit eigenem shown gelesen")
-for _k, _z, _shw in _sigs745:
-    eq(float(_shw), coach.z_shown(float(_z)), f"0.74.5 Regel 9: Fixture-Kachel {_k} z {_z} traegt shown {_shw}")
-check("moved: Math.abs(z) > 0.5" in _fx745 and 'direction: z > 0.5 ? "günstig" : z < -0.5 ? "ungünstig"' in _fx745,
+# 0.74.7 umgestellt: sig() traegt statt system/limit den Wort-Text (system/about/limit kommen aus SIGW, gebunden unten);
+# gebunden werden jetzt Text UND shown jeder Fixture-Kachel an coach.z_word(z, Rohwert, Basislinie)
+_sigs745 = _re745.findall(r'sig\("(hrv|rhr|sleep)", "[^"]+", "[^"]+", ([\d.]+), ([\d.]+), (-?[\d.]+), "([^"]+)"(?:, (-?[\d.]+))?\)', _fx745)
+check(len(_sigs745) >= 15 and sum(1 for x in _sigs745 if x[5]) >= 5,
+      f"0.74.5/0.74.7 Regel 9 Trefferzusicherung: nur {len(_sigs745)} Kachelzeilen gelesen")
+for _k, _v, _b, _z, _txt, _shw in _sigs745:
+    _w = coach.z_word(float(_z), float(_v), float(_b))
+    eq(float(_shw or _z), _w["shown"], f"0.74.5 Regel 9: Fixture-Kachel {_k} z {_z} traegt shown {_shw or _z}")
+    eq(_txt, _w["text"], f"0.74.7 Regel 9: Fixture-Kachel {_k} z {_z} traegt das Wort '{_txt}' statt coach.z_word")
+# 0.74.7: die Richtung steht als eigene Konstante im Helfer (sie waehlt auch `meaning`) - dieselbe Grenze
+check("moved: Math.abs(z) > 0.5" in _fx745 and 'const direction = z > 0.5 ? "günstig" : z < -0.5 ? "ungünstig"' in _fx745,
       "0.74.5 Regel 9: die Fixture-Kachel rechnet die Grenze anders als coach.today ('mehr als')")
 
 # Nicht angefasst (Skizze §3): Urteil und Wortstufe bleiben - der Fingerabdruck von 0.74.4 steht oben unveraendert.
@@ -2533,7 +2541,9 @@ _wide746 += [coach.night_after(_nh746, _k) for _k in sorted(_nh746["activities"]
 # Der Hash ueber alles war auf v0.74.5 "72e1fe73d58bf586". Er bewegt sich durch C genau an den frühesten Einheiten des
 # Bestands (weniger als MIN_VALUES Vornaechte): dort sagte 0.74.5 faelschlich "no_wellness". Darum getrennt:
 # die Heute-Seiten und jede Nacht mit Band bitgleich zu 0.74.5 (Hashes aus v0.74.5 gerechnet), die fruehen genau benannt.
-eq(_fp746(_wide746[:2]), "30d76268675ed7f8", "0.74.6 Fingerabdruck: die Heute-Seite im langen Bestand weicht von 0.74.5 ab")
+# 0.74.7 umgestellt: die Heute-Seite aendert sich gewollt in signals (system/limit + word/meaning/about), tension und
+# zwei neuen Feldern (SKIZZE_0.74.7 §2). Der Hash ueber die GANZE Seite war "30d76268675ed7f8"; geprueft wird jetzt alles
+# ausser diesen Feldern (_proj747, unten) - bitgleich zu v0.74.6, der Wert wurde an 5f94ae6 gerechnet.
 eq(_fp746([x for x in _wide746[2:] if x.get("reason") != "no_baseline"]), "8289ad4d39a6b7f5",
    "0.74.6 Fingerabdruck: eine Nacht mit Band (oder ihre Zahl) weicht von 0.74.5 ab")
 _early746 = [x for x in _wide746[2:] if x.get("reason") == "no_baseline"]
@@ -2753,6 +2763,237 @@ for _const746 in ("SWC_SD = ", "DAY_SWING_SD = ", "NIGHT_DIGESTED_Z = ", "NIGHT_
     _at746 = _csrc746.find("\n" + _const746)
     _win746 = _csrc746[max(0, _at746 - 700):_at746 + 200] if _at746 >= 0 else ""
     check("SKIZZE_0.74.6 D" in _win746, f"0.74.6 D: kein Kopplungs-Kommentar an {_const746.strip(' =')}")
+
+# === 0.74.7 (SKIZZE_0.74.7) · Heute in Klartext + Einbruch ab "mehr als" 2,0 ==========================
+_bl747 = _bl746
+_src747 = Path(coach.__file__).read_text(encoding="utf-8")
+_orig_nz747, _orig_state747 = coach._night_z, coach.state
+
+
+def _today747(entries, data=None, state_key=None):
+    """coach.today mit ersetzten Nachtwerten (echter Weg bis zur Kachel) und optional erzwungenem Zustand."""
+    coach._night_z = lambda d, dd: dict(entries)
+    if state_key:
+        coach.state = lambda d: {**_orig_state747(d), "state": state_key}
+    try:
+        return coach.today(data or build())
+    finally:
+        coach._night_z, coach.state = _orig_nz747, _orig_state747
+
+
+_E747 = {"hrv": ("Herzratenvariabilität", "ms", 48.0, 5.0), "rhr": ("Ruhepuls", "bpm", 56.0, -1.0),
+         "sleep": ("Schlafdauer", "h", 7.5, 0.4)}
+
+
+def _ent747(key, z):
+    """Ein Eintrag wie _night_z ihn schreibt; der Rohwert liegt auf der Seite, die z (gedreht nach guenstig) meint."""
+    label, unit, base, step = _E747[key]
+    raw = round(base + z * step, 2)
+    return {"label": label, "unit": unit, "value": raw, "baseline": base, "z": z, "baseline_weighted": False,
+            "word": coach.z_word(z, raw, base)}
+
+
+# §2.2 Kachel: word (dieselbe eine Stelle wie die Nacht), meaning, about, limit, system aus dem Backend - wörtlich
+_LIM747 = {"hrv": "Die Uhr misst nachts – das schwankt mehr als eine Messung morgens im Liegen.",
+           "rhr": "Reagiert langsamer als die HRV, schwankt dafür weniger.",
+           "sleep": "Von der Uhr geschätzt – sagt nichts darüber, wie gut du geschlafen hast."}
+_SYS747 = {"hrv": "Nervensystem", "rhr": "Nervensystem", "sleep": "Verhalten"}
+_ABT747 = {"hrv": "wie erholt dein Nervensystem ist", "rhr": "wie erholt dein Nervensystem ist",
+           "sleep": "wie viel du geschlafen hast"}
+_hit747 = {"günstig": 0, "ungünstig": 0, "unauffällig": 0}
+for _z in (0.53, -0.53, 0.3, -0.3, 0.5, 0.51, -1.2, 2.3):
+    _ents = {k: _ent747(k, _z) for k in _E747}
+    for _s in _today747(_ents)["signals"]:
+        _k = _s["key"]
+        _hit747[_s["direction"]] += 1
+        eq(_s.get("word"), _ents[_k]["word"], f"0.74.7 §2.2 {_k} z {_z}: word ist nicht das Wort aus _night_z (eine Stelle)")
+        eq(_s.get("meaning"), {"günstig": "spricht für Erholung", "ungünstig": "spricht gegen Erholung"}.get(_s["direction"]),
+           f"0.74.7 §2.2 {_k} z {_z}: Zeile 2 passt nicht zu '{_s['direction']}'")
+        eq((_s.get("system"), _s.get("limit"), _s.get("about")), (_SYS747[_k], _LIM747[_k], _ABT747[_k]),
+           f"0.74.7 §2.2 {_k}: system/limit/about nicht wörtlich")
+check(all(v >= 3 for v in _hit747.values()), f"0.74.7 §2.2 Trefferzusicherung: nicht jede Richtung ({_hit747})")
+# Live 27.09. (Skizze §5): HRV 0,53 -> "etwas über deinem Normalwert" (0,6) + "spricht für Erholung"; Ruhepuls z -0,3
+# (57 gegen 56) -> "im Normalbereich" (0,3) ohne Zeile 2; Schlaf 0,83 -> "etwas über" (0,9) + "spricht für Erholung"
+_lv747 = {s["key"]: s for s in _today747({
+    "hrv": {**_ent747("hrv", 0.53), "value": 53.0, "word": coach.z_word(0.53, 53.0, 48.0)},
+    "rhr": {**_ent747("rhr", -0.3), "value": 57.0, "baseline": 56.0, "word": coach.z_word(-0.3, 57.0, 56.0)},
+    "sleep": {**_ent747("sleep", 0.83), "value": 8.5, "baseline": 7.6, "word": coach.z_word(0.83, 8.5, 7.6)}})["signals"]}
+eq([(k, (_lv747[k].get("word") or {}).get("text"), abs((_lv747[k].get("word") or {}).get("shown") or 0), _lv747[k].get("meaning"))
+    for k in ("hrv", "rhr", "sleep")],
+   [("hrv", "etwas über deinem Normalwert", 0.6, "spricht für Erholung"), ("rhr", "im Normalbereich", 0.3, None),
+    ("sleep", "etwas über deinem Normalwert", 0.9, "spricht für Erholung")], "0.74.7 §5 Live 27.09.: die drei Kachel-Füße")
+# die Leser bleiben (Farbe, Signale): direction/moved unverändert
+check(all("direction" in s and "moved" in s and "shown" in s for s in _lv747.values()), "0.74.7: direction/moved/shown fehlen")
+
+# §2.3 Zahlen der Texte aus den Konstanten, beim Aufruf gelesen - keine Literale (Wächter: Konstante verstellen)
+eq(coach.today(build()).get("band_scale"),
+   {"swc": coach.SWC_SD, "day": coach.DAY_SWING_SD, "drop": coach.HRV_DROP_SD, "window": _bl747.WINDOW},
+   "0.74.7 §2.3: band_scale traegt nicht SWC_SD/DAY_SWING_SD/HRV_DROP_SD/baseline.WINDOW")
+_sv747 = (coach.SWC_SD, coach.DAY_SWING_SD, coach.HRV_DROP_SD, _bl747.WINDOW)
+try:
+    coach.SWC_SD, coach.DAY_SWING_SD, coach.HRV_DROP_SD, _bl747.WINDOW = 0.4, 1.2, 2.5, 45
+    eq(coach.today(build()).get("band_scale"), {"swc": 0.4, "day": 1.2, "drop": 2.5, "window": 45},
+       "0.74.7 §2.3: band_scale folgt den Konstanten nicht (Literal statt Lesen)")
+    eq(coach.night_rule_text().count("mit deinen letzten 45 Nächten"), 1,
+       "0.74.7 §2.6: der Regeltext liest baseline.WINDOW nicht")
+finally:
+    coach.SWC_SD, coach.DAY_SWING_SD, coach.HRV_DROP_SD, _bl747.WINDOW = _sv747
+eq(coach.night_rule_text().count("mit deinen letzten 60 Nächten"), 1, "0.74.7 §2.6: Regeltext bitgleich (60 aus WINDOW)")
+
+# §2.3 usual liest DAY_SWING_SD (bitgleich); Waechter am Verhalten und am Quelltext
+_b747 = coach.today(build())["bands"]["hrv"]
+try:
+    coach.DAY_SWING_SD = 1.5
+    _b747x = coach.today(build())["bands"]["hrv"]
+finally:
+    coach.DAY_SWING_SD = _sv747[1]
+check(_b747x["usual"] != _b747["usual"] and _b747x["noise"] == _b747["noise"] and _b747x["usual"][0] < _b747["usual"][0],
+      "0.74.7 §2.3: _signal_bands `usual` liest DAY_SWING_SD nicht")
+_sb747 = _insp746.getsource(coach._signal_bands)
+check("at(-DAY_SWING_SD)" in _sb747 and "at(DAY_SWING_SD)" in _sb747 and "at(-1)" not in _sb747 and "at(1)" not in _sb747,
+      "0.74.7 §2.3: _signal_bands rechnet `usual` mit einem Literal")
+
+# §2.1 ohne Kachel: Wert da, Band fehlt -> der Satzteil aus night_baseline_words (0.74.6, eine Stelle); gar kein Wert -> None
+_few747 = coach.today(build(days=20))
+eq((_few747.get("signals"), (_few747.get("signals_gap") or {}).get("text")),
+   ([], coach.night_baseline_words("", coach._night_gap(build(days=20), day(0)))),
+   "0.74.7 §2.1: ohne Band traegt Heute nicht den Satz aus night_baseline_words")
+eq((_few747.get("signals_gap") or {}).get("text"),
+   "gibt es noch keinen Vergleich – die App braucht dafür 20 Nächte mit Werten, bisher sind es 19.",
+   "0.74.7 §2.1: der Satzteil ohne Band ist nicht wörtlich (19 Nächte)")
+_none747 = build(overrides={day(0): {"hrv": None, "restingHR": None, "sleepSecs": None}})
+eq((coach.today(_none747).get("signals"), coach.today(_none747).get("signals_gap")), ([], None),
+   "0.74.7 §2.1: ohne Werte darf kein Basislinien-Satz stehen")
+check(coach.today(build()).get("signals_gap") is None, "0.74.7 §2.1: mit Kacheln steht ein Satz 'ohne Band'")
+
+# §2.4 tension: wörtlich, Aufzählung aus word.text, eine Zahl (HRV_DROP_SD == RHR_RISE_SD)
+eq(coach.HRV_DROP_SD, coach.RHR_RISE_SD, "0.74.7 §3 Waechter: HRV_DROP_SD != RHR_RISE_SD - der Hinweis nennt nur eine Zahl")
+_TAIL747 = (" – das spricht eher gegen Erholung, reicht aber nicht für einen Einbruch. Einbruch heißt: HRV und Ruhepuls "
+            "liegen am selben Tag stark daneben (mehr als 2,0), oder einer von beiden an zwei Tagen hintereinander. "
+            "Ein einzelner Wert an einem Tag ist Rauschen.")
+_t1 = _today747({"hrv": _ent747("hrv", 0.2), "rhr": _ent747("rhr", -0.8), "sleep": _ent747("sleep", 0.1)}, state_key="ready")
+eq(_t1.get("tension"), "Heute liegt dein Ruhepuls etwas über deinem Normalwert" + _TAIL747, "0.74.7 §2.4 tension ein Signal")
+_t2 = _today747({"hrv": _ent747("hrv", -1.3), "rhr": _ent747("rhr", -0.6), "sleep": _ent747("sleep", 0.1)}, state_key="elevated")
+eq(_t2.get("tension"),
+   "Heute liegt deine HRV deutlich unter deinem Normalwert und dein Ruhepuls etwas über deinem Normalwert" + _TAIL747,
+   "0.74.7 §2.4 tension zwei Signale")
+_t3 = _today747({"hrv": _ent747("hrv", 0.1), "rhr": _ent747("rhr", 0.1), "sleep": _ent747("sleep", -0.7)}, state_key="ready")
+eq(_t3.get("tension"), "Heute liegt deine Schlafdauer etwas unter deinem Normalwert" + _TAIL747, "0.74.7 §2.4 tension Schlaf")
+for _sk in ("slump", "recovering"):
+    eq(_today747({"hrv": _ent747("hrv", 0.7), "rhr": _ent747("rhr", 0.1), "sleep": _ent747("sleep", 0.1)}, state_key=_sk).get("tension"),
+       "Einzelne Werte sehen heute gut aus, der Zustand bleibt trotzdem gedämpft: nach einem Einbruch zählt, ob der Schnitt der "
+       "letzten drei Tage wieder mindestens bei deinem Normalwert liegt, nicht ein guter Morgen.", f"0.74.7 §2.4 tension günstig im Zustand {_sk}")
+eq(_today747({"hrv": _ent747("hrv", 0.2), "rhr": _ent747("rhr", 0.2), "sleep": _ent747("sleep", 0.2)}, state_key="ready").get("tension"),
+   None, "0.74.7 §2.4 Gegenprobe: ohne ungünstiges Signal kein Hinweis")
+_tsrc747 = _insp746.getsource(coach._tension_text) if hasattr(coach, "_tension_text") else "Mittel der"
+check("Mittel der" not in _tsrc747 and "Standardabweichung" not in _tsrc747 and "Basislinie" not in _tsrc747,
+      "0.74.7 §2.4: der Hinweis spricht wieder von Mittel/Standardabweichung/Basislinie")
+
+# §3 Regel R: Einbruch ab "mehr als" HRV_DROP_SD / RHR_RISE_SD - state() und state_series(), je Tag und Vortag.
+# Der Weg ist echt: nur die z-Werte werden gesetzt (_z_at in state, _z_series in state_series), die Regel rechnet selbst.
+_zat747, _zser747 = coach._z_at, coach._z_series
+
+
+def _rule747(zh_today, zr_today, zh_prev=0.0, zr_prev=0.0):
+    """state_series am letzten Tag, mit gesetzten z je Tag (_z_series ersetzt)."""
+    d = build()
+    days = sorted(d["wellness"])
+    want = {"hrv": {days[-1]: zh_today, days[-2]: zh_prev}, "rhr": {days[-1]: zr_today, days[-2]: zr_prev}}
+
+    def _zs(values, ds, window=60, log=False, sign=1, weights=None):
+        return {x: want["hrv" if log else "rhr"].get(x, 0.0) for x in ds if x in values}
+    coach._z_series = _zs
+    try:
+        return coach.state_series(d)[-1]["state"]
+    finally:
+        coach._z_series = _zser747
+
+
+# state(): _z_at bekommt den Rohwert, nicht den Tag - die Tage werden ueber eindeutige Rohwerte getroffen
+def _state747(zh_today, zr_today, zh_prev=0.0, zr_prev=0.0):
+    d = build()
+    days = sorted(d["wellness"])
+    d["wellness"][days[-1]].update({"hrv": 77.7, "restingHR": 77.7})
+    d["wellness"][days[-2]].update({"hrv": 66.6, "restingHR": 66.6})
+    zmap = {(True, 77.7): zh_today, (False, 77.7): zr_today, (True, 66.6): zh_prev, (False, 66.6): zr_prev}
+    coach._z_at = lambda value, band, *, log, sign=1: None if value is None else zmap.get((log, value), 0.0)
+    try:
+        return coach.state(d)
+    finally:
+        coach._z_at = _zat747
+
+
+_R747 = [  # (hrv heute, rhr heute, hrv gestern, rhr gestern) -> Einbruch?
+    ((-2.0, 2.0, 0.0, 0.0), False), ((-2.01, 2.01, 0.0, 0.0), True),       # beide am selben Tag
+    ((-2.0, 0.0, -2.0, 0.0), False), ((-2.01, 0.0, -2.01, 0.0), True),     # HRV zwei Tage
+    ((0.0, 2.0, 0.0, 2.0), False), ((0.0, 2.01, 0.0, 2.01), True),         # Ruhepuls zwei Tage
+    ((-2.01, 0.0, -2.0, 0.0), False), ((0.0, 2.01, 0.0, 2.0), False),      # Vortag genau auf der Grenze
+    ((-2.01, 2.0, 0.0, 0.0), False), ((-2.01, 0.0, 0.0, 0.0), False),      # ein Signal allein, ein Tag
+    # jede der vier Stellen einzeln sichtbar: der andere Teil liegt klar darueber, nur eine Stelle genau auf 2,00
+    ((-2.0, 2.01, 0.0, 0.0), False), ((-2.0, 0.0, -2.01, 0.0), False),     # HRV heute genau 2,00
+    ((0.0, 2.0, 0.0, 2.01), False),                                        # Ruhepuls heute genau 2,00
+]
+for _args, _want in _R747:
+    eq(_rule747(*_args) == "slump", _want, f"0.74.7 §3 state_series {_args}: Einbruch {'erwartet' if _want else 'nicht erwartet'}")
+    eq(_state747(*_args)["state"] == "slump", _want, f"0.74.7 §3 state {_args}: Einbruch {'erwartet' if _want else 'nicht erwartet'}")
+# das Wort an der Grenze: genau 2,00 "deutlich", 2,01 "stark" (z_word "mehr als" - unveraendert)
+eq([coach.z_word(z, None, None)["text"].split()[0] for z in (-2.0, -2.01, 2.0, 2.01)], ["deutlich", "stark", "deutlich", "stark"],
+   "0.74.7 §3: Wortstufe an der Grenze passt nicht zur Regel")
+for _fn747 in (coach.state, coach.state_series):
+    _s747 = _insp746.getsource(_fn747)
+    check("<= -HRV_DROP_SD" not in _s747 and ">= RHR_RISE_SD" not in _s747
+          and _s747.count("< -HRV_DROP_SD") == 2 and _s747.count("> RHR_RISE_SD") == 2,
+          f"0.74.7 §3 {_fn747.__name__}: nicht genau zwei '< -HRV_DROP_SD' und zwei '> RHR_RISE_SD'")
+
+# Regel 9: die Panel-Fixture traegt die Kachel-Texte, den Schluss des Hinweises und band_scale wie coach sie schreibt
+_fx747 = (Path(__file__).resolve().parent / "panel_fixtures.js").read_text(encoding="utf-8")
+for _k, _w in getattr(coach, "SIGNAL_WORDS", {}).items():
+    _blk = _fx747[_fx747.find(f"  {_k}: {{ system:"):]
+    _blk = _blk[:_blk.find("},")]
+    check(all(f'{_f}: "{_w.get(_f)}"' in _blk for _f in ("system", "about", "limit")),
+          f"0.74.7 Regel 9: Fixture SIGW.{_k} weicht von coach.SIGNAL_WORDS ab")
+check(hasattr(coach, "SIGNAL_WORDS") and set(coach.SIGNAL_WORDS) == {"hrv", "rhr", "sleep"}, "0.74.7: coach.SIGNAL_WORDS fehlt")
+check('const SIGM = { "günstig": "spricht für Erholung", "ungünstig": "spricht gegen Erholung" };' in _fx747
+      and getattr(coach, "SIGNAL_MEANING", None) == {"günstig": "spricht für Erholung", "ungünstig": "spricht gegen Erholung"},
+      "0.74.7 Regel 9: Fixture SIGM weicht von coach.SIGNAL_MEANING ab")
+check(f'const TENSION_TAIL = "{(_t1.get("tension") or "").replace("Heute liegt dein Ruhepuls etwas über deinem Normalwert", "", 1)}";' in _fx747,
+      "0.74.7 Regel 9: Fixture TENSION_TAIL weicht vom Hinweis aus coach.today ab")
+_bs747 = coach.today(build()).get("band_scale") or {}
+check(f'band_scale: {{ swc: {_bs747.get("swc")}, day: {_bs747.get("day")}, drop: {_bs747.get("drop")}, window: {_bs747.get("window")} }}' in _fx747,
+      "0.74.7 Regel 9: Fixture band_scale weicht von coach.today ab")
+
+# Fingerabdruck (Skizze §3): state_series und state ueber die Bestaende dieser Datei, eingefroren auf v0.74.6 (5f94ae6)
+# vor dem Bau. Kein Tag darf sich bewegen - die Bestaende treffen die Grenze 2,00 nirgends genau.
+_fp747_inputs = [build(), slump, infekt, double, _inf, night_history(), night_history(days=40), ctx_build(True), ctx_build(False),
+                 recovery_case(), recovery_case(hard=True), _live732(), _live732(False), build(days=30), build(days=20)]
+_fp747 = _fp746([[coach.state_series(_d), {k: coach.state(_d).get(k) for k in ("state", "since", "cause", "infection_suspected")}]
+                 for _d in _fp747_inputs])
+eq(_fp747, "441c88651cc56e86", "0.74.7 §3 Fingerabdruck: state_series/state weicht von v0.74.6 ab")
+# die Heute-Seite ausserhalb dessen, was §2 aendert, bitgleich zu v0.74.6 (signals ohne system/limit/word/meaning/about;
+# ohne tension, band_scale, signals_gap)
+
+
+def _proj747(t):
+    t = _cp746.deepcopy(t)
+    for k in ("tension", "band_scale", "signals_gap"):
+        t.pop(k, None)
+    for s in t.get("signals") or []:
+        for k in ("system", "limit", "word", "meaning", "about"):
+            s.pop(k, None)
+    return t
+
+
+eq(_fp746([_proj747(coach.today(_d)) for _d in _fp747_inputs]), "5b4bf395beb61d78",
+   "0.74.7 Fingerabdruck: die Heute-Seite ausserhalb von §2 weicht von v0.74.6 ab")
+eq(_fp746([_proj747(x) for x in _wide746[:2]]), "59c233baae02d400",
+   "0.74.6/0.74.7 Fingerabdruck: die Heute-Seite im langen Bestand (ausserhalb von §2) weicht von v0.74.6 ab")
+
+# §2.6 eine Stelle fuer das Fenster: kein [-60:] und kein "60 Nächte"-Literal in coach.py; die vier Stellen lesen WINDOW
+check("[-60:]" not in _src747, "0.74.7 §2.6: ein [-60:] steht wieder in coach.py")
+check(not _re745.search(r"60 N(ä|ae)chte", _src747), "0.74.7 §2.6: ein '60 Nächte'-Literal steht in coach.py")
+for _fn747 in ("state", "_night_inputs", "_signal_bands"):
+    check("[-baseline.WINDOW:]" in _insp746.getsource(getattr(coach, _fn747)),
+          f"0.74.7 §2.6: {_fn747} liest baseline.WINDOW nicht")
 
 print(f"test_coach: {CHECKS} Prüfungen, {len(FAILURES)} Fehler")
 for failure in FAILURES:

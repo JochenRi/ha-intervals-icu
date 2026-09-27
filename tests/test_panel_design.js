@@ -610,7 +610,10 @@ const CHART_FROZEN = {
   // 0.74.4 neu gesetzt (heute, morgen): gewollte Aenderung NUR im Nacht-Abschnitt und in der Unterzeile
   // "Woher das kommt" (SKIZZE_0.74.4 §3.1) - am 26.09. belegt: die Seiten aus 0.74.3 und 0.74.4 sind ohne
   // diese beiden Stellen bytegleich. Alt: heute 89402e5e426ca50b, morgen 5a201f797dfbe231.
-  const want = { heute: "17f4431d9ad8ca41", morgen: "1f0bc2dd6f25d768", fatigue: "47bfaad6a9fe54e0", fam: "5b827b517a726ee0" };
+  // 0.74.7 neu gesetzt (heute, morgen): gewollte Aenderung NUR im Abschnitt der Kacheln (Ueberschrift „Die letzte gemessene
+  // Nacht …“, Kachel-Texte, SKIZZE_0.74.7 §2). Gegen v0.74.6 (5f94ae6, alte Fixture) gerechnet: alles vor und nach diesem
+  // Abschnitt bytegleich. Alt: heute 17f4431d9ad8ca41, morgen 1f0bc2dd6f25d768.
+  const want = { heute: "49b9988252ffbb4a", morgen: "7af6d0f4aec93450", fatigue: "47bfaad6a9fe54e0", fam: "5b827b517a726ee0" };
   for (const [k, v] of Object.entries(snap)) {
     ok(crypto.createHash("sha256").update(String(v)).digest("hex").slice(0, 16) === want[k],
        `0.73.3: ${k} rendert anders als in 0.73.2 (Momentaufnahme; bei gewollter Aenderung neu setzen)`);

@@ -218,6 +218,10 @@ function dDay(iso) {
   const p = String(iso || "").slice(0, 10).split("-");
   return p.length === 3 ? `${p[2]}.${p[1]}.` : "";
 }
+/* 0.74.7 (SKIZZE_0.74.7 §2.1): "So 27.09." - Wochentag wie dShort, Tag wie dDay; die Nacht der Heute-Kacheln */
+function dWdDay(iso) {
+  return `${dShort(iso).split(" ")[0]} ${dDay(iso)}`;
+}
 function dMed(iso) {
   if (!iso) return "–";
   const p = String(iso).slice(0, 10).split("-");
@@ -4572,6 +4576,8 @@ class IntervalsIcuPanel extends HTMLElement {
       </div>
     </div>`;
 
+    // 0.74.7 (SKIZZE_0.74.7 §2.1/§2.3): die Zahlen der Texte kommen aus coach.today (band_scale) - keine Literale hier
+    const sc = t.band_scale || {};
     const signals = (t.signals || []).map((s) => {
       const scol = s.direction === "günstig" ? C.green
         : s.direction === "ungünstig" ? C.amber : C.tx3;
@@ -4579,23 +4585,26 @@ class IntervalsIcuPanel extends HTMLElement {
       const left = s.z < 0 ? 50 - width : 50;
       const dec = s.unit === "h" ? 1 : 0;
       const big = this._sigOpen === s.key;
+      // 0.74.7 (SKIZZE_0.74.7 §2.2): Klartext. Rechts oben das System, neben der Zahl der Normalwert; die Zeile
+      // "Stand …" entfaellt (die Ueberschrift nennt die Nacht). Fuss: Zeile 1 das Wort ueber nightSaid - dieselbe eine
+      // Stelle wie die Nacht-Karte -, Zeile 2 nur bei guenstig/unguenstig (meaning), Zeile 3 die Grenze des Werts.
+      // Alle Texte kommen aus coach.today; die Farbe liest weiter direction.
       return `<div class="tsig ${s.moved ? "moved" : ""} ${big ? "big" : ""}"
           data-act="sigopen" data-id="${esc(s.key)}" title="${big ? "kleiner" : "größer"}">
         <div class="tsighead"><b>${esc(s.label)}</b>
           <span class="tsigsys">${esc(s.system)}</span></div>
         <div class="tsignum"><b class="tn" style="color:${scol}">${fmt(s.value, dec)}</b>
           <small>${esc(s.unit)}</small>
-          <span class="tsigbase">Basislinie ${fmt(s.baseline, dec)}</span></div>
-        <div class="tsigdate ${stale ? "stale" : ""}">Stand ${esc(dMed(t.date))}${
-          stale ? " — nicht von heute; ein Wellness-Datensatz füllt sich über den Tag" : ""}</div>
+          <span class="tsigbase">Normalwert ${fmt(s.baseline, dec)}</span></div>
         <div class="tsigbar"><i class="tsigband"></i>
           <i class="tsigfill" style="left:${left.toFixed(1)}%;width:${Math.max(1, width).toFixed(1)}%;background:${scol}"></i></div>
-        <div class="tsigfoot"><span style="color:${scol}">${sign(s.shown, 1)} SD · ${esc(s.direction)}</span>
+        <div class="tsigfoot"><span style="color:${scol}">${nightSaid(s.word)}</span>${
+          s.meaning ? `<span class="tsigmean">${esc(s.meaning)}</span>` : ""}
           <em>${esc(s.limit)}</em></div>
         ${big ? `<div class="tsigbig">
           <div class="tsigbignum"><b class="tn" style="color:${scol}">${fmt(s.value, dec)}</b>
             <small>${esc(s.unit)}</small>
-            <span>gegen deine Basislinie von ${fmt(s.baseline, dec)} ${esc(s.unit)}</span></div>
+            <span>gegen deinen Normalwert von ${fmt(s.baseline, dec)} ${esc(s.unit)}</span></div>
           ${(() => {
             const band = (t.bands || {})[s.key];
             const series = (t.history && t.history[s.key]) || [s.baseline, s.value];
@@ -4634,12 +4643,13 @@ class IntervalsIcuPanel extends HTMLElement {
               { a: band.usual[0], b: band.usual[1], c: C.tx3, op: 0.08 },
               { a: band.noise[0], b: band.noise[1], c: C.tx3, op: 0.14 },
             ] : [];
+            // 0.74.7 (§2.3): "Normalwert", "Einbruch unter", beim Ruhepuls "auffällig hoch über"
             const lines = band ? [
-              { y: band.baseline, c: C.tx3, d: 1, t: `Basislinie ${fmt(band.baseline, dec)}` },
-              { y: band.slump, c: C.amber, d: 1, t: `${s.key === "rhr" ? "auffällig hoch" : "Einbruch ab"} ${fmt(band.slump, dec)}` },
-            ] : [{ y: s.baseline, c: C.tx3, d: 1, t: "Basislinie" }];
+              { y: band.baseline, c: C.tx3, d: 1, t: `Normalwert ${fmt(band.baseline, dec)}` },
+              { y: band.slump, c: C.amber, d: 1, t: `${s.key === "rhr" ? "auffällig hoch über" : "Einbruch unter"} ${fmt(band.slump, dec)}` },
+            ] : [{ y: s.baseline, c: C.tx3, d: 1, t: "Normalwert" }];
             // Ebene 1 sichtbar gemacht: Tage mit Gewicht 0 zählen nicht in
-            // die Basislinie, bleiben aber gezeichnet - als HOHLE Punkte.
+            // den Normalwert, bleiben aber gezeichnet - als HOHLE Punkte.
             // Form statt Farbe (WCAG 1.4.1, dieselbe Regel wie beim Auswahlring).
             const hollow = track.map((r, i) =>
               (r && r.context && r.context.weight === 0 && series[i] != null)
@@ -4653,18 +4663,14 @@ class IntervalsIcuPanel extends HTMLElement {
             if (!dts.length) return plot;
             return `<div data-grp="${grp}">${readout(grp)}${plot}${this._eventTrack(track, grp)}${
               hollow.length ? `<p class="src">Hohle Punkte sind etikettierte Tage mit
-                Gewicht 0 — sie zählen nicht in die Basislinie, bleiben aber
+                Gewicht 0 — sie zählen nicht in den Normalwert, bleiben aber
                 gezeichnet und lösen die Warnung weiter aus.</p>` : ""}</div>`;
           })()}
-          ${(t.bands || {})[s.key] ? `<p class="src"><b>Die Bereiche:</b> das dunkle Band ist
-            ±0,5 Standardabweichungen um deine Basislinie — was darin liegt, ist Rauschen.
-            Das hellere ist deine gewohnte Schwankung (±1 SD). Die gelbe Linie markiert
-            ${s.key === "rhr" ? "den Wert, ab dem der Ruhepuls auffällig hoch ist"
-                              : "den Wert, ab dem ein Abfall kein Rauschen mehr ist"}
-            (2 SD). Alles aus deinen letzten 60 Tagen gerechnet.</p>` : ""}
-          <p class="src"><b>Worüber dieser Wert etwas sagt:</b> ${esc(s.system)}.
-            ${esc(s.limit)}. Die graue Zone ist ±0,5 SD — die kleinste bedeutsame Änderung;
-            was darin liegt, ist Rauschen und kein Signal.</p>
+          ${(t.bands || {})[s.key] ? `<p class="src"><b>Die Bereiche:</b> Das dunkle Band ist dein Normalbereich:
+            bis ${fmt(sc.swc, 1)} vom Normalwert weg ist Rauschen. Das hellere Band ist deine gewohnte Schwankung,
+            bis ${fmt(sc.day, 1)}. Die gelbe Linie markiert, ab wann ein ${s.key === "rhr" ? "Anstieg" : "Abfall"} kein
+            Rauschen mehr ist (mehr als ${fmt(sc.drop, 1)}). Alles aus deinen letzten ${fmt(sc.window)} Nächten gerechnet.</p>` : ""}
+          <p class="src"><b>Worüber dieser Wert etwas sagt:</b> ${esc(s.about)}. ${esc(s.limit)}</p>
         </div>` : ""}
       </div>`;
     }).join("");
@@ -4718,15 +4724,27 @@ class IntervalsIcuPanel extends HTMLElement {
     const noneLine = t.night_none ? `<p class="hint">In den letzten sieben Tagen gab es keine Einheit – darum hier keine Nacht.</p>` : "";
     const night = pendLine || measured || noneLine ? `<div class="tnight">${pendLine}${measured}${noneLine}</div>` : "";
 
+    // 0.74.7 (SKIZZE_0.74.7 §2.1, Wortlaut woertlich): die Ueberschrift nennt die Nacht der Kacheln (t.date) und das
+    // Fenster (band_scale.window). Veraltet (stale wie bisher): "Die letzte gemessene Nacht"; die Zeile "Stand …" in
+    // den Kacheln entfaellt dafuer. Keine Kachel: eine Zeile - Band fehlt (Satzteil aus coach) oder gar kein Wert.
+    const nightDay = esc(dWdDay(t.date));
+    const nightHead = (t.signals || []).length
+      ? `<h3 class="secname">${stale ? "Die letzte gemessene Nacht" : "Deine letzte Nacht"}
+        <span class="hint">— Nacht zum ${nightDay}${stale ? "; die Nacht zu heute fehlt noch"
+          : `, jeder Wert verglichen mit deinen letzten ${fmt(sc.window)} Nächten`}</span></h3>
+      <div class="tsigs">${signals}</div>`
+      : `<h3 class="secname">Deine letzte Nacht</h3>
+      <p class="hint">${t.signals_gap && t.signals_gap.text
+          ? `Für deine letzte Nacht ${esc(t.signals_gap.text)}`
+          : "Für deine letzte Nacht hat deine Uhr keine Werte geliefert."}</p>`;
+
     return `
       <div class="thead">${esc(dLong(t.date))}${
         stale ? ` <span class="staleflag">Werte von ${esc(dMed(t.date))}</span>` : ""}</div>
       ${head}
       ${t.tension ? `<div class="tnote">${ico("info", C.tx2, 16)}<span>${esc(t.tension)}</span></div>` : ""}
 
-      <h3 class="secname">Was sich bewegt hat
-        <span class="hint">— jedes Signal einzeln, mit dem System, über das es etwas aussagt</span></h3>
-      <div class="tsigs">${signals}</div>
+      ${nightHead}
       ${t.context_note ? `<div class="ctxnote">${ico("info", C.tx2, 15)}
         <span>${esc(t.context_note)}</span></div>` : ""}
 
@@ -6603,7 +6621,7 @@ class IntervalsIcuPanel extends HTMLElement {
                         : "zu wenige Vergleichsnächte";
       return `<div class="nrow">
         <span class="nlab"><b>${esc(entry.label)}</b>
-          <em>deine Basislinie ${fmt(entry.baseline, dec)} ${esc(entry.unit)}</em></span>
+          <em>dein Normalwert ${fmt(entry.baseline, dec)} ${esc(entry.unit)}</em></span>
         <span class="nval tn">${fmt(entry.value, dec)}<small>${esc(entry.unit)}</small></span>
         <span class="nref"><b class="nz" style="color:${col}">${nightSaid(entry.word)}</b> · ${usual}</span>
       </div>`;
@@ -7547,8 +7565,6 @@ ul.rides span.r{color:${C.tx3};white-space:nowrap}
 /* Heute */
 .thead{font-size:14px;color:${C.tx2};margin:0 2px 8px}
 .staleflag{color:${C.amber};font-size:12.5px;margin-left:6px}
-.tsigdate{color:${C.tx3};font-size:11px;margin-bottom:6px}
-.tsigdate.stale{color:${C.amber}}
 .tcard{display:grid;grid-template-columns:1.4fr 1fr;gap:18px;background:${C.card};
   border:1px solid ${C.line};border-left-width:4px;border-radius:12px;padding:18px 20px;margin-bottom:12px}
 .tcard.red{border-left-color:${C.red}}
@@ -7615,8 +7631,10 @@ ul.rides span.r{color:${C.tx3};white-space:nowrap}
 .tsigbar{position:relative;height:12px;background:#0006;border-radius:3px}
 .tsigband{position:absolute;left:41.7%;width:16.6%;top:0;bottom:0;background:${C.tx3};opacity:.22;border-radius:2px}
 .tsigfill{position:absolute;top:2px;bottom:2px;border-radius:2px}
-.tsigfoot{display:flex;justify-content:space-between;gap:10px;margin-top:6px;font-size:12px}
-.tsigfoot em{font-style:normal;color:${C.tx3};font-size:11px;text-align:right;max-width:60%}
+/* 0.74.7: drei Zeilen untereinander - Wort (Richtungsfarbe), Bedeutung, Grenze des Werts (klein, grau) */
+.tsigfoot{display:flex;flex-direction:column;gap:2px;margin-top:6px;font-size:12px}
+.tsigmean{color:${C.tx2}}
+.tsigfoot em{font-style:normal;color:${C.tx3};font-size:11px}
 .tweek{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px}
 .tweek>*{min-width:0}
 .tday{display:grid;grid-template-rows:64px auto auto auto;justify-items:center;gap:2px;

@@ -38,12 +38,13 @@ const EMPTY_LOAD = { weeks: [], weeks_by_group: [], window_history: [], window_p
   contains(html, "Noch 209 Last frei", "heute: das Wochenurteil fehlt");
   // 2 - the signals, each with the SYSTEM it reports on - never averaged
   ok((html.match(/class="tsig /g) || []).length === 3, "heute: nicht jedes Signal einzeln");
-  contains(html, "Autonomes Nervensystem", "heute: System nicht benannt");
+  // 0.74.7 umgestellt (SKIZZE_0.74.7 §2.2): „Nervensystem“, „Normalwert“ und die Grenzen im Wortlaut der Skizze
+  contains(html, "Nervensystem", "heute: System nicht benannt");
   contains(html, "Verhalten", "heute: Schlaf nicht als Verhalten eingeordnet");
-  contains(html, "Basislinie", "heute: eigene Basislinie fehlt");
+  contains(html, "Normalwert", "heute: eigener Normalwert fehlt");
   // every signal must carry what it CANNOT do
-  contains(html, "nicht die validierte Morgenmessung", "heute: Messgrenze der HRV fehlt");
-  contains(html, "kein autonomer Messwert", "heute: Grenze des Schlafwerts fehlt");
+  contains(html, "das schwankt mehr als eine Messung morgens im Liegen", "heute: Messgrenze der HRV fehlt");
+  contains(html, "sagt nichts darüber, wie gut du geschlafen hast", "heute: Grenze des Schlafwerts fehlt");
   // 3 - where it comes from
   contains(html, "Woher das kommt", "heute: Herkunft fehlt");
   ok((html.match(/class="tday /g) || []).length === 7, "heute: nicht sieben Tage");
@@ -76,22 +77,23 @@ const EMPTY_LOAD = { weeks: [], weeks_by_group: [], window_history: [], window_p
   ok((opened.match(/class="tsigbig"/g) || []).length === 1, "heute: mehr als eine Karte offen");
   ok(/<svg class="ch"/.test(opened), "heute: große Ansicht ohne Kurve");
   contains(opened, "Worüber dieser Wert etwas sagt", "heute: große Ansicht ohne Erklärung");
-  contains(opened, "kleinste bedeutsame Änderung", "heute: Rauschgrenze nicht erklärt");
-  contains(opened, "Basislinie", "heute: Bezugslinie fehlt in der Kurve");
+  // 0.74.7 umgestellt: die Rauschgrenze steht in „Die Bereiche“, die Linie heißt „Normalwert“ (SKIZZE_0.74.7 §2.3)
+  contains(opened, "bis 0,5 vom Normalwert weg ist Rauschen", "heute: Rauschgrenze nicht erklärt");
+  contains(opened, "Normalwert", "heute: Bezugslinie fehlt in der Kurve");
   // the bands come from the athlete's OWN 60-day distribution and are drawn in
   // the signal's own unit - a rider recognises 41 ms, not -1.5 SD
   ok((opened.match(/<rect[^>]*opacity="0\.(08|14)"/g) || []).length >= 2,
      "heute: keine Bereiche aus der eigenen Verteilung");
-  contains(opened, "Basislinie 48", "heute: Basislinie nicht in echter Einheit");
-  contains(opened, "Einbruch ab 35", "heute: Einbruchsschwelle nicht eingezeichnet");
+  contains(opened, "Normalwert 48", "heute: Normalwert nicht in echter Einheit");
+  contains(opened, "Einbruch unter 35", "heute: Einbruchsschwelle nicht eingezeichnet");
   contains(opened, "Die Bereiche:", "heute: Bereiche nicht erklärt");
-  contains(opened, "aus deinen letzten 60 Tagen gerechnet", "heute: Herkunft der Bereiche fehlt");
+  contains(opened, "Alles aus deinen letzten 60 Nächten gerechnet", "heute: Herkunft der Bereiche fehlt");
   // for the resting heart rate the threshold points the OTHER way
   p._sigOpen = "rhr";
   const rhrOpen = p.rHeute(F.today());
   clean(rhrOpen, "heute ruhepuls offen");
-  contains(rhrOpen, "auffällig hoch 62", "heute: Ruhepuls-Schwelle falsch herum");
-  ok(!/Einbruch ab/.test(rhrOpen.slice(rhrOpen.indexOf("tsigbig"))),
+  contains(rhrOpen, "auffällig hoch über 62", "heute: Ruhepuls-Schwelle falsch herum");
+  ok(!/Einbruch unter/.test(rhrOpen.slice(rhrOpen.indexOf("tsigbig"))),
      "heute: Ruhepuls als Einbruch beschriftet");
   p._sigOpen = "hrv";
   p._sigOpen = null;
@@ -117,7 +119,8 @@ const EMPTY_LOAD = { weeks: [], weeks_by_group: [], window_history: [], window_p
   // where signals and verdict disagree, the page must say why
   const tension = p.rHeute(F.today("spannung"));
   clean(tension, "heute spannung");
-  contains(tension, "weder weit genug noch lange genug", "heute: Widerspruch nicht erklärt");
+  // 0.74.7 umgestellt (SKIZZE_0.74.7 §2.4): der Hinweis im neuen Wortlaut
+  contains(tension, "reicht aber nicht für einen Einbruch", "heute: Widerspruch nicht erklärt");
   ok(/class="tnote"/.test(tension), "heute: Hinweis nicht als solcher gezeigt");
   ok(!/class="tnote"/.test(html), "heute: Hinweis ohne Widerspruch gezeigt");
 
@@ -759,8 +762,9 @@ const EMPTY_LOAD = { weeks: [], weeks_by_group: [], window_history: [], window_p
     // 0.74.4 umgestellt auf den Wortlaut der SKIZZE_0.74.4 (Klartext Nacht)
     contains(html, "so erholt wie sonst.", "nacht: Urteil fehlt");
     // all three measured values with their own baseline
+    // 0.74.7 umgestellt (SKIZZE_0.74.7 §2.5): „deine Basislinie“ -> „dein Normalwert“
     for (const needle of ["Herzratenvariabilität", "Ruhepuls", "Schlafdauer",
-                          "deine Basislinie", "49", "(1,6)"]) {
+                          "dein Normalwert", "49", "(1,6)"]) {
       contains(html, needle, "nacht");
     }
     // the reference - what this athlete usually does after sessions like this
@@ -1806,7 +1810,8 @@ const EMPTY_LOAD = { weeks: [], weeks_by_group: [], window_history: [], window_p
   ok(/fill="none" stroke="[^"]+" stroke-width="1.6"/.test(open),
      "beschriftung: w=0-Tag nicht hohl gezeichnet");
   contains(open, "Hohle Punkte", "beschriftung: Hohlpunkte unerklärt");
-  contains(open, "zählen nicht in die Basislinie", "beschriftung: Bedeutung der Hohlpunkte fehlt");
+  // 0.74.7 umgestellt (SKIZZE_0.74.7 §2.3): „Basislinie“ -> „Normalwert“
+  contains(open, "zählen nicht in den Normalwert", "beschriftung: Bedeutung der Hohlpunkte fehlt");
   const xl = q._grp.tsig_hrv && q._grp.tsig_hrv.xl;
   ok(xl && xl(hd.length - 2).includes("Etikett: Nachtschicht"),
      "beschriftung: Ablesestreifen nennt das Etikett nicht");
@@ -3675,10 +3680,13 @@ const EMPTY_LOAD = { weeks: [], weeks_by_group: [], window_history: [], window_p
   // none · der Abschnitt verschwindet nicht
   const nh = P.rHeute(F.today("keineeinheit")); clean(nh, "0.74.3 keine Einheit");
   ok(nh.includes('class="tnight') && txt(nh).includes(NONE), "0.74.3 night_none: der Abschnitt ist leer oder fehlt");
-  ok(!txt(nh).includes(HEAD) && !txt(nh).includes("fehlt noch"), "0.74.3 night_none: Kasten oder pending-Zeile gezeigt");
+  // 0.74.7 umgestellt: „fehlt noch“ wird im Nacht-Abschnitt gesucht - die Ueberschrift der Kacheln sagt bei veralteten
+  // Werten selbst „die Nacht zu heute fehlt noch“ (SKIZZE_0.74.7 §2.1), das ist keine pending-Zeile
+  const nachtTeil = (h) => txt(h.slice(Math.max(0, h.indexOf('class="tnight'))));
+  ok(!txt(nh).includes(HEAD) && !nachtTeil(nh).includes("fehlt noch"), "0.74.3 night_none: Kasten oder pending-Zeile gezeigt");
   // gemessene Nacht ohne pending: keine pending-Zeile
   const onlyNight = P.rHeute({ ...F.today(), night_pending: null });
-  ok(!txt(onlyNight).includes("fehlt noch") && txt(onlyNight).includes("nach Mi 09. · Rehburg-Loccum Gehen"),
+  ok(!nachtTeil(onlyNight).includes("fehlt noch") && txt(onlyNight).includes("nach Mi 09. · Rehburg-Loccum Gehen"),
      "0.74.3: ohne night_pending eine pending-Zeile oder ohne 'nach …'-Zeile");
   // der Abschnitt verschwindet nie mehr ganz
   for (const k of [undefined, "ohnenacht", "missing", "keineeinheit", "livefall", "namen"]) {
@@ -3847,8 +3855,11 @@ const EMPTY_LOAD = { weeks: [], weeks_by_group: [], window_history: [], window_p
   for (const fn of ["_nightVerdict(v) {", "_nightBlock(a) {", "HEUTE"]) {
     const i = src.indexOf(fn); const body = fn === "HEUTE" ? heuteSrc : i < 0 ? "" : src.slice(i, src.indexOf("\n  }\n", i));
     ok(body !== "", `0.74.4: ${fn} nicht gefunden`);
+    // 0.74.7 (SKIZZE_0.74.7 §2.5): die Beschriftung „dein Normalwert {x}“ der Werte-Zeile ist keine Wortstufe - sie
+    // wird genau einmal herausgenommen, alles andere bleibt verboten
+    const b2 = fn === "_nightBlock(a) {" ? body.replace("<em>dein Normalwert ${fmt(entry.baseline, dec)}", "") : body;
     for (const w of ["Normalwert", "Normalbereich", "deutlich unter", "deutlich über", "etwas unter", "etwas über", "stark unter", "stark über"]) {
-      ok(!body.includes(w), `0.74.4 §2: '${w}' steht in ${fn} - eine Wortstufe wird im Panel gebaut`);
+      ok(!b2.includes(w), `0.74.4 §2: '${w}' steht in ${fn} - eine Wortstufe wird im Panel gebaut`);
     }
     ok(!/Math\.abs\(/.test(body) && !/(\.z|z_hrv|z_hrv_next|\.mean)\s*[<>]=?\s*-?\d/.test(body),
        `0.74.4 §2: ${fn} vergleicht ein z gegen eine Zahl (Wortstufe im Panel)`);
@@ -4464,8 +4475,10 @@ const SEITE734 = (async () => {
   // SEITENPROBE Heute 27.09. als ganze Seite (Skizze §4)
   const heute = P.rHeute(F.today("live0927"));
   const hT = txt(heute);
-  ok(kachel(heute, "hrv").includes("+0,6 SD · günstig"), `0.74.5 §4 Heute: HRV-Kachel nicht "+0,6 SD · günstig" (${kachel(heute, "hrv").slice(0, 160)})`);
-  ok(kachel(heute, "sleep").includes("+0,9 SD · günstig"), "0.74.5 §4 Heute: Schlaf-Kachel nicht \"+0,9 SD · günstig\"");
+  // 0.74.7 umgestellt (SKIZZE_0.74.7 §2.2): der Kachel-Fuß ist nightSaid(word) + „spricht für Erholung“, nicht „+0,6 SD · günstig“
+  ok(kachel(heute, "hrv").includes("etwas über deinem Normalwert (0,6)") && kachel(heute, "hrv").includes("spricht für Erholung"),
+     `0.74.5/0.74.7 §4 Heute: HRV-Kachel nicht "etwas über deinem Normalwert (0,6)" (${kachel(heute, "hrv").slice(0, 160)})`);
+  ok(kachel(heute, "sleep").includes("etwas über deinem Normalwert (0,9)"), "0.74.5/0.74.7 §4 Heute: Schlaf-Kachel nicht \"(0,9)\"");
   ok(txt(heuteNacht(heute)).includes("HRV in der Nacht danach: etwas über deinem Normalwert (0,6) · Zweite Nacht: fehlt noch"),
      "0.74.5 §4 Heute: die Karte zeigt nicht \"etwas über deinem Normalwert (0,6)\"");
   // SEITENPROBE Aktivitäten volumen 26.09. und VO2max 25.09. als ganze Seiten
@@ -4480,21 +4493,24 @@ const SEITE734 = (async () => {
   ok(vo2T.includes("deutlich unter deinem Normalwert (1,3)"), "0.74.5 §4 Aktivitäten VO2max: HRV nicht \"deutlich unter deinem Normalwert (1,3)\"");
   // derselbe Wert zeigt ueberall denselben Betrag: Kachel (gerichtet) = Karte = Werte-Zeile (Abstand)
   const betrag = (re, t) => { const m = t.match(re); return m ? Math.abs(parseFloat(m[1].replace(",", "."))) : NaN; };
-  const hK = betrag(/([+-]?\d+,\d) SD/, kachel(heute, "hrv")), sK = betrag(/([+-]?\d+,\d) SD/, kachel(heute, "sleep"));
+  const hK = betrag(/Normalwert \((\d+,\d)\)/, kachel(heute, "hrv")), sK = betrag(/Normalwert \((\d+,\d)\)/, kachel(heute, "sleep"));
   const hC = betrag(/HRV in der Nacht danach: [^(]*\((\d+,\d)\)/, txt(heuteNacht(heute)));
   const hR = betrag(/Herzratenvariabilität[^(]*\((\d+,\d)\)/, volT), sR = betrag(/Schlafdauer[^(]*\((\d+,\d)\)/, volT);
   ok(hK === 0.6 && hC === 0.6 && hR === 0.6, `0.74.5 Seitenprobe: HRV Kachel ${hK} · Karte ${hC} · Werte-Zeile ${hR} - nicht derselbe Betrag`);
   ok(sK === 0.9 && sR === 0.9, `0.74.5 Seitenprobe: Schlaf Kachel ${sK} · Werte-Zeile ${sR} - nicht derselbe Betrag`);
-  // der Rest der Heute-Seite widerspricht nicht: jede Kachel traegt genau eine Zahl "SD" und eine Richtung
-  ok((hT.match(/[+-]?\d+,\d SD · (günstig|ungünstig|unauffällig)/g) || []).length === 3, "0.74.5 Seitenprobe Heute: nicht genau drei Kachelzahlen");
+  // der Rest der Heute-Seite widerspricht nicht: jede Kachel traegt genau eine Zahl in Klammern (0.74.7: nightSaid)
+  ok((hT.match(/(im Normalbereich|Normalwert) \(\d+,\d\)/g) || []).length === 4, "0.74.5/0.74.7 Seitenprobe Heute: nicht drei Kachelzahlen und eine Karte");
 
   // Die Kachel zeigt `shown` aus der Payload und rechnet nichts: z und shown weichen ab (0,53 / 0,6), die Richtung
   // kommt aus dem Backend - z = 0,50 ist dort "unauffällig", z = 0,51 "günstig"/"ungünstig"
   const gz = P.rHeute(F.today("grenze05"));
-  ok(kachel(gz, "hrv").includes("+0,5 SD · unauffällig") && !/class="tsig moved/.test(z(gz).slice(z(gz).indexOf('data-id="hrv"') - 60, z(gz).indexOf('data-id="hrv"'))),
-     "0.74.5 Grenze: z = 0,50 ist nicht \"+0,5 SD · unauffällig\" (ohne moved)");
-  ok(kachel(gz, "rhr").includes("+0,6 SD · günstig") && kachel(gz, "sleep").includes("-0,6 SD · ungünstig"),
-     "0.74.5 Grenze: z = ±0,51 ist nicht \"±0,6 SD · günstig/ungünstig\"");
+  // 0.74.7 umgestellt: dieselbe Grenze, jetzt in Worten - 0,50 „im Normalbereich (0,5)“ ohne Zeile 2, 0,51 mit Zeile 2
+  ok(kachel(gz, "hrv").includes("im Normalbereich (0,5)") && !kachel(gz, "hrv").includes("spricht") &&
+     !/class="tsig moved/.test(z(gz).slice(z(gz).indexOf('data-id="hrv"') - 60, z(gz).indexOf('data-id="hrv"'))),
+     "0.74.5/0.74.7 Grenze: z = 0,50 ist nicht \"im Normalbereich (0,5)\" ohne Zeile 2 (ohne moved)");
+  ok(kachel(gz, "rhr").includes("etwas unter deinem Normalwert (0,6)") && kachel(gz, "rhr").includes("spricht für Erholung") &&
+     kachel(gz, "sleep").includes("etwas unter deinem Normalwert (0,6)") && kachel(gz, "sleep").includes("spricht gegen Erholung"),
+     "0.74.5/0.74.7 Grenze: z = ±0,51 ist nicht \"etwas … (0,6)\" mit „spricht für/gegen Erholung“");
 
   // In den Nacht-Abschnitten BEIDER Reiter kein Vorzeichen in Klammern (alle Fixture-Naechte)
   const nachtSeiten = [["Heute 27.09.", heuteNacht(heute)], ["Heute livefall27", heuteNacht(P.rHeute(F.today("livefall27")))],
@@ -4532,8 +4548,9 @@ const SEITE734 = (async () => {
   const ns = src.indexOf("function nightSaid("), nsBody = ns < 0 ? "" : src.slice(ns, src.indexOf("\n}\n", ns));
   ok(/\.shown\b/.test(nsBody) && !/\.z\b|sign\(/.test(nsBody), "0.74.5 §2: die Klammer liest nicht (nur) shown oder setzt ein Vorzeichen");
   // Kachel: die Zahl ist shown aus der Payload, gerichtet; kein Runden von z im Panel
+  // 0.74.7 umgestellt: die Kachel zeigt die Zahl ueber nightSaid(s.word) - dieselbe eine Stelle wie die Nacht
   const ks = src.indexOf("const signals = (t.signals"), kBody = ks < 0 ? "" : src.slice(ks, src.indexOf("tsigfoot", ks) + 200);
-  ok(/sign\(s\.shown, 1\)\} SD/.test(kBody) && !/sign\(s\.z\b/.test(kBody), "0.74.5 §2: die Kachel zeigt nicht shown aus der Payload");
+  ok(/nightSaid\(s\.word\)/.test(kBody) && !/sign\(s\.z\b/.test(kBody), "0.74.5/0.74.7 §2: die Kachel zeigt nicht das Wort aus der Payload");
   P._night = {}; P._laps = {}; P._streams = {};
 }
 
@@ -4583,6 +4600,159 @@ const SEITE734 = (async () => {
      "0.74.6 C: das Panel schreibt den Basislinien-Satz selbst (zweite Stelle neben coach)");
   ok(/np\.reason === "baseline"/.test(src) && /n\.reason === "no_baseline"/.test(src),
      "0.74.6 C: das Panel unterscheidet baseline / no_baseline nicht");
+}
+
+/* ── 0.74.7 · Heute: die drei Kacheln in Klartext, Überschrift mit der Nacht (SKIZZE_0.74.7 §2) ─────────────
+   „stale“ liest wie bisher die Uhr (t.date ist nicht heute) - darum wird die Uhr hier festgestellt, nicht _nowIso. */
+{
+  const RealDate = Date;
+  const pin = (iso) => {
+    global.Date = class extends RealDate {
+      constructor(...a) { if (a.length) super(...a); else super(`${iso}T09:00:00Z`); }
+      static now() { return new RealDate(`${iso}T09:00:00Z`).getTime(); }
+    };
+  };
+  const P = new M.Panel(); P._nowIso = F.TODAY;
+  const z = (h) => String(h).replace(/\s+/g, " ");
+  const txt = (h) => z(String(h).replace(/<[^>]*>/g, " ")).replace(/&amp;/g, "&").replace(/&quot;/g, '"')
+    .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#39;/g, "'").replace(/\s+/g, " ");
+  const A = F.activities();
+  const kachel = (h, key) => { const s = z(h); const i = s.indexOf(`data-act="sigopen" data-id="${key}"`);
+    if (i < 0) return ""; const e = s.indexOf('<div class="tsig ', i + 10); return s.slice(i, e < 0 ? s.indexOf("Woher das kommt", i) : e); };
+  const heuteNacht = (h) => { const s = z(h); const i = s.indexOf('class="tnight'); return i < 0 ? "" : txt(s.slice(i)); };
+  const akt = (a, n) => { P._laps[a.id] = { laps: [], source: "none" }; P._streams[a.id] = F.steadyStream(); P._night[a.id] = n;
+    return z(P.rAkt(A, a)); };
+  const aktNacht = (h) => { const i = h.indexOf("Die Nacht danach"); const e = h.indexOf('<h3 class="secname">Verlauf', i);
+    return i < 0 || e < 0 ? "" : h.slice(i, e); };
+  // sichtbarer Text der Heute-Seite: keine Statistik-Sprache, keine Richtungsworte (§5)
+  const fremd = (t) => ["SD", "Standardabweichung", "Basislinie", "günstig", "unauffällig", "±"]
+    .filter((w) => (w === "SD" ? /\bSD\b/.test(t) : t.includes(w)));
+  try {
+    /* NORMAL: live 27.09. (Uhr 27.09.) - ganze Seite, jede Kachel einzeln, jede aufgeklappt */
+    pin("2026-09-27");
+    const live = F.today("live0927");
+    const h = P.rHeute(live), hT = txt(h);
+    clean(h, "0.74.7 Heute normal");
+    ok(hT.includes("Deine letzte Nacht — Nacht zum So 27.09., jeder Wert verglichen mit deinen letzten 60 Nächten"),
+       `0.74.7 §2.1 Überschrift normal nicht wörtlich (${(hT.match(/[^.]{0,30}letzte[^.]{0,90}/) || [""])[0]})`);
+    ok(!hT.includes("Was sich bewegt hat") && !hT.includes("Die letzte gemessene Nacht"), "0.74.7 §2.1: alte oder falsche Überschrift daneben");
+    const HR = txt(kachel(h, "hrv")), RH = txt(kachel(h, "rhr")), SL = txt(kachel(h, "sleep"));
+    ok(HR.includes("Nervensystem") && !HR.includes("Autonomes") && HR.includes("Normalwert 48") &&
+       HR.includes("etwas über deinem Normalwert (0,6)") && HR.includes("spricht für Erholung") &&
+       HR.includes("Die Uhr misst nachts – das schwankt mehr als eine Messung morgens im Liegen."),
+       `0.74.7 §2.2 HRV-Kachel nicht wie Vorschau A (${HR.slice(0, 260)})`);
+    ok(RH.includes("Nervensystem") && RH.includes("im Normalbereich (0,3)") && !RH.includes("spricht") &&
+       RH.includes("Reagiert langsamer als die HRV, schwankt dafür weniger."),
+       `0.74.7 §2.2 Ruhepuls-Kachel nicht wie Vorschau A (${RH.slice(0, 260)})`);
+    ok(SL.includes("Verhalten") && SL.includes("etwas über deinem Normalwert (0,9)") && SL.includes("spricht für Erholung") &&
+       SL.includes("Von der Uhr geschätzt – sagt nichts darüber, wie gut du geschlafen hast."),
+       `0.74.7 §2.2 Schlaf-Kachel nicht wie Vorschau A (${SL.slice(0, 260)})`);
+    ok(![HR, RH, SL].some((k) => /\bStand\b|nicht von heute/.test(k)), "0.74.7 §2.2: die Zeile „Stand …“ steht noch in einer Kachel");
+    // Zeile 2 kommt aus dem Backend (meaning), das Panel schreibt sie nicht selbst: ein anderer Text erscheint wörtlich,
+    // ohne meaning keine Zeile 2 - auch bei „günstig“
+    const mx = { ...live, signals: live.signals.map((x) => ({ ...x, meaning: x.key === "hrv" ? "BEDEUTUNG-AUS-COACH" : null })) };
+    ok(txt(kachel(P.rHeute(mx), "hrv")).includes("BEDEUTUNG-AUS-COACH") && !txt(kachel(P.rHeute(mx), "sleep")).includes("spricht"),
+       "0.74.7 §2.2: Zeile 2 kommt nicht aus meaning (das Panel schreibt sie selbst)");
+    ok(!/spricht (für|gegen) Erholung/.test(H.source()), "0.74.7 §2.2: das Panel trägt den Text „spricht für/gegen Erholung“ selbst");
+    // Zeile 1 in der Richtungsfarbe (günstig grün, sonst grau) - Farbe bleibt am Backend-Feld direction
+    ok(kachel(h, "hrv").includes(`style="color:${M.C.green}">etwas über deinem Normalwert (0,6)`) &&
+       kachel(h, "rhr").includes(`style="color:${M.C.tx3}">im Normalbereich (0,3)`),
+       "0.74.7 §2.2: Zeile 1 steht nicht in der Richtungsfarbe");
+    ok(fremd(hT).length === 0, `0.74.7 §5 Heute normal: sichtbar steht noch ${fremd(hT).join(", ")}`);
+    // Kachel und Karte zeigen für dieselbe Nacht dieselben Worte und Zahlen: Heute-Karte (HRV) und Aktivitäten volumen (alle drei)
+    const volT = txt(aktNacht(akt(A[0], F.night("live27"))));
+    const said = (t) => (t.match(/((?:im Normalbereich|(?:etwas|deutlich|stark) (?:über|unter) deinem Normalwert) \(\d+,\d\))/) || [""])[0];
+    const row = (label) => said(volT.slice(volT.indexOf(label)));
+    ok(said(HR) !== "" && said(HR) === row("Herzratenvariabilität") && said(RH) === row("Ruhepuls") && said(SL) === row("Schlafdauer"),
+       `0.74.7 Seitenprobe: Kachel ${[said(HR), said(RH), said(SL)]} gegen Werte-Zeilen ${[row("Herzratenvariabilität"), row("Ruhepuls"), row("Schlafdauer")]}`);
+    ok(heuteNacht(h).includes(`HRV in der Nacht danach: ${said(HR)}`), "0.74.7 Seitenprobe: HRV-Kachel und Heute-Karte zeigen verschiedene Worte");
+    ok(live.night.night_date === live.date, "0.74.7 Seitenprobe Trefferzusicherung: Kachel und Karte sind nicht dieselbe Nacht");
+    // aufgeklappt, je Signal: Bereiche, Worüber, Linien - Zahlen aus band_scale
+    const BER = "Die Bereiche: Das dunkle Band ist dein Normalbereich: bis 0,5 vom Normalwert weg ist Rauschen. Das hellere Band ist " +
+      "deine gewohnte Schwankung, bis 1,0. Die gelbe Linie markiert, ab wann ein %S kein Rauschen mehr ist (mehr als 2,0). " +
+      "Alles aus deinen letzten 60 Nächten gerechnet.";
+    for (const [key, what, about, line] of [["hrv", "Abfall", "wie erholt dein Nervensystem ist", "Einbruch unter 35"],
+                                            ["rhr", "Anstieg", "wie erholt dein Nervensystem ist", "auffällig hoch über 62"],
+                                            ["sleep", "Abfall", "wie viel du geschlafen hast", "Einbruch unter 5,6"]]) {
+      P._sigOpen = key;
+      const o = P.rHeute(live), oT = txt(o);
+      clean(o, `0.74.7 Heute ${key} offen`);
+      ok(oT.includes(BER.replace("%S", what)), `0.74.7 §2.3 ${key}: „Die Bereiche“ nicht wörtlich (${(oT.match(/Die Bereiche:.{0,330}/) || [""])[0]})`);
+      ok(oT.includes(`Worüber dieser Wert etwas sagt: ${about}. ${F.today("live0927").signals.find((s) => s.key === key).limit}`),
+         `0.74.7 §2.3 ${key}: „Worüber …“ nicht wörtlich`);
+      ok(o.includes(line) && o.includes(`Normalwert ${key === "sleep" ? "7,4" : key === "hrv" ? "48" : "56"}`) &&
+         !/Einbruch ab|>auffällig hoch \d/.test(o), `0.74.7 §2.3 ${key}: Linien nicht „Normalwert …“ / „${line}“`);
+      ok(!oT.includes("Die graue Zone"), `0.74.7 §2.3 ${key}: der Satz zur grauen Zone steht noch`);
+      ok(fremd(oT).length === 0, `0.74.7 §5 ${key} offen: sichtbar steht noch ${fremd(oT).join(", ")}`);
+    }
+    // hohle Punkte: der Hinweis bleibt, mit „Normalwert“
+    P._sigOpen = "hrv";
+    const hol = { ...live, history_days: live.history_days.map((r, i) => (i === 3 ? { ...r, context: { tag: "krank", weight: 0 } } : r)) };
+    const holT = txt(P.rHeute(hol));
+    ok(holT.includes("Hohle Punkte sind etikettierte Tage mit Gewicht 0 — sie zählen nicht in den Normalwert") && fremd(holT).length === 0,
+       "0.74.7 §2.3: der Hinweis zu hohlen Punkten fehlt oder sagt noch „Basislinie“");
+    // keine Literale: andere Konstanten im Backend -> andere Zahlen im Text (Überschrift und Bereiche)
+    const other = P.rHeute({ ...live, band_scale: { swc: 0.4, day: 1.5, drop: 2.5, window: 45 } }), otT = txt(other);
+    ok(otT.includes("bis 0,4 vom Normalwert") && otT.includes("Schwankung, bis 1,5") && otT.includes("(mehr als 2,5)") &&
+       otT.includes("Alles aus deinen letzten 45 Nächten") && otT.includes("verglichen mit deinen letzten 45 Nächten"),
+       "0.74.7 §2.3: eine Zahl im Text kommt nicht aus band_scale (Literal im Panel)");
+    P._sigOpen = null;
+
+    /* STALE: dieselben Werte, die Uhr zeigt den 28.09. */
+    pin("2026-09-28");
+    const st = P.rHeute(live), stT = txt(st);
+    clean(st, "0.74.7 Heute stale");
+    ok(stT.includes("Die letzte gemessene Nacht — Nacht zum So 27.09.; die Nacht zu heute fehlt noch") && !stT.includes("Deine letzte Nacht"),
+       "0.74.7 §2.1 stale: Überschrift nicht wörtlich");
+    ok(!/tsigdate|nicht von heute|Stand 27/.test(st) && (st.match(/class="tsig /g) || []).length === 3,
+       "0.74.7 §2.1 stale: die Zeile „Stand … nicht von heute“ steht noch in einer Kachel, oder Kacheln fehlen");
+    ok(/class="staleflag"/.test(st), "0.74.7 stale: der Hinweis im Seitenkopf (Werte von …) fehlt");
+    ok(fremd(stT).length === 0, `0.74.7 §5 Heute stale: sichtbar steht noch ${fremd(stT).join(", ")}`);
+
+    /* OHNE BAND (neuer Athlet, 19 Nächte) und OHNE WERTE - Uhr am 11.09. */
+    pin("2026-09-11");
+    const nb = P.rHeute(F.today("neuathlet")), nbT = txt(nb);
+    clean(nb, "0.74.7 Heute ohne Band");
+    ok(nbT.includes("Deine letzte Nacht Für deine letzte Nacht gibt es noch keinen Vergleich – die App braucht dafür 20 Nächte mit Werten, bisher sind es 19."),
+       `0.74.7 §2.1 ohne Band: die Zeile unter der Überschrift steht nicht wörtlich (${(nbT.match(/Deine letzte Nacht.{0,140}/) || [""])[0]})`);
+    ok(!/class="tsigs"/.test(nb) && !nbT.includes("jeder Wert verglichen"), "0.74.7 §2.1 ohne Band: leeres Raster oder Vergleichs-Unterzeile gezeigt");
+    ok(txt(P.rHeute(F.today("neuathlet_flach"))).includes("Für deine letzte Nacht gibt es noch keinen Vergleich – deine bisherigen Nachtwerte sind alle gleich."),
+       "0.74.7 §2.1 ohne Band (flach): der Satz steht nicht wörtlich");
+    const ow = P.rHeute(F.today("ohnewerte")), owT = txt(ow);
+    clean(ow, "0.74.7 Heute ohne Werte");
+    ok(owT.includes("Deine letzte Nacht Für deine letzte Nacht hat deine Uhr keine Werte geliefert.") && !/class="tsigs"/.test(ow),
+       "0.74.7 §2.1 ohne Werte: der Satz steht nicht wörtlich");
+
+    /* TENSION: der Hinweis in Klartext, ganze Seite */
+    const tn = P.rHeute(F.today("spannung")), tnT = txt(tn);
+    clean(tn, "0.74.7 Heute tension");
+    ok(tnT.includes("Heute liegt deine HRV deutlich unter deinem Normalwert – das spricht eher gegen Erholung, reicht aber nicht für einen Einbruch.") &&
+       /class="tnote"/.test(tn), "0.74.7 §2.4: der Hinweis steht nicht");
+    ok(txt(kachel(tn, "hrv")).includes("deutlich unter deinem Normalwert (1,4)") && txt(kachel(tn, "hrv")).includes("spricht gegen Erholung"),
+       "0.74.7 Seitenprobe tension: Kachel und Hinweis nennen nicht dasselbe Wort");
+    ok(fremd(tnT).length === 0, `0.74.7 §5 Heute tension: sichtbar steht noch ${fremd(tnT).join(", ")}`);
+  } finally {
+    global.Date = RealDate;
+  }
+
+  /* AKTIVITÄTEN: VO2max 25.09. und volumen 26.09. als ganze Seiten - „dein Normalwert“, nie „Basislinie“ in der Nacht */
+  for (const [name, n, hrvLine] of [["VO2max 25.09.", F.night("live25"), "dein Normalwert 49 ms"],
+                                    ["volumen 26.09.", F.night("live27"), "dein Normalwert 48 ms"]]) {
+    const page = akt(A[0], n), nt = txt(aktNacht(page));
+    clean(page, `0.74.7 Aktivitäten ${name}`);
+    ok(nt.includes(hrvLine) && !nt.includes("Basislinie"), `0.74.7 §2.5 Aktivitäten ${name}: „${hrvLine}“ fehlt oder „Basislinie“ steht noch`);
+    ok((nt.match(/dein Normalwert \d/g) || []).length === 3, `0.74.7 §2.5 Aktivitäten ${name}: nicht drei Zeilen „dein Normalwert“`);
+  }
+  P._night = {}; P._laps = {}; P._streams = {};
+
+  /* EINE STELLE (Quelltext): Kachel-Fuß über nightSaid(s.word), keine Zahl und kein Fenster als Literal im Heute-Reiter */
+  const src = H.source();
+  const rh = src.slice(src.indexOf("  rHeute(t) {"), src.indexOf("\n  }\n", src.indexOf("  rHeute(t) {")));
+  const ks = rh.indexOf("const signals = (t.signals"), kBody = ks < 0 ? "" : rh.slice(ks, rh.indexOf("}).join(\"\");", ks));
+  ok(/nightSaid\(s\.word\)/.test(kBody) && !/sign\(s\.(shown|z)\b/.test(kBody) && !/\} SD\b/.test(kBody),
+     "0.74.7 §2.2: der Kachel-Fuß kommt nicht aus nightSaid(s.word) (oder rechnet selbst)");
+  ok(!/±|0,5|\(2 SD\)|±1 SD|60 Tagen|60 Nächten|Standardabweichung/.test(rh), "0.74.7 §2.3: eine Grenze oder ein Fenster steht als Literal im Heute-Reiter");
+  ok(/t\.band_scale/.test(rh) && /nightSaid\(/.test(rh), "0.74.7: rHeute liest band_scale nicht");
 }
 
 SEITE734.then(() => report("test_panel_views"));
